@@ -172,6 +172,15 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
         ).fetchone()
         self.assertIsNotNone(event)
         self.assertIn(str(alt_route_id), event["new_values"])
+        self.assertTrue(event["summary"])
+        self.assertIn("GEO: Италия", event["summary"])
+        self.assertIn("Сервер: IT1", event["summary"])
+        self.assertIn("Старый current route: Италия/Miatel/Pool_A@", event["summary"])
+        self.assertIn("Старый provider: Miatel", event["summary"])
+        self.assertIn("Новый current route: Италия/Sancom/RND@", event["summary"])
+        self.assertIn("Новый provider: Sancom", event["summary"])
+        self.assertIn("Previous route после изменения", event["summary"])
+        self.assertIn("manual switch", event["summary"])
 
     def test_same_server_priority_route_keeps_previous_route_and_updates_comment(self):
         alt_provider_id = self.repo.create_provider("Sancom", "voip", self.currency_id)
@@ -222,10 +231,18 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
         )
 
     def create_routing_setting(self, company_id: int | None = None, **overrides) -> int:
+        if company_id is None:
+            server_id = overrides.get("server_id") or self.repo.create_server(f"route-srv-{overrides.get('comment', 'default')}")
+            company_id = self.create_company(server_id=server_id)
+            country_id = self.country_id
+        else:
+            company = self.conn.execute("SELECT country_id, server_id FROM calling_companies WHERE id = ?", (company_id,)).fetchone()
+            country_id = company["country_id"]
+            server_id = company["server_id"]
         values = {
-            "calling_company_id": company_id or self.create_company(),
-            "country_id": self.country_id,
-            "server_id": self.repo.create_server("route-srv"),
+            "calling_company_id": company_id,
+            "country_id": country_id,
+            "server_id": server_id,
             "route_id": None,
             "routing_mode": "server_priority",
             "has_autorotation": False,
@@ -269,6 +286,50 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
         company_id = self.create_company(server_id=server_id)
         with self.assertRaisesRegex(BusinessRuleError, "выбранному GEO"):
             self.repo.create_company_routing_setting(calling_company_id=company_id, country_id=self.country_id, server_id=server_id, route_id=other_route_id, routing_mode="campaign_route", has_autorotation=False, comment=None, created_by=self.admin_id)
+
+    def test_company_routing_validates_campaign_geo_server_and_autorotation_flag(self):
+        server_id = self.repo.create_server("routing-srv")
+        company_id = self.create_company(server_id=server_id)
+        other_country_id = self.repo.create_country("Франция", "FR")
+        other_server_id = self.repo.create_server("routing-srv-2")
+
+        with self.assertRaisesRegex(BusinessRuleError, "GEO выбранной кампании"):
+            self.repo.create_company_routing_setting(calling_company_id=company_id, country_id=other_country_id, server_id=server_id, route_id=None, routing_mode="server_priority", has_autorotation=False, comment=None, created_by=self.admin_id)
+        with self.assertRaisesRegex(BusinessRuleError, "сервером выбранной кампании"):
+            self.repo.create_company_routing_setting(calling_company_id=company_id, country_id=self.country_id, server_id=other_server_id, route_id=None, routing_mode="server_priority", has_autorotation=False, comment=None, created_by=self.admin_id)
+        with self.assertRaisesRegex(BusinessRuleError, "должна быть включена авторотация"):
+            self.repo.create_company_routing_setting(calling_company_id=company_id, country_id=self.country_id, server_id=server_id, route_id=None, routing_mode="autorotation", has_autorotation=False, comment=None, created_by=self.admin_id)
+
+        setting_id = self.repo.create_company_routing_setting(calling_company_id=company_id, country_id=self.country_id, server_id=server_id, route_id=None, routing_mode="autorotation", has_autorotation=True, comment=None, created_by=self.admin_id)
+        row = self.conn.execute("SELECT routing_mode, has_autorotation FROM company_routing_settings WHERE id = ?", (setting_id,)).fetchone()
+        self.assertEqual(row["routing_mode"], "autorotation")
+        self.assertEqual(row["has_autorotation"], 1)
+
+    def test_company_routing_filters_by_external_campaign_id(self):
+        server_id = self.repo.create_server("routing-srv")
+        matching_company_id = self.create_company(server_id=server_id, external_id="campaign-1001")
+        other_company_id = self.create_company(external_id="campaign-2002")
+        matching_setting_id = self.create_routing_setting(company_id=matching_company_id, server_id=server_id)
+        self.repo.update_company_routing_setting(
+            setting_id=matching_setting_id,
+            country_id=self.country_id,
+            server_id=server_id,
+            route_id=None,
+            routing_mode="mixed",
+            has_autorotation=False,
+            comment="historical match",
+            updated_by=self.admin_id,
+        )
+        self.create_routing_setting(company_id=other_company_id)
+
+        rows = self.repo.list_company_routing_settings({"company_id_external": "1001"})
+
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["company_id_external"], "campaign-1001")
+
+        rows_with_history = self.repo.list_company_routing_settings({"company_id_external": "1001", "show_history": True})
+        self.assertEqual(len(rows_with_history), 2)
+        self.assertTrue(all(row["company_id_external"] == "campaign-1001" for row in rows_with_history))
 
     def test_company_routing_prevents_second_active_setting_for_company(self):
         server_id = self.repo.create_server("routing-srv")
@@ -326,15 +387,12 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
         setting_id = self.repo.create_company_routing_setting(calling_company_id=company_id, country_id=self.country_id, server_id=server_id, route_id=self.route_id, routing_mode="campaign_route", has_autorotation=False, comment="v1", created_by=self.admin_id)
         setting_id = self.repo.update_company_routing_setting(setting_id=setting_id, country_id=self.country_id, server_id=server_id, route_id=alt_route_id, routing_mode="campaign_route", has_autorotation=False, comment="route changed", updated_by=self.admin_id)
         setting_id = self.repo.update_company_routing_setting(setting_id=setting_id, country_id=self.country_id, server_id=server_id, route_id=alt_route_id, routing_mode="campaign_route", has_autorotation=True, comment="autorotation changed", updated_by=self.admin_id)
-        other_country_id = self.repo.create_country("Испания", "ES")
-        other_server_id = self.repo.create_server("routing-srv-2")
-        setting_id = self.repo.update_company_routing_setting(setting_id=setting_id, country_id=other_country_id, server_id=other_server_id, route_id=None, routing_mode="server_priority", has_autorotation=True, comment="geo server changed", updated_by=self.admin_id)
+        setting_id = self.repo.update_company_routing_setting(setting_id=setting_id, country_id=self.country_id, server_id=server_id, route_id=None, routing_mode="server_priority", has_autorotation=True, comment="mode changed", updated_by=self.admin_id)
 
         versions = self.repo.list_company_routing_settings({"calling_company_id": company_id, "show_history": True})
         self.assertEqual(len(versions), 4)
         self.assertEqual(versions[0]["id"], setting_id)
-        self.assertEqual(versions[0]["country_id"], other_country_id)
-        self.assertEqual(versions[0]["server_id"], other_server_id)
+        self.assertEqual(versions[0]["routing_mode"], "server_priority")
         self.assertTrue(all(row["valid_to"] is not None for row in versions[1:]))
 
     def test_company_routing_comment_only_update_does_not_create_new_version_but_logs(self):

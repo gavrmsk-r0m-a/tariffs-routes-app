@@ -627,13 +627,21 @@ class Repository:
         server_id: int,
         route_id: int | None,
         routing_mode: str,
+        has_autorotation: bool,
     ) -> None:
         if routing_mode not in {"server_priority", "campaign_route", "autorotation", "mixed"}:
             raise BusinessRuleError("Некорректный режим маршрутизации")
         if routing_mode == "campaign_route" and not route_id:
             raise BusinessRuleError("Для режима campaign_route обязателен маршрут")
-        if not self.conn.execute("SELECT id FROM calling_companies WHERE id = ?", (calling_company_id,)).fetchone():
+        if routing_mode == "autorotation" and not has_autorotation:
+            raise BusinessRuleError("Для режима autorotation должна быть включена авторотация")
+        company = self.conn.execute("SELECT id, country_id, server_id FROM calling_companies WHERE id = ?", (calling_company_id,)).fetchone()
+        if not company:
             raise BusinessRuleError("Кампания прозвона не найдена")
+        if int(company["country_id"]) != int(country_id):
+            raise BusinessRuleError("GEO схемы маршрутизации должен совпадать с GEO выбранной кампании")
+        if int(company["server_id"]) != int(server_id):
+            raise BusinessRuleError("Сервер схемы маршрутизации должен совпадать с сервером выбранной кампании")
         if not self.conn.execute("SELECT id FROM countries WHERE id = ?", (country_id,)).fetchone():
             raise BusinessRuleError("GEO не найден")
         if not self.conn.execute("SELECT id FROM servers WHERE id = ?", (server_id,)).fetchone():
@@ -700,12 +708,17 @@ class Repository:
             "server_id": "crs.server_id",
             "routing_mode": "crs.routing_mode",
             "calling_company_id": "crs.calling_company_id",
+            "company_id_external": "cc.company_id_external",
         }.items():
             value = filters.get(key)
             if value in (None, "", "all"):
                 continue
-            clauses.append(f"{column} = ?")
-            params.append(value)
+            if key == "company_id_external":
+                clauses.append(f"{column} LIKE ?")
+                params.append(f"%{value}%")
+            else:
+                clauses.append(f"{column} = ?")
+                params.append(value)
         if include_history and filters.get("is_active") not in (None, "", "all"):
             clauses.append("crs.is_active = ?")
             params.append(filters["is_active"])
@@ -749,6 +762,7 @@ class Repository:
             server_id=server_id,
             route_id=route_id,
             routing_mode=routing_mode,
+            has_autorotation=has_autorotation,
         )
         if self.conn.execute(
             "SELECT id FROM company_routing_settings WHERE calling_company_id = ? AND is_active = 1 AND valid_to IS NULL",
@@ -808,6 +822,7 @@ class Repository:
             server_id=server_id,
             route_id=route_id,
             routing_mode=routing_mode,
+            has_autorotation=has_autorotation,
         )
         new_autorotation = 1 if has_autorotation else 0
         routing_changed = any(
@@ -1128,6 +1143,50 @@ class Repository:
         self.conn.commit()
         return change_id
 
+    def _server_route_priority_summary(
+        self,
+        *,
+        country_id: int,
+        server_id: int,
+        old_values: dict,
+        new_values: dict,
+    ) -> str:
+        country = self.conn.execute("SELECT name FROM countries WHERE id = ?", (country_id,)).fetchone()
+        server = self.conn.execute("SELECT name FROM servers WHERE id = ?", (server_id,)).fetchone()
+
+        def route_details(route_id: int | None) -> tuple[str, str, str]:
+            if not route_id:
+                return "—", "—", "—"
+            route = self.conn.execute(
+                """
+                SELECT r.name AS route_name, p.name AS provider_name
+                FROM routes r
+                JOIN providers p ON p.id = r.provider_id
+                WHERE r.id = ?
+                """,
+                (route_id,),
+            ).fetchone()
+            if not route:
+                return str(route_id), str(route_id), "—"
+            return str(route_id), route["route_name"], route["provider_name"]
+
+        _, old_route, old_provider = route_details(old_values.get("current_route_id"))
+        _, new_route, new_provider = route_details(new_values.get("current_route_id"))
+        previous_route_id, previous_route, _ = route_details(new_values.get("previous_route_id"))
+        previous_label = previous_route if previous_route_id == "—" else f"{previous_route_id} / {previous_route}"
+        parts = [
+            f"GEO: {country['name'] if country else country_id}",
+            f"Сервер: {server['name'] if server else server_id}",
+            f"Старый current route: {old_route}",
+            f"Старый provider: {old_provider}",
+            f"Новый current route: {new_route}",
+            f"Новый provider: {new_provider}",
+            f"Previous route после изменения: {previous_label}",
+        ]
+        if new_values.get("comment"):
+            parts.append(f"Комментарий: {new_values['comment']}")
+        return "; ".join(parts)
+
     def update_server_route_priority(
         self,
         *,
@@ -1190,17 +1249,24 @@ class Repository:
                 """,
                 (changed_by, comment, changed_by, priority_id),
             )
+        new_values = {
+            "current_route_id": current_route_id,
+            "previous_route_id": existing["current_route_id"] if route_changed else existing["previous_route_id"],
+            "comment": comment,
+        }
         self._change_log(
             "server_route_priority",
             priority_id,
             "server_route_priority.current_route_updated",
             changed_by,
             old_values=old_values,
-            new_values={
-                "current_route_id": current_route_id,
-                "previous_route_id": existing["current_route_id"] if route_changed else existing["previous_route_id"],
-                "comment": comment,
-            },
+            new_values=new_values,
+            summary=self._server_route_priority_summary(
+                country_id=existing["country_id"],
+                server_id=existing["server_id"],
+                old_values=old_values,
+                new_values=new_values,
+            ),
         )
         self.conn.commit()
 
