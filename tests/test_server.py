@@ -267,6 +267,11 @@ class ServerSmokeTest(unittest.TestCase):
 
 
 
+    def test_change_log_labels_date_as_server_time(self):
+        captured, content = self.request("/admin/change-log")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("Дата (UTC/server time)", content)
+
     def test_company_routing_settings_admin_link_and_screen_render(self):
         self.request("/routes")
         captured, content = self.request("/admin")
@@ -278,8 +283,10 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertIn("Администрирование → Схема маршрутизации кампаний", content)
         self.assertIn("+ Добавить схему маршрутизации кампании", content)
         self.assertIn('name="calling_company_id"', content)
+        self.assertIn('name="company_id_external"', content)
         self.assertIn('name="routing_mode"', content)
         self.assertIn('name="show_history"', content)
+        self.assertIn("syncAutorotation", content)
 
     def test_company_routing_setting_create_visible_and_filters_render(self):
         self.request("/routes")
@@ -295,12 +302,15 @@ class ServerSmokeTest(unittest.TestCase):
         })
         captured, _ = self.request("/admin/company-routing-settings/create", method="POST", body=body)
         self.assertEqual(captured["status"], "303 See Other")
-        captured, content = self.request("/admin/company-routing-settings?country_id=1&server_id=1&routing_mode=server_priority&is_active=1")
+        captured, content = self.request("/admin/company-routing-settings?country_id=1&server_id=1&routing_mode=server_priority&company_id_external=1001&is_active=1")
         self.assertEqual(captured["status"], "200 OK")
         self.assertIn("CC Mexico Demo", content)
         self.assertIn("1001", content)
         self.assertIn("server_priority", content)
         self.assertIn("manual routing note", content)
+        captured, content = self.request("/admin/company-routing-settings?company_id_external=no-match")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertNotIn("manual routing note", content)
 
     def test_company_routing_history_hidden_by_default_and_visible_when_enabled(self):
         self.request("/routes")

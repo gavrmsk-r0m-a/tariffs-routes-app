@@ -504,6 +504,7 @@ def company_routing_settings_page(repo: Repository, q: dict[str, str] | None = N
         "country_id": q.get("country_id"),
         "server_id": q.get("server_id"),
         "routing_mode": q.get("routing_mode"),
+        "company_id_external": q.get("company_id_external"),
         "is_active": q.get("is_active"),
         "show_history": show_history,
     }
@@ -546,6 +547,7 @@ def company_routing_settings_page(repo: Repository, q: dict[str, str] | None = N
 <fieldset><legend>Фильтры</legend><form method="get" action="/admin/company-routing-settings">
 <label>GEO <select name="country_id">{options(repo, 'countries', selected=q.get('country_id'), empty='Все')}</select></label>
 <label>Сервер <select name="server_id">{options(repo, 'servers', selected=q.get('server_id'), empty='Все')}</select></label>
+<label>ID кампании <input name="company_id_external" value="{esc(q.get('company_id_external'))}"></label>
 <label>Режим маршрутизации <select name="routing_mode">{routing_mode_options(q.get('routing_mode'), empty='Все')}</select></label>
 <label>Активность <select name="is_active"><option value="" {'selected' if not q.get('is_active') else ''}>Все</option><option value="1" {'selected' if q.get('is_active')=='1' else ''}>Активна</option><option value="0" {'selected' if q.get('is_active')=='0' else ''}>Неактивна</option></select></label>
 <label>Показывать историю <input type="checkbox" name="show_history" value="1" {'checked' if show_history else ''}></label>
@@ -562,6 +564,16 @@ def company_routing_settings_page(repo: Repository, q: dict[str, str] | None = N
   <label>Комментарий <input name="comment"></label>
   <button>Создать</button>
 </form></details>
+<script>
+document.querySelectorAll('form').forEach(form => {{
+  const mode = form.querySelector('select[name="routing_mode"]');
+  const autorotation = form.querySelector('input[name="has_autorotation"]');
+  if (!mode || !autorotation) return;
+  function syncAutorotation() {{ if (mode.value === 'autorotation') autorotation.checked = true; }}
+  mode.addEventListener('change', syncAutorotation);
+  syncAutorotation();
+}});
+</script>
 <table><thead><tr><th>GEO</th><th>Сервер</th><th>ID кампании</th><th>Название кампании</th><th>Режим маршрутизации</th><th>Авторотация</th><th>Маршрут кампании</th><th>Активна</th><th>Действует с</th><th>Действует до</th><th>Комментарий</th><th>Действия</th></tr></thead><tbody>{''.join(rows)}</tbody></table>
 """
     return page("Схема маршрутизации кампаний", body)
@@ -748,7 +760,7 @@ def change_log_page(repo: Repository) -> bytes:
     rows = []
     for log in repo.conn.execute("SELECT cl.*, u.username FROM change_log cl LEFT JOIN users u ON u.id = cl.changed_by ORDER BY cl.changed_at DESC, cl.id DESC LIMIT 100"):
         rows.append(f"<tr><td>{esc(log['changed_at'])}</td><td>{esc(log['entity_type'])}</td><td>{esc(log['entity_id'])}</td><td>{esc(log['change_type'])}</td><td>{esc(log['username'])}</td><td>{esc(log['summary'])}</td></tr>")
-    return page("Change log", f"<h1>Change log</h1><table><thead><tr><th>Дата</th><th>Entity</th><th>ID</th><th>Change</th><th>Кто</th><th>Summary</th></tr></thead><tbody>{''.join(rows)}</tbody></table>")
+    return page("Change log", f"<h1>Change log</h1><table><thead><tr><th>Дата (UTC/server time)</th><th>Entity</th><th>ID</th><th>Change</th><th>Кто</th><th>Summary</th></tr></thead><tbody>{''.join(rows)}</tbody></table>")
 
 
 def yes_no(value: object) -> str:
