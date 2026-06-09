@@ -295,6 +295,26 @@ CREATE TABLE IF NOT EXISTS calling_companies (
     UNIQUE(server_id, country_id, company_id_external)
 );
 
+
+CREATE TABLE IF NOT EXISTS company_routing_settings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    calling_company_id INTEGER NOT NULL REFERENCES calling_companies(id) ON DELETE RESTRICT,
+    country_id INTEGER NOT NULL REFERENCES countries(id) ON DELETE RESTRICT,
+    server_id INTEGER NOT NULL REFERENCES servers(id) ON DELETE RESTRICT,
+    route_id INTEGER REFERENCES routes(id) ON DELETE RESTRICT,
+    routing_mode TEXT NOT NULL CHECK (routing_mode IN ('server_priority', 'campaign_route', 'autorotation', 'mixed')),
+    has_autorotation INTEGER NOT NULL DEFAULT 0 CHECK (has_autorotation IN (0, 1)),
+    is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
+    comment TEXT,
+    valid_from TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    valid_to TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_by INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_by INTEGER REFERENCES users(id) ON DELETE RESTRICT,
+    CHECK ((is_active = 1 AND valid_to IS NULL) OR is_active = 0)
+);
+
 CREATE TABLE IF NOT EXISTS change_reasons (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL UNIQUE,
@@ -450,6 +470,11 @@ CREATE INDEX IF NOT EXISTS idx_provider_change_logs_country_id ON provider_chang
 CREATE INDEX IF NOT EXISTS idx_calling_companies_server_id ON calling_companies(server_id);
 CREATE INDEX IF NOT EXISTS idx_calling_companies_country_id ON calling_companies(country_id);
 CREATE INDEX IF NOT EXISTS idx_calling_companies_external_id ON calling_companies(company_id_external);
+CREATE INDEX IF NOT EXISTS idx_company_routing_settings_company_id ON company_routing_settings(calling_company_id);
+CREATE INDEX IF NOT EXISTS idx_company_routing_settings_country_id ON company_routing_settings(country_id);
+CREATE INDEX IF NOT EXISTS idx_company_routing_settings_server_id ON company_routing_settings(server_id);
+CREATE INDEX IF NOT EXISTS idx_company_routing_settings_route_id ON company_routing_settings(route_id);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_company_routing_settings_one_active ON company_routing_settings(calling_company_id) WHERE is_active = 1 AND valid_to IS NULL;
 CREATE INDEX IF NOT EXISTS idx_server_route_priorities_country_id ON server_route_priorities(country_id);
 CREATE INDEX IF NOT EXISTS idx_server_route_priorities_server_id ON server_route_priorities(server_id);
 CREATE INDEX IF NOT EXISTS idx_change_log_changed_at ON change_log(changed_at);
