@@ -402,8 +402,35 @@ def server_priorities_page(repo: Repository, q: dict[str, str] | None = None) ->
         {where}
         ORDER BY c.name, s.name
     """, params):
-        current_card = f"<details><summary><span class='star'>★</span> {esc(row['current_provider_name'])}</summary><div class='card'>ГЕО: {esc(row['country_name'])}<br>Сервер: {esc(row['server_name'])}<br>Провайдер: {esc(row['current_provider_name'])}<br>Маршрут: {esc(row['current_route_name'])}<br>Тип: текущий приоритет<br>Комментарий: {esc(row['comment'])}<br>Дата: {esc(row['changed_at'])}<br>Пользователь: {esc(row['changed_by_username'])}<form method='post' action='/admin/server-priorities/{row['id']}/comment'><label>Комментарий <input name='comment' value='{esc(row['comment'])}'></label><button>Редактировать</button></form></div></details>"
-        previous_card = "—" if not row['previous_provider_name'] else f"<details><summary><span class='star'>☆</span> {esc(row['previous_provider_name'])}</summary><div class='card'>ГЕО: {esc(row['country_name'])}<br>Сервер: {esc(row['server_name'])}<br>Провайдер: {esc(row['previous_provider_name'])}<br>Маршрут: {esc(row['previous_route_name'])}<br>Тип: предыдущий приоритет<br>Комментарий: {esc(row['comment'])}<br>Дата: {esc(row['changed_at'])}<br>Пользователь: {esc(row['changed_by_username'])}<form method='post' action='/admin/server-priorities/{row['id']}/comment'><label>Комментарий <input name='comment' value='{esc(row['comment'])}'></label><button>Редактировать</button></form></div></details>"
+        route_opts = select_options(repo, """
+            SELECT r.id, r.name || ' — ' || p.name AS label
+            FROM routes r
+            JOIN providers p ON p.id = r.provider_id
+            WHERE r.country_id = ?
+            ORDER BY r.name
+        """, (row["country_id"],), selected=row["current_route_id"])
+        previous_provider = row["previous_provider_name"] or "—"
+        previous_route = row["previous_route_name"] or "—"
+        current_card = f"""
+        <details><summary><span class='star'>★</span> {esc(row['current_provider_name'])}</summary>
+          <div class='card'>
+            ГЕО: {esc(row['country_name'])}<br>
+            Сервер: {esc(row['server_name'])}<br>
+            Текущий провайдер: {esc(row['current_provider_name'])}<br>
+            Текущий маршрут: {esc(row['current_route_name'])}<br>
+            Предыдущий провайдер: {esc(previous_provider)}<br>
+            Предыдущий маршрут: {esc(previous_route)}<br>
+            Комментарий: {esc(row['comment'])}<br>
+            Дата изменения: {esc(row['changed_at'])}<br>
+            Пользователь: {esc(row['changed_by_username'])}
+            <form method='post' action='/admin/server-priorities/{row['id']}/update'>
+              <label>Текущий маршрут <span class='required'>*</span><select name='current_route_id'>{route_opts}</select></label>
+              <label>Комментарий <input name='comment' value='{esc(row['comment'])}'></label>
+              <button>Сохранить текущий маршрут</button>
+            </form>
+          </div>
+        </details>"""
+        previous_card = "—" if not row['previous_provider_name'] else f"<span class='star'>☆</span> {esc(row['previous_provider_name'])}"
         rows.append(f"<tr><td>{esc(row['country_name'])}</td><td>{esc(row['server_name'])}</td><td>{current_card}</td><td>{previous_card}</td></tr>")
     body = f"""
 <h1>Администрирование → Приоритет по серверам</h1><fieldset><legend>Фильтры</legend><form method="get" action="/admin/server-priorities"><label>ГЕО <select name="country_id">{options(repo, 'countries', selected=q.get('country_id'), empty='Все')}</select></label><label>Сервер <select name="server_id">{options(repo, 'servers', selected=q.get('server_id'), empty='Все')}</select></label><button>Поиск</button></form></fieldset>
@@ -915,11 +942,27 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
         repo._change_log(kind, entity_id, "dictionary.updated", ADMIN_ID, new_values={"is_active": is_active})
         repo.conn.commit()
         return "/admin/dictionaries"
+    if path.startswith("/admin/server-priorities/") and path.endswith("/update"):
+        priority_id = int(path.strip("/").split("/")[2])
+        repo.update_server_route_priority(
+            priority_id=priority_id,
+            current_route_id=int(data["current_route_id"]),
+            comment=data.get("comment"),
+            changed_by=ADMIN_ID,
+        )
+        return "/admin/server-priorities"
     if path.startswith("/admin/server-priorities/") and path.endswith("/comment"):
         priority_id = int(path.strip("/").split("/")[2])
-        repo.conn.execute("UPDATE server_route_priorities SET comment = ?, updated_by = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (data.get("comment"), ADMIN_ID, priority_id))
-        repo._change_log("server_route_priority", priority_id, "server_route_priority.comment_updated", ADMIN_ID, new_values={"comment": data.get("comment")})
-        repo.conn.commit(); return "/admin/server-priorities"
+        current = repo.conn.execute("SELECT current_route_id FROM server_route_priorities WHERE id = ?", (priority_id,)).fetchone()
+        if not current:
+            raise BusinessRuleError("Приоритет по серверу не найден")
+        repo.update_server_route_priority(
+            priority_id=priority_id,
+            current_route_id=int(current["current_route_id"]),
+            comment=data.get("comment"),
+            changed_by=ADMIN_ID,
+        )
+        return "/admin/server-priorities"
     if path == "/admin/telegram/save":
         repo.conn.execute("INSERT INTO telegram_settings(is_enabled, chat_id, bot_token_secret_ref, message_template, updated_by) VALUES (?, ?, ?, ?, ?)", (1 if data.get("is_enabled") == "1" else 0, data.get("chat_id"), data.get("bot_token_secret_ref"), data.get("message_template"), ADMIN_ID)); repo.conn.commit(); return "/admin/telegram"
     if path == "/admin/telegram/test":

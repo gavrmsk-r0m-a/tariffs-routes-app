@@ -810,6 +810,82 @@ class Repository:
         self.conn.commit()
         return change_id
 
+    def update_server_route_priority(
+        self,
+        *,
+        priority_id: int,
+        current_route_id: int,
+        comment: str | None,
+        changed_by: int,
+    ) -> None:
+        existing = self.conn.execute(
+            """
+            SELECT id, country_id, server_id, current_route_id, previous_route_id, comment
+            FROM server_route_priorities
+            WHERE id = ?
+            """,
+            (priority_id,),
+        ).fetchone()
+        if not existing:
+            raise BusinessRuleError("Приоритет по серверу не найден")
+
+        route = self.conn.execute(
+            "SELECT id, country_id FROM routes WHERE id = ?",
+            (current_route_id,),
+        ).fetchone()
+        if not route:
+            raise BusinessRuleError("Маршрут не найден")
+        if int(route["country_id"]) != int(existing["country_id"]):
+            raise BusinessRuleError("Маршрут должен принадлежать GEO приоритета")
+
+        old_values = {
+            "current_route_id": existing["current_route_id"],
+            "previous_route_id": existing["previous_route_id"],
+            "comment": existing["comment"],
+        }
+        route_changed = int(existing["current_route_id"]) != int(current_route_id)
+        if route_changed:
+            self.conn.execute(
+                """
+                UPDATE server_route_priorities
+                SET previous_route_id = current_route_id,
+                    current_route_id = ?,
+                    changed_at = CURRENT_TIMESTAMP,
+                    changed_by = ?,
+                    comment = ?,
+                    updated_at = CURRENT_TIMESTAMP,
+                    updated_by = ?
+                WHERE id = ?
+                """,
+                (current_route_id, changed_by, comment, changed_by, priority_id),
+            )
+        else:
+            self.conn.execute(
+                """
+                UPDATE server_route_priorities
+                SET changed_at = CURRENT_TIMESTAMP,
+                    changed_by = ?,
+                    comment = ?,
+                    updated_at = CURRENT_TIMESTAMP,
+                    updated_by = ?
+                WHERE id = ?
+                """,
+                (changed_by, comment, changed_by, priority_id),
+            )
+        self._change_log(
+            "server_route_priority",
+            priority_id,
+            "server_route_priority.current_route_updated",
+            changed_by,
+            old_values=old_values,
+            new_values={
+                "current_route_id": current_route_id,
+                "previous_route_id": existing["current_route_id"] if route_changed else existing["previous_route_id"],
+                "comment": comment,
+            },
+        )
+        self.conn.commit()
+
     def list_active_change_reasons(self) -> list[sqlite3.Row]:
         return list(self.conn.execute("SELECT * FROM change_reasons WHERE is_active = 1 ORDER BY name"))
 
