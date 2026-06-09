@@ -115,6 +115,31 @@ def run_lightweight_migrations(conn: sqlite3.Connection) -> None:
             updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         )
     """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS company_routing_settings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            calling_company_id INTEGER NOT NULL REFERENCES calling_companies(id) ON DELETE RESTRICT,
+            country_id INTEGER NOT NULL REFERENCES countries(id) ON DELETE RESTRICT,
+            server_id INTEGER NOT NULL REFERENCES servers(id) ON DELETE RESTRICT,
+            route_id INTEGER REFERENCES routes(id) ON DELETE RESTRICT,
+            routing_mode TEXT NOT NULL CHECK (routing_mode IN ('server_priority', 'campaign_route', 'autorotation', 'mixed')),
+            has_autorotation INTEGER NOT NULL DEFAULT 0 CHECK (has_autorotation IN (0, 1)),
+            is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
+            comment TEXT,
+            valid_from TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            valid_to TEXT,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            created_by INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_by INTEGER REFERENCES users(id) ON DELETE RESTRICT,
+            CHECK ((is_active = 1 AND valid_to IS NULL) OR is_active = 0)
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_company_routing_settings_company_id ON company_routing_settings(calling_company_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_company_routing_settings_country_id ON company_routing_settings(country_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_company_routing_settings_server_id ON company_routing_settings(server_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_company_routing_settings_route_id ON company_routing_settings(route_id)")
+    conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_company_routing_settings_one_active ON company_routing_settings(calling_company_id) WHERE is_active = 1 AND valid_to IS NULL")
     for code, name in (
         ("outgoing_cli", "АОН"),
         ("inbound_line", "Входящая линия"),
