@@ -235,6 +235,63 @@ def build_route_name(repo: Repository, country_id: int, provider_id: int, projec
     return base
 
 
+
+ROUTING_MODE_LABELS = {
+    "server_priority": "server_priority",
+    "campaign_route": "campaign_route",
+    "autorotation": "autorotation",
+    "mixed": "mixed",
+}
+
+
+def routing_mode_options(selected: str | None = None, empty: str | None = None) -> str:
+    opts = f"<option value=''>{esc(empty)}</option>" if empty is not None else ""
+    for value, label in ROUTING_MODE_LABELS.items():
+        opts += f"<option value='{esc(value)}' {'selected' if value == selected else ''}>{esc(label)}</option>"
+    return opts
+
+
+def company_options(repo: Repository, selected: object | None = None, empty: str | None = None) -> str:
+    return select_options(
+        repo,
+        """
+        SELECT cc.id, cc.company_id_external || ' — ' || cc.company_name || ' (' || c.name || ' / ' || s.name || ')' AS label
+        FROM calling_companies cc
+        JOIN countries c ON c.id = cc.country_id
+        JOIN servers s ON s.id = cc.server_id
+        ORDER BY c.name, s.name, cc.company_name
+        """,
+        selected=selected,
+        empty=empty,
+    )
+
+
+def route_options_for_country(repo: Repository, country_id: object | None = None, selected: object | None = None, empty: str | None = "—") -> str:
+    if country_id in (None, ""):
+        return select_options(
+            repo,
+            """
+            SELECT r.id, r.name AS label
+            FROM routes r
+            ORDER BY r.name
+            """,
+            selected=selected,
+            empty=empty,
+        )
+    return select_options(
+        repo,
+        """
+        SELECT r.id, r.name AS label
+        FROM routes r
+        WHERE r.country_id = ?
+        ORDER BY r.name
+        """,
+        (country_id,),
+        selected=selected,
+        empty=empty,
+    )
+
+
 def routes_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
     q = q or {}
     filters = {"country_id": q.get("country_id"), "provider_id": q.get("provider_id"), "prefix_id": q.get("prefix_id"), "is_actual": q.get("is_actual"), "search_like": q.get("search")}
@@ -369,6 +426,7 @@ def admin_page(repo: Repository) -> bytes:
     body = """
 <h1>Администрирование</h1><div class="grid">
 <a class="card" href="/admin/server-priorities">Приоритет по серверам</a>
+<a class="card" href="/admin/company-routing-settings">Схема маршрутизации кампаний</a>
 <a class="card" href="/admin/naming-rules">Правила нейминга маршрутов</a>
 <a class="card" href="/admin/import">Импорт / экспорт</a>
 <a class="card" href="/admin/currency-rates">Курсы валют</a>
@@ -402,13 +460,111 @@ def server_priorities_page(repo: Repository, q: dict[str, str] | None = None) ->
         {where}
         ORDER BY c.name, s.name
     """, params):
-        current_card = f"<details><summary><span class='star'>★</span> {esc(row['current_provider_name'])}</summary><div class='card'>ГЕО: {esc(row['country_name'])}<br>Сервер: {esc(row['server_name'])}<br>Провайдер: {esc(row['current_provider_name'])}<br>Маршрут: {esc(row['current_route_name'])}<br>Тип: текущий приоритет<br>Комментарий: {esc(row['comment'])}<br>Дата: {esc(row['changed_at'])}<br>Пользователь: {esc(row['changed_by_username'])}<form method='post' action='/admin/server-priorities/{row['id']}/comment'><label>Комментарий <input name='comment' value='{esc(row['comment'])}'></label><button>Редактировать</button></form></div></details>"
-        previous_card = "—" if not row['previous_provider_name'] else f"<details><summary><span class='star'>☆</span> {esc(row['previous_provider_name'])}</summary><div class='card'>ГЕО: {esc(row['country_name'])}<br>Сервер: {esc(row['server_name'])}<br>Провайдер: {esc(row['previous_provider_name'])}<br>Маршрут: {esc(row['previous_route_name'])}<br>Тип: предыдущий приоритет<br>Комментарий: {esc(row['comment'])}<br>Дата: {esc(row['changed_at'])}<br>Пользователь: {esc(row['changed_by_username'])}<form method='post' action='/admin/server-priorities/{row['id']}/comment'><label>Комментарий <input name='comment' value='{esc(row['comment'])}'></label><button>Редактировать</button></form></div></details>"
+        route_opts = select_options(repo, """
+            SELECT r.id, r.name || ' — ' || p.name AS label
+            FROM routes r
+            JOIN providers p ON p.id = r.provider_id
+            WHERE r.country_id = ?
+            ORDER BY r.name
+        """, (row["country_id"],), selected=row["current_route_id"])
+        previous_provider = row["previous_provider_name"] or "—"
+        previous_route = row["previous_route_name"] or "—"
+        current_card = f"""
+        <details><summary><span class='star'>★</span> {esc(row['current_provider_name'])}</summary>
+          <div class='card'>
+            ГЕО: {esc(row['country_name'])}<br>
+            Сервер: {esc(row['server_name'])}<br>
+            Текущий провайдер: {esc(row['current_provider_name'])}<br>
+            Текущий маршрут: {esc(row['current_route_name'])}<br>
+            Предыдущий провайдер: {esc(previous_provider)}<br>
+            Предыдущий маршрут: {esc(previous_route)}<br>
+            Комментарий: {esc(row['comment'])}<br>
+            Дата изменения: {esc(row['changed_at'])}<br>
+            Пользователь: {esc(row['changed_by_username'])}
+            <form method='post' action='/admin/server-priorities/{row['id']}/update'>
+              <label>Текущий маршрут <span class='required'>*</span><select name='current_route_id'>{route_opts}</select></label>
+              <label>Комментарий <input name='comment' value='{esc(row['comment'])}'></label>
+              <button>Сохранить текущий маршрут</button>
+            </form>
+          </div>
+        </details>"""
+        previous_card = "—" if not row['previous_provider_name'] else f"<span class='star'>☆</span> {esc(row['previous_provider_name'])}"
         rows.append(f"<tr><td>{esc(row['country_name'])}</td><td>{esc(row['server_name'])}</td><td>{current_card}</td><td>{previous_card}</td></tr>")
     body = f"""
 <h1>Администрирование → Приоритет по серверам</h1><fieldset><legend>Фильтры</legend><form method="get" action="/admin/server-priorities"><label>ГЕО <select name="country_id">{options(repo, 'countries', selected=q.get('country_id'), empty='Все')}</select></label><label>Сервер <select name="server_id">{options(repo, 'servers', selected=q.get('server_id'), empty='Все')}</select></label><button>Поиск</button></form></fieldset>
 <table><thead><tr><th>ГЕО</th><th>Сервер</th><th>Текущий приоритет</th><th>Предыдущий приоритет</th></tr></thead><tbody>{''.join(rows)}</tbody></table>"""
     return page("Приоритет по серверам", body)
+
+
+
+def company_routing_settings_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
+    q = q or {}
+    show_history = q.get("show_history") == "1"
+    filters = {
+        "country_id": q.get("country_id"),
+        "server_id": q.get("server_id"),
+        "routing_mode": q.get("routing_mode"),
+        "is_active": q.get("is_active"),
+        "show_history": show_history,
+    }
+    create_country_id = q.get("country_id") or None
+    rows = []
+    for setting in repo.list_company_routing_settings(filters):
+        route_label = setting["route_name"] or "—"
+        provider_label = f"<br><span class='muted'>Провайдер: {esc(setting['provider_name'])}</span>" if setting["provider_name"] else ""
+        active_badge = "Да" if setting["is_active"] else "Нет"
+        actions = ""
+        if setting["is_active"] and setting["valid_to"] is None:
+            actions = f"""
+            <details><summary>Редактировать</summary>
+              <form method='post' action='/admin/company-routing-settings/{setting['id']}/update'>
+                <p class='muted'>Кампания: {esc(setting['company_id_external'])} — {esc(setting['company_name'])}</p>
+                <label>GEO <select name='country_id'>{options(repo, 'countries', selected=setting['country_id'])}</select></label>
+                <label>Сервер <select name='server_id'>{options(repo, 'servers', selected=setting['server_id'])}</select></label>
+                <label>Режим маршрутизации <select name='routing_mode'>{routing_mode_options(setting['routing_mode'])}</select></label>
+                <label>Маршрут кампании <select name='route_id'>{route_options_for_country(repo, setting['country_id'], selected=setting['route_id'])}</select></label>
+                <label>Авторотация <input type='checkbox' name='has_autorotation' value='1' {'checked' if setting['has_autorotation'] else ''}></label>
+                <label>Активна <input type='checkbox' name='is_active' value='1' checked></label>
+                <label>Комментарий <input name='comment' value='{esc(setting['comment'])}'></label>
+                <button>Сохранить</button>
+              </form>
+              <form method='post' action='/admin/company-routing-settings/{setting['id']}/deactivate'>
+                <button onclick="return confirm('Деактивировать схему маршрутизации?')">Деактивировать</button>
+              </form>
+            </details>
+            """
+        rows.append(
+            f"<tr><td>{esc(setting['country_name'])}</td><td>{esc(setting['server_name'])}</td>"
+            f"<td>{esc(setting['company_id_external'])}</td><td>{esc(setting['company_name'])}</td>"
+            f"<td>{esc(setting['routing_mode'])}</td><td>{'Да' if setting['has_autorotation'] else 'Нет'}</td>"
+            f"<td>{esc(route_label)}{provider_label}</td><td>{active_badge}</td>"
+            f"<td>{esc(setting['valid_from'])}</td><td>{esc(setting['valid_to'])}</td>"
+            f"<td>{esc(setting['comment'])}</td><td>{actions}</td></tr>"
+        )
+    body = f"""
+<h1>Администрирование → Схема маршрутизации кампаний</h1>
+<fieldset><legend>Фильтры</legend><form method="get" action="/admin/company-routing-settings">
+<label>GEO <select name="country_id">{options(repo, 'countries', selected=q.get('country_id'), empty='Все')}</select></label>
+<label>Сервер <select name="server_id">{options(repo, 'servers', selected=q.get('server_id'), empty='Все')}</select></label>
+<label>Режим маршрутизации <select name="routing_mode">{routing_mode_options(q.get('routing_mode'), empty='Все')}</select></label>
+<label>Активность <select name="is_active"><option value="" {'selected' if not q.get('is_active') else ''}>Все</option><option value="1" {'selected' if q.get('is_active')=='1' else ''}>Активна</option><option value="0" {'selected' if q.get('is_active')=='0' else ''}>Неактивна</option></select></label>
+<label>Показывать историю <input type="checkbox" name="show_history" value="1" {'checked' if show_history else ''}></label>
+<button>Поиск</button></form></fieldset>
+<details open><summary>+ Добавить схему маршрутизации кампании</summary>
+<form method="post" action="/admin/company-routing-settings/create">
+  <label>Кампания <span class="required">*</span><select name="calling_company_id">{company_options(repo)}</select></label>
+  <label>GEO <span class="required">*</span><select name="country_id">{options(repo, 'countries', selected=create_country_id)}</select></label>
+  <label>Сервер <span class="required">*</span><select name="server_id">{options(repo, 'servers', selected=q.get('server_id'))}</select></label>
+  <label>Режим маршрутизации <span class="required">*</span><select name="routing_mode">{routing_mode_options(q.get('routing_mode') or 'server_priority')}</select></label>
+  <label>Маршрут кампании <select name="route_id">{route_options_for_country(repo, create_country_id)}</select></label>
+  <label>Авторотация <input type="checkbox" name="has_autorotation" value="1"></label>
+  <label>Активна <input type="checkbox" name="is_active" value="1" checked></label>
+  <label>Комментарий <input name="comment"></label>
+  <button>Создать</button>
+</form></details>
+<table><thead><tr><th>GEO</th><th>Сервер</th><th>ID кампании</th><th>Название кампании</th><th>Режим маршрутизации</th><th>Авторотация</th><th>Маршрут кампании</th><th>Активна</th><th>Действует с</th><th>Действует до</th><th>Комментарий</th><th>Действия</th></tr></thead><tbody>{''.join(rows)}</tbody></table>
+"""
+    return page("Схема маршрутизации кампаний", body)
 
 
 def naming_rules_page(repo: Repository) -> bytes:
@@ -915,11 +1071,61 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
         repo._change_log(kind, entity_id, "dictionary.updated", ADMIN_ID, new_values={"is_active": is_active})
         repo.conn.commit()
         return "/admin/dictionaries"
+    if path.startswith("/admin/server-priorities/") and path.endswith("/update"):
+        priority_id = int(path.strip("/").split("/")[2])
+        repo.update_server_route_priority(
+            priority_id=priority_id,
+            current_route_id=int(data["current_route_id"]),
+            comment=data.get("comment"),
+            changed_by=ADMIN_ID,
+        )
+        return "/admin/server-priorities"
     if path.startswith("/admin/server-priorities/") and path.endswith("/comment"):
         priority_id = int(path.strip("/").split("/")[2])
-        repo.conn.execute("UPDATE server_route_priorities SET comment = ?, updated_by = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (data.get("comment"), ADMIN_ID, priority_id))
-        repo._change_log("server_route_priority", priority_id, "server_route_priority.comment_updated", ADMIN_ID, new_values={"comment": data.get("comment")})
-        repo.conn.commit(); return "/admin/server-priorities"
+        current = repo.conn.execute("SELECT current_route_id FROM server_route_priorities WHERE id = ?", (priority_id,)).fetchone()
+        if not current:
+            raise BusinessRuleError("Приоритет по серверу не найден")
+        repo.update_server_route_priority(
+            priority_id=priority_id,
+            current_route_id=int(current["current_route_id"]),
+            comment=data.get("comment"),
+            changed_by=ADMIN_ID,
+        )
+        return "/admin/server-priorities"
+    if path == "/admin/company-routing-settings/create":
+        setting_id = repo.create_company_routing_setting(
+            calling_company_id=int(data["calling_company_id"]),
+            country_id=int(data["country_id"]),
+            server_id=int(data["server_id"]),
+            route_id=parse_int(data.get("route_id")),
+            routing_mode=data["routing_mode"],
+            has_autorotation=data.get("has_autorotation") == "1",
+            comment=data.get("comment"),
+            created_by=ADMIN_ID,
+        )
+        if data.get("is_active") != "1":
+            repo.deactivate_company_routing_setting(setting_id=setting_id, updated_by=ADMIN_ID)
+        return "/admin/company-routing-settings"
+    if path.startswith("/admin/company-routing-settings/") and path.endswith("/update"):
+        setting_id = int(path.strip("/").split("/")[2])
+        if data.get("is_active") != "1":
+            repo.deactivate_company_routing_setting(setting_id=setting_id, updated_by=ADMIN_ID)
+        else:
+            repo.update_company_routing_setting(
+                setting_id=setting_id,
+                country_id=int(data["country_id"]),
+                server_id=int(data["server_id"]),
+                route_id=parse_int(data.get("route_id")),
+                routing_mode=data["routing_mode"],
+                has_autorotation=data.get("has_autorotation") == "1",
+                comment=data.get("comment"),
+                updated_by=ADMIN_ID,
+            )
+        return "/admin/company-routing-settings"
+    if path.startswith("/admin/company-routing-settings/") and path.endswith("/deactivate"):
+        setting_id = int(path.strip("/").split("/")[2])
+        repo.deactivate_company_routing_setting(setting_id=setting_id, updated_by=ADMIN_ID)
+        return "/admin/company-routing-settings"
     if path == "/admin/telegram/save":
         repo.conn.execute("INSERT INTO telegram_settings(is_enabled, chat_id, bot_token_secret_ref, message_template, updated_by) VALUES (?, ?, ?, ?, ?)", (1 if data.get("is_enabled") == "1" else 0, data.get("chat_id"), data.get("bot_token_secret_ref"), data.get("message_template"), ADMIN_ID)); repo.conn.commit(); return "/admin/telegram"
     if path == "/admin/telegram/test":
@@ -985,6 +1191,7 @@ def app(environ, start_response):
         elif path == "/provider-changes": response = provider_changes_page(repo, q)
         elif path == "/admin": response = admin_page(repo)
         elif path == "/admin/server-priorities": response = server_priorities_page(repo, q)
+        elif path == "/admin/company-routing-settings": response = company_routing_settings_page(repo, q)
         elif path == "/admin/naming-rules": response = naming_rules_page(repo)
         elif path == "/admin/import": response = import_page(repo)
         elif path == "/admin/currency-rates": response = currency_rates_page(repo)

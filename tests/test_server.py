@@ -230,5 +230,111 @@ class ServerSmokeTest(unittest.TestCase):
 
 
 
+    def test_server_priorities_show_route_provider_details_and_edit_form(self):
+        self.request("/routes")
+        captured, content = self.request("/admin/server-priorities")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("Текущий приоритет", content)
+        self.assertIn("<span class='star'>★</span> Miatel", content)
+        self.assertIn("Предыдущий приоритет", content)
+        self.assertIn("<span class='star'>☆</span> Sancom", content)
+        self.assertIn("Текущий провайдер: Miatel", content)
+        self.assertIn("Текущий маршрут: Мексика/Miatel/Pool_A@", content)
+        self.assertIn("Предыдущий провайдер: Sancom", content)
+        self.assertIn("Предыдущий маршрут: Мексика/Sancom/RND/0827pfx@", content)
+        self.assertIn("name='current_route_id'", content)
+        self.assertIn("Сохранить текущий маршрут", content)
+
+    def test_server_priority_manual_route_update_changes_current_and_previous(self):
+        self.request("/routes")
+        body = urlencode({"current_route_id": "1", "comment": "manual admin update"})
+        captured, _ = self.request("/admin/server-priorities/1/update", method="POST", body=body)
+        self.assertEqual(captured["status"], "303 See Other")
+        conn = server.connect(server.DB_PATH)
+        try:
+            row = conn.execute("SELECT current_route_id, previous_route_id, comment FROM server_route_priorities WHERE id = 1").fetchone()
+            self.assertEqual(row["current_route_id"], 1)
+            self.assertEqual(row["previous_route_id"], 2)
+            self.assertEqual(row["comment"], "manual admin update")
+            event = conn.execute("SELECT * FROM change_log WHERE entity_type = 'server_route_priority' AND entity_id = 1").fetchone()
+            self.assertIsNotNone(event)
+        finally:
+            conn.close()
+        captured, content = self.request("/admin/server-priorities")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("<span class='star'>★</span> Sancom", content)
+        self.assertIn("<span class='star'>☆</span> Miatel", content)
+
+
+
+    def test_company_routing_settings_admin_link_and_screen_render(self):
+        self.request("/routes")
+        captured, content = self.request("/admin")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("Схема маршрутизации кампаний", content)
+        self.assertIn('/admin/company-routing-settings', content)
+        captured, content = self.request("/admin/company-routing-settings")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("Администрирование → Схема маршрутизации кампаний", content)
+        self.assertIn("+ Добавить схему маршрутизации кампании", content)
+        self.assertIn('name="calling_company_id"', content)
+        self.assertIn('name="routing_mode"', content)
+        self.assertIn('name="show_history"', content)
+
+    def test_company_routing_setting_create_visible_and_filters_render(self):
+        self.request("/routes")
+        body = urlencode({
+            "calling_company_id": "1",
+            "country_id": "1",
+            "server_id": "1",
+            "routing_mode": "server_priority",
+            "route_id": "",
+            "has_autorotation": "",
+            "is_active": "1",
+            "comment": "manual routing note",
+        })
+        captured, _ = self.request("/admin/company-routing-settings/create", method="POST", body=body)
+        self.assertEqual(captured["status"], "303 See Other")
+        captured, content = self.request("/admin/company-routing-settings?country_id=1&server_id=1&routing_mode=server_priority&is_active=1")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("CC Mexico Demo", content)
+        self.assertIn("1001", content)
+        self.assertIn("server_priority", content)
+        self.assertIn("manual routing note", content)
+
+    def test_company_routing_history_hidden_by_default_and_visible_when_enabled(self):
+        self.request("/routes")
+        create_body = urlencode({
+            "calling_company_id": "1",
+            "country_id": "1",
+            "server_id": "1",
+            "routing_mode": "server_priority",
+            "route_id": "",
+            "is_active": "1",
+            "comment": "old routing state",
+        })
+        self.request("/admin/company-routing-settings/create", method="POST", body=create_body)
+        update_body = urlencode({
+            "country_id": "1",
+            "server_id": "1",
+            "routing_mode": "autorotation",
+            "route_id": "",
+            "has_autorotation": "1",
+            "is_active": "1",
+            "comment": "new routing state",
+        })
+        captured, _ = self.request("/admin/company-routing-settings/1/update", method="POST", body=update_body)
+        self.assertEqual(captured["status"], "303 See Other")
+        captured, content = self.request("/admin/company-routing-settings")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("new routing state", content)
+        self.assertNotIn("old routing state", content)
+        captured, content = self.request("/admin/company-routing-settings?show_history=1")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("new routing state", content)
+        self.assertIn("old routing state", content)
+
+
+
 if __name__ == "__main__":
     unittest.main()
