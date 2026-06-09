@@ -230,5 +230,42 @@ class ServerSmokeTest(unittest.TestCase):
 
 
 
+    def test_server_priorities_show_route_provider_details_and_edit_form(self):
+        self.request("/routes")
+        captured, content = self.request("/admin/server-priorities")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("Текущий приоритет", content)
+        self.assertIn("<span class='star'>★</span> Miatel", content)
+        self.assertIn("Предыдущий приоритет", content)
+        self.assertIn("<span class='star'>☆</span> Sancom", content)
+        self.assertIn("Текущий провайдер: Miatel", content)
+        self.assertIn("Текущий маршрут: Мексика/Miatel/Pool_A@", content)
+        self.assertIn("Предыдущий провайдер: Sancom", content)
+        self.assertIn("Предыдущий маршрут: Мексика/Sancom/RND/0827pfx@", content)
+        self.assertIn("name='current_route_id'", content)
+        self.assertIn("Сохранить текущий маршрут", content)
+
+    def test_server_priority_manual_route_update_changes_current_and_previous(self):
+        self.request("/routes")
+        body = urlencode({"current_route_id": "1", "comment": "manual admin update"})
+        captured, _ = self.request("/admin/server-priorities/1/update", method="POST", body=body)
+        self.assertEqual(captured["status"], "303 See Other")
+        conn = server.connect(server.DB_PATH)
+        try:
+            row = conn.execute("SELECT current_route_id, previous_route_id, comment FROM server_route_priorities WHERE id = 1").fetchone()
+            self.assertEqual(row["current_route_id"], 1)
+            self.assertEqual(row["previous_route_id"], 2)
+            self.assertEqual(row["comment"], "manual admin update")
+            event = conn.execute("SELECT * FROM change_log WHERE entity_type = 'server_route_priority' AND entity_id = 1").fetchone()
+            self.assertIsNotNone(event)
+        finally:
+            conn.close()
+        captured, content = self.request("/admin/server-priorities")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("<span class='star'>★</span> Sancom", content)
+        self.assertIn("<span class='star'>☆</span> Miatel", content)
+
+
+
 if __name__ == "__main__":
     unittest.main()

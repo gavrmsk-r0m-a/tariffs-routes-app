@@ -128,5 +128,88 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
             )
 
 
+    def create_priority(self, current_route_id: int | None = None, previous_route_id: int | None = None) -> tuple[int, int]:
+        server_id = self.repo.create_server("IT1")
+        cur = self.conn.execute(
+            """
+            INSERT INTO server_route_priorities(country_id, server_id, current_route_id, previous_route_id, changed_by, created_by, comment)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (self.country_id, server_id, current_route_id or self.route_id, previous_route_id, self.admin_id, self.admin_id, "initial"),
+        )
+        self.conn.commit()
+        return int(cur.lastrowid), server_id
+
+    def test_manual_server_priority_route_change_moves_current_to_previous_and_logs_event(self):
+        priority_id, _ = self.create_priority()
+        alt_provider_id = self.repo.create_provider("Sancom", "voip", self.currency_id)
+        alt_route_id = self.repo.create_route(
+            country_id=self.country_id,
+            provider_id=alt_provider_id,
+            name="Италия/Sancom/RND@",
+            cli_source_type="rnd",
+            cli_source_label="RND",
+            created_by=self.admin_id,
+        )
+
+        self.repo.update_server_route_priority(
+            priority_id=priority_id,
+            current_route_id=alt_route_id,
+            comment="manual switch",
+            changed_by=self.admin_id,
+        )
+
+        row = self.conn.execute("SELECT * FROM server_route_priorities WHERE id = ?", (priority_id,)).fetchone()
+        self.assertEqual(row["current_route_id"], alt_route_id)
+        self.assertEqual(row["previous_route_id"], self.route_id)
+        self.assertEqual(row["comment"], "manual switch")
+        self.assertEqual(row["changed_by"], self.admin_id)
+        self.assertEqual(row["updated_by"], self.admin_id)
+        self.assertIsNotNone(row["changed_at"])
+        event = self.conn.execute(
+            "SELECT * FROM change_log WHERE entity_type = 'server_route_priority' AND entity_id = ? AND change_type = 'server_route_priority.current_route_updated'",
+            (priority_id,),
+        ).fetchone()
+        self.assertIsNotNone(event)
+        self.assertIn(str(alt_route_id), event["new_values"])
+
+    def test_same_server_priority_route_keeps_previous_route_and_updates_comment(self):
+        alt_provider_id = self.repo.create_provider("Sancom", "voip", self.currency_id)
+        previous_route_id = self.repo.create_route(
+            country_id=self.country_id,
+            provider_id=alt_provider_id,
+            name="Италия/Sancom/RND@",
+            cli_source_type="rnd",
+            cli_source_label="RND",
+            created_by=self.admin_id,
+        )
+        priority_id, _ = self.create_priority(previous_route_id=previous_route_id)
+
+        self.repo.update_server_route_priority(
+            priority_id=priority_id,
+            current_route_id=self.route_id,
+            comment="comment only",
+            changed_by=self.admin_id,
+        )
+
+        row = self.conn.execute("SELECT * FROM server_route_priorities WHERE id = ?", (priority_id,)).fetchone()
+        self.assertEqual(row["current_route_id"], self.route_id)
+        self.assertEqual(row["previous_route_id"], previous_route_id)
+        self.assertEqual(row["comment"], "comment only")
+
+    def test_server_priority_unique_by_country_and_server(self):
+        _, server_id = self.create_priority()
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.conn.execute(
+                """
+                INSERT INTO server_route_priorities(country_id, server_id, current_route_id, changed_by, created_by)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (self.country_id, server_id, self.route_id, self.admin_id, self.admin_id),
+            )
+            self.conn.commit()
+
+
+
 if __name__ == "__main__":
     unittest.main()
