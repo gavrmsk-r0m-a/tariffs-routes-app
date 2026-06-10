@@ -858,7 +858,7 @@ def routing_event_form(repo: Repository, event=None) -> str:
   <label class='scope-field' data-scopes='campaign_setting'>Кампания <span class='required'>*</span><select name='calling_company_id' id='event-company'>{company_opts}</select></label>
   <label class='scope-field' data-scopes='campaign_setting'>Тип изменения кампании <span class='required'>*</span><select name='company_change_type' id='company-change-type'>
     <option value=''>—</option>
-    {''.join(f"<option value='{v}' {'selected' if event and event['company_change_type'] == v else ''}>{label}</option>" for v, label in [('enable_autorotation','Включили авторотацию'),('disable_autorotation','Выключили авторотацию'),('set_campaign_route','Прописали ручной маршрут'),('remove_campaign_route','Убрали ручной маршрут'),('change_campaign_route','Изменили ручной маршрут'),('set_server_priority','Вернули на server_priority')])}
+    {''.join(f"<option value='{v}' {'selected' if event and event['company_change_type'] == v else ''}>{label}</option>" for v, label in [('enable_autorotation','Включили авторотацию'),('disable_autorotation','Выключили авторотацию'),('set_campaign_route','Прописали ручной маршрут'),('remove_campaign_route','Убрали ручной маршрут')])}
   </select></label>
   <label class='scope-field conditional-field' data-scopes='campaign_setting' data-campaign-route-field='1'>Новый провайдер кампании <span class='required'>*</span><select name='campaign_provider_id' id='campaign-provider'>{active_options(repo, 'providers', selected=provider_selected, empty='—')}</select></label>
   <label class='scope-field conditional-field' data-scopes='campaign_setting' data-campaign-route-field='1'>Новый маршрут кампании <span class='required'>*</span><select name='new_company_route_id' id='company-route'>{company_route_opts}</select></label>
@@ -876,7 +876,7 @@ def routing_event_form(repo: Repository, event=None) -> str:
   const routes = {route_metadata_json(repo)};
   const priorities = {current_priorities_json(repo)};
   const campaignCountries = {campaign_metadata_json(repo)};
-  const routeNeeds = new Set(['set_campaign_route', 'change_campaign_route']);
+  const routeNeeds = new Set(['set_campaign_route']);
   function selectedScope() {{ return (form.querySelector('input[name="apply_scope"]:checked') || {{value: 'none'}}).value; }}
   function setRequired(el, required) {{ if (el) el.required = !!required; }}
   function rebuildRouteSelect(select, countryId, providerId, emptyEl) {{
@@ -928,7 +928,7 @@ def routing_event_form(repo: Repository, event=None) -> str:
     setRequired(company, scope === 'campaign_setting');
     setRequired(ctype, scope === 'campaign_setting');
   }}
-  form.querySelectorAll('input[name="apply_scope"], #event-country, #event-server, #event-provider, #event-company, #company-provider, #company-change-type').forEach((el) => el.addEventListener('change', sync));
+  form.querySelectorAll('input[name="apply_scope"], #event-country, #event-server, #event-provider, #event-company, #campaign-provider, #company-change-type').forEach((el) => el.addEventListener('change', sync));
   sync();
 }})();
 </script>
@@ -1551,7 +1551,7 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
         change_id = int(path.strip("/").split("/")[1])
         repo.update_routing_event(
             change_id, event_at=data.get("event_at"), reason=data.get("reason"), comment=data.get("comment"),
-            country_id=parse_int(data.get("country_id")), server_id=parse_int(data.get("server_id")), provider_id=parse_int(data.get("provider_id")),
+            country_id=parse_int(data.get("country_id")), server_id=parse_int(data.get("server_id")), provider_id=parse_int(data.get("campaign_provider_id")) if data.get("apply_scope") == "campaign_setting" else parse_int(data.get("provider_id")),
             affected_route_id=parse_int(data.get("affected_route_id")), old_route_id=parse_int(data.get("old_route_id")), new_route_id=parse_int(data.get("new_route_id")),
             calling_company_id=parse_int(data.get("calling_company_id")), company_change_type=data.get("company_change_type") or None,
             new_company_routing_mode=data.get("new_company_routing_mode") or None, new_company_route_id=parse_int(data.get("new_company_route_id")),

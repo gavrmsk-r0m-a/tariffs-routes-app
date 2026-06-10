@@ -517,10 +517,10 @@ class RoutingEventsRepositoryTest(unittest.TestCase):
         self.assertIsNone(setting["route_id"])
 
     def test_campaign_setting_with_active_setting_uses_old_values(self):
-        self.repo.create_company_routing_setting(calling_company_id=self.company_id, country_id=self.country_id, server_id=self.server_id, route_id=self.route_id, routing_mode="campaign_route", has_autorotation=True, comment="old", created_by=self.admin_id)
-        event_id = self.create_event(apply_scope="campaign_setting", calling_company_id=self.company_id, company_change_type="change_campaign_route", new_company_route_id=self.alt_route_id, provider_id=None)
+        self.repo.create_company_routing_setting(calling_company_id=self.company_id, country_id=self.country_id, server_id=self.server_id, route_id=self.route_id, routing_mode="mixed", has_autorotation=True, comment="old", created_by=self.admin_id)
+        event_id = self.create_event(apply_scope="campaign_setting", calling_company_id=self.company_id, company_change_type="set_campaign_route", new_company_route_id=self.alt_route_id, provider_id=None)
         row = self.conn.execute("SELECT * FROM routing_events WHERE id = ?", (event_id,)).fetchone()
-        self.assertEqual(row["old_company_routing_mode"], "campaign_route")
+        self.assertEqual(row["old_company_routing_mode"], "mixed")
         self.assertEqual(row["old_company_route_id"], self.route_id)
         self.assertEqual(row["old_company_has_autorotation"], 1)
 
@@ -532,9 +532,9 @@ class RoutingEventsRepositoryTest(unittest.TestCase):
         self.assertEqual(old["is_active"], 0)
         self.assertIsNotNone(old["valid_to"])
         self.assertNotEqual(active["id"], old_id)
-        self.assertEqual(active["routing_mode"], "autorotation")
+        self.assertEqual(active["routing_mode"], "mixed")
         self.assertEqual(active["has_autorotation"], 1)
-        self.assertIsNone(active["route_id"])
+        self.assertEqual(active["route_id"], self.route_id)
 
     def test_campaign_setting_set_campaign_route_requires_valid_geo_and_creates_setting(self):
         with self.assertRaisesRegex(BusinessRuleError, "обязателен"):
@@ -547,9 +547,9 @@ class RoutingEventsRepositoryTest(unittest.TestCase):
         self.assertEqual(active["route_id"], self.alt_route_id)
         self.assertEqual(active["has_autorotation"], 0)
 
-    def test_campaign_setting_change_campaign_route_versions_setting(self):
+    def test_campaign_setting_set_campaign_route_versions_existing_manual_route(self):
         old_id = self.repo.create_company_routing_setting(calling_company_id=self.company_id, country_id=self.country_id, server_id=self.server_id, route_id=self.route_id, routing_mode="campaign_route", has_autorotation=False, comment="old", created_by=self.admin_id)
-        self.create_event(apply_scope="campaign_setting", calling_company_id=self.company_id, company_change_type="change_campaign_route", provider_id=self.alt_provider_id, new_company_route_id=self.alt_route_id)
+        self.create_event(apply_scope="campaign_setting", calling_company_id=self.company_id, company_change_type="set_campaign_route", provider_id=self.alt_provider_id, new_company_route_id=self.alt_route_id)
         old = self.conn.execute("SELECT * FROM company_routing_settings WHERE id = ?", (old_id,)).fetchone()
         active = self.conn.execute("SELECT * FROM company_routing_settings WHERE calling_company_id = ? AND is_active = 1 AND valid_to IS NULL", (self.company_id,)).fetchone()
         self.assertEqual(old["is_active"], 0)
@@ -564,13 +564,59 @@ class RoutingEventsRepositoryTest(unittest.TestCase):
         self.assertIsNotNone(old["valid_to"])
         self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM company_routing_settings WHERE calling_company_id = ? AND is_active = 1 AND valid_to IS NULL", (self.company_id,)).fetchone()[0], 0)
 
+    def test_campaign_setting_disable_autorotation_for_mixed_preserves_route(self):
+        old_id = self.repo.create_company_routing_setting(calling_company_id=self.company_id, country_id=self.country_id, server_id=self.server_id, route_id=self.route_id, routing_mode="mixed", has_autorotation=True, comment="old", created_by=self.admin_id)
+        self.create_event(apply_scope="campaign_setting", calling_company_id=self.company_id, company_change_type="disable_autorotation", provider_id=None)
+        old = self.conn.execute("SELECT * FROM company_routing_settings WHERE id = ?", (old_id,)).fetchone()
+        active = self.conn.execute("SELECT * FROM company_routing_settings WHERE calling_company_id = ? AND is_active = 1 AND valid_to IS NULL", (self.company_id,)).fetchone()
+        self.assertEqual(old["is_active"], 0)
+        self.assertEqual(active["route_id"], self.route_id)
+        self.assertEqual(active["routing_mode"], "campaign_route")
+        self.assertEqual(active["has_autorotation"], 0)
+
+    def test_campaign_setting_set_campaign_route_for_autorotation_becomes_mixed(self):
+        old_id = self.repo.create_company_routing_setting(calling_company_id=self.company_id, country_id=self.country_id, server_id=self.server_id, route_id=None, routing_mode="autorotation", has_autorotation=True, comment="old", created_by=self.admin_id)
+        self.create_event(apply_scope="campaign_setting", calling_company_id=self.company_id, company_change_type="set_campaign_route", provider_id=self.provider_id, new_company_route_id=self.route_id)
+        old = self.conn.execute("SELECT * FROM company_routing_settings WHERE id = ?", (old_id,)).fetchone()
+        active = self.conn.execute("SELECT * FROM company_routing_settings WHERE calling_company_id = ? AND is_active = 1 AND valid_to IS NULL", (self.company_id,)).fetchone()
+        self.assertEqual(old["is_active"], 0)
+        self.assertEqual(active["route_id"], self.route_id)
+        self.assertEqual(active["routing_mode"], "mixed")
+        self.assertEqual(active["has_autorotation"], 1)
+
+    def test_campaign_setting_set_campaign_route_for_mixed_preserves_autorotation(self):
+        old_id = self.repo.create_company_routing_setting(calling_company_id=self.company_id, country_id=self.country_id, server_id=self.server_id, route_id=self.route_id, routing_mode="mixed", has_autorotation=True, comment="old", created_by=self.admin_id)
+        self.create_event(apply_scope="campaign_setting", calling_company_id=self.company_id, company_change_type="set_campaign_route", provider_id=self.alt_provider_id, new_company_route_id=self.alt_route_id)
+        old = self.conn.execute("SELECT * FROM company_routing_settings WHERE id = ?", (old_id,)).fetchone()
+        active = self.conn.execute("SELECT * FROM company_routing_settings WHERE calling_company_id = ? AND is_active = 1 AND valid_to IS NULL", (self.company_id,)).fetchone()
+        self.assertEqual(old["is_active"], 0)
+        self.assertEqual(active["route_id"], self.alt_route_id)
+        self.assertEqual(active["routing_mode"], "mixed")
+        self.assertEqual(active["has_autorotation"], 1)
+
+    def test_campaign_setting_set_campaign_route_rejects_same_active_route(self):
+        self.repo.create_company_routing_setting(calling_company_id=self.company_id, country_id=self.country_id, server_id=self.server_id, route_id=self.route_id, routing_mode="campaign_route", has_autorotation=False, comment="old", created_by=self.admin_id)
+        with self.assertRaisesRegex(BusinessRuleError, "отличаться от текущего"):
+            self.create_event(apply_scope="campaign_setting", calling_company_id=self.company_id, company_change_type="set_campaign_route", provider_id=self.provider_id, new_company_route_id=self.route_id)
+        self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM company_routing_settings WHERE calling_company_id = ?", (self.company_id,)).fetchone()[0], 1)
+
+    def test_campaign_setting_remove_route_for_mixed_preserves_autorotation(self):
+        old_id = self.repo.create_company_routing_setting(calling_company_id=self.company_id, country_id=self.country_id, server_id=self.server_id, route_id=self.route_id, routing_mode="mixed", has_autorotation=True, comment="old", created_by=self.admin_id)
+        self.create_event(apply_scope="campaign_setting", calling_company_id=self.company_id, company_change_type="remove_campaign_route", provider_id=None)
+        old = self.conn.execute("SELECT * FROM company_routing_settings WHERE id = ?", (old_id,)).fetchone()
+        active = self.conn.execute("SELECT * FROM company_routing_settings WHERE calling_company_id = ? AND is_active = 1 AND valid_to IS NULL", (self.company_id,)).fetchone()
+        self.assertEqual(old["is_active"], 0)
+        self.assertIsNone(active["route_id"])
+        self.assertEqual(active["routing_mode"], "autorotation")
+        self.assertEqual(active["has_autorotation"], 1)
+
     def test_campaign_setting_remove_route_and_server_priority_deactivate_or_log_without_active_setting(self):
         old_id = self.repo.create_company_routing_setting(calling_company_id=self.company_id, country_id=self.country_id, server_id=self.server_id, route_id=self.route_id, routing_mode="campaign_route", has_autorotation=False, comment="old", created_by=self.admin_id)
         self.create_event(apply_scope="campaign_setting", calling_company_id=self.company_id, company_change_type="remove_campaign_route", provider_id=None)
         old = self.conn.execute("SELECT * FROM company_routing_settings WHERE id = ?", (old_id,)).fetchone()
         self.assertEqual(old["is_active"], 0)
         self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM company_routing_settings WHERE calling_company_id = ? AND is_active = 1 AND valid_to IS NULL", (self.company_id,)).fetchone()[0], 0)
-        event_id = self.create_event(apply_scope="campaign_setting", calling_company_id=self.company_id, company_change_type="set_server_priority", provider_id=None)
+        event_id = self.create_event(apply_scope="campaign_setting", calling_company_id=self.company_id, company_change_type="remove_campaign_route", provider_id=None)
         self.assertIsNotNone(self.conn.execute("SELECT id FROM routing_events WHERE id = ?", (event_id,)).fetchone())
 
     def test_deactivation_does_not_roll_back_server_priority(self):
