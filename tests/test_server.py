@@ -64,31 +64,231 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertIn("Серверный приоритет", content)
         self.assertIn("Настройка кампании", content)
 
+    def test_provider_changes_navigation_is_top_level_only(self):
+        captured, content = self.request("/provider-changes")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("<h1>Смена провайдеров</h1>", content)
+        self.assertNotIn("Администрирование → Смена провайдеров", content)
+        captured, content = self.request("/admin")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn('<a href="/provider-changes">Смена провайдеров</a>', content)
+        self.assertNotIn('<a class="card" href="/provider-changes">Смена провайдеров</a>', content)
+        self.assertEqual(content.count("Смена провайдеров"), 1)
+
+    def test_default_seed_contains_mvp_demo_dataset(self):
+        self.request("/routes")
+        conn = server.connect(server.DB_PATH)
+        try:
+            servers = [row["name"] for row in conn.execute("SELECT name FROM servers WHERE is_active = 1 ORDER BY name")]
+            self.assertEqual(servers, [f"EU{i}" for i in range(1, 10)])
+            legacy_servers = ["ASIA1", "LATAM1", "LATAM2", "NL1", "US1", "US2", "DE1"]
+            self.assertEqual(conn.execute(f"SELECT COUNT(*) FROM servers WHERE name IN ({','.join('?' for _ in legacy_servers)})", legacy_servers).fetchone()[0], 0)
+            self.assertIsNotNone(conn.execute("SELECT id FROM countries WHERE name = 'Мексика'").fetchone())
+            providers = [row["name"] for row in conn.execute("SELECT name FROM providers ORDER BY name")]
+            self.assertEqual(providers, ["DemoTel", "Miatel", "Sancom"])
+            routes = [row["name"] for row in conn.execute("SELECT r.name FROM routes r JOIN countries c ON c.id = r.country_id WHERE c.name = 'Мексика' ORDER BY r.name")]
+            self.assertEqual(routes, [
+                "Мексика/DemoTel/Demo_A@",
+                "Мексика/DemoTel/Demo_B@",
+                "Мексика/Miatel/Demo_A@",
+                "Мексика/Miatel/Demo_B@",
+                "Мексика/Sancom/Demo_0827@",
+                "Мексика/Sancom/Demo_0828@",
+            ])
+            companies = [(row["company_id_external"], row["company_name"]) for row in conn.execute("SELECT company_id_external, company_name FROM calling_companies ORDER BY company_id_external")]
+            self.assertEqual(companies, [(str(1000 + i), f"CC Mexico Demo {i}") for i in range(1, 6)])
+            numbers = [row["number"] for row in conn.execute("SELECT number FROM phone_numbers ORDER BY number")]
+            self.assertEqual(numbers, [f"5255500000{i:02d}" for i in range(1, 11)])
+        finally:
+            conn.close()
+
+    def test_default_seed_server_priorities_only_for_eu1_and_eu2(self):
+        self.request("/routes")
+        conn = server.connect(server.DB_PATH)
+        try:
+            rows = conn.execute("""
+                SELECT s.name AS server_name, c.name AS country_name, cr.name AS current_route_name,
+                       pr.name AS previous_route_name, srp.comment
+                FROM server_route_priorities srp
+                JOIN servers s ON s.id = srp.server_id
+                JOIN countries c ON c.id = srp.country_id
+                JOIN routes cr ON cr.id = srp.current_route_id
+                LEFT JOIN routes pr ON pr.id = srp.previous_route_id
+                ORDER BY s.name
+            """).fetchall()
+            self.assertEqual([(row["server_name"], row["country_name"], row["current_route_name"], row["previous_route_name"], row["comment"]) for row in rows], [
+                ("EU1", "Мексика", "Мексика/Miatel/Demo_A@", None, "Demo initial priority"),
+                ("EU2", "Мексика", "Мексика/Sancom/Demo_0827@", None, "Demo initial priority"),
+            ])
+            empty_priorities = conn.execute("""
+                SELECT COUNT(*)
+                FROM server_route_priorities srp
+                JOIN servers s ON s.id = srp.server_id
+                WHERE s.name IN ('EU3', 'EU4', 'EU5', 'EU6', 'EU7', 'EU8', 'EU9')
+            """).fetchone()[0]
+            self.assertEqual(empty_priorities, 0)
+        finally:
+            conn.close()
+
+
+
+    def test_demo_normalization_updates_existing_partial_demo_db_and_is_idempotent(self):
+        conn = server.connect(server.DB_PATH)
+        try:
+            server.init_db(conn)
+            repo = server.Repository(conn)
+            admin_id = repo.create_user("admin", "Admin")
+            for server_name in ("ASIA1", "DE1", "LATAM1", "US1", "OLDDEMO1"):
+                conn.execute("INSERT INTO servers(name, is_active) VALUES (?, 1)", (server_name,))
+            country_id = repo.create_country("Мексика", "MEX")
+            eur_id = repo.create_currency("EUR", "Euro", "€")
+            miatel_id = repo.create_provider("Miatel", "voip", eur_id)
+            sancom_id = repo.create_provider("Sancom", "voip", eur_id)
+            miatel_prefix = repo.create_prefix(miatel_id, None, "Без префикса")
+            sancom_prefix = repo.create_prefix(sancom_id, "0827")
+            old_route_id = repo.create_route(
+                country_id=country_id,
+                provider_id=miatel_id,
+                provider_prefix_id=miatel_prefix,
+                name="Мексика/Miatel/Pool_A@",
+                cli_source_type="pool",
+                cli_source_label="Pool_A",
+                created_by=admin_id,
+            )
+            repo.create_route(
+                country_id=country_id,
+                provider_id=sancom_id,
+                provider_prefix_id=sancom_prefix,
+                name="Мексика/Sancom/RND/0827pfx@",
+                cli_source_type="rnd",
+                cli_source_label="RND",
+                created_by=admin_id,
+            )
+            old_phone_id = repo.create_phone_number(
+                country_id=country_id,
+                provider_id=miatel_id,
+                number="525512345001",
+                assignment_type="pool_number",
+                status="used",
+                created_by=admin_id,
+                currency_id=eur_id,
+                comment="Демо-номер",
+            )
+            repo.add_phone_to_route(route_id=old_route_id, phone_number_id=old_phone_id, usage_type="pool_member", added_by=admin_id)
+            asia_id = conn.execute("SELECT id FROM servers WHERE name = 'ASIA1'").fetchone()["id"]
+            repo.create_calling_company(
+                server_id=asia_id,
+                country_id=country_id,
+                company_name="CC Mexico Demo",
+                company_id_external="1001",
+                has_autorotation=True,
+                created_by=admin_id,
+                is_active=True,
+            )
+            conn.execute(
+                """
+                INSERT INTO server_route_priorities(country_id, server_id, current_route_id, changed_by, created_by, comment)
+                VALUES (?, ?, ?, ?, ?, 'Old demo priority')
+                """,
+                (country_id, asia_id, old_route_id, admin_id, admin_id),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        self.request("/routes")
+
+        def normalized_counts():
+            check_conn = server.connect(server.DB_PATH)
+            try:
+                active_servers = [row["name"] for row in check_conn.execute("SELECT name FROM servers WHERE is_active = 1 ORDER BY name")]
+                inactive_old_servers = [row["name"] for row in check_conn.execute("SELECT name FROM servers WHERE name IN ('ASIA1', 'DE1', 'LATAM1', 'US1', 'OLDDEMO1') AND is_active = 0 ORDER BY name")]
+                active_routes = [row["name"] for row in check_conn.execute("""
+                    SELECT r.name
+                    FROM routes r
+                    JOIN countries c ON c.id = r.country_id
+                    WHERE c.name = 'Мексика' AND r.is_actual = 1
+                    ORDER BY r.name
+                """)]
+                active_companies = [row["company_id_external"] for row in check_conn.execute("""
+                    SELECT cc.company_id_external
+                    FROM calling_companies cc
+                    JOIN countries c ON c.id = cc.country_id
+                    WHERE c.name = 'Мексика' AND cc.is_active = 1
+                    ORDER BY cc.company_id_external
+                """)]
+                active_numbers = [row["number"] for row in check_conn.execute("""
+                    SELECT pn.number
+                    FROM phone_numbers pn
+                    JOIN countries c ON c.id = pn.country_id
+                    WHERE c.name = 'Мексика' AND pn.is_active = 1
+                    ORDER BY pn.number
+                """)]
+                priorities = [(row["server_name"], row["route_name"], row["previous_route_id"], row["comment"]) for row in check_conn.execute("""
+                    SELECT s.name AS server_name, r.name AS route_name, srp.previous_route_id, srp.comment
+                    FROM server_route_priorities srp
+                    JOIN servers s ON s.id = srp.server_id
+                    JOIN routes r ON r.id = srp.current_route_id
+                    JOIN countries c ON c.id = srp.country_id
+                    WHERE c.name = 'Мексика'
+                    ORDER BY s.name
+                """)]
+                return {
+                    "active_servers": active_servers,
+                    "inactive_old_servers": inactive_old_servers,
+                    "active_routes": active_routes,
+                    "active_companies": active_companies,
+                    "active_numbers": active_numbers,
+                    "priorities": priorities,
+                }
+            finally:
+                check_conn.close()
+
+        first_counts = normalized_counts()
+        self.assertEqual(first_counts["active_servers"], [f"EU{i}" for i in range(1, 10)])
+        self.assertEqual(first_counts["inactive_old_servers"], ["ASIA1", "DE1", "LATAM1", "OLDDEMO1", "US1"])
+        self.assertEqual(first_counts["active_routes"], [
+            "Мексика/DemoTel/Demo_A@",
+            "Мексика/DemoTel/Demo_B@",
+            "Мексика/Miatel/Demo_A@",
+            "Мексика/Miatel/Demo_B@",
+            "Мексика/Sancom/Demo_0827@",
+            "Мексика/Sancom/Demo_0828@",
+        ])
+        self.assertEqual(first_counts["active_companies"], [str(1000 + i) for i in range(1, 6)])
+        self.assertEqual(first_counts["active_numbers"], [f"5255500000{i:02d}" for i in range(1, 11)])
+        self.assertEqual(first_counts["priorities"], [
+            ("EU1", "Мексика/Miatel/Demo_A@", None, "Demo initial priority"),
+            ("EU2", "Мексика/Sancom/Demo_0827@", None, "Demo initial priority"),
+        ])
+
+        self.request("/routes")
+        self.assertEqual(normalized_counts(), first_counts)
 
 
     def test_routes_filter_applies_country(self):
         self.request("/routes")
         captured, content = self.request("/routes?country_id=999")
         self.assertEqual(captured["status"], "200 OK")
-        self.assertNotIn("Мексика/Miatel/Pool_A@", content)
+        self.assertNotIn("Мексика/Miatel/Demo_A@", content)
 
     def test_duplicate_phone_returns_user_message(self):
         self.request("/routes")
-        body = urlencode({"number": "525512345001", "country_id": "1", "provider_id": "2", "assignment_type": "pool_number", "status": "used"})
+        body = urlencode({"number": "525550000001", "country_id": "1", "provider_id": "2", "assignment_type": "pool_number", "status": "used"})
         captured, content = self.request("/phones/create", method="POST", body=body)
         self.assertEqual(captured["status"], "400 Bad Request")
         self.assertIn("Номер уже существует", content)
 
     def test_route_number_add_uses_phone_number_not_internal_id(self):
         self.request("/routes")
-        body = urlencode({"phone_number": "525512345001", "usage_type": "pool_member"})
+        body = urlencode({"phone_number": "525550000001", "usage_type": "pool_member"})
         captured, content = self.request("/routes/2/numbers/add", method="POST", body=body)
         self.assertEqual(captured["status"], "400 Bad Request")
         self.assertIn("Номер уже добавлен", content)
 
     def test_duplicate_route_returns_user_message(self):
         self.request("/routes")
-        body = urlencode({"country_id": "1", "provider_id": "2", "provider_prefix_id": "2", "project_label": "", "cli_source_type": "pool", "cli_source_label": "Pool_A", "is_actual": "1"})
+        body = urlencode({"country_id": "1", "provider_id": "2", "provider_prefix_id": "3", "project_label": "", "cli_source_type": "pool", "cli_source_label": "Demo_A", "is_actual": "1"})
         captured, content = self.request("/routes/create", method="POST", body=body)
         self.assertEqual(captured["status"], "400 Bad Request")
         self.assertIn("Маршрут уже существует", content)
@@ -152,7 +352,7 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertEqual(captured["status"], "200 OK")
         self.assertIn('<select name="country_id"></select>', content)
         captured, content = self.request("/routes")
-        self.assertIn("Мексика/Miatel/Pool_A@", content)
+        self.assertIn("Мексика/Miatel/Demo_A@", content)
 
     def test_phone_type_dictionary_drives_phone_forms(self):
         self.request("/routes")
@@ -230,21 +430,21 @@ class ServerSmokeTest(unittest.TestCase):
         self.request("/routes")
         captured, content = self.request("/admin/server-priorities")
         self.assertEqual(captured["status"], "200 OK")
-        for server_name in ("ASIA1", "DE1", "EU1", "EU2", "EU3", "LATAM1", "LATAM2", "NL1", "US1", "US2"):
+        for server_name in ("EU1", "EU2", "EU3", "EU4", "EU5", "EU6", "EU7", "EU8", "EU9"):
             self.assertIn(f"Сервер: {server_name}", content)
-        self.assertLess(content.index("Сервер: ASIA1"), content.index("Сервер: DE1"))
-        self.assertLess(content.index("Сервер: DE1"), content.index("Сервер: EU1"))
+        self.assertLess(content.index("Сервер: EU1"), content.index("Сервер: EU2"))
+        self.assertLess(content.index("Сервер: EU2"), content.index("Сервер: EU3"))
         self.assertIn("<th>GEO</th><th>Текущий приоритет</th><th>Предыдущий приоритет</th><th>Действия</th>", content)
         self.assertIn("Нет настроенных приоритетов", content)
-        asia_block = content.split("Сервер: ASIA1", 1)[1].split("</section>", 1)[0]
-        self.assertIn("Нет настроенных приоритетов", asia_block)
+        eu3_block = content.split("Сервер: EU3", 1)[1].split("</section>", 1)[0]
+        self.assertIn("Нет настроенных приоритетов", eu3_block)
         eu1_block = content.split("Сервер: EU1", 1)[1].split("</section>", 1)[0]
-        self.assertIn("<td>Мексика</td><td>Miatel / Мексика/Miatel/Pool_A@</td><td>Sancom / Мексика/Sancom/RND/0827pfx@</td>", eu1_block)
+        self.assertIn("<td>Мексика</td><td>Miatel / Мексика/Miatel/Demo_A@</td><td>—</td>", eu1_block)
         self.assertIn("<summary>Редактировать</summary>", eu1_block)
         self.assertIn("Текущий провайдер: Miatel", eu1_block)
-        self.assertIn("Текущий маршрут: Мексика/Miatel/Pool_A@", eu1_block)
-        self.assertIn("Предыдущий провайдер: Sancom", eu1_block)
-        self.assertIn("Предыдущий маршрут: Мексика/Sancom/RND/0827pfx@", eu1_block)
+        self.assertIn("Текущий маршрут: Мексика/Miatel/Demo_A@", eu1_block)
+        self.assertIn("Предыдущий провайдер: —", eu1_block)
+        self.assertIn("Предыдущий маршрут: —", eu1_block)
         self.assertIn("name='current_route_id'", eu1_block)
         self.assertIn("Сохранить текущий маршрут", eu1_block)
 
@@ -252,27 +452,27 @@ class ServerSmokeTest(unittest.TestCase):
         self.request("/routes")
         conn = server.connect(server.DB_PATH)
         try:
-            asia_id = conn.execute("SELECT id FROM servers WHERE name = 'ASIA1'").fetchone()["id"]
+            eu3_id = conn.execute("SELECT id FROM servers WHERE name = 'EU3'").fetchone()["id"]
         finally:
             conn.close()
-        captured, content = self.request(f"/admin/server-priorities?server_id={asia_id}")
+        captured, content = self.request(f"/admin/server-priorities?server_id={eu3_id}")
         self.assertEqual(captured["status"], "200 OK")
-        self.assertIn("Сервер: ASIA1", content)
+        self.assertIn("Сервер: EU3", content)
         self.assertNotIn("Сервер: EU1", content)
-        asia_block = content.split("Сервер: ASIA1", 1)[1].split("</section>", 1)[0]
-        self.assertIn("Нет настроенных приоритетов", asia_block)
-        self.assertNotIn("<summary>Редактировать</summary>", asia_block)
+        eu3_block = content.split("Сервер: EU3", 1)[1].split("</section>", 1)[0]
+        self.assertIn("Нет настроенных приоритетов", eu3_block)
+        self.assertNotIn("<summary>Редактировать</summary>", eu3_block)
 
     def test_server_priorities_geo_filter_keeps_server_blocks_and_filters_rows(self):
         self.request("/routes")
         captured, content = self.request("/admin/server-priorities?country_id=1")
         self.assertEqual(captured["status"], "200 OK")
-        self.assertIn("Сервер: ASIA1", content)
+        self.assertIn("Сервер: EU3", content)
         self.assertIn("Сервер: EU1", content)
-        asia_block = content.split("Сервер: ASIA1", 1)[1].split("</section>", 1)[0]
+        eu3_block = content.split("Сервер: EU3", 1)[1].split("</section>", 1)[0]
         eu1_block = content.split("Сервер: EU1", 1)[1].split("</section>", 1)[0]
-        self.assertIn("Нет настроенных приоритетов", asia_block)
-        self.assertIn("<td>Мексика</td><td>Miatel / Мексика/Miatel/Pool_A@</td>", eu1_block)
+        self.assertIn("Нет настроенных приоритетов", eu3_block)
+        self.assertIn("<td>Мексика</td><td>Miatel / Мексика/Miatel/Demo_A@</td>", eu1_block)
 
     def test_server_priority_manual_route_update_changes_current_previous_and_logs_event(self):
         self.request("/routes")
@@ -297,7 +497,7 @@ class ServerSmokeTest(unittest.TestCase):
             conn.close()
         captured, content = self.request("/admin/server-priorities")
         self.assertEqual(captured["status"], "200 OK")
-        self.assertIn("<td>Мексика</td><td>Sancom / Мексика/Sancom/RND/0827pfx@</td><td>Miatel / Мексика/Miatel/Pool_A@</td>", content)
+        self.assertIn("<td>Мексика</td><td>Sancom / Мексика/Sancom/Demo_0827@</td><td>Miatel / Мексика/Miatel/Demo_A@</td>", content)
 
 
 
@@ -401,7 +601,7 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
         captured, content = self.request("/admin/server-priorities")
         self.assertEqual(captured["status"], "200 OK")
         eu1_block = content.split("Сервер: EU1", 1)[1].split("</section>", 1)[0]
-        self.assertIn("Sancom / Мексика/Sancom/RND/0827pfx@", eu1_block)
+        self.assertIn("Sancom / Мексика/Sancom/Demo_0827@", eu1_block)
         captured, content = self.request("/admin/change-log")
         self.assertIn("routing_event.created", content)
         self.assertIn("routing_event.applied_to_server_priority", content)
