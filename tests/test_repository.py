@@ -453,8 +453,39 @@ class RoutingEventsRepositoryTest(unittest.TestCase):
         self.assertIsNone(row["old_route_id"])
         self.assertIsNone(row["new_route_id"])
 
+    def test_none_scope_ignores_irrelevant_server_and_campaign_fields(self):
+        event_id = self.create_event(
+            apply_scope="none",
+            country_id=self.country_id,
+            provider_id=self.provider_id,
+            affected_route_id=self.route_id,
+            server_id=self.server_id,
+            new_route_id=self.alt_route_id,
+            calling_company_id=self.company_id,
+            company_change_type="set_campaign_route",
+            new_company_route_id=self.alt_route_id,
+            new_company_has_autorotation=1,
+        )
+        row = self.conn.execute("SELECT * FROM routing_events WHERE id = ?", (event_id,)).fetchone()
+        for field in ("server_id", "old_route_id", "new_route_id", "calling_company_id", "company_change_type", "old_company_routing_mode", "new_company_routing_mode", "old_company_route_id", "new_company_route_id", "old_company_has_autorotation", "new_company_has_autorotation"):
+            self.assertIsNone(row[field], field)
+        self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM server_route_priorities").fetchone()[0], 0)
+
+    def test_none_scope_summary_contains_provider_and_route_without_server_or_campaign(self):
+        event_id = self.create_event(apply_scope="none", country_id=self.country_id, provider_id=self.provider_id, affected_route_id=self.route_id, server_id=self.server_id, calling_company_id=self.company_id)
+        log = self.conn.execute("SELECT summary FROM change_log WHERE entity_type = 'routing_event' AND entity_id = ?", (event_id,)).fetchone()[0]
+        self.assertIn("Не меняли настройки в нашей системе", log)
+        self.assertIn("Sancom", log)
+        self.assertIn("Мексика/Sancom/RND@", log)
+        self.assertNotIn("Сервер:", log)
+        self.assertNotIn("Кампания:", log)
+
+    def test_server_priority_new_route_must_belong_to_provider(self):
+        with self.assertRaisesRegex(BusinessRuleError, "новому провайдеру"):
+            self.create_event(apply_scope="server_priority", country_id=self.country_id, server_id=self.server_id, provider_id=self.provider_id, new_route_id=self.alt_route_id)
+
     def test_server_priority_creates_priority_when_missing(self):
-        event_id = self.create_event(apply_scope="server_priority", country_id=self.country_id, server_id=self.server_id, new_route_id=self.route_id, provider_id=None)
+        event_id = self.create_event(apply_scope="server_priority", country_id=self.country_id, server_id=self.server_id, new_route_id=self.route_id, provider_id=self.provider_id)
         priority = self.conn.execute("SELECT * FROM server_route_priorities WHERE country_id = ? AND server_id = ?", (self.country_id, self.server_id)).fetchone()
         self.assertIsNotNone(priority)
         self.assertEqual(priority["current_route_id"], self.route_id)
@@ -464,14 +495,14 @@ class RoutingEventsRepositoryTest(unittest.TestCase):
     def test_server_priority_updates_existing_current_to_previous(self):
         self.conn.execute("INSERT INTO server_route_priorities(country_id, server_id, current_route_id, previous_route_id, changed_by, created_by) VALUES (?, ?, ?, NULL, ?, ?)", (self.country_id, self.server_id, self.route_id, self.admin_id, self.admin_id))
         self.conn.commit()
-        self.create_event(apply_scope="server_priority", country_id=self.country_id, server_id=self.server_id, new_route_id=self.alt_route_id)
+        self.create_event(apply_scope="server_priority", country_id=self.country_id, server_id=self.server_id, provider_id=self.alt_provider_id, new_route_id=self.alt_route_id)
         priority = self.conn.execute("SELECT * FROM server_route_priorities WHERE country_id = ? AND server_id = ?", (self.country_id, self.server_id)).fetchone()
         self.assertEqual(priority["previous_route_id"], self.route_id)
         self.assertEqual(priority["current_route_id"], self.alt_route_id)
 
     def test_server_priority_new_route_must_belong_to_geo(self):
         with self.assertRaisesRegex(BusinessRuleError, "выбранному GEO"):
-            self.create_event(apply_scope="server_priority", country_id=self.country_id, server_id=self.server_id, new_route_id=self.other_route_id)
+            self.create_event(apply_scope="server_priority", country_id=self.country_id, server_id=self.server_id, provider_id=self.provider_id, new_route_id=self.other_route_id)
 
     def test_campaign_setting_without_active_setting_uses_server_priority_defaults(self):
         event_id = self.create_event(apply_scope="campaign_setting", calling_company_id=self.company_id, company_change_type="enable_autorotation", provider_id=None)

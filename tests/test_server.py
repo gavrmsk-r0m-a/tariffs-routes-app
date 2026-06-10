@@ -64,6 +64,20 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertIn("Серверный приоритет", content)
         self.assertIn("Настройка кампании", content)
 
+    def test_provider_change_form_is_dynamic_and_defaults_to_none_scope(self):
+        self.request("/routes")
+        captured, content = self.request("/provider-changes")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("value='none' checked", content)
+        self.assertIn("data-scopes='none'", content)
+        self.assertIn("Маршрут/префикс", content)
+        self.assertIn("data-scopes='server_priority'", content)
+        self.assertIn("Текущий маршрут", content)
+        self.assertIn("Новый провайдер кампании", content)
+        self.assertIn("data-campaign-route-field='1'", content)
+        self.assertNotIn("Новый route", content)
+        self.assertNotIn("Новая авторотация", content)
+
     def test_provider_changes_navigation_is_top_level_only(self):
         captured, content = self.request("/provider-changes")
         self.assertEqual(captured["status"], "200 OK")
@@ -592,6 +606,7 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
             "event_at": "2026-06-10T11:00",
             "country_id": "1",
             "server_id": "1",
+            "provider_id": "1",
             "new_route_id": "1",
             "reason": "Плановое переключение",
             "comment": "Переключили EU1 на Sancom",
