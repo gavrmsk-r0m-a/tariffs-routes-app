@@ -21,8 +21,6 @@ COMPANY_CHANGE_LABELS = {
     "disable_autorotation": "Выключили авторотацию",
     "set_campaign_route": "Прописали ручной маршрут",
     "remove_campaign_route": "Убрали ручной маршрут",
-    "change_campaign_route": "Изменили ручной маршрут",
-    "set_server_priority": "Вернули на server_priority",
 }
 
 
@@ -1019,6 +1017,18 @@ class Repository:
             (calling_company_id,),
         ).fetchone()
 
+    def _company_routing_mode_for_state(self, route_id: int | None, has_autorotation: bool) -> str:
+        if route_id and has_autorotation:
+            return "mixed"
+        if route_id:
+            return "campaign_route"
+        if has_autorotation:
+            return "autorotation"
+        return "server_priority"
+
+    def _company_setting_state_requires_active_version(self, route_id: int | None, has_autorotation: bool) -> bool:
+        return bool(route_id) or bool(has_autorotation)
+
     def _company_old_state(self, calling_company_id: int) -> dict:
         setting = self._active_company_routing_setting(calling_company_id)
         if setting:
@@ -1137,15 +1147,11 @@ class Repository:
             )
 
     def _apply_campaign_setting_event(self, values: dict, *, updated_by: int) -> None:
-        ctype = values["company_change_type"]
-        if ctype in {"enable_autorotation", "set_campaign_route", "change_campaign_route"}:
+        if self._company_setting_state_requires_active_version(
+            values["new_company_route_id"], bool(values["new_company_has_autorotation"])
+        ):
             self._upsert_company_routing_setting_from_event(values, updated_by=updated_by)
-        elif ctype in {"disable_autorotation", "remove_campaign_route"}:
-            if values["new_company_routing_mode"] == "server_priority" and not values["new_company_route_id"] and not values["new_company_has_autorotation"]:
-                self._deactivate_company_routing_setting_from_event(values, updated_by=updated_by)
-            else:
-                self._upsert_company_routing_setting_from_event(values, updated_by=updated_by)
-        elif ctype == "set_server_priority":
+        else:
             self._deactivate_company_routing_setting_from_event(values, updated_by=updated_by)
 
     def create_routing_event(self, **kwargs) -> int:
@@ -1223,17 +1229,12 @@ class Repository:
             values["old_company_has_autorotation"] = 1 if old_state["has_autorotation"] else 0
             ctype = values["company_change_type"]
             if ctype == "enable_autorotation":
-                values["new_company_routing_mode"] = "autorotation"
+                values["new_company_route_id"] = old_state["route_id"]
                 values["new_company_has_autorotation"] = 1
             elif ctype == "disable_autorotation":
+                values["new_company_route_id"] = old_state["route_id"]
                 values["new_company_has_autorotation"] = 0
-                if old_state["route_id"]:
-                    values["new_company_routing_mode"] = "campaign_route"
-                    values["new_company_route_id"] = old_state["route_id"]
-                else:
-                    values["new_company_routing_mode"] = "server_priority"
-                    values["new_company_route_id"] = None
-            elif ctype in {"set_campaign_route", "change_campaign_route"}:
+            elif ctype == "set_campaign_route":
                 if not values["new_company_route_id"]:
                     raise BusinessRuleError("Новый маршрут кампании обязателен")
                 route = self.conn.execute("SELECT country_id, provider_id FROM routes WHERE id = ?", (values["new_company_route_id"],)).fetchone()
@@ -1241,27 +1242,19 @@ class Repository:
                     raise BusinessRuleError("Маршрут кампании должен относиться к выбранному GEO")
                 if values["provider_id"] and int(route["provider_id"]) != int(values["provider_id"]):
                     raise BusinessRuleError("Маршрут кампании должен относиться к выбранному провайдеру")
+                if old_state["route_id"] and int(values["new_company_route_id"]) == int(old_state["route_id"]):
+                    raise BusinessRuleError("Новый маршрут кампании должен отличаться от текущего")
                 if not values["provider_id"]:
                     values["provider_id"] = route["provider_id"]
-                values["new_company_routing_mode"] = "campaign_route"
-                if values["new_company_has_autorotation"] is None:
-                    values["new_company_has_autorotation"] = 0
+                values["new_company_has_autorotation"] = values["old_company_has_autorotation"]
             elif ctype == "remove_campaign_route":
                 values["new_company_route_id"] = None
-                if old_state["has_autorotation"]:
-                    values["new_company_routing_mode"] = "autorotation"
-                    values["new_company_has_autorotation"] = 1
-                else:
-                    values["new_company_routing_mode"] = "server_priority"
-                    values["new_company_has_autorotation"] = 0
-            elif ctype == "set_server_priority":
-                values["new_company_routing_mode"] = "server_priority"
-                values["new_company_route_id"] = None
-                values["new_company_has_autorotation"] = 0
+                values["new_company_has_autorotation"] = values["old_company_has_autorotation"]
             else:
                 raise BusinessRuleError("Некорректный тип изменения кампании")
-            if values["new_company_has_autorotation"] is None:
-                values["new_company_has_autorotation"] = values["old_company_has_autorotation"]
+            values["new_company_routing_mode"] = self._company_routing_mode_for_state(
+                values["new_company_route_id"], bool(values["new_company_has_autorotation"])
+            )
 
         values["snapshot_json"] = json.dumps(self._routing_event_snapshot(values), ensure_ascii=False)
         cur = self.conn.execute(

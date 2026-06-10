@@ -75,6 +75,12 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertIn("Текущий маршрут", content)
         self.assertIn("Новый провайдер кампании", content)
         self.assertIn("data-campaign-route-field='1'", content)
+        self.assertIn("Включили авторотацию", content)
+        self.assertIn("Выключили авторотацию", content)
+        self.assertIn("Прописали ручной маршрут", content)
+        self.assertIn("Убрали ручной маршрут", content)
+        self.assertNotIn("Изменили ручной маршрут", content)
+        self.assertNotIn("Вернули на server_priority", content)
         self.assertNotIn("Новый route", content)
         self.assertNotIn("Новая авторотация", content)
 
@@ -620,6 +626,45 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
         captured, content = self.request("/admin/change-log")
         self.assertIn("routing_event.created", content)
         self.assertIn("routing_event.applied_to_server_priority", content)
+
+    def test_campaign_setting_route_is_preserved_when_toggling_autorotation(self):
+        self.request("/routes")
+        conn = server.connect(server.DB_PATH)
+        try:
+            route_id = conn.execute("SELECT id FROM routes WHERE name = 'Мексика/Sancom/Demo_0827@'").fetchone()[0]
+            repo = server.Repository(conn)
+            repo.create_company_routing_setting(
+                calling_company_id=1,
+                country_id=1,
+                server_id=1,
+                route_id=route_id,
+                routing_mode="campaign_route",
+                has_autorotation=False,
+                comment="manual route before autorotation",
+                created_by=server.ADMIN_ID,
+            )
+        finally:
+            conn.close()
+
+        enable_body = urlencode({"apply_scope": "campaign_setting", "event_at": "2026-06-10T12:00", "calling_company_id": "1", "company_change_type": "enable_autorotation", "reason": "Тест нового маршрута", "comment": "Включаем авторотацию"})
+        captured, _ = self.request("/provider-changes/create", method="POST", body=enable_body)
+        self.assertEqual(captured["status"], "303 See Other")
+        captured, content = self.request("/admin/company-routing-settings")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("mixed", content)
+        self.assertIn("Да", content)
+        self.assertIn("Мексика/Sancom/Demo_0827@", content)
+        self.assertIn("Провайдер: Sancom", content)
+
+        disable_body = urlencode({"apply_scope": "campaign_setting", "event_at": "2026-06-10T13:00", "calling_company_id": "1", "company_change_type": "disable_autorotation", "reason": "Тест нового маршрута", "comment": "Выключаем авторотацию"})
+        captured, _ = self.request("/provider-changes/create", method="POST", body=disable_body)
+        self.assertEqual(captured["status"], "303 See Other")
+        captured, content = self.request("/admin/company-routing-settings")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("campaign_route", content)
+        self.assertIn("Нет", content)
+        self.assertIn("Мексика/Sancom/Demo_0827@", content)
+        self.assertIn("Провайдер: Sancom", content)
 
     def test_campaign_setting_enable_autorotation_ui_and_applied_settings(self):
         self.request("/routes")

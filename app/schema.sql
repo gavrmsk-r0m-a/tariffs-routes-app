@@ -402,7 +402,7 @@ CREATE TABLE IF NOT EXISTS routing_events (
     old_route_id INTEGER REFERENCES routes(id) ON DELETE RESTRICT,
     new_route_id INTEGER REFERENCES routes(id) ON DELETE RESTRICT,
     calling_company_id INTEGER REFERENCES calling_companies(id) ON DELETE RESTRICT,
-    company_change_type TEXT CHECK (company_change_type IN ('enable_autorotation', 'disable_autorotation', 'set_campaign_route', 'remove_campaign_route', 'change_campaign_route', 'set_server_priority') OR company_change_type IS NULL),
+    company_change_type TEXT CHECK (company_change_type IN ('enable_autorotation', 'disable_autorotation', 'set_campaign_route', 'remove_campaign_route') OR company_change_type IS NULL),
     old_company_routing_mode TEXT,
     new_company_routing_mode TEXT,
     old_company_route_id INTEGER REFERENCES routes(id) ON DELETE RESTRICT,
