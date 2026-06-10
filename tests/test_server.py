@@ -621,6 +621,21 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
         self.assertIn("routing_event.created", content)
         self.assertIn("routing_event.applied_to_server_priority", content)
 
+    def test_campaign_setting_enable_autorotation_ui_and_applied_settings(self):
+        self.request("/routes")
+        captured, content = self.request("/provider-changes")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertNotIn("В MVP это только логирует событие", content)
+        self.assertIn("Событие будет сохранено в журнале и применено", content)
+        self.assertNotIn("id='company-autorotation'", content)
+        body = urlencode({"apply_scope": "campaign_setting", "event_at": "2026-06-10T12:00", "calling_company_id": "2", "company_change_type": "enable_autorotation", "reason": "Тест нового маршрута", "comment": "Включаем авторотацию"})
+        captured, _ = self.request("/provider-changes/create", method="POST", body=body)
+        self.assertEqual(captured["status"], "303 See Other")
+        captured, content = self.request("/admin/company-routing-settings")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("1002", content)
+        self.assertIn("autorotation", content)
+
     def test_campaign_setting_event_for_company_without_settings(self):
         self.request("/routes")
         body = urlencode({"server_id": "1", "country_id": "1", "company_name": "CC Mexico 1002", "company_id_external": "1002", "line_count": "1", "dial_set_count": "1", "retry_interval_seconds": "30", "has_autorotation": "0", "is_active": "1", "comment": ""})
@@ -633,7 +648,11 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
             event = conn.execute("SELECT * FROM routing_events WHERE calling_company_id = 2").fetchone()
             self.assertEqual(event["old_company_routing_mode"], "server_priority")
             self.assertEqual(event["old_company_has_autorotation"], 0)
-            self.assertEqual(conn.execute("SELECT COUNT(*) FROM company_routing_settings WHERE calling_company_id = 2").fetchone()[0], 0)
+            setting = conn.execute("SELECT * FROM company_routing_settings WHERE calling_company_id = 2 AND is_active = 1 AND valid_to IS NULL").fetchone()
+            self.assertIsNotNone(setting)
+            self.assertEqual(setting["routing_mode"], "autorotation")
+            self.assertEqual(setting["has_autorotation"], 1)
+            self.assertIsNone(setting["route_id"])
         finally:
             conn.close()
 

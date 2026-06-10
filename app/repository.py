@@ -771,6 +771,7 @@ class Repository:
         has_autorotation: bool,
         comment: str | None,
         created_by: int,
+        effective_at: str | None = None,
     ) -> int:
         self._validate_company_routing_values(
             calling_company_id=calling_company_id,
@@ -785,7 +786,7 @@ class Repository:
             (calling_company_id,),
         ).fetchone():
             raise BusinessRuleError("У кампании уже есть активная схема маршрутизации")
-        now = self.conn.execute("SELECT CURRENT_TIMESTAMP").fetchone()[0]
+        now = effective_at or self.conn.execute("SELECT CURRENT_TIMESTAMP").fetchone()[0]
         cur = self.conn.execute(
             """
             INSERT INTO company_routing_settings(
@@ -826,6 +827,7 @@ class Repository:
         has_autorotation: bool,
         comment: str | None,
         updated_by: int,
+        effective_at: str | None = None,
     ) -> int:
         existing = self.conn.execute("SELECT * FROM company_routing_settings WHERE id = ?", (setting_id,)).fetchone()
         if not existing:
@@ -882,7 +884,7 @@ class Repository:
             self.conn.commit()
             return setting_id
 
-        now = self.conn.execute("SELECT CURRENT_TIMESTAMP").fetchone()[0]
+        now = effective_at or self.conn.execute("SELECT CURRENT_TIMESTAMP").fetchone()[0]
         self.conn.execute(
             """
             UPDATE company_routing_settings
@@ -929,13 +931,13 @@ class Repository:
         self.conn.commit()
         return new_id
 
-    def deactivate_company_routing_setting(self, *, setting_id: int, updated_by: int) -> None:
+    def deactivate_company_routing_setting(self, *, setting_id: int, updated_by: int, effective_at: str | None = None) -> None:
         existing = self.conn.execute("SELECT * FROM company_routing_settings WHERE id = ?", (setting_id,)).fetchone()
         if not existing:
             raise BusinessRuleError("Схема маршрутизации кампании не найдена")
         if not existing["is_active"] or existing["valid_to"] is not None:
             raise BusinessRuleError("Схема маршрутизации уже неактивна")
-        now = self.conn.execute("SELECT CURRENT_TIMESTAMP").fetchone()[0]
+        now = effective_at or self.conn.execute("SELECT CURRENT_TIMESTAMP").fetchone()[0]
         self.conn.execute(
             """
             UPDATE company_routing_settings
@@ -1006,16 +1008,19 @@ class Repository:
         ).fetchone()
         return f"{row['provider_name']} / {row['name']}" if row else str(route_id)
 
-    def _company_old_state(self, calling_company_id: int) -> dict:
-        setting = self.conn.execute(
+    def _active_company_routing_setting(self, calling_company_id: int) -> sqlite3.Row | None:
+        return self.conn.execute(
             """
-            SELECT routing_mode, route_id, has_autorotation
+            SELECT *
             FROM company_routing_settings
             WHERE calling_company_id = ? AND is_active = 1 AND valid_to IS NULL
             ORDER BY id DESC LIMIT 1
             """,
             (calling_company_id,),
         ).fetchone()
+
+    def _company_old_state(self, calling_company_id: int) -> dict:
+        setting = self._active_company_routing_setting(calling_company_id)
         if setting:
             return {
                 "routing_mode": setting["routing_mode"],
@@ -1093,6 +1098,55 @@ class Repository:
             f"previous route after update: {self._route_label(previous_after_update) or '—'}",
             f"Комментарий: {comment}",
         ])
+
+    def _upsert_company_routing_setting_from_event(self, values: dict, *, updated_by: int) -> None:
+        active = self._active_company_routing_setting(values["calling_company_id"])
+        if active is None:
+            self.create_company_routing_setting(
+                calling_company_id=values["calling_company_id"],
+                country_id=values["country_id"],
+                server_id=values["server_id"],
+                route_id=values["new_company_route_id"],
+                routing_mode=values["new_company_routing_mode"],
+                has_autorotation=bool(values["new_company_has_autorotation"]),
+                comment=values["comment"],
+                created_by=updated_by,
+                effective_at=values["event_at"],
+            )
+            return
+
+        self.update_company_routing_setting(
+            setting_id=active["id"],
+            country_id=values["country_id"],
+            server_id=values["server_id"],
+            route_id=values["new_company_route_id"],
+            routing_mode=values["new_company_routing_mode"],
+            has_autorotation=bool(values["new_company_has_autorotation"]),
+            comment=values["comment"],
+            updated_by=updated_by,
+            effective_at=values["event_at"],
+        )
+
+    def _deactivate_company_routing_setting_from_event(self, values: dict, *, updated_by: int) -> None:
+        active = self._active_company_routing_setting(values["calling_company_id"])
+        if active is not None:
+            self.deactivate_company_routing_setting(
+                setting_id=active["id"],
+                updated_by=updated_by,
+                effective_at=values["event_at"],
+            )
+
+    def _apply_campaign_setting_event(self, values: dict, *, updated_by: int) -> None:
+        ctype = values["company_change_type"]
+        if ctype in {"enable_autorotation", "set_campaign_route", "change_campaign_route"}:
+            self._upsert_company_routing_setting_from_event(values, updated_by=updated_by)
+        elif ctype in {"disable_autorotation", "remove_campaign_route"}:
+            if values["new_company_routing_mode"] == "server_priority" and not values["new_company_route_id"] and not values["new_company_has_autorotation"]:
+                self._deactivate_company_routing_setting_from_event(values, updated_by=updated_by)
+            else:
+                self._upsert_company_routing_setting_from_event(values, updated_by=updated_by)
+        elif ctype == "set_server_priority":
+            self._deactivate_company_routing_setting_from_event(values, updated_by=updated_by)
 
     def create_routing_event(self, **kwargs) -> int:
         apply_scope = kwargs.get("apply_scope")
@@ -1172,8 +1226,13 @@ class Repository:
                 values["new_company_routing_mode"] = "autorotation"
                 values["new_company_has_autorotation"] = 1
             elif ctype == "disable_autorotation":
-                values["new_company_routing_mode"] = old_state["routing_mode"] if old_state["routing_mode"] != "autorotation" else "server_priority"
                 values["new_company_has_autorotation"] = 0
+                if old_state["route_id"]:
+                    values["new_company_routing_mode"] = "campaign_route"
+                    values["new_company_route_id"] = old_state["route_id"]
+                else:
+                    values["new_company_routing_mode"] = "server_priority"
+                    values["new_company_route_id"] = None
             elif ctype in {"set_campaign_route", "change_campaign_route"}:
                 if not values["new_company_route_id"]:
                     raise BusinessRuleError("Новый маршрут кампании обязателен")
@@ -1185,9 +1244,20 @@ class Repository:
                 if not values["provider_id"]:
                     values["provider_id"] = route["provider_id"]
                 values["new_company_routing_mode"] = "campaign_route"
-            elif ctype in {"remove_campaign_route", "set_server_priority"}:
+                if values["new_company_has_autorotation"] is None:
+                    values["new_company_has_autorotation"] = 0
+            elif ctype == "remove_campaign_route":
+                values["new_company_route_id"] = None
+                if old_state["has_autorotation"]:
+                    values["new_company_routing_mode"] = "autorotation"
+                    values["new_company_has_autorotation"] = 1
+                else:
+                    values["new_company_routing_mode"] = "server_priority"
+                    values["new_company_has_autorotation"] = 0
+            elif ctype == "set_server_priority":
                 values["new_company_routing_mode"] = "server_priority"
                 values["new_company_route_id"] = None
+                values["new_company_has_autorotation"] = 0
             else:
                 raise BusinessRuleError("Некорректный тип изменения кампании")
             if values["new_company_has_autorotation"] is None:
@@ -1254,6 +1324,8 @@ class Repository:
                 new_values={"current_route_id": values["new_route_id"], "previous_route_id": previous_after, "routing_event_id": event_id},
                 summary=self._server_priority_apply_summary(country_id=values["country_id"], server_id=values["server_id"], old_route_id=values["old_route_id"], new_route_id=values["new_route_id"], previous_after_update=previous_after, comment=values["comment"]),
             )
+        elif apply_scope == "campaign_setting":
+            self._apply_campaign_setting_event(values, updated_by=created_by)
         self.conn.commit()
         return event_id
 
@@ -1280,6 +1352,8 @@ class Repository:
         return list(self.conn.execute(f"""
             SELECT re.*, c.name AS country_name, s.name AS server_name, p.name AS provider_name,
                    ar.name AS affected_route_name, nr.name AS new_route_name, oldr.name AS old_route_name,
+                   oldcr.name AS old_company_route_name, newcr.name AS new_company_route_name,
+                   oldcp.name AS old_company_route_provider_name, newcp.name AS new_company_route_provider_name,
                    cc.company_id_external, cc.company_name
             FROM routing_events re
             LEFT JOIN countries c ON c.id = re.country_id
@@ -1288,6 +1362,10 @@ class Repository:
             LEFT JOIN routes ar ON ar.id = re.affected_route_id
             LEFT JOIN routes nr ON nr.id = re.new_route_id
             LEFT JOIN routes oldr ON oldr.id = re.old_route_id
+            LEFT JOIN routes oldcr ON oldcr.id = re.old_company_route_id
+            LEFT JOIN routes newcr ON newcr.id = re.new_company_route_id
+            LEFT JOIN providers oldcp ON oldcp.id = oldcr.provider_id
+            LEFT JOIN providers newcp ON newcp.id = newcr.provider_id
             LEFT JOIN calling_companies cc ON cc.id = re.calling_company_id
             {where}
             ORDER BY re.event_at DESC, re.id DESC
