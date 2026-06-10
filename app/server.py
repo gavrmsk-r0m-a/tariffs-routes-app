@@ -446,7 +446,7 @@ def server_priorities_page(repo: Repository, q: dict[str, str] | None = None) ->
     if q.get("server_id"):
         clauses.append("srp.server_id = ?"); params.append(q["server_id"])
     where = " WHERE " + " AND ".join(clauses) if clauses else ""
-    rows = []
+    server_blocks: dict[str, list[str]] = {}
     for row in repo.conn.execute(f"""
         SELECT srp.*, c.name AS country_name, s.name AS server_name,
                cp.name AS current_provider_name, pp.name AS previous_provider_name,
@@ -454,11 +454,11 @@ def server_priorities_page(repo: Repository, q: dict[str, str] | None = None) ->
                u.username AS changed_by_username
         FROM server_route_priorities srp
         JOIN countries c ON c.id = srp.country_id JOIN servers s ON s.id = srp.server_id
-        JOIN routes cr ON cr.id = srp.current_route_id JOIN providers cp ON cp.id = cr.provider_id
+        LEFT JOIN routes cr ON cr.id = srp.current_route_id LEFT JOIN providers cp ON cp.id = cr.provider_id
         LEFT JOIN routes pr ON pr.id = srp.previous_route_id LEFT JOIN providers pp ON pp.id = pr.provider_id
         LEFT JOIN users u ON u.id = srp.changed_by
         {where}
-        ORDER BY c.name, s.name
+        ORDER BY s.name, c.name
     """, params):
         route_opts = select_options(repo, """
             SELECT r.id, r.name || ' — ' || p.name AS label
@@ -467,15 +467,19 @@ def server_priorities_page(repo: Repository, q: dict[str, str] | None = None) ->
             WHERE r.country_id = ?
             ORDER BY r.name
         """, (row["country_id"],), selected=row["current_route_id"])
+        current_provider = row["current_provider_name"] or "—"
+        current_route = row["current_route_name"] or "—"
         previous_provider = row["previous_provider_name"] or "—"
         previous_route = row["previous_route_name"] or "—"
-        current_card = f"""
-        <details><summary><span class='star'>★</span> {esc(row['current_provider_name'])}</summary>
+        current_priority = "—" if not row["current_route_id"] else f"{esc(current_provider)} / {esc(current_route)}"
+        previous_priority = "—" if not row["previous_route_id"] else f"{esc(previous_provider)} / {esc(previous_route)}"
+        actions = f"""
+        <details><summary>Редактировать</summary>
           <div class='card'>
             ГЕО: {esc(row['country_name'])}<br>
             Сервер: {esc(row['server_name'])}<br>
-            Текущий провайдер: {esc(row['current_provider_name'])}<br>
-            Текущий маршрут: {esc(row['current_route_name'])}<br>
+            Текущий провайдер: {esc(current_provider)}<br>
+            Текущий маршрут: {esc(current_route)}<br>
             Предыдущий провайдер: {esc(previous_provider)}<br>
             Предыдущий маршрут: {esc(previous_route)}<br>
             Комментарий: {esc(row['comment'])}<br>
@@ -488,11 +492,19 @@ def server_priorities_page(repo: Repository, q: dict[str, str] | None = None) ->
             </form>
           </div>
         </details>"""
-        previous_card = "—" if not row['previous_provider_name'] else f"<span class='star'>☆</span> {esc(row['previous_provider_name'])}"
-        rows.append(f"<tr><td>{esc(row['country_name'])}</td><td>{esc(row['server_name'])}</td><td>{current_card}</td><td>{previous_card}</td></tr>")
+        server_blocks.setdefault(row["server_name"], []).append(
+            f"<tr><td>{esc(row['country_name'])}</td><td>{current_priority}</td><td>{previous_priority}</td><td class='actions'>{actions}</td></tr>"
+        )
+    blocks = []
+    for server_name, rows in server_blocks.items():
+        blocks.append(f"""
+<section class='server-priority-block'>
+  <h2>Сервер: {esc(server_name)}</h2>
+  <table><thead><tr><th>GEO</th><th>Текущий приоритет</th><th>Предыдущий приоритет</th><th>Действия</th></tr></thead><tbody>{''.join(rows)}</tbody></table>
+</section>""")
     body = f"""
 <h1>Администрирование → Приоритет по серверам</h1><fieldset><legend>Фильтры</legend><form method="get" action="/admin/server-priorities"><label>ГЕО <select name="country_id">{options(repo, 'countries', selected=q.get('country_id'), empty='Все')}</select></label><label>Сервер <select name="server_id">{options(repo, 'servers', selected=q.get('server_id'), empty='Все')}</select></label><button>Поиск</button></form></fieldset>
-<table><thead><tr><th>ГЕО</th><th>Сервер</th><th>Текущий приоритет</th><th>Предыдущий приоритет</th></tr></thead><tbody>{''.join(rows)}</tbody></table>"""
+{''.join(blocks)}"""
     return page("Приоритет по серверам", body)
 
 

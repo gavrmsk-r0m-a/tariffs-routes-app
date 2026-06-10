@@ -230,14 +230,14 @@ class ServerSmokeTest(unittest.TestCase):
 
 
 
-    def test_server_priorities_show_route_provider_details_and_edit_form(self):
+    def test_server_priorities_show_server_blocks_route_details_and_edit_form(self):
         self.request("/routes")
         captured, content = self.request("/admin/server-priorities")
         self.assertEqual(captured["status"], "200 OK")
-        self.assertIn("Текущий приоритет", content)
-        self.assertIn("<span class='star'>★</span> Miatel", content)
-        self.assertIn("Предыдущий приоритет", content)
-        self.assertIn("<span class='star'>☆</span> Sancom", content)
+        self.assertIn("Сервер: EU1", content)
+        self.assertIn("<th>GEO</th><th>Текущий приоритет</th><th>Предыдущий приоритет</th><th>Действия</th>", content)
+        self.assertIn("<td>Мексика</td><td>Miatel / Мексика/Miatel/Pool_A@</td><td>Sancom / Мексика/Sancom/RND/0827pfx@</td>", content)
+        self.assertIn("<summary>Редактировать</summary>", content)
         self.assertIn("Текущий провайдер: Miatel", content)
         self.assertIn("Текущий маршрут: Мексика/Miatel/Pool_A@", content)
         self.assertIn("Предыдущий провайдер: Sancom", content)
@@ -245,7 +245,7 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertIn("name='current_route_id'", content)
         self.assertIn("Сохранить текущий маршрут", content)
 
-    def test_server_priority_manual_route_update_changes_current_and_previous(self):
+    def test_server_priority_manual_route_update_changes_current_previous_and_logs_event(self):
         self.request("/routes")
         body = urlencode({"current_route_id": "1", "comment": "manual admin update"})
         captured, _ = self.request("/admin/server-priorities/1/update", method="POST", body=body)
@@ -256,14 +256,19 @@ class ServerSmokeTest(unittest.TestCase):
             self.assertEqual(row["current_route_id"], 1)
             self.assertEqual(row["previous_route_id"], 2)
             self.assertEqual(row["comment"], "manual admin update")
-            event = conn.execute("SELECT * FROM change_log WHERE entity_type = 'server_route_priority' AND entity_id = 1").fetchone()
+            event = conn.execute("""
+                SELECT * FROM change_log
+                WHERE entity_type = 'server_route_priority'
+                  AND entity_id = 1
+                  AND change_type = 'server_route_priority.current_route_updated'
+            """).fetchone()
             self.assertIsNotNone(event)
+            self.assertTrue(event["summary"])
         finally:
             conn.close()
         captured, content = self.request("/admin/server-priorities")
         self.assertEqual(captured["status"], "200 OK")
-        self.assertIn("<span class='star'>★</span> Sancom", content)
-        self.assertIn("<span class='star'>☆</span> Miatel", content)
+        self.assertIn("<td>Мексика</td><td>Sancom / Мексика/Sancom/RND/0827pfx@</td><td>Miatel / Мексика/Miatel/Pool_A@</td>", content)
 
 
 
