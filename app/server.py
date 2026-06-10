@@ -405,26 +405,100 @@ def companies_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
 <table><thead><tr><th>Сервер</th><th>ГЕО</th><th>Название кампании</th><th>ID кампании</th><th>Количество линий</th><th>Количество наборов</th><th>Авторотация</th><th>Интервал между попытками дозвона (сек.)</th><th>Активна</th><th>Комментарий</th><th>Действия</th></tr></thead><tbody>{''.join(rows)}</tbody></table>"""
     return page("Кампании прозвона", body)
 
+def routing_reason_options(selected: str | None = None) -> str:
+    return "".join(
+        f"<option value='{esc(reason)}' {'selected' if reason == selected else ''}>{esc(reason)}</option>"
+        for reason in Repository.ROUTING_EVENT_REASONS
+    )
+
+
+def routing_scope_options(selected: str | None = None, empty: str | None = "Все") -> str:
+    labels = {
+        "none": "Не меняли настройки в нашей системе",
+        "server_priority": "Серверный приоритет",
+        "campaign_setting": "Настройка кампании",
+    }
+    opts = f"<option value=''>{esc(empty)}</option>" if empty is not None else ""
+    return opts + "".join(f"<option value='{key}' {'selected' if key == selected else ''}>{label}</option>" for key, label in labels.items())
+
+
+def routing_event_form(repo: Repository, event=None) -> str:
+    event_at = (event["event_at"] if event else datetime.now().strftime("%Y-%m-%d %H:%M")).replace(" ", "T")[:16]
+    scope = event["apply_scope"] if event else "none"
+    route_opts = options(repo, "routes", selected=event["affected_route_id"] if event else None, empty="—")
+    new_route_opts = options(repo, "routes", selected=event["new_route_id"] if event else None, empty="—")
+    company_route_opts = options(repo, "routes", selected=event["new_company_route_id"] if event else None, empty="—")
+    company_opts = select_options(repo, "SELECT id, company_id_external || ' / ' || company_name AS label FROM calling_companies ORDER BY company_id_external", selected=event["calling_company_id"] if event else None, empty="—")
+    action = f"/provider-changes/{event['id']}/update" if event else "/provider-changes/create"
+    submit = "Сохранить изменения" if event else "Создать событие"
+    inactive_note = "<p class='muted'>Редактирование события не применяет повторно server_route_priorities. Для исправления текущего приоритета создайте новое событие.</p>" if event else ""
+    old_route_field = f"<label>Старый route (только описание при редактировании) <select name='old_route_id'>{options(repo, 'routes', selected=event['old_route_id'] if event else None, empty='—')}</select></label>" if event else ""
+    return f"""
+<details open><summary>{'Редактировать событие' if event else '+ Добавить событие'}</summary>
+<form method='post' action='{action}'>
+  <fieldset><legend>Область применения</legend>
+    <label class='card'><input type='radio' name='apply_scope' value='none' {'checked' if scope == 'none' else ''}> Не меняли настройки в нашей системе</label>
+    <label class='card'><input type='radio' name='apply_scope' value='server_priority' {'checked' if scope == 'server_priority' else ''}> Серверный приоритет</label>
+    <label class='card'><input type='radio' name='apply_scope' value='campaign_setting' {'checked' if scope == 'campaign_setting' else ''}> Настройка кампании</label>
+  </fieldset>
+  {inactive_note}
+  <label>Дата события <span class='required'>*</span><input type='datetime-local' name='event_at' value='{esc(event_at)}' required></label>
+  <label>GEO <select name='country_id'>{active_options(repo, 'countries', selected=event['country_id'] if event else None, empty='—')}</select></label>
+  <label>Сервер <select name='server_id'>{active_options(repo, 'servers', selected=event['server_id'] if event else None, empty='—')}</select></label>
+  <label>Провайдер <select name='provider_id'>{active_options(repo, 'providers', selected=event['provider_id'] if event else None, empty='—')}</select></label>
+  <label>Маршрут/префикс <select name='affected_route_id'>{route_opts}</select></label>
+  {old_route_field}
+  <label>Новый route <select name='new_route_id'>{new_route_opts}</select></label>
+  <label>Кампания <select name='calling_company_id'>{company_opts}</select></label>
+  <label>Тип изменения кампании <select name='company_change_type'>
+    <option value=''>—</option>
+    {''.join(f"<option value='{v}' {'selected' if event and event['company_change_type'] == v else ''}>{v}</option>" for v in ('enable_autorotation','disable_autorotation','set_campaign_route','remove_campaign_route','change_campaign_route','set_server_priority'))}
+  </select></label>
+  <label>Новый режим кампании <select name='new_company_routing_mode'>
+    <option value=''>Авто по типу изменения</option>
+    {''.join(f"<option value='{v}' {'selected' if event and event['new_company_routing_mode'] == v else ''}>{v}</option>" for v in ('server_priority','campaign_route','autorotation','mixed'))}
+  </select></label>
+  <label>Новый route кампании <select name='new_company_route_id'>{company_route_opts}</select></label>
+  <label>Новая авторотация <select name='new_company_has_autorotation'><option value=''>Авто</option><option value='1' {'selected' if event and event['new_company_has_autorotation'] == 1 else ''}>Да</option><option value='0' {'selected' if event and event['new_company_has_autorotation'] == 0 else ''}>Нет</option></select></label>
+  <label>Причина <span class='required'>*</span><select name='reason' required>{routing_reason_options(event['reason'] if event else None)}</select></label>
+  <label>Комментарий <span class='required'>*</span><textarea name='comment' rows='3' cols='60' required>{esc(event['comment'] if event else '')}</textarea></label>
+  <p class='muted'>Для «Серверный приоритет» старый route подтягивается автоматически из текущего server_route_priorities при создании. Для «Настройка кампании» MVP только логирует событие и не меняет company_routing_settings.</p>
+  <button>{submit}</button>
+</form></details>"""
+
+
 def provider_changes_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
     q = q or {}
     rows = []
-    for ch in repo.list_provider_changes({"date_from": q.get("date_from"), "date_to": q.get("date_to"), "country_id": q.get("country_id"), "provider_id": q.get("provider_id"), "route_like": q.get("route"), "reason_like": q.get("reason"), "user_id": q.get("user_id")}):
-        rows.append(f"<tr><td>{esc(ch['changed_at'])}</td><td>{esc(ch['country_name'])}</td><td>{esc(ch['provider_before_name'])}</td><td>{esc(ch['route_before_name'])}</td><td>{esc(ch['provider_after_name'])}</td><td>{esc(ch['route_after_name'])}</td><td>{esc(ch['price_delta_eur'])}</td><td>{esc(ch['reason_text'])}</td><td>{esc(ch['comment'])}</td><td>{esc(ch['created_by_username'])}</td><td>{esc(ch['server_names'])}</td><td><a class='button' href='/provider-changes/{ch['id']}/edit'>✏️ Редактировать</a></td></tr>")
-    route_opts = options(repo, 'routes', empty='—')
-    reasons = ''.join(f"<option value='{esc(r['name'])}'>{esc(r['name'])}</option>" for r in repo.list_active_change_reasons())
-    if not reasons:
-        reasons = "<option value='Плохие показатели'>Плохие показатели</option>"
+    for ev in repo.list_routing_events({"country_id": q.get("country_id"), "apply_scope": q.get("apply_scope"), "server_id": q.get("server_id"), "campaign_id": q.get("campaign_id"), "provider_id": q.get("provider_id"), "include_inactive": q.get("include_inactive") == "1"}):
+        route_text = ev["provider_name"] or ev["affected_route_name"] or ev["new_route_name"] or ev["old_route_name"] or "—"
+        campaign = "—"
+        if ev["company_id_external"] or ev["company_name"]:
+            campaign = f"{esc(ev['company_id_external'])} / {esc(ev['company_name'])}"
+        actions = f"<a class='button' href='/provider-changes/{ev['id']}/edit'>Редактировать</a>"
+        if ev["is_active"]:
+            actions += f"<details><summary>Деактивировать</summary><form method='post' action='/provider-changes/{ev['id']}/deactivate'><label>Причина <span class='required'>*</span><input name='deactivation_reason' required></label><button>Деактивировать</button></form></details>"
+        rows.append(f"<tr class='{'' if ev['is_active'] else 'inactive-row'}'><td>{esc(ev['event_at'])}</td><td>{esc(ev['apply_scope'])}</td><td>{esc(ev['country_name'])}</td><td>{esc(ev['server_name'])}</td><td>{campaign}</td><td>{esc(route_text)}</td><td>{esc(ev['reason'])}</td><td>{esc(ev['comment'])}</td><td>{'Да' if ev['is_active'] else 'Нет'}</td><td class='actions'>{actions}</td></tr>")
     body = f"""
-<h1>Смена провайдеров</h1>
-<details open><summary>1. Добавить смену</summary><form method="post" action="/provider-changes/create"><label>Дата/время <span class="required">*</span><input name="changed_at" value="{datetime.now().strftime('%Y-%m-%d %H:%M')}" readonly></label><label>Страна <span class="required">*</span><select name="country_id">{active_options(repo, 'countries')}</select></label><label>Провайдер до <span class="required">*</span><select name="provider_before_id">{active_options(repo, 'providers')}</select></label><label>Маршрут до <select name="route_before_id">{route_opts}</select></label><label>Провайдер после <span class="required">*</span><select name="provider_after_id">{active_options(repo, 'providers')}</select></label><label>Маршрут после <select name="route_after_id">{route_opts}</select></label><label>Серверы <span class="required">*</span>{server_checkboxes(repo)}<span class="muted">обязательно, если провайдер меняется</span></label><label>Причина замены <span class="required">*</span><select name="reason_text">{reasons}</select></label><label>Комментарий <input name="comment"></label><button>Сохранить и подготовить Telegram</button></form></details>
-<fieldset><legend>2. Фильтры журнала</legend><form method="get" action="/provider-changes"><label>Дата от <input type="date" name="date_from" value="{esc(q.get('date_from'))}"></label><label>Дата до <input type="date" name="date_to" value="{esc(q.get('date_to'))}"></label><label>Страна <select name="country_id">{options(repo, 'countries', selected=q.get('country_id'), empty='Все')}</select></label><label>Провайдер <select name="provider_id">{options(repo, 'providers', selected=q.get('provider_id'), empty='Все')}</select></label><label>Маршрут <input name="route" value="{esc(q.get('route'))}"></label><label>Причина <input name="reason" value="{esc(q.get('reason'))}"></label><label>Пользователь <select name="user_id">{options(repo, 'users', 'username', selected=q.get('user_id'), empty='Все')}</select></label><button>Поиск</button></form></fieldset>
-<h2>3. Журнал изменений</h2><table><thead><tr><th>Дата/время</th><th>Страна</th><th>Провайдер до</th><th>Маршрут до</th><th>Провайдер после</th><th>Маршрут после</th><th>Разница EUR</th><th>Причина замены</th><th>Комментарий</th><th>Пользователь</th><th>Сервер</th><th>Действия</th></tr></thead><tbody>{''.join(rows)}</tbody></table>"""
+<h1>Администрирование → Смена провайдеров</h1>
+{routing_event_form(repo)}
+<fieldset><legend>Фильтры MVP</legend><form method='get' action='/provider-changes'>
+<label>GEO <select name='country_id'>{options(repo, 'countries', selected=q.get('country_id'), empty='Все')}</select></label>
+<label>Область применения <select name='apply_scope'>{routing_scope_options(q.get('apply_scope'))}</select></label>
+<label>Сервер <select name='server_id'>{options(repo, 'servers', selected=q.get('server_id'), empty='Все')}</select></label>
+<label>Кампания ID <input name='campaign_id' value='{esc(q.get('campaign_id'))}'></label>
+<label>Провайдер <select name='provider_id'>{options(repo, 'providers', selected=q.get('provider_id'), empty='Все')}</select></label>
+<label><input type='checkbox' name='include_inactive' value='1' {'checked' if q.get('include_inactive') == '1' else ''}> Показывать архив/неактивные</label>
+<button>Поиск</button></form></fieldset>
+<h2>Журнал событий</h2>
+<table><thead><tr><th>Дата события</th><th>Область применения</th><th>GEO</th><th>Сервер</th><th>Кампания</th><th>Провайдер/маршрут</th><th>Причина</th><th>Комментарий</th><th>Активна</th><th>Действия</th></tr></thead><tbody>{''.join(rows)}</tbody></table>"""
     return page("Смена провайдеров", body)
 
 
 def admin_page(repo: Repository) -> bytes:
     body = """
 <h1>Администрирование</h1><div class="grid">
+<a class="card" href="/provider-changes">Смена провайдеров</a>
 <a class="card" href="/admin/server-priorities">Приоритет по серверам</a>
 <a class="card" href="/admin/company-routing-settings">Схема маршрутизации кампаний</a>
 <a class="card" href="/admin/naming-rules">Правила нейминга маршрутов</a>
@@ -852,27 +926,14 @@ def company_edit_page(repo: Repository, company_id: int) -> bytes:
 
 
 def provider_change_edit_page(repo: Repository, change_id: int) -> bytes:
-    ch = repo.conn.execute("SELECT * FROM provider_change_logs WHERE id = ?", (change_id,)).fetchone()
-    if ch is None:
-        return page("Запись не найдена", "<h1>Запись не найдена</h1>")
-    selected_servers = {str(r['server_id']) for r in repo.conn.execute("SELECT server_id FROM provider_change_log_servers WHERE provider_change_log_id = ?", (change_id,))}
-    server_opts = ''.join(f"<option value='{r['id']}' {'selected' if str(r['id']) in selected_servers else ''}>{esc(r['name'])}</option>" for r in repo.conn.execute("SELECT id, name FROM servers ORDER BY name"))
-    reasons = ''.join(f"<option value='{esc(r['name'])}' {'selected' if r['name']==ch['reason_text'] else ''}>{esc(r['name'])}</option>" for r in repo.list_active_change_reasons())
-    body = f"""<h1>Редактировать смену провайдера</h1><p><a href='/provider-changes'>← Назад</a></p>
-<form method='post' action='/provider-changes/{change_id}/update'>
-<label>Дата/время <span class='required'>*</span><input name='changed_at' value='{esc(ch['changed_at'])}'></label>
-<label>Страна <select name='country_id'>{options(repo, 'countries', selected=ch['country_id'])}</select></label>
-<label>Провайдер до <select name='provider_before_id'>{options(repo, 'providers', selected=ch['provider_before_id'])}</select></label>
-<label>Маршрут до <select name='route_before_id'>{options(repo, 'routes', selected=ch['route_before_id'], empty='—')}</select></label>
-<label>Провайдер после <select name='provider_after_id'>{options(repo, 'providers', selected=ch['provider_after_id'])}</select></label>
-<label>Маршрут после <select name='route_after_id'>{options(repo, 'routes', selected=ch['route_after_id'], empty='—')}</select></label>
-<label>Серверы {server_checkboxes(repo, selected_servers)}</label>
-<label>Причина <select name='reason_text'>{reasons}</select></label>
-<label>Комментарий <input name='comment' value='{esc(ch['comment'])}'></label>
-<label>Пользователь <select name='created_by'>{options(repo, 'users', 'username', selected=ch['created_by'])}</select></label>
-<p>Разница EUR: {esc(ch['price_delta_eur'])} — рассчитывается автоматически и не редактируется.</p>
-<button onclick="return confirm('Сохранить изменения?')">Сохранить</button></form>"""
-    return page("Редактировать смену", body)
+    event = repo.conn.execute("SELECT * FROM routing_events WHERE id = ?", (change_id,)).fetchone()
+    if event is None:
+        return page("Событие не найдено", "<h1>Событие не найдено</h1>")
+    body = f"""<h1>Редактировать событие смены провайдеров</h1><p><a href='/provider-changes'>← Назад</a></p>
+{routing_event_form(repo, event)}
+<p class='muted'>Создано: {esc(event['created_at'])}; обновлено: {esc(event['updated_at'])}</p>"""
+    return page("Редактировать событие", body)
+
 
 def parse_int(value: str | None) -> int | None:
     return int(value) if value not in (None, "") else None
@@ -973,35 +1034,30 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
         repo._change_log("calling_company", company_id, "calling_company.updated", ADMIN_ID, new_values={"company_name": data["company_name"]})
         repo.conn.commit(); return "/companies"
     if path == "/provider-changes/create":
-        server_ids = [int(v) for v in parse_qs(data.get("_raw", "")).get("server_ids", []) if v]
-        repo.create_provider_change(changed_at=data["changed_at"], country_id=int(data["country_id"]), provider_before_id=int(data["provider_before_id"]), provider_after_id=int(data["provider_after_id"]), route_before_id=parse_int(data.get("route_before_id")), route_after_id=parse_int(data.get("route_after_id")), reason_text=data.get("reason_text"), comment=data.get("comment"), server_ids=server_ids, created_by=ADMIN_ID)
+        repo.create_routing_event(
+            event_at=data.get("event_at"), apply_scope=data.get("apply_scope"), reason=data.get("reason"), comment=data.get("comment"),
+            country_id=parse_int(data.get("country_id")), server_id=parse_int(data.get("server_id")), provider_id=parse_int(data.get("provider_id")),
+            affected_route_id=parse_int(data.get("affected_route_id")), old_route_id=parse_int(data.get("old_route_id")), new_route_id=parse_int(data.get("new_route_id")),
+            calling_company_id=parse_int(data.get("calling_company_id")), company_change_type=data.get("company_change_type") or None,
+            new_company_routing_mode=data.get("new_company_routing_mode") or None, new_company_route_id=parse_int(data.get("new_company_route_id")),
+            new_company_has_autorotation=parse_int(data.get("new_company_has_autorotation")), created_by=ADMIN_ID,
+        )
         return "/provider-changes"
     if path.startswith("/provider-changes/") and path.endswith("/update"):
         change_id = int(path.strip("/").split("/")[1])
-        server_ids = [int(v) for v in parse_qs(data.get("_raw", "")).get("server_ids", []) if v]
-        provider_before_id = int(data["provider_before_id"]); provider_after_id = int(data["provider_after_id"])
-        if provider_before_id != provider_after_id and not server_ids:
-            raise BusinessRuleError("Сервер обязателен при смене провайдера")
-        route_before_id = parse_int(data.get("route_before_id")); route_after_id = parse_int(data.get("route_after_id"))
-        for route_id, provider_id, label in ((route_before_id, provider_before_id, "Маршрут до"), (route_after_id, provider_after_id, "Маршрут после")):
-            if route_id:
-                route = repo.conn.execute("SELECT provider_id FROM routes WHERE id = ?", (route_id,)).fetchone()
-                if route and int(route["provider_id"]) != provider_id:
-                    raise BusinessRuleError(f"{label} не принадлежит выбранному провайдеру")
-        before_prefix = repo._route_prefix_id(route_before_id); after_prefix = repo._route_prefix_id(route_after_id)
-        tariff_before = repo._current_tariff(int(data["country_id"]), provider_before_id, before_prefix)
-        tariff_after = repo._current_tariff(int(data["country_id"]), provider_after_id, after_prefix)
-        delta = None
-        if tariff_before and tariff_after:
-            from app.repository import eur_price
-            delta = eur_price(tariff_after["eur_price"], "1") - eur_price(tariff_before["eur_price"], "1")
-        repo.conn.execute("""UPDATE provider_change_logs SET changed_at = ?, country_id = ?, route_before_id = ?, provider_before_id = ?, provider_prefix_before_id = ?, tariff_before_id = ?, price_before_eur = ?, route_after_id = ?, provider_after_id = ?, provider_prefix_after_id = ?, tariff_after_id = ?, price_after_eur = ?, price_delta_eur = ?, provider_changed = ?, reason_text = ?, comment = ?, created_by = ?, updated_by = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?""",
-                          (data["changed_at"], int(data["country_id"]), route_before_id, provider_before_id, before_prefix, tariff_before["id"] if tariff_before else None, tariff_before["eur_price"] if tariff_before else None, route_after_id, provider_after_id, after_prefix, tariff_after["id"] if tariff_after else None, tariff_after["eur_price"] if tariff_after else None, str(delta) if delta is not None else None, 1 if provider_before_id != provider_after_id else 0, data.get("reason_text"), data.get("comment"), int(data.get("created_by") or ADMIN_ID), ADMIN_ID, change_id))
-        repo.conn.execute("DELETE FROM provider_change_log_servers WHERE provider_change_log_id = ?", (change_id,))
-        for server_id in server_ids:
-            repo.conn.execute("INSERT OR IGNORE INTO provider_change_log_servers(provider_change_log_id, server_id) VALUES (?, ?)", (change_id, server_id))
-        repo._change_log("provider_change_log", change_id, "provider_change_log.updated", ADMIN_ID, new_values={"server_ids": server_ids})
-        repo.conn.commit(); return "/provider-changes"
+        repo.update_routing_event(
+            change_id, event_at=data.get("event_at"), reason=data.get("reason"), comment=data.get("comment"),
+            country_id=parse_int(data.get("country_id")), server_id=parse_int(data.get("server_id")), provider_id=parse_int(data.get("provider_id")),
+            affected_route_id=parse_int(data.get("affected_route_id")), old_route_id=parse_int(data.get("old_route_id")), new_route_id=parse_int(data.get("new_route_id")),
+            calling_company_id=parse_int(data.get("calling_company_id")), company_change_type=data.get("company_change_type") or None,
+            new_company_routing_mode=data.get("new_company_routing_mode") or None, new_company_route_id=parse_int(data.get("new_company_route_id")),
+            new_company_has_autorotation=parse_int(data.get("new_company_has_autorotation")), updated_by=ADMIN_ID,
+        )
+        return "/provider-changes"
+    if path.startswith("/provider-changes/") and path.endswith("/deactivate"):
+        change_id = int(path.strip("/").split("/")[1])
+        repo.deactivate_routing_event(change_id, reason=data.get("deactivation_reason"), deactivated_by=ADMIN_ID)
+        return "/provider-changes"
     if path in {"/admin/currency-rates/create", "/admin/currency-rates/upsert"}:
         currency_id = int(data["currency_id"])
         today = datetime.now().strftime("%Y-%m-%d")

@@ -952,6 +952,355 @@ class Repository:
         )
         self.conn.commit()
 
+
+    ROUTING_EVENT_REASONS = (
+        "Задача руководства",
+        "Массовые отбои / занято",
+        "Плохой дозвон",
+        "Провайдер не отвечает",
+        "Авария у провайдера",
+        "Тест нового маршрута",
+        "Плановое переключение",
+        "Обновление пула / АОН",
+        "Проблема с префиксом",
+        "Другое",
+    )
+
+    def _require_text(self, value: str | None, message: str) -> str:
+        if not value or not value.strip():
+            raise BusinessRuleError(message)
+        return value.strip()
+
+    def _name_by_id(self, table: str, row_id: int | None, column: str = "name") -> str | None:
+        if not row_id:
+            return None
+        row = self.conn.execute(f"SELECT {column} FROM {table} WHERE id = ?", (row_id,)).fetchone()
+        return row[column] if row else None
+
+    def _route_label(self, route_id: int | None) -> str | None:
+        if not route_id:
+            return None
+        row = self.conn.execute(
+            """
+            SELECT r.name, p.name AS provider_name
+            FROM routes r JOIN providers p ON p.id = r.provider_id
+            WHERE r.id = ?
+            """,
+            (route_id,),
+        ).fetchone()
+        return f"{row['provider_name']} / {row['name']}" if row else str(route_id)
+
+    def _company_old_state(self, calling_company_id: int) -> dict:
+        setting = self.conn.execute(
+            """
+            SELECT routing_mode, route_id, has_autorotation
+            FROM company_routing_settings
+            WHERE calling_company_id = ? AND is_active = 1 AND valid_to IS NULL
+            ORDER BY id DESC LIMIT 1
+            """,
+            (calling_company_id,),
+        ).fetchone()
+        if setting:
+            return {
+                "routing_mode": setting["routing_mode"],
+                "route_id": setting["route_id"],
+                "has_autorotation": bool(setting["has_autorotation"]),
+            }
+        return {"routing_mode": "server_priority", "route_id": None, "has_autorotation": False}
+
+    def _routing_event_snapshot(self, values: dict) -> dict:
+        company = None
+        if values.get("calling_company_id"):
+            company = self.conn.execute(
+                "SELECT company_id_external, company_name FROM calling_companies WHERE id = ?",
+                (values.get("calling_company_id"),),
+            ).fetchone()
+        return {
+            "country_name": self._name_by_id("countries", values.get("country_id")),
+            "server_name": self._name_by_id("servers", values.get("server_id")),
+            "provider_name": self._name_by_id("providers", values.get("provider_id")),
+            "affected_route_name": self._route_label(values.get("affected_route_id")),
+            "old_route_name": self._route_label(values.get("old_route_id")),
+            "new_route_name": self._route_label(values.get("new_route_id")),
+            "calling_company_external_id": company["company_id_external"] if company else None,
+            "calling_company_name": company["company_name"] if company else None,
+            "old_company_routing_mode": values.get("old_company_routing_mode"),
+            "new_company_routing_mode": values.get("new_company_routing_mode"),
+            "comment": values.get("comment"),
+            "reason": values.get("reason"),
+            "apply_scope": values.get("apply_scope"),
+        }
+
+    def _routing_event_summary(self, values: dict) -> str:
+        parts = [
+            f"Дата события: {values.get('event_at')}",
+            f"Область: {values.get('apply_scope')}",
+            f"GEO: {self._name_by_id('countries', values.get('country_id')) or '—'}",
+        ]
+        if values.get("server_id"):
+            parts.append(f"Сервер: {self._name_by_id('servers', values.get('server_id'))}")
+        if values.get("calling_company_id"):
+            company = self.conn.execute("SELECT company_id_external, company_name FROM calling_companies WHERE id = ?", (values.get("calling_company_id"),)).fetchone()
+            if company:
+                parts.append(f"Кампания: {company['company_id_external']} / {company['company_name']}")
+        if values.get("old_route_id") or values.get("new_route_id"):
+            parts.append(f"Маршрут: {self._route_label(values.get('old_route_id')) or '—'} → {self._route_label(values.get('new_route_id')) or '—'}")
+        parts.append(f"Причина: {values.get('reason')}")
+        parts.append(f"Комментарий: {values.get('comment')}")
+        return "; ".join(parts)
+
+    def _server_priority_apply_summary(self, *, country_id: int, server_id: int, old_route_id: int | None, new_route_id: int, previous_after_update: int | None, comment: str) -> str:
+        return "; ".join([
+            f"GEO: {self._name_by_id('countries', country_id) or country_id}",
+            f"Сервер: {self._name_by_id('servers', server_id) or server_id}",
+            f"Старый current route: {self._route_label(old_route_id) or '—'}",
+            f"Новый current route: {self._route_label(new_route_id) or new_route_id}",
+            f"previous route after update: {self._route_label(previous_after_update) or '—'}",
+            f"Комментарий: {comment}",
+        ])
+
+    def create_routing_event(self, **kwargs) -> int:
+        apply_scope = kwargs.get("apply_scope")
+        if apply_scope not in {"none", "server_priority", "campaign_setting"}:
+            raise BusinessRuleError("Некорректная область применения")
+        values = {
+            "event_at": self._require_text(kwargs.get("event_at"), "Дата события обязательна").replace("T", " "),
+            "apply_scope": apply_scope,
+            "reason": self._require_text(kwargs.get("reason"), "Причина обязательна"),
+            "comment": self._require_text(kwargs.get("comment"), "Комментарий обязателен"),
+            "country_id": kwargs.get("country_id"),
+            "server_id": kwargs.get("server_id"),
+            "provider_id": kwargs.get("provider_id"),
+            "affected_route_id": kwargs.get("affected_route_id"),
+            "old_route_id": kwargs.get("old_route_id"),
+            "new_route_id": kwargs.get("new_route_id"),
+            "calling_company_id": kwargs.get("calling_company_id"),
+            "company_change_type": kwargs.get("company_change_type"),
+            "old_company_routing_mode": kwargs.get("old_company_routing_mode"),
+            "new_company_routing_mode": kwargs.get("new_company_routing_mode"),
+            "old_company_route_id": kwargs.get("old_company_route_id"),
+            "new_company_route_id": kwargs.get("new_company_route_id"),
+            "old_company_has_autorotation": kwargs.get("old_company_has_autorotation"),
+            "new_company_has_autorotation": kwargs.get("new_company_has_autorotation"),
+        }
+        created_by = kwargs.get("created_by")
+        if not created_by:
+            raise BusinessRuleError("Пользователь обязателен")
+
+        if apply_scope == "none":
+            if not values["provider_id"]:
+                raise BusinessRuleError("Провайдер обязателен")
+            values["old_route_id"] = None
+            values["new_route_id"] = None
+        elif apply_scope == "server_priority":
+            if not values["country_id"] or not values["server_id"] or not values["new_route_id"]:
+                raise BusinessRuleError("GEO, сервер и новый маршрут обязательны для серверного приоритета")
+            route = self.conn.execute("SELECT country_id, provider_id FROM routes WHERE id = ?", (values["new_route_id"],)).fetchone()
+            if not route:
+                raise BusinessRuleError("Новый маршрут не найден")
+            if int(route["country_id"]) != int(values["country_id"]):
+                raise BusinessRuleError("Новый маршрут должен относиться к выбранному GEO")
+            current = self.conn.execute(
+                "SELECT current_route_id FROM server_route_priorities WHERE country_id = ? AND server_id = ?",
+                (values["country_id"], values["server_id"]),
+            ).fetchone()
+            values["old_route_id"] = current["current_route_id"] if current else None
+            values["provider_id"] = route["provider_id"]
+        else:
+            if not values["calling_company_id"] or not values["company_change_type"]:
+                raise BusinessRuleError("Кампания и тип изменения обязательны")
+            company = self.conn.execute("SELECT country_id, server_id FROM calling_companies WHERE id = ?", (values["calling_company_id"],)).fetchone()
+            if not company:
+                raise BusinessRuleError("Кампания прозвона не найдена")
+            values["country_id"] = values["country_id"] or company["country_id"]
+            values["server_id"] = values["server_id"] or company["server_id"]
+            old_state = self._company_old_state(values["calling_company_id"])
+            values["old_company_routing_mode"] = old_state["routing_mode"]
+            values["old_company_route_id"] = old_state["route_id"]
+            values["old_company_has_autorotation"] = 1 if old_state["has_autorotation"] else 0
+            ctype = values["company_change_type"]
+            if ctype == "enable_autorotation":
+                values["new_company_routing_mode"] = "autorotation"
+                values["new_company_has_autorotation"] = 1
+            elif ctype == "disable_autorotation":
+                values["new_company_routing_mode"] = old_state["routing_mode"] if old_state["routing_mode"] != "autorotation" else "server_priority"
+                values["new_company_has_autorotation"] = 0
+            elif ctype in {"set_campaign_route", "change_campaign_route"}:
+                if not values["new_company_route_id"]:
+                    raise BusinessRuleError("Новый маршрут кампании обязателен")
+                route = self.conn.execute("SELECT country_id FROM routes WHERE id = ?", (values["new_company_route_id"],)).fetchone()
+                if not route or int(route["country_id"]) != int(values["country_id"]):
+                    raise BusinessRuleError("Маршрут кампании должен относиться к выбранному GEO")
+                values["new_company_routing_mode"] = "campaign_route"
+            elif ctype in {"remove_campaign_route", "set_server_priority"}:
+                values["new_company_routing_mode"] = "server_priority"
+                values["new_company_route_id"] = None
+            else:
+                raise BusinessRuleError("Некорректный тип изменения кампании")
+            if values["new_company_has_autorotation"] is None:
+                values["new_company_has_autorotation"] = values["old_company_has_autorotation"]
+
+        values["snapshot_json"] = json.dumps(self._routing_event_snapshot(values), ensure_ascii=False)
+        cur = self.conn.execute(
+            """
+            INSERT INTO routing_events(
+                event_at, apply_scope, reason, country_id, server_id, provider_id, affected_route_id,
+                old_route_id, new_route_id, calling_company_id, company_change_type,
+                old_company_routing_mode, new_company_routing_mode, old_company_route_id, new_company_route_id,
+                old_company_has_autorotation, new_company_has_autorotation, comment, snapshot_json,
+                created_by, updated_by
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                values["event_at"], values["apply_scope"], values["reason"], values["country_id"], values["server_id"],
+                values["provider_id"], values["affected_route_id"], values["old_route_id"], values["new_route_id"],
+                values["calling_company_id"], values["company_change_type"], values["old_company_routing_mode"],
+                values["new_company_routing_mode"], values["old_company_route_id"], values["new_company_route_id"],
+                values["old_company_has_autorotation"], values["new_company_has_autorotation"], values["comment"],
+                values["snapshot_json"], created_by, created_by,
+            ),
+        )
+        event_id = int(cur.lastrowid)
+        self._change_log("routing_event", event_id, "routing_event.created", created_by, new_values=values, summary=self._routing_event_summary(values))
+
+        if apply_scope == "server_priority":
+            existing = self.conn.execute(
+                "SELECT id, current_route_id FROM server_route_priorities WHERE country_id = ? AND server_id = ?",
+                (values["country_id"], values["server_id"]),
+            ).fetchone()
+            if existing:
+                previous_after = existing["current_route_id"]
+                priority_id = existing["id"]
+                self.conn.execute(
+                    """
+                    UPDATE server_route_priorities
+                    SET previous_route_id = current_route_id, current_route_id = ?, changed_at = ?,
+                        changed_by = ?, reason = ?, comment = ?, updated_by = ?, updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                    """,
+                    (values["new_route_id"], values["event_at"], created_by, values["reason"], values["comment"], created_by, priority_id),
+                )
+            else:
+                previous_after = None
+                cur2 = self.conn.execute(
+                    """
+                    INSERT INTO server_route_priorities(
+                        country_id, server_id, current_route_id, previous_route_id, changed_at,
+                        changed_by, reason, comment, created_by, updated_by
+                    ) VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (values["country_id"], values["server_id"], values["new_route_id"], values["event_at"], created_by, values["reason"], values["comment"], created_by, created_by),
+                )
+                priority_id = int(cur2.lastrowid)
+            self._change_log(
+                "server_route_priority",
+                priority_id,
+                "routing_event.applied_to_server_priority",
+                created_by,
+                old_values={"current_route_id": values["old_route_id"]},
+                new_values={"current_route_id": values["new_route_id"], "previous_route_id": previous_after, "routing_event_id": event_id},
+                summary=self._server_priority_apply_summary(country_id=values["country_id"], server_id=values["server_id"], old_route_id=values["old_route_id"], new_route_id=values["new_route_id"], previous_after_update=previous_after, comment=values["comment"]),
+            )
+        self.conn.commit()
+        return event_id
+
+    def list_routing_events(self, filters: dict | None = None) -> list[sqlite3.Row]:
+        filters = filters or {}
+        clauses = []
+        params: list = []
+        if not filters.get("include_inactive"):
+            clauses.append("re.is_active = 1")
+        for key, column in {
+            "country_id": "re.country_id",
+            "apply_scope": "re.apply_scope",
+            "server_id": "re.server_id",
+            "calling_company_id": "re.calling_company_id",
+            "provider_id": "re.provider_id",
+        }.items():
+            if filters.get(key):
+                clauses.append(f"{column} = ?")
+                params.append(filters[key])
+        if filters.get("campaign_id"):
+            clauses.append("cc.company_id_external LIKE ?")
+            params.append(f"%{filters['campaign_id']}%")
+        where = " WHERE " + " AND ".join(clauses) if clauses else ""
+        return list(self.conn.execute(f"""
+            SELECT re.*, c.name AS country_name, s.name AS server_name, p.name AS provider_name,
+                   ar.name AS affected_route_name, nr.name AS new_route_name, oldr.name AS old_route_name,
+                   cc.company_id_external, cc.company_name
+            FROM routing_events re
+            LEFT JOIN countries c ON c.id = re.country_id
+            LEFT JOIN servers s ON s.id = re.server_id
+            LEFT JOIN providers p ON p.id = re.provider_id
+            LEFT JOIN routes ar ON ar.id = re.affected_route_id
+            LEFT JOIN routes nr ON nr.id = re.new_route_id
+            LEFT JOIN routes oldr ON oldr.id = re.old_route_id
+            LEFT JOIN calling_companies cc ON cc.id = re.calling_company_id
+            {where}
+            ORDER BY re.event_at DESC, re.id DESC
+        """, params))
+
+    def update_routing_event(self, event_id: int, *, updated_by: int, **kwargs) -> None:
+        existing = self.conn.execute("SELECT * FROM routing_events WHERE id = ?", (event_id,)).fetchone()
+        if not existing:
+            raise BusinessRuleError("Событие маршрутизации не найдено")
+        reason = self._require_text(kwargs.get("reason"), "Причина обязательна")
+        comment = self._require_text(kwargs.get("comment"), "Комментарий обязателен")
+        new_values = {
+            "event_at": self._require_text(kwargs.get("event_at"), "Дата события обязательна").replace("T", " "),
+            "reason": reason,
+            "comment": comment,
+            "country_id": kwargs.get("country_id"),
+            "server_id": kwargs.get("server_id"),
+            "provider_id": kwargs.get("provider_id"),
+            "affected_route_id": kwargs.get("affected_route_id"),
+            "old_route_id": kwargs.get("old_route_id"),
+            "new_route_id": kwargs.get("new_route_id"),
+            "calling_company_id": kwargs.get("calling_company_id"),
+            "company_change_type": kwargs.get("company_change_type"),
+            "new_company_routing_mode": kwargs.get("new_company_routing_mode"),
+            "new_company_route_id": kwargs.get("new_company_route_id"),
+            "new_company_has_autorotation": kwargs.get("new_company_has_autorotation"),
+        }
+        self.conn.execute(
+            """
+            UPDATE routing_events
+            SET event_at = ?, reason = ?, comment = ?, country_id = ?, server_id = ?, provider_id = ?,
+                affected_route_id = ?, old_route_id = ?, new_route_id = ?, calling_company_id = ?,
+                company_change_type = ?, new_company_routing_mode = ?, new_company_route_id = ?,
+                new_company_has_autorotation = ?, updated_by = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            """,
+            (
+                new_values["event_at"], new_values["reason"], new_values["comment"], new_values["country_id"],
+                new_values["server_id"], new_values["provider_id"], new_values["affected_route_id"], new_values["old_route_id"],
+                new_values["new_route_id"], new_values["calling_company_id"], new_values["company_change_type"],
+                new_values["new_company_routing_mode"], new_values["new_company_route_id"], new_values["new_company_has_autorotation"],
+                updated_by, event_id,
+            ),
+        )
+        self._change_log("routing_event", event_id, "routing_event.updated", updated_by, old_values=dict(existing), new_values=new_values, summary=self._routing_event_summary({**dict(existing), **new_values}))
+        self.conn.commit()
+
+    def deactivate_routing_event(self, event_id: int, *, reason: str, deactivated_by: int) -> None:
+        existing = self.conn.execute("SELECT * FROM routing_events WHERE id = ?", (event_id,)).fetchone()
+        if not existing:
+            raise BusinessRuleError("Событие маршрутизации не найдено")
+        if not existing["is_active"]:
+            raise BusinessRuleError("Событие уже деактивировано")
+        reason = self._require_text(reason, "Причина деактивации обязательна")
+        self.conn.execute(
+            """
+            UPDATE routing_events
+            SET is_active = 0, deactivation_reason = ?, deactivated_at = CURRENT_TIMESTAMP,
+                deactivated_by = ?, updated_by = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            """,
+            (reason, deactivated_by, deactivated_by, event_id),
+        )
+        self._change_log("routing_event", event_id, "routing_event.deactivated", deactivated_by, old_values=dict(existing), new_values={"deactivation_reason": reason}, summary=f"Событие #{event_id} деактивировано. Причина: {reason}")
+        self.conn.commit()
+
     def list_provider_changes(self, filters: dict | None = None) -> list[sqlite3.Row]:
         filters = filters or {}
         clauses = []

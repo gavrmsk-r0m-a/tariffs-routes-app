@@ -56,22 +56,14 @@ class ServerSmokeTest(unittest.TestCase):
                 self.assertEqual(captured["status"], "200 OK")
                 self.assertIn(marker, content)
 
-    def test_provider_change_requires_server_when_provider_changes(self):
-        self.request("/routes")  # seed database
-        body = urlencode(
-            {
-                "changed_at": "2026-06-07 15:30",
-                "country_id": "1",
-                "provider_before_id": "1",
-                "provider_after_id": "2",
-                "route_after_id": "2",
-                "reason_text": "Дешевле",
-                "comment": "test",
-            }
-        )
-        captured, content = self.request("/provider-changes/create", method="POST", body=body)
-        self.assertEqual(captured["status"], "400 Bad Request")
-        self.assertIn("Сервер обязателен", content)
+    def test_provider_change_page_has_three_apply_scopes(self):
+        self.request("/routes")
+        captured, content = self.request("/provider-changes")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("Не меняли настройки в нашей системе", content)
+        self.assertIn("Серверный приоритет", content)
+        self.assertIn("Настройка кампании", content)
+
 
 
     def test_routes_filter_applies_country(self):
@@ -170,12 +162,16 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertIn("Fixed Line", content)
         self.assertNotIn("name='phone_type' value", content)
 
-    def test_provider_change_uses_server_checkboxes(self):
+    def test_provider_change_can_create_none_scope_event(self):
         self.request("/routes")
+        body = urlencode({"apply_scope": "none", "event_at": "2026-06-10T10:00", "provider_id": "1", "reason": "Другое", "comment": "Провайдер сообщил о работах"})
+        captured, _ = self.request("/provider-changes/create", method="POST", body=body)
+        self.assertEqual(captured["status"], "303 See Other")
         captured, content = self.request("/provider-changes")
         self.assertEqual(captured["status"], "200 OK")
-        self.assertIn("type='checkbox' name='server_ids'", content)
-        self.assertNotIn('name="server_ids" multiple', content)
+        self.assertIn("Провайдер сообщил о работах", content)
+
+
 
     def test_route_edit_allows_name_and_prefix_fields(self):
         self.request("/routes")
@@ -382,6 +378,64 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertIn("new routing state", content)
         self.assertIn("old routing state", content)
 
+
+
+class RoutingEventsServerSmokeTest(unittest.TestCase):
+    setUp = ServerSmokeTest.setUp
+    tearDown = ServerSmokeTest.tearDown
+    request = ServerSmokeTest.request
+
+    def test_server_priority_event_updates_dashboard_and_change_log(self):
+        self.request("/routes")
+        body = urlencode({
+            "apply_scope": "server_priority",
+            "event_at": "2026-06-10T11:00",
+            "country_id": "1",
+            "server_id": "1",
+            "new_route_id": "1",
+            "reason": "Плановое переключение",
+            "comment": "Переключили EU1 на Sancom",
+        })
+        captured, _ = self.request("/provider-changes/create", method="POST", body=body)
+        self.assertEqual(captured["status"], "303 See Other")
+        captured, content = self.request("/admin/server-priorities")
+        self.assertEqual(captured["status"], "200 OK")
+        eu1_block = content.split("Сервер: EU1", 1)[1].split("</section>", 1)[0]
+        self.assertIn("Sancom / Мексика/Sancom/RND/0827pfx@", eu1_block)
+        captured, content = self.request("/admin/change-log")
+        self.assertIn("routing_event.created", content)
+        self.assertIn("routing_event.applied_to_server_priority", content)
+
+    def test_campaign_setting_event_for_company_without_settings(self):
+        self.request("/routes")
+        body = urlencode({"server_id": "1", "country_id": "1", "company_name": "CC Mexico 1002", "company_id_external": "1002", "line_count": "1", "dial_set_count": "1", "retry_interval_seconds": "30", "has_autorotation": "0", "is_active": "1", "comment": ""})
+        self.request("/companies/create", method="POST", body=body)
+        body = urlencode({"apply_scope": "campaign_setting", "event_at": "2026-06-10T12:00", "calling_company_id": "2", "company_change_type": "enable_autorotation", "reason": "Тест нового маршрута", "comment": "Логируем включение авторотации"})
+        captured, _ = self.request("/provider-changes/create", method="POST", body=body)
+        self.assertEqual(captured["status"], "303 See Other")
+        conn = server.connect(server.DB_PATH)
+        try:
+            event = conn.execute("SELECT * FROM routing_events WHERE calling_company_id = 2").fetchone()
+            self.assertEqual(event["old_company_routing_mode"], "server_priority")
+            self.assertEqual(event["old_company_has_autorotation"], 0)
+            self.assertEqual(conn.execute("SELECT COUNT(*) FROM company_routing_settings WHERE calling_company_id = 2").fetchone()[0], 0)
+        finally:
+            conn.close()
+
+    def test_event_list_sorted_by_event_at_desc_and_inactive_filter(self):
+        self.request("/routes")
+        first = urlencode({"apply_scope": "none", "event_at": "2026-06-09T10:00", "provider_id": "1", "reason": "Другое", "comment": "старое событие"})
+        second = urlencode({"apply_scope": "none", "event_at": "2026-06-10T10:00", "provider_id": "1", "reason": "Другое", "comment": "новое событие"})
+        self.request("/provider-changes/create", method="POST", body=first)
+        self.request("/provider-changes/create", method="POST", body=second)
+        captured, content = self.request("/provider-changes")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertLess(content.index("новое событие"), content.index("старое событие"))
+        self.request("/provider-changes/1/deactivate", method="POST", body=urlencode({"deactivation_reason": "архив"}))
+        _, content = self.request("/provider-changes")
+        self.assertNotIn("старое событие", content)
+        _, content = self.request("/provider-changes?include_inactive=1")
+        self.assertIn("старое событие", content)
 
 
 if __name__ == "__main__":

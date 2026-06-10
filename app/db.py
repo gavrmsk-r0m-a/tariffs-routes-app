@@ -140,6 +140,41 @@ def run_lightweight_migrations(conn: sqlite3.Connection) -> None:
     conn.execute("CREATE INDEX IF NOT EXISTS idx_company_routing_settings_server_id ON company_routing_settings(server_id)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_company_routing_settings_route_id ON company_routing_settings(route_id)")
     conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_company_routing_settings_one_active ON company_routing_settings(calling_company_id) WHERE is_active = 1 AND valid_to IS NULL")
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS routing_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_at TEXT NOT NULL,
+            apply_scope TEXT NOT NULL CHECK (apply_scope IN ('none', 'server_priority', 'campaign_setting')),
+            reason TEXT NOT NULL,
+            country_id INTEGER REFERENCES countries(id) ON DELETE RESTRICT,
+            server_id INTEGER REFERENCES servers(id) ON DELETE RESTRICT,
+            provider_id INTEGER REFERENCES providers(id) ON DELETE RESTRICT,
+            affected_route_id INTEGER REFERENCES routes(id) ON DELETE RESTRICT,
+            old_route_id INTEGER REFERENCES routes(id) ON DELETE RESTRICT,
+            new_route_id INTEGER REFERENCES routes(id) ON DELETE RESTRICT,
+            calling_company_id INTEGER REFERENCES calling_companies(id) ON DELETE RESTRICT,
+            company_change_type TEXT CHECK (company_change_type IN ('enable_autorotation', 'disable_autorotation', 'set_campaign_route', 'remove_campaign_route', 'change_campaign_route', 'set_server_priority') OR company_change_type IS NULL),
+            old_company_routing_mode TEXT,
+            new_company_routing_mode TEXT,
+            old_company_route_id INTEGER REFERENCES routes(id) ON DELETE RESTRICT,
+            new_company_route_id INTEGER REFERENCES routes(id) ON DELETE RESTRICT,
+            old_company_has_autorotation INTEGER CHECK (old_company_has_autorotation IN (0, 1) OR old_company_has_autorotation IS NULL),
+            new_company_has_autorotation INTEGER CHECK (new_company_has_autorotation IN (0, 1) OR new_company_has_autorotation IS NULL),
+            comment TEXT NOT NULL,
+            snapshot_json TEXT,
+            is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
+            deactivation_reason TEXT,
+            deactivated_at TEXT,
+            deactivated_by INTEGER REFERENCES users(id) ON DELETE RESTRICT,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            created_by INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_by INTEGER REFERENCES users(id) ON DELETE RESTRICT
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_routing_events_event_at ON routing_events(event_at DESC, id DESC)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_routing_events_scope ON routing_events(apply_scope)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_routing_events_active ON routing_events(is_active)")
     for code, name in (
         ("outgoing_cli", "АОН"),
         ("inbound_line", "Входящая линия"),
