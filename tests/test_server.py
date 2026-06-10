@@ -230,20 +230,53 @@ class ServerSmokeTest(unittest.TestCase):
 
 
 
-    def test_server_priorities_show_server_blocks_route_details_and_edit_form(self):
+    def test_server_priorities_show_all_active_server_blocks_empty_rows_and_route_details(self):
         self.request("/routes")
         captured, content = self.request("/admin/server-priorities")
         self.assertEqual(captured["status"], "200 OK")
-        self.assertIn("Сервер: EU1", content)
+        for server_name in ("ASIA1", "DE1", "EU1", "EU2", "EU3", "LATAM1", "LATAM2", "NL1", "US1", "US2"):
+            self.assertIn(f"Сервер: {server_name}", content)
+        self.assertLess(content.index("Сервер: ASIA1"), content.index("Сервер: DE1"))
+        self.assertLess(content.index("Сервер: DE1"), content.index("Сервер: EU1"))
         self.assertIn("<th>GEO</th><th>Текущий приоритет</th><th>Предыдущий приоритет</th><th>Действия</th>", content)
-        self.assertIn("<td>Мексика</td><td>Miatel / Мексика/Miatel/Pool_A@</td><td>Sancom / Мексика/Sancom/RND/0827pfx@</td>", content)
-        self.assertIn("<summary>Редактировать</summary>", content)
-        self.assertIn("Текущий провайдер: Miatel", content)
-        self.assertIn("Текущий маршрут: Мексика/Miatel/Pool_A@", content)
-        self.assertIn("Предыдущий провайдер: Sancom", content)
-        self.assertIn("Предыдущий маршрут: Мексика/Sancom/RND/0827pfx@", content)
-        self.assertIn("name='current_route_id'", content)
-        self.assertIn("Сохранить текущий маршрут", content)
+        self.assertIn("Нет настроенных приоритетов", content)
+        asia_block = content.split("Сервер: ASIA1", 1)[1].split("</section>", 1)[0]
+        self.assertIn("Нет настроенных приоритетов", asia_block)
+        eu1_block = content.split("Сервер: EU1", 1)[1].split("</section>", 1)[0]
+        self.assertIn("<td>Мексика</td><td>Miatel / Мексика/Miatel/Pool_A@</td><td>Sancom / Мексика/Sancom/RND/0827pfx@</td>", eu1_block)
+        self.assertIn("<summary>Редактировать</summary>", eu1_block)
+        self.assertIn("Текущий провайдер: Miatel", eu1_block)
+        self.assertIn("Текущий маршрут: Мексика/Miatel/Pool_A@", eu1_block)
+        self.assertIn("Предыдущий провайдер: Sancom", eu1_block)
+        self.assertIn("Предыдущий маршрут: Мексика/Sancom/RND/0827pfx@", eu1_block)
+        self.assertIn("name='current_route_id'", eu1_block)
+        self.assertIn("Сохранить текущий маршрут", eu1_block)
+
+    def test_server_priorities_server_filter_keeps_empty_selected_server_block(self):
+        self.request("/routes")
+        conn = server.connect(server.DB_PATH)
+        try:
+            asia_id = conn.execute("SELECT id FROM servers WHERE name = 'ASIA1'").fetchone()["id"]
+        finally:
+            conn.close()
+        captured, content = self.request(f"/admin/server-priorities?server_id={asia_id}")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("Сервер: ASIA1", content)
+        self.assertNotIn("Сервер: EU1", content)
+        asia_block = content.split("Сервер: ASIA1", 1)[1].split("</section>", 1)[0]
+        self.assertIn("Нет настроенных приоритетов", asia_block)
+        self.assertNotIn("<summary>Редактировать</summary>", asia_block)
+
+    def test_server_priorities_geo_filter_keeps_server_blocks_and_filters_rows(self):
+        self.request("/routes")
+        captured, content = self.request("/admin/server-priorities?country_id=1")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("Сервер: ASIA1", content)
+        self.assertIn("Сервер: EU1", content)
+        asia_block = content.split("Сервер: ASIA1", 1)[1].split("</section>", 1)[0]
+        eu1_block = content.split("Сервер: EU1", 1)[1].split("</section>", 1)[0]
+        self.assertIn("Нет настроенных приоритетов", asia_block)
+        self.assertIn("<td>Мексика</td><td>Miatel / Мексика/Miatel/Pool_A@</td>", eu1_block)
 
     def test_server_priority_manual_route_update_changes_current_previous_and_logs_event(self):
         self.request("/routes")

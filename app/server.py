@@ -170,7 +170,7 @@ def server_checkboxes(repo: Repository, selected: set[str] | None = None) -> str
 
 def ensure_seed(repo: Repository) -> None:
     def ensure_reference_defaults() -> None:
-        for server_name in ("EU1", "EU2", "US1", "US2", "ASIA1", "LATAM1", "LATAM2", "DE1", "NL1"):
+        for server_name in ("EU1", "EU2", "EU3", "US1", "US2", "ASIA1", "LATAM1", "LATAM2", "DE1", "NL1"):
             repo.conn.execute("INSERT OR IGNORE INTO servers(name, is_active) VALUES (?, 1)", (server_name,))
         for type_name in ("Mobile", "Fixed Line", "Toll-Free", "VoIP", "Unknown"):
             repo.conn.execute("INSERT OR IGNORE INTO phone_number_types(name, is_active) VALUES (?, 1)", (type_name,))
@@ -440,13 +440,24 @@ def admin_page(repo: Repository) -> bytes:
 
 def server_priorities_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
     q = q or {}
-    clauses, params = [], []
-    if q.get("country_id"):
-        clauses.append("srp.country_id = ?"); params.append(q["country_id"])
+    server_params: list[object] = []
+    server_where = "WHERE is_active = 1"
     if q.get("server_id"):
-        clauses.append("srp.server_id = ?"); params.append(q["server_id"])
-    where = " WHERE " + " AND ".join(clauses) if clauses else ""
-    server_blocks: dict[str, list[str]] = {}
+        server_where += " AND id = ?"
+        server_params.append(q["server_id"])
+    servers = list(repo.conn.execute(f"SELECT id, name FROM servers {server_where} ORDER BY name", server_params))
+    server_names = {row["id"]: row["name"] for row in servers}
+    server_rows: dict[int, list[str]] = {row["id"]: [] for row in servers}
+
+    priority_clauses = ["s.is_active = 1"]
+    priority_params: list[object] = []
+    if q.get("country_id"):
+        priority_clauses.append("srp.country_id = ?")
+        priority_params.append(q["country_id"])
+    if q.get("server_id"):
+        priority_clauses.append("srp.server_id = ?")
+        priority_params.append(q["server_id"])
+    priority_where = " WHERE " + " AND ".join(priority_clauses)
     for row in repo.conn.execute(f"""
         SELECT srp.*, c.name AS country_name, s.name AS server_name,
                cp.name AS current_provider_name, pp.name AS previous_provider_name,
@@ -457,9 +468,9 @@ def server_priorities_page(repo: Repository, q: dict[str, str] | None = None) ->
         LEFT JOIN routes cr ON cr.id = srp.current_route_id LEFT JOIN providers cp ON cp.id = cr.provider_id
         LEFT JOIN routes pr ON pr.id = srp.previous_route_id LEFT JOIN providers pp ON pp.id = pr.provider_id
         LEFT JOIN users u ON u.id = srp.changed_by
-        {where}
+        {priority_where}
         ORDER BY s.name, c.name
-    """, params):
+    """, priority_params):
         route_opts = select_options(repo, """
             SELECT r.id, r.name || ' — ' || p.name AS label
             FROM routes r
@@ -492,18 +503,20 @@ def server_priorities_page(repo: Repository, q: dict[str, str] | None = None) ->
             </form>
           </div>
         </details>"""
-        server_blocks.setdefault(row["server_name"], []).append(
-            f"<tr><td>{esc(row['country_name'])}</td><td>{current_priority}</td><td>{previous_priority}</td><td class='actions'>{actions}</td></tr>"
-        )
+        if row["server_id"] in server_rows:
+            server_rows[row["server_id"]].append(
+                f"<tr><td>{esc(row['country_name'])}</td><td>{current_priority}</td><td>{previous_priority}</td><td class='actions'>{actions}</td></tr>"
+            )
     blocks = []
-    for server_name, rows in server_blocks.items():
+    for server_id in server_names:
+        rows = server_rows[server_id] or ["<tr><td colspan='4' class='muted'>Нет настроенных приоритетов</td></tr>"]
         blocks.append(f"""
 <section class='server-priority-block'>
-  <h2>Сервер: {esc(server_name)}</h2>
+  <h2>Сервер: {esc(server_names[server_id])}</h2>
   <table><thead><tr><th>GEO</th><th>Текущий приоритет</th><th>Предыдущий приоритет</th><th>Действия</th></tr></thead><tbody>{''.join(rows)}</tbody></table>
 </section>""")
     body = f"""
-<h1>Администрирование → Приоритет по серверам</h1><fieldset><legend>Фильтры</legend><form method="get" action="/admin/server-priorities"><label>ГЕО <select name="country_id">{options(repo, 'countries', selected=q.get('country_id'), empty='Все')}</select></label><label>Сервер <select name="server_id">{options(repo, 'servers', selected=q.get('server_id'), empty='Все')}</select></label><button>Поиск</button></form></fieldset>
+<h1>Администрирование → Приоритет по серверам</h1><fieldset><legend>Фильтры</legend><form method="get" action="/admin/server-priorities"><label>ГЕО <select name="country_id">{options(repo, 'countries', selected=q.get('country_id'), empty='Все')}</select></label><label>Сервер <select name="server_id">{active_options(repo, 'servers', selected=q.get('server_id'), empty='Все')}</select></label><button>Поиск</button></form></fieldset>
 {''.join(blocks)}"""
     return page("Приоритет по серверам", body)
 
