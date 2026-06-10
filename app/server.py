@@ -863,10 +863,9 @@ def routing_event_form(repo: Repository, event=None) -> str:
   <label class='scope-field conditional-field' data-scopes='campaign_setting' data-campaign-route-field='1'>Новый провайдер кампании <span class='required'>*</span><select name='campaign_provider_id' id='campaign-provider'>{active_options(repo, 'providers', selected=provider_selected, empty='—')}</select></label>
   <label class='scope-field conditional-field' data-scopes='campaign_setting' data-campaign-route-field='1'>Новый маршрут кампании <span class='required'>*</span><select name='new_company_route_id' id='company-route'>{company_route_opts}</select></label>
   <span class='scope-field route-empty-message muted' data-scopes='campaign_setting' id='company-route-empty' hidden>Нет маршрутов для выбранного провайдера и GEO кампании</span>
-  <label class='scope-field conditional-field' data-scopes='campaign_setting' data-campaign-auto-field='1'>Авторотация <select name='new_company_has_autorotation' id='company-autorotation'><option value=''>Авто</option><option value='1' {'selected' if event and event['new_company_has_autorotation'] == 1 else ''}>Включить</option><option value='0' {'selected' if event and event['new_company_has_autorotation'] == 0 else ''}>Выключить</option></select></label>
   <label>Причина <span class='required'>*</span><select name='reason' required>{routing_reason_options(event['reason'] if event else None)}</select></label>
   <label>Комментарий <span class='required'>*</span><textarea name='comment' rows='3' cols='60' required>{esc(event['comment'] if event else '')}</textarea></label>
-  <p class='scope-field muted' data-scopes='campaign_setting'>В MVP это только логирует событие и не меняет автоматически ‘Схему маршрутизации кампаний’.</p>
+  <p class='scope-field muted' data-scopes='campaign_setting'>Событие будет сохранено в журнале и применено к ‘Схеме маршрутизации кампаний’.</p>
   <p class='scope-field muted' data-scopes='server_priority'>Старый маршрут подтягивается автоматически из текущего server_route_priorities при создании.</p>
   <button>{submit}</button>
 </form>
@@ -878,7 +877,6 @@ def routing_event_form(repo: Repository, event=None) -> str:
   const priorities = {current_priorities_json(repo)};
   const campaignCountries = {campaign_metadata_json(repo)};
   const routeNeeds = new Set(['set_campaign_route', 'change_campaign_route']);
-  const autoNeeds = new Set(['enable_autorotation', 'disable_autorotation']);
   function selectedScope() {{ return (form.querySelector('input[name="apply_scope"]:checked') || {{value: 'none'}}).value; }}
   function setRequired(el, required) {{ if (el) el.required = !!required; }}
   function rebuildRouteSelect(select, countryId, providerId, emptyEl) {{
@@ -922,11 +920,7 @@ def routing_event_form(repo: Repository, event=None) -> str:
     rebuildRouteSelect(document.getElementById('company-route'), companyCountry, campaignProvider && campaignProvider.value, document.getElementById('company-route-empty'));
     const ctype = document.getElementById('company-change-type');
     const needsRoute = scope === 'campaign_setting' && routeNeeds.has(ctype && ctype.value);
-    const needsAuto = scope === 'campaign_setting' && autoNeeds.has(ctype && ctype.value);
     form.querySelectorAll('[data-campaign-route-field]').forEach((el) => {{ el.hidden = !needsRoute; el.querySelectorAll('select').forEach((f) => f.required = needsRoute); }});
-    form.querySelectorAll('[data-campaign-auto-field]').forEach((el) => {{ el.hidden = !needsAuto; }});
-    const auto = document.getElementById('company-autorotation');
-    if (autoNeeds.has(ctype && ctype.value) && auto) auto.value = ctype.value === 'enable_autorotation' ? '1' : '0';
     setRequired(country, scope === 'server_priority');
     setRequired(server, scope === 'server_priority');
     setRequired(provider, scope === 'none' || scope === 'server_priority');
@@ -957,13 +951,21 @@ def provider_event_details(ev) -> tuple[str, str, str]:
     campaign = "—"
     if ev["company_id_external"] or ev["company_name"]:
         campaign = f"{ev['company_id_external'] or '—'} / {ev['company_name'] or '—'}"
+    def company_route_label(prefix: str) -> str:
+        route_id = ev[f"{prefix}_company_route_id"]
+        route_name = ev[f"{prefix}_company_route_name"] if f"{prefix}_company_route_name" in ev.keys() else None
+        provider_name = ev[f"{prefix}_company_route_provider_name"] if f"{prefix}_company_route_provider_name" in ev.keys() else None
+        if not route_id:
+            return "—"
+        return f"{provider_name} / {route_name}" if route_name and provider_name else str(route_id)
+
     details = []
     if ev["company_change_type"]:
         details.append(COMPANY_CHANGE_LABELS.get(ev["company_change_type"], ev["company_change_type"]))
     if ev["old_company_routing_mode"] or ev["new_company_routing_mode"]:
         details.append(f"Режим: {ev['old_company_routing_mode'] or '—'} → {ev['new_company_routing_mode'] or '—'}")
     if ev["old_company_route_id"] or ev["new_company_route_id"]:
-        details.append(f"Маршрут: {ev['old_company_route_id'] or '—'} → {ev['new_company_route_id'] or '—'}")
+        details.append(f"Маршрут: {company_route_label('old')} → {company_route_label('new')}")
     if ev["old_company_has_autorotation"] is not None or ev["new_company_has_autorotation"] is not None:
         old_auto = 'Да' if ev["old_company_has_autorotation"] else 'Нет'
         new_auto = 'Да' if ev["new_company_has_autorotation"] else 'Нет'
