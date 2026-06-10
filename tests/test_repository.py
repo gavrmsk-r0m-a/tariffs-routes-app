@@ -419,5 +419,96 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
 
 
 
+class RoutingEventsRepositoryTest(unittest.TestCase):
+    def setUp(self):
+        self.conn = sqlite3.connect(":memory:")
+        self.conn.row_factory = sqlite3.Row
+        self.conn.execute("PRAGMA foreign_keys = ON")
+        init_db(self.conn)
+        self.repo = Repository(self.conn)
+        self.admin_id = self.repo.create_user("admin", "Admin")
+        self.country_id = self.repo.create_country("Мексика", "MEX")
+        self.other_country_id = self.repo.create_country("Перу", "PER")
+        self.currency_id = self.repo.create_currency("EUR", "Euro", "€")
+        self.provider_id = self.repo.create_provider("Sancom", "voip", self.currency_id)
+        self.alt_provider_id = self.repo.create_provider("Miatel", "voip", self.currency_id)
+        self.route_id = self.repo.create_route(country_id=self.country_id, provider_id=self.provider_id, name="Мексика/Sancom/RND@", cli_source_type="rnd", cli_source_label="RND", created_by=self.admin_id)
+        self.alt_route_id = self.repo.create_route(country_id=self.country_id, provider_id=self.alt_provider_id, name="Мексика/Miatel/Pool@", cli_source_type="pool", cli_source_label="Pool", created_by=self.admin_id)
+        self.other_route_id = self.repo.create_route(country_id=self.other_country_id, provider_id=self.provider_id, name="Перу/Sancom/RND@", cli_source_type="rnd", cli_source_label="RND", created_by=self.admin_id)
+        self.server_id = self.repo.create_server("EU1")
+        self.company_id = self.repo.create_calling_company(server_id=self.server_id, country_id=self.country_id, company_name="CC Mexico", company_id_external="1002", has_autorotation=False, created_by=self.admin_id)
+
+    def tearDown(self):
+        self.conn.close()
+
+    def create_event(self, **overrides):
+        data = dict(event_at="2026-06-10 12:00", apply_scope="none", reason="Другое", comment="Зафиксировали событие", provider_id=self.provider_id, created_by=self.admin_id)
+        data.update(overrides)
+        return self.repo.create_routing_event(**data)
+
+    def test_can_create_none_without_old_or_new_route(self):
+        event_id = self.create_event(apply_scope="none", old_route_id=None, new_route_id=None)
+        row = self.conn.execute("SELECT * FROM routing_events WHERE id = ?", (event_id,)).fetchone()
+        self.assertEqual(row["apply_scope"], "none")
+        self.assertIsNone(row["old_route_id"])
+        self.assertIsNone(row["new_route_id"])
+
+    def test_server_priority_creates_priority_when_missing(self):
+        event_id = self.create_event(apply_scope="server_priority", country_id=self.country_id, server_id=self.server_id, new_route_id=self.route_id, provider_id=None)
+        priority = self.conn.execute("SELECT * FROM server_route_priorities WHERE country_id = ? AND server_id = ?", (self.country_id, self.server_id)).fetchone()
+        self.assertIsNotNone(priority)
+        self.assertEqual(priority["current_route_id"], self.route_id)
+        self.assertIsNone(priority["previous_route_id"])
+        self.assertEqual(self.conn.execute("SELECT old_route_id FROM routing_events WHERE id = ?", (event_id,)).fetchone()[0], None)
+
+    def test_server_priority_updates_existing_current_to_previous(self):
+        self.conn.execute("INSERT INTO server_route_priorities(country_id, server_id, current_route_id, previous_route_id, changed_by, created_by) VALUES (?, ?, ?, NULL, ?, ?)", (self.country_id, self.server_id, self.route_id, self.admin_id, self.admin_id))
+        self.conn.commit()
+        self.create_event(apply_scope="server_priority", country_id=self.country_id, server_id=self.server_id, new_route_id=self.alt_route_id)
+        priority = self.conn.execute("SELECT * FROM server_route_priorities WHERE country_id = ? AND server_id = ?", (self.country_id, self.server_id)).fetchone()
+        self.assertEqual(priority["previous_route_id"], self.route_id)
+        self.assertEqual(priority["current_route_id"], self.alt_route_id)
+
+    def test_server_priority_new_route_must_belong_to_geo(self):
+        with self.assertRaisesRegex(BusinessRuleError, "выбранному GEO"):
+            self.create_event(apply_scope="server_priority", country_id=self.country_id, server_id=self.server_id, new_route_id=self.other_route_id)
+
+    def test_campaign_setting_without_active_setting_uses_server_priority_defaults(self):
+        event_id = self.create_event(apply_scope="campaign_setting", calling_company_id=self.company_id, company_change_type="enable_autorotation", provider_id=None)
+        row = self.conn.execute("SELECT * FROM routing_events WHERE id = ?", (event_id,)).fetchone()
+        self.assertEqual(row["old_company_routing_mode"], "server_priority")
+        self.assertIsNone(row["old_company_route_id"])
+        self.assertEqual(row["old_company_has_autorotation"], 0)
+        self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM company_routing_settings").fetchone()[0], 0)
+
+    def test_campaign_setting_with_active_setting_uses_old_values(self):
+        self.repo.create_company_routing_setting(calling_company_id=self.company_id, country_id=self.country_id, server_id=self.server_id, route_id=self.route_id, routing_mode="campaign_route", has_autorotation=True, comment="old", created_by=self.admin_id)
+        event_id = self.create_event(apply_scope="campaign_setting", calling_company_id=self.company_id, company_change_type="change_campaign_route", new_company_route_id=self.alt_route_id, provider_id=None)
+        row = self.conn.execute("SELECT * FROM routing_events WHERE id = ?", (event_id,)).fetchone()
+        self.assertEqual(row["old_company_routing_mode"], "campaign_route")
+        self.assertEqual(row["old_company_route_id"], self.route_id)
+        self.assertEqual(row["old_company_has_autorotation"], 1)
+
+    def test_deactivation_does_not_roll_back_server_priority(self):
+        event_id = self.create_event(apply_scope="server_priority", country_id=self.country_id, server_id=self.server_id, new_route_id=self.route_id)
+        self.repo.deactivate_routing_event(event_id, reason="ошибка записи", deactivated_by=self.admin_id)
+        priority = self.conn.execute("SELECT * FROM server_route_priorities WHERE country_id = ? AND server_id = ?", (self.country_id, self.server_id)).fetchone()
+        self.assertEqual(priority["current_route_id"], self.route_id)
+        self.assertEqual(self.conn.execute("SELECT is_active FROM routing_events WHERE id = ?", (event_id,)).fetchone()[0], 0)
+
+    def test_editing_event_does_not_reapply_server_priority(self):
+        event_id = self.create_event(apply_scope="server_priority", country_id=self.country_id, server_id=self.server_id, new_route_id=self.route_id)
+        self.repo.update_routing_event(event_id, event_at="2026-06-11 13:00", reason="Другое", comment="Исправили описание", country_id=self.country_id, server_id=self.server_id, provider_id=self.provider_id, affected_route_id=None, old_route_id=None, new_route_id=self.alt_route_id, calling_company_id=None, company_change_type=None, new_company_routing_mode=None, new_company_route_id=None, new_company_has_autorotation=None, updated_by=self.admin_id)
+        priority = self.conn.execute("SELECT * FROM server_route_priorities WHERE country_id = ? AND server_id = ?", (self.country_id, self.server_id)).fetchone()
+        self.assertEqual(priority["current_route_id"], self.route_id)
+        self.assertNotEqual(priority["current_route_id"], self.alt_route_id)
+
+    def test_snapshot_json_is_saved(self):
+        event_id = self.create_event(apply_scope="server_priority", country_id=self.country_id, server_id=self.server_id, new_route_id=self.route_id)
+        snapshot = self.conn.execute("SELECT snapshot_json FROM routing_events WHERE id = ?", (event_id,)).fetchone()[0]
+        self.assertIn("Мексика", snapshot)
+        self.assertIn("Sancom", snapshot)
+
+
 if __name__ == "__main__":
     unittest.main()
