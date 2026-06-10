@@ -10,6 +10,22 @@ from decimal import Decimal, ROUND_HALF_UP
 PHONE_RE = re.compile(r"^[1-9][0-9]{6,20}$")
 BLOCKED_ROUTE_PHONE_STATUSES = {"disabled", "blocked"}
 
+ROUTING_SCOPE_LABELS = {
+    "none": "Не меняли настройки в нашей системе",
+    "server_priority": "Серверный приоритет",
+    "campaign_setting": "Настройка кампании",
+}
+
+COMPANY_CHANGE_LABELS = {
+    "enable_autorotation": "Включили авторотацию",
+    "disable_autorotation": "Выключили авторотацию",
+    "set_campaign_route": "Прописали ручной маршрут",
+    "remove_campaign_route": "Убрали ручной маршрут",
+    "change_campaign_route": "Изменили ручной маршрут",
+    "set_server_priority": "Вернули на server_priority",
+}
+
+
 
 class BusinessRuleError(ValueError):
     """Raised when a confirmed MVP business rule is violated."""
@@ -1032,22 +1048,41 @@ class Repository:
         }
 
     def _routing_event_summary(self, values: dict) -> str:
+        scope = values.get("apply_scope")
         parts = [
             f"Дата события: {values.get('event_at')}",
-            f"Область: {values.get('apply_scope')}",
-            f"GEO: {self._name_by_id('countries', values.get('country_id')) or '—'}",
+            f"Область: {ROUTING_SCOPE_LABELS.get(scope, scope)}",
         ]
-        if values.get("server_id"):
-            parts.append(f"Сервер: {self._name_by_id('servers', values.get('server_id'))}")
-        if values.get("calling_company_id"):
-            company = self.conn.execute("SELECT company_id_external, company_name FROM calling_companies WHERE id = ?", (values.get("calling_company_id"),)).fetchone()
-            if company:
-                parts.append(f"Кампания: {company['company_id_external']} / {company['company_name']}")
-        if values.get("old_route_id") or values.get("new_route_id"):
+        if values.get("country_id"):
+            parts.append(f"GEO: {self._name_by_id('countries', values.get('country_id')) or '—'}")
+        if scope == "none":
+            if values.get("provider_id"):
+                parts.append(f"Провайдер: {self._name_by_id('providers', values.get('provider_id'))}")
+            if values.get("affected_route_id"):
+                parts.append(f"Маршрут/префикс: {self._route_label(values.get('affected_route_id'))}")
+        elif scope == "server_priority":
+            if values.get("server_id"):
+                parts.append(f"Сервер: {self._name_by_id('servers', values.get('server_id'))}")
             parts.append(f"Маршрут: {self._route_label(values.get('old_route_id')) or '—'} → {self._route_label(values.get('new_route_id')) or '—'}")
+        elif scope == "campaign_setting":
+            if values.get("calling_company_id"):
+                company = self.conn.execute("SELECT company_id_external, company_name FROM calling_companies WHERE id = ?", (values.get("calling_company_id"),)).fetchone()
+                if company:
+                    parts.append(f"Кампания: {company['company_id_external']} / {company['company_name']}")
+            if values.get("company_change_type"):
+                parts.append(f"Тип изменения кампании: {COMPANY_CHANGE_LABELS.get(values.get('company_change_type'), values.get('company_change_type'))}")
+            if values.get("old_company_routing_mode") or values.get("new_company_routing_mode"):
+                parts.append(f"Режим кампании: {values.get('old_company_routing_mode') or '—'} → {values.get('new_company_routing_mode') or '—'}")
+            if values.get("old_company_route_id") or values.get("new_company_route_id"):
+                parts.append(f"Маршрут кампании: {self._route_label(values.get('old_company_route_id')) or '—'} → {self._route_label(values.get('new_company_route_id')) or '—'}")
+            if values.get("old_company_has_autorotation") is not None or values.get("new_company_has_autorotation") is not None:
+                old_auto = 'Да' if values.get("old_company_has_autorotation") else 'Нет'
+                new_auto = 'Да' if values.get("new_company_has_autorotation") else 'Нет'
+                parts.append(f"Авторотация: {old_auto} → {new_auto}")
         parts.append(f"Причина: {values.get('reason')}")
         parts.append(f"Комментарий: {values.get('comment')}")
         return "; ".join(parts)
+
 
     def _server_priority_apply_summary(self, *, country_id: int, server_id: int, old_route_id: int | None, new_route_id: int, previous_after_update: int | None, comment: str) -> str:
         return "; ".join([
@@ -1090,16 +1125,30 @@ class Repository:
         if apply_scope == "none":
             if not values["provider_id"]:
                 raise BusinessRuleError("Провайдер обязателен")
-            values["old_route_id"] = None
-            values["new_route_id"] = None
+            if values["affected_route_id"]:
+                route = self.conn.execute("SELECT country_id, provider_id FROM routes WHERE id = ?", (values["affected_route_id"],)).fetchone()
+                if not route:
+                    raise BusinessRuleError("Маршрут/префикс не найден")
+                if int(route["provider_id"]) != int(values["provider_id"]):
+                    raise BusinessRuleError("Маршрут/префикс должен относиться к выбранному провайдеру")
+                if values["country_id"] and int(route["country_id"]) != int(values["country_id"]):
+                    raise BusinessRuleError("Маршрут/префикс должен относиться к выбранному GEO")
+            for field in (
+                "server_id", "old_route_id", "new_route_id", "calling_company_id", "company_change_type",
+                "old_company_routing_mode", "new_company_routing_mode", "old_company_route_id", "new_company_route_id",
+                "old_company_has_autorotation", "new_company_has_autorotation",
+            ):
+                values[field] = None
         elif apply_scope == "server_priority":
-            if not values["country_id"] or not values["server_id"] or not values["new_route_id"]:
-                raise BusinessRuleError("GEO, сервер и новый маршрут обязательны для серверного приоритета")
+            if not values["country_id"] or not values["server_id"] or not values["provider_id"] or not values["new_route_id"]:
+                raise BusinessRuleError("GEO, сервер, новый провайдер и новый маршрут обязательны для серверного приоритета")
             route = self.conn.execute("SELECT country_id, provider_id FROM routes WHERE id = ?", (values["new_route_id"],)).fetchone()
             if not route:
                 raise BusinessRuleError("Новый маршрут не найден")
             if int(route["country_id"]) != int(values["country_id"]):
                 raise BusinessRuleError("Новый маршрут должен относиться к выбранному GEO")
+            if values["provider_id"] and int(route["provider_id"]) != int(values["provider_id"]):
+                raise BusinessRuleError("Новый маршрут должен относиться к выбранному новому провайдеру")
             current = self.conn.execute(
                 "SELECT current_route_id FROM server_route_priorities WHERE country_id = ? AND server_id = ?",
                 (values["country_id"], values["server_id"]),
@@ -1128,9 +1177,13 @@ class Repository:
             elif ctype in {"set_campaign_route", "change_campaign_route"}:
                 if not values["new_company_route_id"]:
                     raise BusinessRuleError("Новый маршрут кампании обязателен")
-                route = self.conn.execute("SELECT country_id FROM routes WHERE id = ?", (values["new_company_route_id"],)).fetchone()
+                route = self.conn.execute("SELECT country_id, provider_id FROM routes WHERE id = ?", (values["new_company_route_id"],)).fetchone()
                 if not route or int(route["country_id"]) != int(values["country_id"]):
                     raise BusinessRuleError("Маршрут кампании должен относиться к выбранному GEO")
+                if values["provider_id"] and int(route["provider_id"]) != int(values["provider_id"]):
+                    raise BusinessRuleError("Маршрут кампании должен относиться к выбранному провайдеру")
+                if not values["provider_id"]:
+                    values["provider_id"] = route["provider_id"]
                 values["new_company_routing_mode"] = "campaign_route"
             elif ctype in {"remove_campaign_route", "set_server_priority"}:
                 values["new_company_routing_mode"] = "server_priority"
