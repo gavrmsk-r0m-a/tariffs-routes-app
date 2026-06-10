@@ -132,6 +132,140 @@ class ServerSmokeTest(unittest.TestCase):
 
 
 
+    def test_demo_normalization_updates_existing_partial_demo_db_and_is_idempotent(self):
+        conn = server.connect(server.DB_PATH)
+        try:
+            server.init_db(conn)
+            repo = server.Repository(conn)
+            admin_id = repo.create_user("admin", "Admin")
+            for server_name in ("ASIA1", "DE1", "LATAM1", "US1", "OLDDEMO1"):
+                conn.execute("INSERT INTO servers(name, is_active) VALUES (?, 1)", (server_name,))
+            country_id = repo.create_country("Мексика", "MEX")
+            eur_id = repo.create_currency("EUR", "Euro", "€")
+            miatel_id = repo.create_provider("Miatel", "voip", eur_id)
+            sancom_id = repo.create_provider("Sancom", "voip", eur_id)
+            miatel_prefix = repo.create_prefix(miatel_id, None, "Без префикса")
+            sancom_prefix = repo.create_prefix(sancom_id, "0827")
+            old_route_id = repo.create_route(
+                country_id=country_id,
+                provider_id=miatel_id,
+                provider_prefix_id=miatel_prefix,
+                name="Мексика/Miatel/Pool_A@",
+                cli_source_type="pool",
+                cli_source_label="Pool_A",
+                created_by=admin_id,
+            )
+            repo.create_route(
+                country_id=country_id,
+                provider_id=sancom_id,
+                provider_prefix_id=sancom_prefix,
+                name="Мексика/Sancom/RND/0827pfx@",
+                cli_source_type="rnd",
+                cli_source_label="RND",
+                created_by=admin_id,
+            )
+            old_phone_id = repo.create_phone_number(
+                country_id=country_id,
+                provider_id=miatel_id,
+                number="525512345001",
+                assignment_type="pool_number",
+                status="used",
+                created_by=admin_id,
+                currency_id=eur_id,
+                comment="Демо-номер",
+            )
+            repo.add_phone_to_route(route_id=old_route_id, phone_number_id=old_phone_id, usage_type="pool_member", added_by=admin_id)
+            asia_id = conn.execute("SELECT id FROM servers WHERE name = 'ASIA1'").fetchone()["id"]
+            repo.create_calling_company(
+                server_id=asia_id,
+                country_id=country_id,
+                company_name="CC Mexico Demo",
+                company_id_external="1001",
+                has_autorotation=True,
+                created_by=admin_id,
+                is_active=True,
+            )
+            conn.execute(
+                """
+                INSERT INTO server_route_priorities(country_id, server_id, current_route_id, changed_by, created_by, comment)
+                VALUES (?, ?, ?, ?, ?, 'Old demo priority')
+                """,
+                (country_id, asia_id, old_route_id, admin_id, admin_id),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        self.request("/routes")
+
+        def normalized_counts():
+            check_conn = server.connect(server.DB_PATH)
+            try:
+                active_servers = [row["name"] for row in check_conn.execute("SELECT name FROM servers WHERE is_active = 1 ORDER BY name")]
+                inactive_old_servers = [row["name"] for row in check_conn.execute("SELECT name FROM servers WHERE name IN ('ASIA1', 'DE1', 'LATAM1', 'US1', 'OLDDEMO1') AND is_active = 0 ORDER BY name")]
+                active_routes = [row["name"] for row in check_conn.execute("""
+                    SELECT r.name
+                    FROM routes r
+                    JOIN countries c ON c.id = r.country_id
+                    WHERE c.name = 'Мексика' AND r.is_actual = 1
+                    ORDER BY r.name
+                """)]
+                active_companies = [row["company_id_external"] for row in check_conn.execute("""
+                    SELECT cc.company_id_external
+                    FROM calling_companies cc
+                    JOIN countries c ON c.id = cc.country_id
+                    WHERE c.name = 'Мексика' AND cc.is_active = 1
+                    ORDER BY cc.company_id_external
+                """)]
+                active_numbers = [row["number"] for row in check_conn.execute("""
+                    SELECT pn.number
+                    FROM phone_numbers pn
+                    JOIN countries c ON c.id = pn.country_id
+                    WHERE c.name = 'Мексика' AND pn.is_active = 1
+                    ORDER BY pn.number
+                """)]
+                priorities = [(row["server_name"], row["route_name"], row["previous_route_id"], row["comment"]) for row in check_conn.execute("""
+                    SELECT s.name AS server_name, r.name AS route_name, srp.previous_route_id, srp.comment
+                    FROM server_route_priorities srp
+                    JOIN servers s ON s.id = srp.server_id
+                    JOIN routes r ON r.id = srp.current_route_id
+                    JOIN countries c ON c.id = srp.country_id
+                    WHERE c.name = 'Мексика'
+                    ORDER BY s.name
+                """)]
+                return {
+                    "active_servers": active_servers,
+                    "inactive_old_servers": inactive_old_servers,
+                    "active_routes": active_routes,
+                    "active_companies": active_companies,
+                    "active_numbers": active_numbers,
+                    "priorities": priorities,
+                }
+            finally:
+                check_conn.close()
+
+        first_counts = normalized_counts()
+        self.assertEqual(first_counts["active_servers"], [f"EU{i}" for i in range(1, 10)])
+        self.assertEqual(first_counts["inactive_old_servers"], ["ASIA1", "DE1", "LATAM1", "OLDDEMO1", "US1"])
+        self.assertEqual(first_counts["active_routes"], [
+            "Мексика/DemoTel/Demo_A@",
+            "Мексика/DemoTel/Demo_B@",
+            "Мексика/Miatel/Demo_A@",
+            "Мексика/Miatel/Demo_B@",
+            "Мексика/Sancom/Demo_0827@",
+            "Мексика/Sancom/Demo_0828@",
+        ])
+        self.assertEqual(first_counts["active_companies"], [str(1000 + i) for i in range(1, 6)])
+        self.assertEqual(first_counts["active_numbers"], [f"5255500000{i:02d}" for i in range(1, 11)])
+        self.assertEqual(first_counts["priorities"], [
+            ("EU1", "Мексика/Miatel/Demo_A@", None, "Demo initial priority"),
+            ("EU2", "Мексика/Sancom/Demo_0827@", None, "Demo initial priority"),
+        ])
+
+        self.request("/routes")
+        self.assertEqual(normalized_counts(), first_counts)
+
+
     def test_routes_filter_applies_country(self):
         self.request("/routes")
         captured, content = self.request("/routes?country_id=999")

@@ -168,10 +168,62 @@ def server_checkboxes(repo: Repository, selected: set[str] | None = None) -> str
     return "<details><summary>Выбрать серверы</summary>" + "".join(boxes) + "<p class='muted'>Отмеченные серверы будут сохранены в журнале.</p></details>"
 
 
+DEMO_DATA_VERSION = "mvp_mexico_demo_v2"
+DEMO_SERVER_NAMES = tuple(f"EU{i}" for i in range(1, 10))
+DEMO_ROUTE_NAMES = (
+    "Мексика/Miatel/Demo_A@",
+    "Мексика/Miatel/Demo_B@",
+    "Мексика/Sancom/Demo_0827@",
+    "Мексика/Sancom/Demo_0828@",
+    "Мексика/DemoTel/Demo_A@",
+    "Мексика/DemoTel/Demo_B@",
+)
+DEMO_PHONE_NUMBERS = tuple(f"5255500000{i:02d}" for i in range(1, 11))
+DEMO_COMPANY_EXTERNAL_IDS = tuple(str(1000 + i) for i in range(1, 6))
+
+
 def ensure_seed(repo: Repository) -> None:
-    def ensure_reference_defaults() -> None:
-        for server_name in ("EU1", "EU2", "EU3", "EU4", "EU5", "EU6", "EU7", "EU8", "EU9"):
-            repo.conn.execute("INSERT OR IGNORE INTO servers(name, is_active, comment) VALUES (?, 1, ?)", (server_name, "Demo server for MVP testing"))
+    def ensure_demo_state_table() -> None:
+        repo.conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS demo_data_state (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+
+    def demo_version_applied() -> bool:
+        row = repo.conn.execute("SELECT value FROM demo_data_state WHERE key = 'demo_data_version'").fetchone()
+        return bool(row and row["value"] == DEMO_DATA_VERSION)
+
+    def mark_demo_version_applied() -> None:
+        repo.conn.execute(
+            """
+            INSERT INTO demo_data_state(key, value, updated_at)
+            VALUES ('demo_data_version', ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP
+            """,
+            (DEMO_DATA_VERSION,),
+        )
+
+    def ensure_reference_defaults(*, activate_demo_servers: bool = True) -> None:
+        for server_name in DEMO_SERVER_NAMES:
+            if activate_demo_servers:
+                repo.conn.execute(
+                    """
+                    INSERT INTO servers(name, is_active, comment)
+                    VALUES (?, 1, ?)
+                    ON CONFLICT(name) DO UPDATE SET is_active = 1, comment = excluded.comment, updated_at = CURRENT_TIMESTAMP
+                    """,
+                    (server_name, "Demo server for MVP testing"),
+                )
+            else:
+                repo.conn.execute(
+                    "INSERT OR IGNORE INTO servers(name, is_active, comment) VALUES (?, 1, ?)",
+                    (server_name, "Demo server for MVP testing"),
+                )
         for type_name in ("Mobile", "Fixed Line", "Toll-Free", "VoIP", "Unknown"):
             repo.conn.execute("INSERT OR IGNORE INTO phone_number_types(name, is_active) VALUES (?, 1)", (type_name,))
         for project_name in ("Междепы", "Competitors", "ITM", "Monitoring", "Test"):
@@ -187,110 +239,318 @@ def ensure_seed(repo: Repository) -> None:
             repo.conn.execute("INSERT OR IGNORE INTO phone_assignment_types(code, name, is_active) VALUES (?, ?, 1)", (code, name))
         repo.conn.commit()
 
-    if repo.conn.execute("SELECT COUNT(*) FROM users").fetchone()[0] > 0:
-        ensure_reference_defaults()
+    def scalar_id(sql: str, params: tuple = ()) -> int | None:
+        row = repo.conn.execute(sql, params).fetchone()
+        return int(row["id"]) if row else None
+
+    def ensure_admin_user() -> int:
+        admin_id = scalar_id("SELECT id FROM users WHERE username = 'admin' ORDER BY id LIMIT 1")
+        if admin_id is not None:
+            return admin_id
+        return repo.create_user("admin", "Admin", "Admin")
+
+    def ensure_country(name: str, code: str) -> int:
+        country_id = scalar_id("SELECT id FROM countries WHERE name = ?", (name,))
+        if country_id is None:
+            return repo.create_country(name, code)
+        repo.conn.execute("UPDATE countries SET code = ?, is_active = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (code, country_id))
+        return country_id
+
+    def ensure_currency(code: str, name: str, symbol: str) -> int:
+        currency_id = scalar_id("SELECT id FROM currencies WHERE code = ?", (code,))
+        if currency_id is None:
+            return repo.create_currency(code, name, symbol)
+        repo.conn.execute("UPDATE currencies SET name = ?, symbol = ?, is_active = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (name, symbol, currency_id))
+        return currency_id
+
+    def ensure_provider(name: str, provider_type: str, default_currency_id: int) -> int:
+        normalized = normalize_provider_name(name)
+        provider_id = scalar_id("SELECT id FROM providers WHERE normalized_name = ?", (normalized,))
+        if provider_id is None:
+            return repo.create_provider(name, provider_type, default_currency_id, comment="Demo provider for MVP testing")
+        repo.conn.execute(
+            """
+            UPDATE providers
+            SET name = ?, provider_type = ?, default_currency_id = ?, is_active = 1,
+                comment = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            """,
+            (name, provider_type, default_currency_id, "Demo provider for MVP testing", provider_id),
+        )
+        return provider_id
+
+    def ensure_prefix(provider_id: int, prefix: str | None, name: str) -> int:
+        prefix_id = scalar_id(
+            "SELECT id FROM provider_prefixes WHERE provider_id = ? AND COALESCE(prefix, '') = COALESCE(?, '')",
+            (provider_id, prefix),
+        )
+        if prefix_id is None:
+            return repo.create_prefix(provider_id, prefix, name)
+        repo.conn.execute(
+            "UPDATE provider_prefixes SET name = ?, is_active = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (name, prefix_id),
+        )
+        return prefix_id
+
+    def ensure_route(
+        *,
+        country_id: int,
+        provider_id: int,
+        provider_prefix_id: int | None,
+        name: str,
+        cli_source_type: str,
+        cli_source_label: str,
+        priority_status: str,
+        admin_id: int,
+    ) -> int:
+        route_id = scalar_id("SELECT id FROM routes WHERE country_id = ? AND name = ?", (country_id, name))
+        if route_id is None:
+            return repo.create_route(
+                country_id=country_id,
+                provider_id=provider_id,
+                provider_prefix_id=provider_prefix_id,
+                name=name,
+                cli_source_type=cli_source_type,
+                cli_source_label=cli_source_label,
+                created_by=admin_id,
+                comment="Demo route for MVP testing",
+                priority_status=priority_status,
+            )
+        repo.conn.execute(
+            """
+            UPDATE routes
+            SET provider_id = ?, provider_prefix_id = ?, cli_source_type = ?, cli_source_label = ?,
+                comment = ?, is_actual = 1, priority_status = ?, updated_by = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            """,
+            (provider_id, provider_prefix_id, cli_source_type, cli_source_label, "Demo route for MVP testing", priority_status, admin_id, route_id),
+        )
+        return route_id
+
+    def ensure_tariff(
+        *,
+        country_id: int,
+        provider_id: int,
+        provider_prefix_id: int | None,
+        provider_currency_id: int,
+        price: str,
+        rate: str,
+        admin_id: int,
+        priority_status: str,
+    ) -> None:
+        tariff_id = scalar_id(
+            """
+            SELECT id FROM tariffs
+            WHERE country_id = ? AND provider_id = ? AND COALESCE(provider_prefix_id, 0) = COALESCE(?, 0) AND is_current = 1
+            """,
+            (country_id, provider_id, provider_prefix_id),
+        )
+        if tariff_id is None:
+            repo.create_tariff(
+                country_id=country_id,
+                provider_id=provider_id,
+                provider_prefix_id=provider_prefix_id,
+                provider_currency_id=provider_currency_id,
+                price_in_provider_currency=price,
+                conversion_rate_to_eur=rate,
+                conversion_rate_date="2026-06-07",
+                created_by=admin_id,
+                priority_status=priority_status,
+                comment="Demo tariff for MVP testing",
+            )
+
+    def ensure_phone_number(
+        *,
+        country_id: int,
+        provider_id: int,
+        number: str,
+        currency_id: int,
+        route_id: int,
+        admin_id: int,
+    ) -> int:
+        phone_id = scalar_id("SELECT id FROM phone_numbers WHERE number = ? OR normalized_number = ?", (number, number))
+        if phone_id is None:
+            phone_id = repo.create_phone_number(
+                country_id=country_id,
+                provider_id=provider_id,
+                number=number,
+                assignment_type="pool_number",
+                status="used",
+                created_by=admin_id,
+                currency_id=currency_id,
+                monthly_fee="1.00",
+                comment="Demo number for testing",
+            )
+        else:
+            repo.conn.execute(
+                """
+                UPDATE phone_numbers
+                SET country_id = ?, provider_id = ?, assignment_type = 'pool_number', status = 'used',
+                    currency_id = ?, comment = ?, is_active = 1, updated_by = ?, updated_at = CURRENT_TIMESTAMP,
+                    deactivated_at = NULL
+                WHERE id = ?
+                """,
+                (country_id, provider_id, currency_id, "Demo number for testing", admin_id, phone_id),
+            )
+        active_link = repo.conn.execute(
+            "SELECT id FROM route_phone_numbers WHERE route_id = ? AND phone_number_id = ? AND is_active = 1",
+            (route_id, phone_id),
+        ).fetchone()
+        if active_link is None:
+            repo.add_phone_to_route(route_id=route_id, phone_number_id=phone_id, usage_type="pool_member", added_by=admin_id, comment="Demo route number link")
+        return phone_id
+
+    def ensure_calling_company(
+        *,
+        server_id: int,
+        country_id: int,
+        company_id_external: str,
+        company_name: str,
+        admin_id: int,
+    ) -> int:
+        company_id = scalar_id(
+            """
+            SELECT id FROM calling_companies
+            WHERE server_id = ? AND country_id = ? AND company_id_external = ?
+            """,
+            (server_id, country_id, company_id_external),
+        )
+        if company_id is None:
+            company_id = repo.create_calling_company(
+                server_id=server_id,
+                country_id=country_id,
+                company_name=company_name,
+                company_id_external=company_id_external,
+                has_autorotation=False,
+                created_by=admin_id,
+                is_active=True,
+                line_count=10,
+                dial_set_count=2,
+                retry_interval_seconds=60,
+                comment="Demo calling campaign for MVP testing",
+            )
+        else:
+            repo.conn.execute(
+                """
+                UPDATE calling_companies
+                SET company_name = ?, has_autorotation = 0, line_count = 10, dial_set_count = 2,
+                    retry_interval_seconds = 60, comment = ?, is_active = 1, updated_by = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+                """,
+                (company_name, "Demo calling campaign for MVP testing", admin_id, company_id),
+            )
+        repo.conn.execute(
+            """
+            UPDATE calling_companies
+            SET is_active = 0, updated_by = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE country_id = ? AND company_id_external = ? AND id <> ?
+            """,
+            (admin_id, country_id, company_id_external, company_id),
+        )
+        return company_id
+
+    def upsert_server_priority(country_id: int, server_id: int, current_route_id: int, admin_id: int) -> None:
+        priority_id = scalar_id("SELECT id FROM server_route_priorities WHERE country_id = ? AND server_id = ?", (country_id, server_id))
+        if priority_id is None:
+            repo.conn.execute(
+                """
+                INSERT INTO server_route_priorities(country_id, server_id, current_route_id, previous_route_id, changed_by, created_by, comment)
+                VALUES (?, ?, ?, NULL, ?, ?, ?)
+                """,
+                (country_id, server_id, current_route_id, admin_id, admin_id, "Demo initial priority"),
+            )
+        else:
+            repo.conn.execute(
+                """
+                UPDATE server_route_priorities
+                SET current_route_id = ?, previous_route_id = NULL, changed_by = ?, comment = ?, is_active = 1,
+                    updated_by = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+                """,
+                (current_route_id, admin_id, "Demo initial priority", admin_id, priority_id),
+            )
+
+    def normalize_demo_dataset() -> None:
+        ensure_reference_defaults(activate_demo_servers=True)
+        admin_id = ensure_admin_user()
+        country_id = ensure_country("Мексика", "MEX")
+        eur_id = ensure_currency("EUR", "Euro", "€")
+        usdt_id = ensure_currency("USDT", "Tether", "₮")
+        sancom_id = ensure_provider("Sancom", "voip", eur_id)
+        miatel_id = ensure_provider("Miatel", "voip", usdt_id)
+        demotel_id = ensure_provider("DemoTel", "voip", eur_id)
+        sancom_0827_prefix = ensure_prefix(sancom_id, "0827", "Demo 0827")
+        sancom_0828_prefix = ensure_prefix(sancom_id, "0828", "Demo 0828")
+        miatel_prefix = ensure_prefix(miatel_id, None, "Demo no prefix")
+        demotel_prefix = ensure_prefix(demotel_id, None, "Demo no prefix")
+        repo.conn.execute("INSERT INTO currency_rates(currency_id, rate_to_eur, rate_date, updated_by, comment) SELECT ?, 1, '2026-06-07', ?, 'Demo EUR' WHERE NOT EXISTS (SELECT 1 FROM currency_rates WHERE currency_id = ? AND rate_date = '2026-06-07' AND comment = 'Demo EUR')", (eur_id, admin_id, eur_id))
+        repo.conn.execute("INSERT INTO currency_rates(currency_id, rate_to_eur, rate_date, updated_by, comment) SELECT ?, 0.93, '2026-06-07', ?, 'Demo USDT' WHERE NOT EXISTS (SELECT 1 FROM currency_rates WHERE currency_id = ? AND rate_date = '2026-06-07' AND comment = 'Demo USDT')", (usdt_id, admin_id, usdt_id))
+        for reason in ("Плохие показатели", "Провайдер починил", "Обновлен пул номеров"):
+            repo.conn.execute("INSERT OR IGNORE INTO change_reasons(name, description, is_active) VALUES (?, ?, 1)", (reason, reason))
+
+        server_ids = {row["name"]: row["id"] for row in repo.conn.execute("SELECT id, name FROM servers WHERE name IN (%s)" % ",".join("?" for _ in DEMO_SERVER_NAMES), DEMO_SERVER_NAMES)}
+        repo.conn.execute(
+            "UPDATE servers SET is_active = 0, updated_at = CURRENT_TIMESTAMP WHERE name NOT IN (%s)" % ",".join("?" for _ in DEMO_SERVER_NAMES),
+            DEMO_SERVER_NAMES,
+        )
+
+        route_ids = {
+            "sancom_0827": ensure_route(country_id=country_id, provider_id=sancom_id, provider_prefix_id=sancom_0827_prefix, name="Мексика/Sancom/Demo_0827@", cli_source_type="rnd", cli_source_label="Demo_0827", priority_status="priority", admin_id=admin_id),
+            "miatel_a": ensure_route(country_id=country_id, provider_id=miatel_id, provider_prefix_id=miatel_prefix, name="Мексика/Miatel/Demo_A@", cli_source_type="pool", cli_source_label="Demo_A", priority_status="priority", admin_id=admin_id),
+            "miatel_b": ensure_route(country_id=country_id, provider_id=miatel_id, provider_prefix_id=miatel_prefix, name="Мексика/Miatel/Demo_B@", cli_source_type="pool", cli_source_label="Demo_B", priority_status="normal", admin_id=admin_id),
+            "sancom_0828": ensure_route(country_id=country_id, provider_id=sancom_id, provider_prefix_id=sancom_0828_prefix, name="Мексика/Sancom/Demo_0828@", cli_source_type="rnd", cli_source_label="Demo_0828", priority_status="normal", admin_id=admin_id),
+            "demotel_a": ensure_route(country_id=country_id, provider_id=demotel_id, provider_prefix_id=demotel_prefix, name="Мексика/DemoTel/Demo_A@", cli_source_type="pool", cli_source_label="Demo_A", priority_status="normal", admin_id=admin_id),
+            "demotel_b": ensure_route(country_id=country_id, provider_id=demotel_id, provider_prefix_id=demotel_prefix, name="Мексика/DemoTel/Demo_B@", cli_source_type="pool", cli_source_label="Demo_B", priority_status="normal", admin_id=admin_id),
+        }
+        repo.conn.execute(
+            "UPDATE routes SET is_actual = 0, updated_by = ?, updated_at = CURRENT_TIMESTAMP WHERE country_id = ? AND name NOT IN (%s)" % ",".join("?" for _ in DEMO_ROUTE_NAMES),
+            (admin_id, country_id, *DEMO_ROUTE_NAMES),
+        )
+
+        ensure_tariff(country_id=country_id, provider_id=sancom_id, provider_prefix_id=sancom_0827_prefix, provider_currency_id=eur_id, price="2.00", rate="1", admin_id=admin_id, priority_status="priority")
+        ensure_tariff(country_id=country_id, provider_id=miatel_id, provider_prefix_id=miatel_prefix, provider_currency_id=usdt_id, price="3.00", rate="0.93", admin_id=admin_id, priority_status="priority")
+        ensure_tariff(country_id=country_id, provider_id=demotel_id, provider_prefix_id=demotel_prefix, provider_currency_id=eur_id, price="2.50", rate="1", admin_id=admin_id, priority_status="normal")
+
+        phone_specs = (
+            (miatel_id, "525550000001", route_ids["miatel_a"]),
+            (miatel_id, "525550000002", route_ids["miatel_a"]),
+            (miatel_id, "525550000003", route_ids["miatel_a"]),
+            (sancom_id, "525550000004", route_ids["sancom_0827"]),
+            (sancom_id, "525550000005", route_ids["sancom_0827"]),
+            (sancom_id, "525550000006", route_ids["sancom_0827"]),
+            (demotel_id, "525550000007", route_ids["demotel_a"]),
+            (demotel_id, "525550000008", route_ids["demotel_a"]),
+            (demotel_id, "525550000009", route_ids["demotel_a"]),
+            (demotel_id, "525550000010", route_ids["demotel_a"]),
+        )
+        for provider_id, number, route_id in phone_specs:
+            ensure_phone_number(country_id=country_id, provider_id=provider_id, number=number, currency_id=eur_id, route_id=route_id, admin_id=admin_id)
+        repo.conn.execute(
+            "UPDATE phone_numbers SET is_active = 0, deactivated_at = COALESCE(deactivated_at, CURRENT_TIMESTAMP), updated_by = ?, updated_at = CURRENT_TIMESTAMP WHERE country_id = ? AND number NOT IN (%s)" % ",".join("?" for _ in DEMO_PHONE_NUMBERS),
+            (admin_id, country_id, *DEMO_PHONE_NUMBERS),
+        )
+
+        for index, external_id in enumerate(DEMO_COMPANY_EXTERNAL_IDS, start=1):
+            ensure_calling_company(server_id=server_ids[f"EU{index}"], country_id=country_id, company_id_external=external_id, company_name=f"CC Mexico Demo {index}", admin_id=admin_id)
+        repo.conn.execute(
+            "UPDATE calling_companies SET is_active = 0, updated_by = ?, updated_at = CURRENT_TIMESTAMP WHERE country_id = ? AND company_id_external NOT IN (%s)" % ",".join("?" for _ in DEMO_COMPANY_EXTERNAL_IDS),
+            (admin_id, country_id, *DEMO_COMPANY_EXTERNAL_IDS),
+        )
+
+        repo.conn.execute(
+            "DELETE FROM server_route_priorities WHERE server_id IN (SELECT id FROM servers WHERE name IN ('EU3', 'EU4', 'EU5', 'EU6', 'EU7', 'EU8', 'EU9')) OR (country_id = ? AND server_id NOT IN (?, ?))",
+            (country_id, server_ids["EU1"], server_ids["EU2"]),
+        )
+        upsert_server_priority(country_id, server_ids["EU1"], route_ids["miatel_a"], admin_id)
+        upsert_server_priority(country_id, server_ids["EU2"], route_ids["sancom_0827"], admin_id)
+        mark_demo_version_applied()
+        repo.conn.commit()
+
+    ensure_demo_state_table()
+    if demo_version_applied():
+        ensure_reference_defaults(activate_demo_servers=False)
         return
-    ensure_reference_defaults()
-    admin_id = repo.create_user("admin", "Admin", "Admin")
-    country_id = repo.create_country("Мексика", "MEX")
-    eur_id = repo.create_currency("EUR", "Euro", "€")
-    usdt_id = repo.create_currency("USDT", "Tether", "₮")
-    sancom_id = repo.create_provider("Sancom", "voip", eur_id, comment="Demo provider for MVP testing")
-    miatel_id = repo.create_provider("Miatel", "voip", usdt_id, comment="Demo provider for MVP testing")
-    demotel_id = repo.create_provider("DemoTel", "voip", eur_id, comment="Demo provider for MVP testing")
-    sancom_0827_prefix = repo.create_prefix(sancom_id, "0827", "Demo 0827")
-    sancom_0828_prefix = repo.create_prefix(sancom_id, "0828", "Demo 0828")
-    miatel_prefix = repo.create_prefix(miatel_id, None, "Demo no prefix")
-    demotel_prefix = repo.create_prefix(demotel_id, None, "Demo no prefix")
-    repo.conn.execute("INSERT INTO currency_rates(currency_id, rate_to_eur, rate_date, updated_by, comment) VALUES (?, 1, '2026-06-07', ?, 'Demo EUR')", (eur_id, admin_id))
-    repo.conn.execute("INSERT INTO currency_rates(currency_id, rate_to_eur, rate_date, updated_by, comment) VALUES (?, 0.93, '2026-06-07', ?, 'Demo USDT')", (usdt_id, admin_id))
-    for reason in ("Плохие показатели", "Провайдер починил", "Обновлен пул номеров"):
-        repo.conn.execute("INSERT OR IGNORE INTO change_reasons(name, description, is_active) VALUES (?, ?, 1)", (reason, reason))
-
-    sancom_0827_route = repo.create_route(
-        country_id=country_id,
-        provider_id=sancom_id,
-        provider_prefix_id=sancom_0827_prefix,
-        name="Мексика/Sancom/Demo_0827@",
-        cli_source_type="rnd",
-        cli_source_label="Demo_0827",
-        created_by=admin_id,
-        comment="Demo route for MVP testing",
-        priority_status="priority",
-    )
-    miatel_demo_a_route = repo.create_route(
-        country_id=country_id,
-        provider_id=miatel_id,
-        provider_prefix_id=miatel_prefix,
-        name="Мексика/Miatel/Demo_A@",
-        cli_source_type="pool",
-        cli_source_label="Demo_A",
-        created_by=admin_id,
-        comment="Demo route for MVP testing",
-        priority_status="priority",
-    )
-    repo.create_route(country_id=country_id, provider_id=miatel_id, provider_prefix_id=miatel_prefix, name="Мексика/Miatel/Demo_B@", cli_source_type="pool", cli_source_label="Demo_B", created_by=admin_id, comment="Demo route for MVP testing", priority_status="normal")
-    repo.create_route(country_id=country_id, provider_id=sancom_id, provider_prefix_id=sancom_0828_prefix, name="Мексика/Sancom/Demo_0828@", cli_source_type="rnd", cli_source_label="Demo_0828", created_by=admin_id, comment="Demo route for MVP testing", priority_status="normal")
-    repo.create_route(country_id=country_id, provider_id=demotel_id, provider_prefix_id=demotel_prefix, name="Мексика/DemoTel/Demo_A@", cli_source_type="pool", cli_source_label="Demo_A", created_by=admin_id, comment="Demo route for MVP testing", priority_status="normal")
-    repo.create_route(country_id=country_id, provider_id=demotel_id, provider_prefix_id=demotel_prefix, name="Мексика/DemoTel/Demo_B@", cli_source_type="pool", cli_source_label="Demo_B", created_by=admin_id, comment="Demo route for MVP testing", priority_status="normal")
-
-    repo.create_tariff(country_id=country_id, provider_id=sancom_id, provider_prefix_id=sancom_0827_prefix, provider_currency_id=eur_id, price_in_provider_currency="2.00", conversion_rate_to_eur="1", conversion_rate_date="2026-06-07", created_by=admin_id, priority_status="priority", comment="Demo tariff for MVP testing")
-    repo.create_tariff(country_id=country_id, provider_id=miatel_id, provider_prefix_id=miatel_prefix, provider_currency_id=usdt_id, price_in_provider_currency="3.00", conversion_rate_to_eur="0.93", conversion_rate_date="2026-06-07", created_by=admin_id, priority_status="priority", comment="Demo tariff for MVP testing")
-    repo.create_tariff(country_id=country_id, provider_id=demotel_id, provider_prefix_id=demotel_prefix, provider_currency_id=eur_id, price_in_provider_currency="2.50", conversion_rate_to_eur="1", conversion_rate_date="2026-06-07", created_by=admin_id, priority_status="normal", comment="Demo tariff for MVP testing")
-
-    provider_numbers = (
-        (miatel_id, "525550000001"),
-        (miatel_id, "525550000002"),
-        (miatel_id, "525550000003"),
-        (sancom_id, "525550000004"),
-        (sancom_id, "525550000005"),
-        (sancom_id, "525550000006"),
-        (demotel_id, "525550000007"),
-        (demotel_id, "525550000008"),
-        (demotel_id, "525550000009"),
-        (demotel_id, "525550000010"),
-    )
-    first_phone_id = None
-    for provider_id, number in provider_numbers:
-        phone_id = repo.create_phone_number(
-            country_id=country_id,
-            provider_id=provider_id,
-            number=number,
-            assignment_type="pool_number",
-            status="used",
-            created_by=admin_id,
-            currency_id=eur_id,
-            monthly_fee="1.00",
-            comment="Demo number for testing.",
-        )
-        first_phone_id = first_phone_id or phone_id
-    if first_phone_id is not None:
-        repo.add_phone_to_route(route_id=miatel_demo_a_route, phone_number_id=first_phone_id, usage_type="pool_member", added_by=admin_id, comment="Demo route number link")
-
-    server_ids = {row["name"]: row["id"] for row in repo.conn.execute("SELECT id, name FROM servers WHERE name LIKE 'EU%'")}
-    for index, external_id in enumerate(("1001", "1002", "1003", "1004", "1005"), start=1):
-        repo.create_calling_company(
-            server_id=server_ids[f"EU{index}"],
-            country_id=country_id,
-            company_name=f"CC Mexico Demo {index}",
-            company_id_external=external_id,
-            has_autorotation=False,
-            created_by=admin_id,
-            is_active=True,
-            line_count=10,
-            dial_set_count=2,
-            retry_interval_seconds=60,
-            comment="Demo calling campaign for MVP testing",
-        )
-    repo.conn.execute("""
-        INSERT INTO server_route_priorities(country_id, server_id, current_route_id, previous_route_id, changed_by, created_by, comment)
-        VALUES (?, ?, ?, NULL, ?, ?, ?)
-    """, (country_id, server_ids["EU1"], miatel_demo_a_route, admin_id, admin_id, "Demo initial priority"))
-    repo.conn.execute("""
-        INSERT INTO server_route_priorities(country_id, server_id, current_route_id, previous_route_id, changed_by, created_by, comment)
-        VALUES (?, ?, ?, NULL, ?, ?, ?)
-    """, (country_id, server_ids["EU2"], sancom_0827_route, admin_id, admin_id, "Demo initial priority"))
-    repo.conn.commit()
+    normalize_demo_dataset()
 
 def clean_parts(parts: list[str]) -> str:
     return "/".join([p.strip(" /") for p in parts if p and p.strip(" /")])
