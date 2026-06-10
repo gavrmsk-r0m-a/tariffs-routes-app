@@ -170,8 +170,8 @@ def server_checkboxes(repo: Repository, selected: set[str] | None = None) -> str
 
 def ensure_seed(repo: Repository) -> None:
     def ensure_reference_defaults() -> None:
-        for server_name in ("EU1", "EU2", "EU3", "US1", "US2", "ASIA1", "LATAM1", "LATAM2", "DE1", "NL1"):
-            repo.conn.execute("INSERT OR IGNORE INTO servers(name, is_active) VALUES (?, 1)", (server_name,))
+        for server_name in ("EU1", "EU2", "EU3", "EU4", "EU5", "EU6", "EU7", "EU8", "EU9"):
+            repo.conn.execute("INSERT OR IGNORE INTO servers(name, is_active, comment) VALUES (?, 1, ?)", (server_name, "Demo server for MVP testing"))
         for type_name in ("Mobile", "Fixed Line", "Toll-Free", "VoIP", "Unknown"):
             repo.conn.execute("INSERT OR IGNORE INTO phone_number_types(name, is_active) VALUES (?, 1)", (type_name,))
         for project_name in ("Междепы", "Competitors", "ITM", "Monitoring", "Test"):
@@ -195,28 +195,102 @@ def ensure_seed(repo: Repository) -> None:
     country_id = repo.create_country("Мексика", "MEX")
     eur_id = repo.create_currency("EUR", "Euro", "€")
     usdt_id = repo.create_currency("USDT", "Tether", "₮")
-    sancom_id = repo.create_provider("Sancom", "voip", eur_id)
-    miatel_id = repo.create_provider("Miatel", "voip", usdt_id)
-    sancom_prefix = repo.create_prefix(sancom_id, "0827")
-    miatel_prefix = repo.create_prefix(miatel_id, None, "Без префикса")
+    sancom_id = repo.create_provider("Sancom", "voip", eur_id, comment="Demo provider for MVP testing")
+    miatel_id = repo.create_provider("Miatel", "voip", usdt_id, comment="Demo provider for MVP testing")
+    demotel_id = repo.create_provider("DemoTel", "voip", eur_id, comment="Demo provider for MVP testing")
+    sancom_0827_prefix = repo.create_prefix(sancom_id, "0827", "Demo 0827")
+    sancom_0828_prefix = repo.create_prefix(sancom_id, "0828", "Demo 0828")
+    miatel_prefix = repo.create_prefix(miatel_id, None, "Demo no prefix")
+    demotel_prefix = repo.create_prefix(demotel_id, None, "Demo no prefix")
     repo.conn.execute("INSERT INTO currency_rates(currency_id, rate_to_eur, rate_date, updated_by, comment) VALUES (?, 1, '2026-06-07', ?, 'Demo EUR')", (eur_id, admin_id))
     repo.conn.execute("INSERT INTO currency_rates(currency_id, rate_to_eur, rate_date, updated_by, comment) VALUES (?, 0.93, '2026-06-07', ?, 'Demo USDT')", (usdt_id, admin_id))
     for reason in ("Плохие показатели", "Провайдер починил", "Обновлен пул номеров"):
         repo.conn.execute("INSERT OR IGNORE INTO change_reasons(name, description, is_active) VALUES (?, ?, 1)", (reason, reason))
-    sancom_route = repo.create_route(country_id=country_id, provider_id=sancom_id, provider_prefix_id=sancom_prefix, name="Мексика/Sancom/RND/0827pfx@", cli_source_type="rnd", cli_source_label="RND", created_by=admin_id, comment="RND провайдера", priority_status="alternative")
-    miatel_route = repo.create_route(country_id=country_id, provider_id=miatel_id, provider_prefix_id=miatel_prefix, name="Мексика/Miatel/Pool_A@", cli_source_type="pool", cli_source_label="Pool_A", created_by=admin_id, comment="Демо-маршрут после первичного запуска", priority_status="priority")
-    repo.create_tariff(country_id=country_id, provider_id=sancom_id, provider_prefix_id=sancom_prefix, provider_currency_id=eur_id, price_in_provider_currency="2.00", conversion_rate_to_eur="1", conversion_rate_date="2026-06-07", created_by=admin_id, priority_status="alternative")
-    repo.create_tariff(country_id=country_id, provider_id=miatel_id, provider_prefix_id=miatel_prefix, provider_currency_id=usdt_id, price_in_provider_currency="3.00", conversion_rate_to_eur="0.93", conversion_rate_date="2026-06-07", created_by=admin_id, priority_status="priority")
-    phone_id = repo.create_phone_number(country_id=country_id, provider_id=miatel_id, number="525512345001", assignment_type="pool_number", status="used", created_by=admin_id, currency_id=eur_id, monthly_fee="1.00", comment="Демо-номер")
-    repo.add_phone_to_route(route_id=miatel_route, phone_number_id=phone_id, usage_type="pool_member", added_by=admin_id)
-    server_id = int(repo.conn.execute("SELECT id FROM servers WHERE name = 'EU1'").fetchone()["id"])
-    repo.create_calling_company(server_id=server_id, country_id=country_id, company_name="CC Mexico Demo", company_id_external="1001", has_autorotation=True, created_by=admin_id, is_active=True, line_count=10, dial_set_count=2, retry_interval_seconds=60)
+
+    sancom_0827_route = repo.create_route(
+        country_id=country_id,
+        provider_id=sancom_id,
+        provider_prefix_id=sancom_0827_prefix,
+        name="Мексика/Sancom/Demo_0827@",
+        cli_source_type="rnd",
+        cli_source_label="Demo_0827",
+        created_by=admin_id,
+        comment="Demo route for MVP testing",
+        priority_status="priority",
+    )
+    miatel_demo_a_route = repo.create_route(
+        country_id=country_id,
+        provider_id=miatel_id,
+        provider_prefix_id=miatel_prefix,
+        name="Мексика/Miatel/Demo_A@",
+        cli_source_type="pool",
+        cli_source_label="Demo_A",
+        created_by=admin_id,
+        comment="Demo route for MVP testing",
+        priority_status="priority",
+    )
+    repo.create_route(country_id=country_id, provider_id=miatel_id, provider_prefix_id=miatel_prefix, name="Мексика/Miatel/Demo_B@", cli_source_type="pool", cli_source_label="Demo_B", created_by=admin_id, comment="Demo route for MVP testing", priority_status="normal")
+    repo.create_route(country_id=country_id, provider_id=sancom_id, provider_prefix_id=sancom_0828_prefix, name="Мексика/Sancom/Demo_0828@", cli_source_type="rnd", cli_source_label="Demo_0828", created_by=admin_id, comment="Demo route for MVP testing", priority_status="normal")
+    repo.create_route(country_id=country_id, provider_id=demotel_id, provider_prefix_id=demotel_prefix, name="Мексика/DemoTel/Demo_A@", cli_source_type="pool", cli_source_label="Demo_A", created_by=admin_id, comment="Demo route for MVP testing", priority_status="normal")
+    repo.create_route(country_id=country_id, provider_id=demotel_id, provider_prefix_id=demotel_prefix, name="Мексика/DemoTel/Demo_B@", cli_source_type="pool", cli_source_label="Demo_B", created_by=admin_id, comment="Demo route for MVP testing", priority_status="normal")
+
+    repo.create_tariff(country_id=country_id, provider_id=sancom_id, provider_prefix_id=sancom_0827_prefix, provider_currency_id=eur_id, price_in_provider_currency="2.00", conversion_rate_to_eur="1", conversion_rate_date="2026-06-07", created_by=admin_id, priority_status="priority", comment="Demo tariff for MVP testing")
+    repo.create_tariff(country_id=country_id, provider_id=miatel_id, provider_prefix_id=miatel_prefix, provider_currency_id=usdt_id, price_in_provider_currency="3.00", conversion_rate_to_eur="0.93", conversion_rate_date="2026-06-07", created_by=admin_id, priority_status="priority", comment="Demo tariff for MVP testing")
+    repo.create_tariff(country_id=country_id, provider_id=demotel_id, provider_prefix_id=demotel_prefix, provider_currency_id=eur_id, price_in_provider_currency="2.50", conversion_rate_to_eur="1", conversion_rate_date="2026-06-07", created_by=admin_id, priority_status="normal", comment="Demo tariff for MVP testing")
+
+    provider_numbers = (
+        (miatel_id, "525550000001"),
+        (miatel_id, "525550000002"),
+        (miatel_id, "525550000003"),
+        (sancom_id, "525550000004"),
+        (sancom_id, "525550000005"),
+        (sancom_id, "525550000006"),
+        (demotel_id, "525550000007"),
+        (demotel_id, "525550000008"),
+        (demotel_id, "525550000009"),
+        (demotel_id, "525550000010"),
+    )
+    first_phone_id = None
+    for provider_id, number in provider_numbers:
+        phone_id = repo.create_phone_number(
+            country_id=country_id,
+            provider_id=provider_id,
+            number=number,
+            assignment_type="pool_number",
+            status="used",
+            created_by=admin_id,
+            currency_id=eur_id,
+            monthly_fee="1.00",
+            comment="Demo number for testing.",
+        )
+        first_phone_id = first_phone_id or phone_id
+    if first_phone_id is not None:
+        repo.add_phone_to_route(route_id=miatel_demo_a_route, phone_number_id=first_phone_id, usage_type="pool_member", added_by=admin_id, comment="Demo route number link")
+
+    server_ids = {row["name"]: row["id"] for row in repo.conn.execute("SELECT id, name FROM servers WHERE name LIKE 'EU%'")}
+    for index, external_id in enumerate(("1001", "1002", "1003", "1004", "1005"), start=1):
+        repo.create_calling_company(
+            server_id=server_ids[f"EU{index}"],
+            country_id=country_id,
+            company_name=f"CC Mexico Demo {index}",
+            company_id_external=external_id,
+            has_autorotation=False,
+            created_by=admin_id,
+            is_active=True,
+            line_count=10,
+            dial_set_count=2,
+            retry_interval_seconds=60,
+            comment="Demo calling campaign for MVP testing",
+        )
     repo.conn.execute("""
         INSERT INTO server_route_priorities(country_id, server_id, current_route_id, previous_route_id, changed_by, created_by, comment)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-    """, (country_id, server_id, miatel_route, sancom_route, admin_id, admin_id, "Демо-приоритет"))
+        VALUES (?, ?, ?, NULL, ?, ?, ?)
+    """, (country_id, server_ids["EU1"], miatel_demo_a_route, admin_id, admin_id, "Demo initial priority"))
+    repo.conn.execute("""
+        INSERT INTO server_route_priorities(country_id, server_id, current_route_id, previous_route_id, changed_by, created_by, comment)
+        VALUES (?, ?, ?, NULL, ?, ?, ?)
+    """, (country_id, server_ids["EU2"], sancom_0827_route, admin_id, admin_id, "Demo initial priority"))
     repo.conn.commit()
-
 
 def clean_parts(parts: list[str]) -> str:
     return "/".join([p.strip(" /") for p in parts if p and p.strip(" /")])
@@ -480,7 +554,7 @@ def provider_changes_page(repo: Repository, q: dict[str, str] | None = None) -> 
             actions += f"<details><summary>Деактивировать</summary><form method='post' action='/provider-changes/{ev['id']}/deactivate'><label>Причина <span class='required'>*</span><input name='deactivation_reason' required></label><button>Деактивировать</button></form></details>"
         rows.append(f"<tr class='{'' if ev['is_active'] else 'inactive-row'}'><td>{esc(ev['event_at'])}</td><td>{esc(ev['apply_scope'])}</td><td>{esc(ev['country_name'])}</td><td>{esc(ev['server_name'])}</td><td>{campaign}</td><td>{esc(route_text)}</td><td>{esc(ev['reason'])}</td><td>{esc(ev['comment'])}</td><td>{'Да' if ev['is_active'] else 'Нет'}</td><td class='actions'>{actions}</td></tr>")
     body = f"""
-<h1>Администрирование → Смена провайдеров</h1>
+<h1>Смена провайдеров</h1>
 {routing_event_form(repo)}
 <fieldset><legend>Фильтры MVP</legend><form method='get' action='/provider-changes'>
 <label>GEO <select name='country_id'>{options(repo, 'countries', selected=q.get('country_id'), empty='Все')}</select></label>
@@ -498,7 +572,6 @@ def provider_changes_page(repo: Repository, q: dict[str, str] | None = None) -> 
 def admin_page(repo: Repository) -> bytes:
     body = """
 <h1>Администрирование</h1><div class="grid">
-<a class="card" href="/provider-changes">Смена провайдеров</a>
 <a class="card" href="/admin/server-priorities">Приоритет по серверам</a>
 <a class="card" href="/admin/company-routing-settings">Схема маршрутизации кампаний</a>
 <a class="card" href="/admin/naming-rules">Правила нейминга маршрутов</a>
