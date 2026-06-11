@@ -758,6 +758,62 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
         self.assertIn("EU1", content)
         self.assertIn("Мексика/Miatel/Demo_A@ → Мексика/Sancom/Demo_0827@", content)
 
+    def test_provider_changes_server_filter_finds_multi_server_events(self):
+        self.request("/routes")
+        conn = server.connect(server.DB_PATH)
+        try:
+            target = conn.execute("SELECT id, provider_id FROM routes WHERE name = 'Мексика/Sancom/Demo_0827@'").fetchone()
+        finally:
+            conn.close()
+        body = urlencode([
+            ("apply_scope", "server_priority"),
+            ("event_at", "2026-06-10T12:15"),
+            ("country_id", "1"),
+            ("server_ids", "1"),
+            ("server_ids", "3"),
+            ("provider_id", str(target["provider_id"])),
+            ("new_route_id", str(target["id"])),
+            ("reason", "Плановое переключение"),
+            ("comment", "Фильтр должен найти EU1 и EU3"),
+        ])
+        captured, _ = self.request("/provider-changes/create", method="POST", body=body)
+        self.assertEqual(captured["status"], "303 See Other")
+
+        captured, content = self.request("/provider-changes?server_id=3")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("Фильтр должен найти EU1 и EU3", content)
+        self.assertIn("EU3", content)
+
+        captured, content = self.request("/provider-changes?server_id=2")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertNotIn("Фильтр должен найти EU1 и EU3", content)
+
+    def test_provider_changes_server_filter_keeps_legacy_single_server_events(self):
+        self.request("/routes")
+        conn = server.connect(server.DB_PATH)
+        try:
+            conn.execute(
+                """
+                INSERT INTO routing_events(
+                    event_at, apply_scope, reason, country_id, server_id, provider_id,
+                    old_route_id, new_route_id, comment, snapshot_json, created_by, updated_by
+                ) VALUES (?, 'server_priority', ?, 1, 1, 2, 2, 1, ?, ?, ?, ?)
+                """,
+                ("2026-06-10 12:45", "Другое", "legacy filter single server event", "{}", server.ADMIN_ID, server.ADMIN_ID),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        captured, content = self.request("/provider-changes?server_id=1")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("legacy filter single server event", content)
+        self.assertIn("Мексика/Miatel/Demo_A@ → Мексика/Sancom/Demo_0827@", content)
+
+        captured, content = self.request("/provider-changes?server_id=2")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertNotIn("legacy filter single server event", content)
+
     def test_provider_changes_none_and_campaign_setting_forms_still_render(self):
         self.request("/routes")
         captured, content = self.request("/provider-changes")

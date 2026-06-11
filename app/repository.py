@@ -1387,13 +1387,28 @@ class Repository:
         for key, column in {
             "country_id": "re.country_id",
             "apply_scope": "re.apply_scope",
-            "server_id": "re.server_id",
             "calling_company_id": "re.calling_company_id",
             "provider_id": "re.provider_id",
         }.items():
             if filters.get(key):
                 clauses.append(f"{column} = ?")
                 params.append(filters[key])
+        if filters.get("server_id"):
+            clauses.append(
+                """
+                re.apply_scope = 'server_priority'
+                AND (
+                    re.server_id = ?
+                    OR EXISTS (
+                        SELECT 1
+                        FROM routing_event_servers res
+                        WHERE res.routing_event_id = re.id
+                          AND res.server_id = ?
+                    )
+                )
+                """
+            )
+            params.extend([filters["server_id"], filters["server_id"]])
         if filters.get("campaign_id"):
             clauses.append("cc.company_id_external LIKE ?")
             params.append(f"%{filters['campaign_id']}%")
