@@ -1,3 +1,4 @@
+import json
 import sqlite3
 import unittest
 
@@ -491,6 +492,88 @@ class RoutingEventsRepositoryTest(unittest.TestCase):
         self.assertEqual(priority["current_route_id"], self.route_id)
         self.assertIsNone(priority["previous_route_id"])
         self.assertEqual(self.conn.execute("SELECT old_route_id FROM routing_events WHERE id = ?", (event_id,)).fetchone()[0], None)
+
+    def test_server_priority_single_server_creates_application_row(self):
+        event_id = self.create_event(apply_scope="server_priority", country_id=self.country_id, server_id=self.server_id, new_route_id=self.route_id, provider_id=self.provider_id)
+
+        application = self.conn.execute("SELECT * FROM routing_event_servers WHERE routing_event_id = ?", (event_id,)).fetchone()
+        priority = self.conn.execute("SELECT * FROM server_route_priorities WHERE country_id = ? AND server_id = ?", (self.country_id, self.server_id)).fetchone()
+        snapshot = json.loads(self.conn.execute("SELECT snapshot_json FROM routing_events WHERE id = ?", (event_id,)).fetchone()[0])
+
+        self.assertEqual(application["server_id"], self.server_id)
+        self.assertIsNone(application["old_route_id"])
+        self.assertEqual(application["new_route_id"], self.route_id)
+        self.assertEqual(application["server_route_priority_id"], priority["id"])
+        self.assertEqual(application["status"], "applied")
+        self.assertEqual(snapshot["affected_servers"][0]["status"], "applied")
+
+    def test_server_priority_multiple_server_ids_create_one_event_and_many_application_rows(self):
+        server_2 = self.repo.create_server("EU2")
+        self.conn.execute("INSERT INTO server_route_priorities(country_id, server_id, current_route_id, previous_route_id, changed_by, created_by) VALUES (?, ?, ?, NULL, ?, ?)", (self.country_id, self.server_id, self.route_id, self.admin_id, self.admin_id))
+        self.conn.execute("INSERT INTO server_route_priorities(country_id, server_id, current_route_id, previous_route_id, changed_by, created_by) VALUES (?, ?, ?, NULL, ?, ?)", (self.country_id, server_2, self.route_id, self.admin_id, self.admin_id))
+        self.conn.commit()
+
+        event_id = self.create_event(apply_scope="server_priority", country_id=self.country_id, server_ids=[self.server_id, server_2], provider_id=self.alt_provider_id, new_route_id=self.alt_route_id)
+
+        self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM routing_events WHERE id = ?", (event_id,)).fetchone()[0], 1)
+        rows = self.conn.execute("SELECT * FROM routing_event_servers WHERE routing_event_id = ? ORDER BY server_id", (event_id,)).fetchall()
+        self.assertEqual(len(rows), 2)
+        self.assertTrue(all(row["status"] == "applied" for row in rows))
+        priorities = self.conn.execute("SELECT * FROM server_route_priorities WHERE country_id = ? ORDER BY server_id", (self.country_id,)).fetchall()
+        self.assertEqual([row["current_route_id"] for row in priorities], [self.alt_route_id, self.alt_route_id])
+        self.assertEqual([row["previous_route_id"] for row in priorities], [self.route_id, self.route_id])
+
+    def test_server_priority_multi_server_creates_missing_priority_with_null_previous(self):
+        server_2 = self.repo.create_server("EU2")
+        self.conn.execute("INSERT INTO server_route_priorities(country_id, server_id, current_route_id, previous_route_id, changed_by, created_by) VALUES (?, ?, ?, NULL, ?, ?)", (self.country_id, self.server_id, self.route_id, self.admin_id, self.admin_id))
+        self.conn.commit()
+
+        self.create_event(apply_scope="server_priority", country_id=self.country_id, server_ids=[self.server_id, server_2], provider_id=self.alt_provider_id, new_route_id=self.alt_route_id)
+
+        priority = self.conn.execute("SELECT * FROM server_route_priorities WHERE country_id = ? AND server_id = ?", (self.country_id, server_2)).fetchone()
+        self.assertIsNone(priority["previous_route_id"])
+        self.assertEqual(priority["current_route_id"], self.alt_route_id)
+
+    def test_server_priority_full_noop_does_not_create_event(self):
+        server_2 = self.repo.create_server("EU2")
+        for sid in (self.server_id, server_2):
+            self.conn.execute("INSERT INTO server_route_priorities(country_id, server_id, current_route_id, previous_route_id, changed_by, created_by) VALUES (?, ?, ?, NULL, ?, ?)", (self.country_id, sid, self.route_id, self.admin_id, self.admin_id))
+        self.conn.commit()
+
+        with self.assertRaisesRegex(BusinessRuleError, "уже установлен для всех"):
+            self.create_event(apply_scope="server_priority", country_id=self.country_id, server_ids=[self.server_id, server_2], provider_id=self.provider_id, new_route_id=self.route_id)
+
+        self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM routing_events").fetchone()[0], 0)
+        self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM routing_event_servers").fetchone()[0], 0)
+
+    def test_server_priority_partial_noop_records_applied_and_skipped(self):
+        server_2 = self.repo.create_server("EU2")
+        self.conn.execute("INSERT INTO server_route_priorities(country_id, server_id, current_route_id, previous_route_id, changed_by, created_by) VALUES (?, ?, ?, NULL, ?, ?)", (self.country_id, self.server_id, self.route_id, self.admin_id, self.admin_id))
+        self.conn.execute("INSERT INTO server_route_priorities(country_id, server_id, current_route_id, previous_route_id, changed_by, created_by) VALUES (?, ?, ?, NULL, ?, ?)", (self.country_id, server_2, self.alt_route_id, self.admin_id, self.admin_id))
+        self.conn.commit()
+
+        event_id = self.create_event(apply_scope="server_priority", country_id=self.country_id, server_ids=[self.server_id, server_2], provider_id=self.alt_provider_id, new_route_id=self.alt_route_id)
+
+        rows = self.conn.execute("SELECT * FROM routing_event_servers WHERE routing_event_id = ? ORDER BY server_id", (event_id,)).fetchall()
+        self.assertEqual([row["status"] for row in rows], ["applied", "skipped_noop"])
+        changed = self.conn.execute("SELECT * FROM server_route_priorities WHERE country_id = ? AND server_id = ?", (self.country_id, self.server_id)).fetchone()
+        skipped = self.conn.execute("SELECT * FROM server_route_priorities WHERE country_id = ? AND server_id = ?", (self.country_id, server_2)).fetchone()
+        self.assertEqual(changed["current_route_id"], self.alt_route_id)
+        self.assertEqual(changed["previous_route_id"], self.route_id)
+        self.assertEqual(skipped["current_route_id"], self.alt_route_id)
+        self.assertIsNone(skipped["previous_route_id"])
+        snapshot = json.loads(self.conn.execute("SELECT snapshot_json FROM routing_events WHERE id = ?", (event_id,)).fetchone()[0])
+        self.assertEqual([row["status"] for row in snapshot["affected_servers"]], ["applied", "skipped_noop"])
+
+    def test_server_priority_requires_server_id_or_server_ids(self):
+        with self.assertRaisesRegex(BusinessRuleError, "Сервер обязателен"):
+            self.create_event(apply_scope="server_priority", country_id=self.country_id, server_id=None, server_ids=None, provider_id=self.provider_id, new_route_id=self.route_id)
+
+    def test_server_priority_rejects_inactive_server(self):
+        self.conn.execute("UPDATE servers SET is_active = 0 WHERE id = ?", (self.server_id,))
+        self.conn.commit()
+        with self.assertRaisesRegex(BusinessRuleError, "неактивный сервер"):
+            self.create_event(apply_scope="server_priority", country_id=self.country_id, server_id=self.server_id, provider_id=self.provider_id, new_route_id=self.route_id)
 
     def test_server_priority_updates_existing_current_to_previous(self):
         self.conn.execute("INSERT INTO server_route_priorities(country_id, server_id, current_route_id, previous_route_id, changed_by, created_by) VALUES (?, ?, ?, NULL, ?, ?)", (self.country_id, self.server_id, self.route_id, self.admin_id, self.admin_id))
