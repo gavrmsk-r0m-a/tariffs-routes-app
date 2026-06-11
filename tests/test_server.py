@@ -64,6 +64,46 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertIn("Серверный приоритет", content)
         self.assertIn("Настройка кампании", content)
 
+    def test_routes_filters_are_collapsible_and_keep_field_names(self):
+        self.request("/routes")
+        captured, content = self.request("/routes")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("class='filter-card'", content)
+        self.assertIn("<summary class='filter-summary'>Фильтры</summary>", content)
+        self.assertIn('name="country_id"', content)
+        self.assertIn('name="provider_id"', content)
+        self.assertIn('name="prefix_id"', content)
+        self.assertIn('name="is_actual"', content)
+        self.assertIn('name="search"', content)
+
+        captured, content = self.request("/routes?country_id=1&search=Demo")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("<details class='filter-card' open>", content)
+        self.assertIn('name="search" value="Demo"', content)
+
+    def test_provider_changes_journal_workspace_and_create_form_survive(self):
+        self.request("/routes")
+        captured, content = self.request("/provider-changes")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("Журнал событий", content)
+        self.assertIn("journal-card", content)
+        self.assertIn("table-scroll", content)
+        self.assertIn("name='apply_scope' value='none'", content)
+        self.assertIn("name='apply_scope' value='server_priority'", content)
+        self.assertIn("name='apply_scope' value='campaign_setting'", content)
+        self.assertIn("name='server_ids' value='1'", content)
+
+    def test_sidebar_admin_tree_regression_for_phase_two_layout(self):
+        captured, content = self.request("/admin/server-priorities")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("side-nav", content)
+        self.assertIn("Администрирование</button>", content)
+        self.assertIn("admin-tree open", content)
+        self.assertIn("href='/routes'>Маршруты</a>", content)
+        self.assertIn("href='/provider-changes'>Смена провайдеров</a>", content)
+        self.assertIn("href='/admin/company-routing-settings'>Схема маршрутизации кампаний</a>", content)
+        self.assertIn("admin-link active", content)
+
     def test_provider_change_form_is_dynamic_and_defaults_to_none_scope(self):
         self.request("/routes")
         captured, content = self.request("/provider-changes")
