@@ -1243,6 +1243,8 @@ class Repository:
                 "old_company_has_autorotation", "new_company_has_autorotation",
             ):
                 values[field] = None
+            values["server_ids"] = None
+            values["affected_servers"] = None
         elif apply_scope == "server_priority":
             if not values["country_id"] or not values["new_route_id"]:
                 raise BusinessRuleError("GEO, сервер и новый маршрут обязательны для серверного приоритета")
@@ -1301,6 +1303,8 @@ class Repository:
             values["new_company_routing_mode"] = self._company_routing_mode_for_state(
                 values["new_company_route_id"], bool(values["new_company_has_autorotation"])
             )
+            values["server_ids"] = None
+            values["affected_servers"] = None
 
         values["snapshot_json"] = json.dumps(self._routing_event_snapshot(values), ensure_ascii=False)
         cur = self.conn.execute(

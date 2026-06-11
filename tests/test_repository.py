@@ -481,6 +481,18 @@ class RoutingEventsRepositoryTest(unittest.TestCase):
         self.assertNotIn("Сервер:", log)
         self.assertNotIn("Кампания:", log)
 
+    def test_none_scope_clears_server_ids_in_change_log_new_values(self):
+        event_id = self.create_event(apply_scope="none", provider_id=self.provider_id, server_id=self.server_id, server_ids=[self.server_id])
+
+        raw_new_values = self.conn.execute(
+            "SELECT new_values FROM change_log WHERE entity_type = 'routing_event' AND entity_id = ?",
+            (event_id,),
+        ).fetchone()[0]
+        new_values = json.loads(raw_new_values)
+
+        self.assertIsNone(new_values["server_ids"])
+        self.assertIsNone(new_values["affected_servers"])
+
     def test_server_priority_new_route_must_belong_to_provider(self):
         with self.assertRaisesRegex(BusinessRuleError, "новому провайдеру"):
             self.create_event(apply_scope="server_priority", country_id=self.country_id, server_id=self.server_id, provider_id=self.provider_id, new_route_id=self.alt_route_id)
