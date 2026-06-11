@@ -37,6 +37,65 @@ def esc(value: object) -> str:
     return html.escape("" if value is None else str(value))
 
 
+
+
+NAV_ITEMS = [
+    ("routes", "/routes", "Маршруты", ("Маршруты", "Номера маршрута", "Редактировать маршрут")),
+    ("tariffs", "/tariffs", "Тарифы", ("Тарифы",)),
+    ("phones", "/phones", "Купленные номера", ("Купленные номера", "Редактировать номер")),
+    ("companies", "/companies", "Кампании прозвона", ("Кампании прозвона", "Редактировать кампанию")),
+    ("provider-changes", "/provider-changes", "Смена провайдеров", ("Смена провайдеров", "Редактировать событие")),
+]
+
+ADMIN_NAV_ITEMS = [
+    ("/admin/server-priorities", "Приоритет по серверам", ("Приоритет по серверам",)),
+    ("/admin/company-routing-settings", "Схема маршрутизации кампаний", ("Схема маршрутизации кампаний",)),
+    ("/admin/naming-rules", "Правила нейминга маршрутов", ("Правила нейминга",)),
+    ("/admin/import", "Импорт / экспорт", ("Импорт",)),
+    ("/admin/currency-rates", "Курсы валют", ("Курсы валют",)),
+    ("/admin/change-reasons", "Причины смены провайдера", ("Причины смены провайдера",)),
+    ("/admin/dictionaries", "Справочные значения", ("Справочные значения",)),
+    ("/admin/change-log", "Change log", ("Change log",)),
+    ("/companies", "Кампании прозвона", ()),
+]
+
+
+def active_nav(title: str) -> tuple[str, str | None]:
+    for key, _, _, titles in NAV_ITEMS:
+        if title in titles:
+            return key, None
+    for href, _, titles in ADMIN_NAV_ITEMS:
+        if title in titles:
+            return "admin", href
+    if title == "Администрирование":
+        return "admin", None
+    return "", None
+
+
+def sidebar(title: str) -> str:
+    active_key, active_admin_href = active_nav(title)
+    admin_open = active_key == "admin"
+    main_links = "".join(
+        f"<a class='side-link {'active' if active_key == key else ''}' href='{href}'>{label}</a>"
+        for key, href, label, _ in NAV_ITEMS
+    )
+    admin_links = "".join(
+        f"<a class='admin-link {'active' if active_admin_href == href else ''}' href='{href}'>{label}</a>"
+        for href, label, _ in ADMIN_NAV_ITEMS
+    )
+    return f"""
+  <aside class="sidebar">
+    <div class="app-title">MVP маршрутов</div>
+    <nav class="side-nav" aria-label="Основная навигация">
+      {main_links}
+      <button class="side-link admin-toggle {'active' if admin_open else ''}" type="button" aria-expanded="{'true' if admin_open else 'false'}" aria-controls="admin-nav">Администрирование</button>
+      <div class="admin-tree {'open' if admin_open else ''}" id="admin-nav">
+        {admin_links}
+      </div>
+    </nav>
+  </aside>"""
+
+
 def page(title: str, body: str, notice: str | None = None) -> bytes:
     notice_html = f"<div class='ok'>{esc(notice)}</div>" if notice else ""
     return f"""<!doctype html>
@@ -45,14 +104,42 @@ def page(title: str, body: str, notice: str | None = None) -> bytes:
   <meta charset="utf-8">
   <title>{esc(title)}</title>
   <style>
-    body {{ font-family: system-ui, sans-serif; margin: 24px; color: #1f2937; background: #fff; }}
-    nav {{ display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }}
-    nav a, .button, button {{ border: 1px solid #d1d5db; border-radius: 8px; color: #111827; padding: 6px 10px; text-decoration: none; background: #f9fafb; cursor: pointer; }}
-    table {{ border-collapse: collapse; width: 100%; margin-top: 16px; }}
-    th, td {{ border: 1px solid #d1d5db; padding: 8px; vertical-align: top; }}
-    th {{ background: #f3f4f6; text-align: left; }}
-    input, select, textarea {{ border: 1px solid #9ca3af; border-radius: 6px; padding: 6px; margin: 4px; max-width: 100%; }}
-    label {{ display: inline-block; margin: 4px 12px 4px 0; }}
+    * {{ box-sizing: border-box; }}
+    body {{ font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 0; color: #1f2937; background: #f4f6f8; font-size: 14px; line-height: 1.45; }}
+    h1 {{ margin: 0 0 14px; font-size: 26px; line-height: 1.2; letter-spacing: 0; color: #111827; }}
+    h2 {{ margin: 18px 0 10px; font-size: 18px; line-height: 1.25; letter-spacing: 0; }}
+    h3 {{ margin: 14px 0 8px; font-size: 15px; letter-spacing: 0; }}
+    p {{ margin: 8px 0; }}
+    .app-shell {{ display: grid; grid-template-columns: 258px minmax(0, 1fr); min-height: 100vh; }}
+    .sidebar {{ background: #e9edf2; border-right: 1px solid #d6dde6; padding: 18px 14px; position: sticky; top: 0; height: 100vh; overflow-y: auto; }}
+    .app-title {{ color: #111827; font-weight: 800; font-size: 17px; margin: 2px 8px 18px; }}
+    .side-nav {{ display: grid; gap: 4px; }}
+    .side-link, .admin-link, .button, button {{ border: 1px solid transparent; border-radius: 6px; color: #1f2937; padding: 7px 10px; text-decoration: none; background: transparent; cursor: pointer; font: inherit; }}
+    .side-link {{ display: flex; width: 100%; align-items: center; justify-content: space-between; text-align: left; font-weight: 650; }}
+    .side-link:hover, .admin-link:hover {{ background: #f7f9fb; border-color: #d6dde6; }}
+    .side-link.active {{ background: #ffffff; border-color: #c6d2df; color: #0f3f75; box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06); }}
+    .admin-toggle::after {{ content: ">"; color: #64748b; font-size: 12px; }}
+    .admin-toggle[aria-expanded="true"]::after {{ content: "v"; }}
+    .admin-tree {{ display: none; margin: 2px 0 6px 13px; padding: 3px 0 3px 12px; border-left: 1px solid #c7d0dc; }}
+    .admin-tree.open {{ display: grid; gap: 2px; }}
+    .admin-link {{ display: block; padding: 6px 8px; font-size: 13px; line-height: 1.25; }}
+    .admin-link.active {{ background: #ffffff; border-color: #c6d2df; color: #0f3f75; font-weight: 700; }}
+    .workspace {{ min-width: 0; padding: 22px 26px 38px; }}
+    .content {{ max-width: 1460px; margin: 0 auto; }}
+    a {{ color: #155e9f; }}
+    .button, button {{ background: #ffffff; border-color: #cbd5e1; color: #111827; min-height: 32px; }}
+    .button:hover, button:hover {{ background: #f8fafc; border-color: #94a3b8; }}
+    table {{ border-collapse: separate; border-spacing: 0; width: 100%; margin-top: 14px; background: #fff; border: 1px solid #d7dee8; border-radius: 8px; overflow: hidden; }}
+    th, td {{ border: 0; border-bottom: 1px solid #e5eaf0; padding: 8px 9px; vertical-align: top; }}
+    tr:last-child td {{ border-bottom: 0; }}
+    th {{ background: #eef2f7; text-align: left; font-weight: 750; color: #334155; }}
+    tbody tr:nth-child(even) {{ background: #fbfcfe; }}
+    input, select, textarea {{ border: 1px solid #b8c2cf; border-radius: 6px; padding: 6px 8px; margin: 0; max-width: 100%; background: #fff; color: #111827; font: inherit; }}
+    textarea {{ width: 100%; }}
+    input[type="checkbox"], input[type="radio"] {{ width: auto; margin: 0 6px 0 0; vertical-align: middle; }}
+    label {{ display: inline-grid; gap: 4px; margin: 0; align-items: start; color: #374151; }}
+    form {{ display: flex; flex-wrap: wrap; gap: 8px 10px; align-items: end; }}
+    form button {{ align-self: end; }}
     .checkbox-list {{ display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 4px 0; }}
     .checkbox-list label {{ margin: 0; }}
     .server-checkbox-toolbar {{ display: flex; gap: 8px; margin: 0 0 8px; }}
@@ -64,13 +151,19 @@ def page(title: str, body: str, notice: str | None = None) -> bytes:
     .server-route-hint {{ display: block; margin-top: 2px; font-size: 0.9em; color: #6b7280; line-height: 1.25; }}
     .event-server-list {{ margin: 4px 0 0 18px; padding: 0; }}
     .event-server-list li {{ margin: 2px 0; }}
-    fieldset {{ border: 1px solid #d1d5db; border-radius: 8px; margin: 14px 0; padding: 12px; }}
+    fieldset {{ border: 1px solid #d7dee8; border-radius: 8px; margin: 12px 0; padding: 12px; background: #fff; }}
+    fieldset > legend {{ padding: 0 6px; color: #475569; font-weight: 750; }}
+    h1 + fieldset, h1 + p + fieldset {{ margin-top: 6px; }}
     .required {{ color: #b91c1c; font-weight: 700; }}
     .muted {{ color: #6b7280; }}
     .error {{ border: 1px solid #dc2626; background: #fee2e2; padding: 12px; border-radius: 8px; }}
     .ok {{ border: 1px solid #16a34a; background: #dcfce7; padding: 12px; border-radius: 8px; margin: 10px 0; }}
     .grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }}
-    .card {{ border: 1px solid #d1d5db; border-radius: 10px; padding: 12px; background: #f9fafb; }}
+    .card {{ border: 1px solid #d7dee8; border-radius: 8px; padding: 12px; background: #fff; }}
+    details {{ border: 1px solid #d7dee8; border-radius: 8px; padding: 0; margin: 12px 0; background: #fff; }}
+    summary {{ cursor: pointer; padding: 9px 12px; font-weight: 750; color: #263445; }}
+    details[open] > summary {{ border-bottom: 1px solid #edf1f5; }}
+    details > form, details > .card, details > textarea, details > p, details > table {{ margin: 12px; }}
     .scope-cards {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px; }}
     .scope-card {{ cursor: pointer; display: block; }}
     .scope-card.selected {{ border-color: #2563eb; background: #eff6ff; box-shadow: 0 0 0 2px #bfdbfe inset; }}
@@ -80,33 +173,45 @@ def page(title: str, body: str, notice: str | None = None) -> bytes:
     .actions {{ white-space: nowrap; }}
     .dictionary-layout {{ display: grid; grid-template-columns: minmax(220px, 20%) 1fr; gap: 18px; align-items: start; }}
     .dictionary-sidebar {{ display: grid; gap: 10px; }}
-    .dictionary-card {{ border: 1px solid #d1d5db; border-radius: 10px; padding: 10px; background: #f9fafb; }}
+    .dictionary-card {{ border: 1px solid #d1d5db; border-radius: 8px; padding: 10px; background: #fff; }}
     .dictionary-card.active {{ border-color: #2563eb; background: #eff6ff; box-shadow: 0 0 0 2px #bfdbfe inset; }}
     .dictionary-card-title {{ display: block; font-weight: 800; color: #111827; text-decoration: none; margin-bottom: 8px; }}
     .dictionary-card form {{ display: grid; gap: 6px; }}
     .dictionary-card input, .dictionary-card select {{ width: 100%; box-sizing: border-box; margin: 0; }}
     .dictionary-workspace {{ min-width: 0; }}
-    .dictionary-toolbar {{ display: flex; justify-content: space-between; align-items: center; gap: 12px; border: 1px solid #d1d5db; border-radius: 10px; padding: 10px 12px; background: #f9fafb; }}
+    .dictionary-toolbar {{ display: flex; justify-content: space-between; align-items: center; gap: 12px; border: 1px solid #d1d5db; border-radius: 8px; padding: 10px 12px; background: #fff; }}
     .dictionary-toolbar h2 {{ margin: 0; }}
     .inactive-row {{ color: #6b7280; background: #f3f4f6; }}
     .status-badge {{ white-space: nowrap; }}
+    @media (max-width: 900px) {{
+      .app-shell {{ grid-template-columns: 1fr; }}
+      .sidebar {{ position: static; height: auto; }}
+      .workspace {{ padding: 18px 14px 28px; }}
+    }}
   </style>
 </head>
 <body>
-  <nav>
-    <a href="/routes">Маршруты</a>
-    <a href="/tariffs">Тарифы</a>
-    <a href="/phones">Купленные номера</a>
-    <a href="/companies">Кампании прозвона</a>
-    <a href="/provider-changes">Смена провайдеров</a>
-    <a href="/admin">Администрирование</a>
-  </nav>
-  <hr>
-  {notice_html}
-  {body}
+  <div class="app-shell">
+    {sidebar(title)}
+    <main class="workspace">
+      <div class="content">
+        {notice_html}
+        {body}
+      </div>
+    </main>
+  </div>
+  <script>
+    document.querySelectorAll(".admin-toggle").forEach((button) => {{
+      button.addEventListener("click", () => {{
+        const target = document.getElementById(button.getAttribute("aria-controls"));
+        const expanded = button.getAttribute("aria-expanded") === "true";
+        button.setAttribute("aria-expanded", expanded ? "false" : "true");
+        target.classList.toggle("open", !expanded);
+      }});
+    }});
+  </script>
 </body>
 </html>""".encode("utf-8")
-
 
 def redirect(start_response, location: str):
     start_response("303 See Other", [("Location", location)])
