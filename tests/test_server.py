@@ -84,6 +84,18 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertNotIn("Новый route", content)
         self.assertNotIn("Новая авторотация", content)
 
+    def test_provider_change_server_priority_uses_active_server_checkboxes(self):
+        self.request("/routes")
+        captured, content = self.request("/provider-changes")
+        self.assertEqual(captured["status"], "200 OK")
+        create_form = content.split("<form method='post' action='/provider-changes/create'", 1)[1].split("</form>", 1)[0]
+        self.assertIn("<legend>Серверы <span class='required'>*</span></legend>", create_form)
+        self.assertIn("name='server_ids' value='1'", create_form)
+        self.assertIn("name='server_ids' value='2'", create_form)
+        self.assertIn("EU1", create_form)
+        self.assertIn("EU2", create_form)
+        self.assertNotIn("<select name='server_id' id='event-server'", create_form)
+
     def test_provider_changes_navigation_is_top_level_only(self):
         captured, content = self.request("/provider-changes")
         self.assertEqual(captured["status"], "200 OK")
@@ -626,6 +638,48 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
         captured, content = self.request("/admin/change-log")
         self.assertIn("routing_event.created", content)
         self.assertIn("routing_event.applied_to_server_priority", content)
+
+    def test_server_priority_event_accepts_multiple_server_ids_from_ui(self):
+        self.request("/routes")
+        conn = server.connect(server.DB_PATH)
+        try:
+            target = conn.execute("""
+                SELECT r.id AS route_id, p.id AS provider_id
+                FROM routes r
+                JOIN providers p ON p.id = r.provider_id
+                WHERE r.country_id = 1 AND p.name = 'DemoTel'
+                ORDER BY r.id
+                LIMIT 1
+            """).fetchone()
+        finally:
+            conn.close()
+        body = urlencode([
+            ("apply_scope", "server_priority"),
+            ("event_at", "2026-06-10T11:30"),
+            ("country_id", "1"),
+            ("server_ids", "1"),
+            ("server_ids", "2"),
+            ("provider_id", str(target["provider_id"])),
+            ("new_route_id", str(target["route_id"])),
+            ("reason", "Плановое переключение"),
+            ("comment", "Переключили EU1 и EU2"),
+        ])
+        captured, _ = self.request("/provider-changes/create", method="POST", body=body)
+        self.assertEqual(captured["status"], "303 See Other")
+        conn = server.connect(server.DB_PATH)
+        try:
+            self.assertEqual(conn.execute("SELECT COUNT(*) FROM routing_events").fetchone()[0], 1)
+            server_ids = [row["server_id"] for row in conn.execute("SELECT server_id FROM routing_event_servers ORDER BY server_id")]
+            self.assertEqual(server_ids, [1, 2])
+            priority_rows = conn.execute("""
+                SELECT server_id, current_route_id
+                FROM server_route_priorities
+                WHERE country_id = 1 AND server_id IN (1, 2)
+                ORDER BY server_id
+            """).fetchall()
+            self.assertEqual([(row["server_id"], row["current_route_id"]) for row in priority_rows], [(1, target["route_id"]), (2, target["route_id"])])
+        finally:
+            conn.close()
 
     def test_campaign_setting_route_is_preserved_when_toggling_autorotation(self):
         self.request("/routes")
