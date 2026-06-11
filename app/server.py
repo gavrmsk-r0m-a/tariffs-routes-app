@@ -53,6 +53,8 @@ def page(title: str, body: str, notice: str | None = None) -> bytes:
     th {{ background: #f3f4f6; text-align: left; }}
     input, select, textarea {{ border: 1px solid #9ca3af; border-radius: 6px; padding: 6px; margin: 4px; max-width: 100%; }}
     label {{ display: inline-block; margin: 4px 12px 4px 0; }}
+    .checkbox-list {{ display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 4px 0; }}
+    .checkbox-list label {{ margin: 0; }}
     fieldset {{ border: 1px solid #d1d5db; border-radius: 8px; margin: 14px 0; padding: 12px; }}
     .required {{ color: #b91c1c; font-weight: 700; }}
     .muted {{ color: #6b7280; }}
@@ -172,6 +174,15 @@ def server_checkboxes(repo: Repository, selected: set[str] | None = None) -> str
         checked = "checked" if str(row["id"]) in selected else ""
         boxes.append(f"<label><input type='checkbox' name='server_ids' value='{row['id']}' {checked}> {esc(row['name'])}</label>")
     return "<details><summary>Выбрать серверы</summary>" + "".join(boxes) + "<p class='muted'>Отмеченные серверы будут сохранены в журнале.</p></details>"
+
+
+def active_server_priority_checkboxes(repo: Repository, selected: set[str] | None = None) -> str:
+    selected = selected or set()
+    boxes = []
+    for row in repo.conn.execute("SELECT id, name FROM servers WHERE is_active = 1 ORDER BY name"):
+        checked = "checked" if str(row["id"]) in selected else ""
+        boxes.append(f"<label><input type='checkbox' name='server_ids' value='{row['id']}' {checked}> {esc(row['name'])}</label>")
+    return "<div class='checkbox-list'>" + "".join(boxes) + "</div>"
 
 
 DEMO_DATA_VERSION = "mvp_mexico_demo_v2"
@@ -830,6 +841,8 @@ def routing_event_form(repo: Repository, event=None) -> str:
     new_route_opts = route_options_for_dynamic_form(repo, selected=event["new_route_id"] if event else None, empty="—")
     company_route_opts = route_options_for_dynamic_form(repo, selected=event["new_company_route_id"] if event else None, empty="—")
     company_opts = select_options(repo, "SELECT id, company_id_external || ' / ' || company_name AS label FROM calling_companies WHERE is_active = 1 OR id = ? ORDER BY company_id_external", (event["calling_company_id"] if event else 0,), selected=event["calling_company_id"] if event else None, empty="—")
+    selected_server_ids = {str(event["server_id"])} if event and event["server_id"] else set()
+    server_priority_server_boxes = active_server_priority_checkboxes(repo, selected_server_ids)
     action = f"/provider-changes/{event['id']}/update" if event else "/provider-changes/create"
     submit = "Сохранить изменения" if event else "Создать событие"
     inactive_note = "<p class='muted'>Редактирование события не применяет повторно server_route_priorities. Для исправления текущего приоритета создайте новое событие.</p>" if event else ""
@@ -848,7 +861,7 @@ def routing_event_form(repo: Repository, event=None) -> str:
   {inactive_note}
   <label>Дата события <span class='required'>*</span><input type='datetime-local' name='event_at' value='{esc(event_at)}' required></label>
   <label class='scope-field' data-scopes='none server_priority'>GEO <select name='country_id' id='event-country'>{active_options(repo, 'countries', selected=event['country_id'] if event else None, empty='—')}</select></label>
-  <label class='scope-field' data-scopes='server_priority'>Сервер <span class='required'>*</span><select name='server_id' id='event-server'>{active_options(repo, 'servers', selected=event['server_id'] if event else None, empty='—')}</select><span class='muted'> MVP: один сервер; мультивыбор требует отдельной модели применения.</span></label>
+  <fieldset class='scope-field' data-scopes='server_priority'><legend>Серверы <span class='required'>*</span></legend>{server_priority_server_boxes}</fieldset>
   <span class='scope-field current-route-box' data-scopes='server_priority' id='current-route-box'>Текущий маршрут: —</span>
   <label class='scope-field' data-scopes='none server_priority'>Провайдер <span class='required provider-required'>*</span><select name='provider_id' id='event-provider'>{active_options(repo, 'providers', selected=provider_selected, empty='—')}</select></label>
   <label class='scope-field' data-scopes='none'>Маршрут/префикс <select name='affected_route_id' id='affected-route'>{route_opts}</select></label>
@@ -922,13 +935,12 @@ def routing_event_form(repo: Repository, event=None) -> str:
     const needsRoute = scope === 'campaign_setting' && routeNeeds.has(ctype && ctype.value);
     form.querySelectorAll('[data-campaign-route-field]').forEach((el) => {{ el.hidden = !needsRoute; el.querySelectorAll('select').forEach((f) => f.required = needsRoute); }});
     setRequired(country, scope === 'server_priority');
-    setRequired(server, scope === 'server_priority');
     setRequired(provider, scope === 'none' || scope === 'server_priority');
     setRequired(document.getElementById('new-route'), scope === 'server_priority');
     setRequired(company, scope === 'campaign_setting');
     setRequired(ctype, scope === 'campaign_setting');
   }}
-  form.querySelectorAll('input[name="apply_scope"], #event-country, #event-server, #event-provider, #event-company, #campaign-provider, #company-change-type').forEach((el) => el.addEventListener('change', sync));
+  form.querySelectorAll('input[name="apply_scope"], #event-country, #event-provider, #event-company, #campaign-provider, #company-change-type').forEach((el) => el.addEventListener('change', sync));
   sync();
 }})();
 </script>
@@ -1538,9 +1550,10 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
     if path == "/provider-changes/create":
         apply_scope = data.get("apply_scope")
         provider_id = parse_int(data.get("campaign_provider_id")) if apply_scope == "campaign_setting" else parse_int(data.get("provider_id"))
+        selected_server_ids = parse_qs(data.get("_raw", ""), keep_blank_values=True).get("server_ids") if apply_scope == "server_priority" else None
         repo.create_routing_event(
             event_at=data.get("event_at"), apply_scope=apply_scope, reason=data.get("reason"), comment=data.get("comment"),
-            country_id=parse_int(data.get("country_id")), server_id=parse_int(data.get("server_id")), provider_id=provider_id,
+            country_id=parse_int(data.get("country_id")), server_id=parse_int(data.get("server_id")), server_ids=selected_server_ids, provider_id=provider_id,
             affected_route_id=parse_int(data.get("affected_route_id")), old_route_id=parse_int(data.get("old_route_id")), new_route_id=parse_int(data.get("new_route_id")),
             calling_company_id=parse_int(data.get("calling_company_id")), company_change_type=data.get("company_change_type") or None,
             new_company_routing_mode=data.get("new_company_routing_mode") or None, new_company_route_id=parse_int(data.get("new_company_route_id")),
