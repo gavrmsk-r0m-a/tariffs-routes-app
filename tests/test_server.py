@@ -123,7 +123,7 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertNotIn("Администрирование → Смена провайдеров", content)
         captured, content = self.request("/admin")
         self.assertEqual(captured["status"], "200 OK")
-        self.assertIn('<a href="/provider-changes">Смена провайдеров</a>', content)
+        self.assertIn("href='/provider-changes'>Смена провайдеров</a>", content)
         self.assertNotIn('<a class="card" href="/provider-changes">Смена провайдеров</a>', content)
         self.assertEqual(content.count("Смена провайдеров"), 1)
 
