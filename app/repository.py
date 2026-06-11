@@ -1046,7 +1046,7 @@ class Repository:
                 "SELECT company_id_external, company_name FROM calling_companies WHERE id = ?",
                 (values.get("calling_company_id"),),
             ).fetchone()
-        return {
+        snapshot = {
             "country_name": self._name_by_id("countries", values.get("country_id")),
             "server_name": self._name_by_id("servers", values.get("server_id")),
             "provider_name": self._name_by_id("providers", values.get("provider_id")),
@@ -1061,6 +1061,9 @@ class Repository:
             "reason": values.get("reason"),
             "apply_scope": values.get("apply_scope"),
         }
+        if values.get("apply_scope") == "server_priority":
+            snapshot["affected_servers"] = values.get("affected_servers", [])
+        return snapshot
 
     def _routing_event_summary(self, values: dict) -> str:
         scope = values.get("apply_scope")
@@ -1108,6 +1111,46 @@ class Repository:
             f"previous route after update: {self._route_label(previous_after_update) or '—'}",
             f"Комментарий: {comment}",
         ])
+
+    def _normalize_server_priority_server_ids(self, *, server_id: int | None, server_ids) -> list[int]:
+        raw_ids = server_ids if server_ids is not None else ([server_id] if server_id else [])
+        normalized: list[int] = []
+        for raw_id in raw_ids:
+            if raw_id in (None, ""):
+                continue
+            sid = int(raw_id)
+            if sid not in normalized:
+                normalized.append(sid)
+        if not normalized:
+            raise BusinessRuleError("Сервер обязателен для серверного приоритета")
+        return normalized
+
+    def _server_priority_affected_servers(self, *, country_id: int, server_ids: list[int], new_route_id: int) -> list[dict]:
+        affected = []
+        for server_id in server_ids:
+            server = self.conn.execute("SELECT id, name, is_active FROM servers WHERE id = ?", (server_id,)).fetchone()
+            if not server:
+                raise BusinessRuleError("Сервер не найден")
+            if not server["is_active"]:
+                raise BusinessRuleError("Нельзя выбрать неактивный сервер")
+            current = self.conn.execute(
+                "SELECT id, current_route_id FROM server_route_priorities WHERE country_id = ? AND server_id = ?",
+                (country_id, server_id),
+            ).fetchone()
+            old_route_id = current["current_route_id"] if current else None
+            affected.append({
+                "server_id": server_id,
+                "server_name": server["name"],
+                "old_route_id": old_route_id,
+                "old_route": self._route_label(old_route_id),
+                "new_route_id": new_route_id,
+                "new_route": self._route_label(new_route_id),
+                "server_route_priority_id": current["id"] if current else None,
+                "status": "skipped_noop" if old_route_id is not None and int(old_route_id) == int(new_route_id) else "applied",
+            })
+        if all(row["status"] == "skipped_noop" for row in affected):
+            raise BusinessRuleError("Выбранный маршрут уже установлен для всех выбранных серверов")
+        return affected
 
     def _upsert_company_routing_setting_from_event(self, values: dict, *, updated_by: int) -> None:
         active = self._active_company_routing_setting(values["calling_company_id"])
@@ -1165,6 +1208,7 @@ class Repository:
             "comment": self._require_text(kwargs.get("comment"), "Комментарий обязателен"),
             "country_id": kwargs.get("country_id"),
             "server_id": kwargs.get("server_id"),
+            "server_ids": kwargs.get("server_ids"),
             "provider_id": kwargs.get("provider_id"),
             "affected_route_id": kwargs.get("affected_route_id"),
             "old_route_id": kwargs.get("old_route_id"),
@@ -1199,9 +1243,12 @@ class Repository:
                 "old_company_has_autorotation", "new_company_has_autorotation",
             ):
                 values[field] = None
+            values["server_ids"] = None
+            values["affected_servers"] = None
         elif apply_scope == "server_priority":
-            if not values["country_id"] or not values["server_id"] or not values["provider_id"] or not values["new_route_id"]:
-                raise BusinessRuleError("GEO, сервер, новый провайдер и новый маршрут обязательны для серверного приоритета")
+            if not values["country_id"] or not values["new_route_id"]:
+                raise BusinessRuleError("GEO, сервер и новый маршрут обязательны для серверного приоритета")
+            server_ids = self._normalize_server_priority_server_ids(server_id=values["server_id"], server_ids=values.get("server_ids"))
             route = self.conn.execute("SELECT country_id, provider_id FROM routes WHERE id = ?", (values["new_route_id"],)).fetchone()
             if not route:
                 raise BusinessRuleError("Новый маршрут не найден")
@@ -1209,12 +1256,13 @@ class Repository:
                 raise BusinessRuleError("Новый маршрут должен относиться к выбранному GEO")
             if values["provider_id"] and int(route["provider_id"]) != int(values["provider_id"]):
                 raise BusinessRuleError("Новый маршрут должен относиться к выбранному новому провайдеру")
-            current = self.conn.execute(
-                "SELECT current_route_id FROM server_route_priorities WHERE country_id = ? AND server_id = ?",
-                (values["country_id"], values["server_id"]),
-            ).fetchone()
-            values["old_route_id"] = current["current_route_id"] if current else None
             values["provider_id"] = route["provider_id"]
+            values["server_ids"] = server_ids
+            values["server_id"] = server_ids[0] if len(server_ids) == 1 else None
+            values["affected_servers"] = self._server_priority_affected_servers(
+                country_id=values["country_id"], server_ids=server_ids, new_route_id=values["new_route_id"]
+            )
+            values["old_route_id"] = values["affected_servers"][0]["old_route_id"] if len(server_ids) == 1 else None
         else:
             if not values["calling_company_id"] or not values["company_change_type"]:
                 raise BusinessRuleError("Кампания и тип изменения обязательны")
@@ -1255,6 +1303,8 @@ class Repository:
             values["new_company_routing_mode"] = self._company_routing_mode_for_state(
                 values["new_company_route_id"], bool(values["new_company_has_autorotation"])
             )
+            values["server_ids"] = None
+            values["affected_servers"] = None
 
         values["snapshot_json"] = json.dumps(self._routing_event_snapshot(values), ensure_ascii=False)
         cur = self.conn.execute(
@@ -1280,43 +1330,49 @@ class Repository:
         self._change_log("routing_event", event_id, "routing_event.created", created_by, new_values=values, summary=self._routing_event_summary(values))
 
         if apply_scope == "server_priority":
-            existing = self.conn.execute(
-                "SELECT id, current_route_id FROM server_route_priorities WHERE country_id = ? AND server_id = ?",
-                (values["country_id"], values["server_id"]),
-            ).fetchone()
-            if existing:
-                previous_after = existing["current_route_id"]
-                priority_id = existing["id"]
+            for affected in values["affected_servers"]:
+                priority_id = affected["server_route_priority_id"]
+                previous_after = affected["old_route_id"]
+                if affected["status"] == "applied":
+                    if priority_id:
+                        self.conn.execute(
+                            """
+                            UPDATE server_route_priorities
+                            SET previous_route_id = current_route_id, current_route_id = ?, changed_at = ?,
+                                changed_by = ?, reason = ?, comment = ?, updated_by = ?, updated_at = CURRENT_TIMESTAMP
+                            WHERE id = ?
+                            """,
+                            (values["new_route_id"], values["event_at"], created_by, values["reason"], values["comment"], created_by, priority_id),
+                        )
+                    else:
+                        cur2 = self.conn.execute(
+                            """
+                            INSERT INTO server_route_priorities(
+                                country_id, server_id, current_route_id, previous_route_id, changed_at,
+                                changed_by, reason, comment, created_by, updated_by
+                            ) VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, ?)
+                            """,
+                            (values["country_id"], affected["server_id"], values["new_route_id"], values["event_at"], created_by, values["reason"], values["comment"], created_by, created_by),
+                        )
+                        priority_id = int(cur2.lastrowid)
+                    affected["server_route_priority_id"] = priority_id
+                    self._change_log(
+                        "server_route_priority",
+                        priority_id,
+                        "routing_event.applied_to_server_priority",
+                        created_by,
+                        old_values={"current_route_id": affected["old_route_id"]},
+                        new_values={"current_route_id": values["new_route_id"], "previous_route_id": previous_after, "routing_event_id": event_id},
+                        summary=self._server_priority_apply_summary(country_id=values["country_id"], server_id=affected["server_id"], old_route_id=affected["old_route_id"], new_route_id=values["new_route_id"], previous_after_update=previous_after, comment=values["comment"]),
+                    )
                 self.conn.execute(
                     """
-                    UPDATE server_route_priorities
-                    SET previous_route_id = current_route_id, current_route_id = ?, changed_at = ?,
-                        changed_by = ?, reason = ?, comment = ?, updated_by = ?, updated_at = CURRENT_TIMESTAMP
-                    WHERE id = ?
+                    INSERT INTO routing_event_servers(
+                        routing_event_id, server_id, old_route_id, new_route_id, server_route_priority_id, status, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
                     """,
-                    (values["new_route_id"], values["event_at"], created_by, values["reason"], values["comment"], created_by, priority_id),
+                    (event_id, affected["server_id"], affected["old_route_id"], values["new_route_id"], priority_id, affected["status"]),
                 )
-            else:
-                previous_after = None
-                cur2 = self.conn.execute(
-                    """
-                    INSERT INTO server_route_priorities(
-                        country_id, server_id, current_route_id, previous_route_id, changed_at,
-                        changed_by, reason, comment, created_by, updated_by
-                    ) VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (values["country_id"], values["server_id"], values["new_route_id"], values["event_at"], created_by, values["reason"], values["comment"], created_by, created_by),
-                )
-                priority_id = int(cur2.lastrowid)
-            self._change_log(
-                "server_route_priority",
-                priority_id,
-                "routing_event.applied_to_server_priority",
-                created_by,
-                old_values={"current_route_id": values["old_route_id"]},
-                new_values={"current_route_id": values["new_route_id"], "previous_route_id": previous_after, "routing_event_id": event_id},
-                summary=self._server_priority_apply_summary(country_id=values["country_id"], server_id=values["server_id"], old_route_id=values["old_route_id"], new_route_id=values["new_route_id"], previous_after_update=previous_after, comment=values["comment"]),
-            )
         elif apply_scope == "campaign_setting":
             self._apply_campaign_setting_event(values, updated_by=created_by)
         self.conn.commit()

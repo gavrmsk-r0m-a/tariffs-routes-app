@@ -424,6 +424,20 @@ CREATE INDEX IF NOT EXISTS idx_routing_events_event_at ON routing_events(event_a
 CREATE INDEX IF NOT EXISTS idx_routing_events_scope ON routing_events(apply_scope);
 CREATE INDEX IF NOT EXISTS idx_routing_events_active ON routing_events(is_active);
 
+CREATE TABLE IF NOT EXISTS routing_event_servers (
+    id INTEGER PRIMARY KEY,
+    routing_event_id INTEGER NOT NULL REFERENCES routing_events(id) ON DELETE RESTRICT,
+    server_id INTEGER NOT NULL REFERENCES servers(id) ON DELETE RESTRICT,
+    old_route_id INTEGER REFERENCES routes(id) ON DELETE RESTRICT,
+    new_route_id INTEGER NOT NULL REFERENCES routes(id) ON DELETE RESTRICT,
+    server_route_priority_id INTEGER REFERENCES server_route_priorities(id) ON DELETE RESTRICT,
+    status TEXT NOT NULL DEFAULT 'applied' CHECK (status IN ('applied', 'skipped_noop')),
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_routing_event_servers_event ON routing_event_servers(routing_event_id);
+CREATE INDEX IF NOT EXISTS idx_routing_event_servers_server ON routing_event_servers(server_id);
+CREATE INDEX IF NOT EXISTS idx_routing_event_servers_new_route ON routing_event_servers(new_route_id);
+
 CREATE TABLE IF NOT EXISTS change_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     entity_type TEXT NOT NULL,
