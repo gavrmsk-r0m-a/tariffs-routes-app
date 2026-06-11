@@ -96,6 +96,26 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertIn("EU2", create_form)
         self.assertNotIn("<select name='server_id' id='event-server'", create_form)
 
+    def test_provider_change_server_priority_checkbox_controls_are_non_submit_buttons(self):
+        self.request("/routes")
+        captured, content = self.request("/provider-changes")
+        self.assertEqual(captured["status"], "200 OK")
+        create_form = content.split("<form method='post' action='/provider-changes/create'", 1)[1].split("</form>", 1)[0]
+        self.assertIn("data-server-select='all'>Выбрать все", create_form)
+        self.assertIn("data-server-select='none'>Снять все", create_form)
+        self.assertIn("<button type='button' data-server-select='all'>Выбрать все</button>", create_form)
+        self.assertIn("<button type='button' data-server-select='none'>Снять все</button>", create_form)
+
+    def test_provider_change_server_priority_shows_current_route_hints(self):
+        self.request("/routes")
+        captured, content = self.request("/provider-changes")
+        self.assertEqual(captured["status"], "200 OK")
+        create_form = content.split("<form method='post' action='/provider-changes/create'", 1)[1].split("</form>", 1)[0]
+        eu1_item = create_form.split("<span class='server-checkbox-main'>EU1</span>", 1)[1].split("</label>", 1)[0]
+        eu3_item = create_form.split("<span class='server-checkbox-main'>EU3</span>", 1)[1].split("</label>", 1)[0]
+        self.assertIn("текущий: Мексика / Miatel / Мексика/Miatel/Demo_A@", eu1_item)
+        self.assertIn("текущий: —", eu3_item)
+
     def test_provider_changes_navigation_is_top_level_only(self):
         captured, content = self.request("/provider-changes")
         self.assertEqual(captured["status"], "200 OK")
@@ -680,6 +700,73 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
             self.assertEqual([(row["server_id"], row["current_route_id"]) for row in priority_rows], [(1, target["route_id"]), (2, target["route_id"])])
         finally:
             conn.close()
+
+    def test_provider_changes_journal_shows_affected_servers_human_readable(self):
+        self.request("/routes")
+        conn = server.connect(server.DB_PATH)
+        try:
+            target = conn.execute("SELECT id, provider_id FROM routes WHERE name = 'Мексика/Sancom/Demo_0827@'").fetchone()
+        finally:
+            conn.close()
+        body = urlencode([
+            ("apply_scope", "server_priority"),
+            ("event_at", "2026-06-10T11:45"),
+            ("country_id", "1"),
+            ("server_ids", "1"),
+            ("server_ids", "2"),
+            ("server_ids", "3"),
+            ("provider_id", str(target["provider_id"])),
+            ("new_route_id", str(target["id"])),
+            ("reason", "Плановое переключение"),
+            ("comment", "Проверяем журнал по нескольким серверам"),
+        ])
+        captured, _ = self.request("/provider-changes/create", method="POST", body=body)
+        self.assertEqual(captured["status"], "303 See Other")
+        captured, content = self.request("/provider-changes")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("Серверы:<ul class='event-server-list'>", content)
+        self.assertIn("EU1", content)
+        self.assertIn("EU2", content)
+        self.assertIn("EU3", content)
+        self.assertIn("Miatel / Мексика/Miatel/Demo_A@ → Sancom / Мексика/Sancom/Demo_0827@", content)
+        self.assertIn("Sancom / Мексика/Sancom/Demo_0827@ → Sancom / Мексика/Sancom/Demo_0827@", content)
+        self.assertIn("— → Sancom / Мексика/Sancom/Demo_0827@", content)
+        self.assertIn("применено", content)
+        self.assertIn("пропущено: уже был выбран этот маршрут", content)
+        self.assertNotIn("skipped_noop", content)
+        self.assertNotIn("affected_servers", content)
+
+    def test_provider_changes_journal_keeps_legacy_single_server_event_display(self):
+        self.request("/routes")
+        conn = server.connect(server.DB_PATH)
+        try:
+            conn.execute(
+                """
+                INSERT INTO routing_events(
+                    event_at, apply_scope, reason, country_id, server_id, provider_id,
+                    old_route_id, new_route_id, comment, snapshot_json, created_by, updated_by
+                ) VALUES (?, 'server_priority', ?, 1, 1, 2, 2, 1, ?, ?, ?, ?)
+                """,
+                ("2026-06-10 09:30", "Другое", "legacy single server event", "{}", server.ADMIN_ID, server.ADMIN_ID),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        captured, content = self.request("/provider-changes")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("legacy single server event", content)
+        self.assertIn("EU1", content)
+        self.assertIn("Мексика/Miatel/Demo_A@ → Мексика/Sancom/Demo_0827@", content)
+
+    def test_provider_changes_none_and_campaign_setting_forms_still_render(self):
+        self.request("/routes")
+        captured, content = self.request("/provider-changes")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("value='none' checked", content)
+        self.assertIn("data-scopes='none'", content)
+        self.assertIn("Настройка кампании", content)
+        self.assertIn("data-scopes='campaign_setting'", content)
+        self.assertIn("Событие будет сохранено в журнале и применено", content)
 
     def test_campaign_setting_route_is_preserved_when_toggling_autorotation(self):
         self.request("/routes")
