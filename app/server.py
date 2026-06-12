@@ -5,6 +5,7 @@ import json
 import os
 import sqlite3
 from datetime import datetime
+from http.cookies import SimpleCookie
 from pathlib import Path
 from urllib.parse import parse_qs
 from wsgiref.simple_server import make_server
@@ -15,6 +16,8 @@ from app.repository import BusinessRuleError, COMPANY_CHANGE_LABELS, ROUTING_SCO
 
 DB_PATH = Path(os.environ.get("MVP_DB_PATH", DEFAULT_DB_PATH))
 ADMIN_ID = 1
+CURRENT_USER_COOKIE = "mvp_current_user_id"
+_REQUEST_CONTEXT: dict[str, object] = {}
 STATUS_LABELS = {
     "used": "Используется",
     "free": "Свободен",
@@ -54,6 +57,7 @@ ADMIN_NAV_ITEMS = [
     ("/admin/import", "Импорт / экспорт", ("Импорт",)),
     ("/admin/currency-rates", "Курсы валют", ("Курсы валют",)),
     ("/admin/change-reasons", "Причины смены провайдера", ("Причины смены провайдера",)),
+    ("/admin/users", "Пользователи", ("Пользователи",)),
     ("/admin/dictionaries", "Справочные значения", ("Справочные значения",)),
     ("/admin/change-log", "Change log", ("Change log",)),
     ("/companies", "Кампании прозвона", ()),
@@ -94,6 +98,40 @@ def sidebar(title: str) -> str:
       </div>
     </nav>
   </aside>"""
+
+
+def role_label(role_key: str | None) -> str:
+    return {
+        "admin": "Admin",
+        "operator": "Дежурный",
+        "guest": "Гость",
+        "user": "Пользователь",
+    }.get(role_key or "", role_key or "—")
+
+
+def current_user_selector() -> str:
+    repo = _REQUEST_CONTEXT.get("repo")
+    current_user_id = _REQUEST_CONTEXT.get("current_user_id")
+    redirect_to = _REQUEST_CONTEXT.get("redirect_to") or "/"
+    if not isinstance(repo, Repository):
+        return ""
+    users = repo.list_users(active_only=True)
+    if not users:
+        return ""
+    current = next((user for user in users if int(user["id"]) == int(current_user_id or 0)), users[0])
+    options_html = "".join(
+        f"<option value='{user['id']}' {'selected' if int(user['id']) == int(current['id']) else ''}>{esc(user['display_name'])} · {esc(role_label(user['role_key']))}</option>"
+        for user in users
+    )
+    return f"""
+        <form class="current-user-selector" method="post" action="/users/select" aria-label="Текущий пользователь">
+          <input type="hidden" name="redirect_to" value="{esc(redirect_to)}">
+          <label>Текущий пользователь
+            <select name="user_id" onchange="this.form.submit()">{options_html}</select>
+          </label>
+          <noscript><button>Выбрать</button></noscript>
+        </form>
+    """
 
 
 def page(title: str, body: str, notice: str | None = None) -> bytes:
@@ -149,7 +187,10 @@ def page(title: str, body: str, notice: str | None = None) -> bytes:
     .admin-tree.open {{ display: grid; gap: 2px; }}
     .admin-link {{ display: block; padding: 6px 8px; font-size: 13px; line-height: 1.25; color: #44504a; }}
     .admin-link.active {{ background: var(--surface); border-color: var(--border-strong); color: var(--accent-strong); font-weight: 730; box-shadow: var(--shadow-soft); }}
-    .workspace {{ min-width: 0; padding: 22px 26px 38px; }}
+    .workspace {{ min-width: 0; padding: 18px 26px 38px; }}
+    .topbar {{ display: flex; justify-content: flex-end; align-items: center; min-height: 38px; margin: 0 0 8px; }}
+    .current-user-selector label {{ display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; font-weight: 700; }}
+    .current-user-selector select {{ min-width: 190px; }}
     .content {{ max-width: 1460px; margin: 0 auto; }}
     a {{ color: #426a5a; text-underline-offset: 2px; }}
     a:hover {{ color: var(--accent-strong); }}
@@ -252,6 +293,7 @@ def page(title: str, body: str, notice: str | None = None) -> bytes:
   <div class="app-shell">
     {sidebar(title)}
     <main class="workspace">
+      <div class="topbar">{current_user_selector()}</div>
       <div class="content">
         {notice_html}
         {body}
@@ -271,9 +313,51 @@ def page(title: str, body: str, notice: str | None = None) -> bytes:
 </body>
 </html>""".encode("utf-8")
 
-def redirect(start_response, location: str):
-    start_response("303 See Other", [("Location", location)])
+def redirect(start_response, location: str, headers: list[tuple[str, str]] | None = None):
+    response_headers = [("Location", location)]
+    if headers:
+        response_headers.extend(headers)
+    start_response("303 See Other", response_headers)
     return [b""]
+
+
+def cookie_user_id(environ) -> int | None:
+    cookie = SimpleCookie()
+    cookie.load(environ.get("HTTP_COOKIE", ""))
+    morsel = cookie.get(CURRENT_USER_COOKIE)
+    if not morsel:
+        return None
+    try:
+        return int(morsel.value)
+    except ValueError:
+        return None
+
+
+def resolve_current_user_id(repo: Repository, requested_id: int | None = None) -> int:
+    if requested_id is not None:
+        user = repo.get_user(requested_id)
+        if user and user["is_active"]:
+            return int(user["id"])
+    first_active = repo.conn.execute("SELECT id FROM users WHERE is_active = 1 ORDER BY id LIMIT 1").fetchone()
+    if first_active:
+        return int(first_active["id"])
+    return ADMIN_ID
+
+
+def current_request_path(environ) -> str:
+    path = environ.get("PATH_INFO", "/") or "/"
+    query = environ.get("QUERY_STRING", "")
+    return f"{path}?{query}" if query else path
+
+
+def safe_redirect_target(value: str | None) -> str:
+    if not value or not value.startswith("/") or value.startswith("//"):
+        return "/"
+    return value
+
+
+def current_actor_id() -> int:
+    return int(_REQUEST_CONTEXT.get("current_user_id") or ADMIN_ID)
 
 
 def request_query(environ) -> dict[str, str]:
@@ -1308,12 +1392,58 @@ def admin_page(repo: Repository) -> bytes:
 <a class="card" href="/admin/import">Импорт / экспорт</a>
 <a class="card" href="/admin/currency-rates">Курсы валют</a>
 <a class="card" href="/admin/change-reasons">Причины смены провайдера</a>
+<a class="card" href="/admin/users">Пользователи</a>
 <a class="card" href="/admin/dictionaries">Справочные значения</a>
 <a class="card" href="/admin/change-log">Change log</a>
 <a class="card" href="/companies">Кампании прозвона</a>
 </div>"""
     return page("Администрирование", body)
 
+
+
+def role_options(selected: str | None = None) -> str:
+    opts = ""
+    for value, label in (("admin", "Admin"), ("operator", "Дежурный"), ("guest", "Гость")):
+        opts += f"<option value='{value}' {'selected' if value == selected else ''}>{esc(label)}</option>"
+    return opts
+
+
+def users_page(repo: Repository) -> bytes:
+    rows = []
+    for user in repo.list_users(active_only=False):
+        rows.append(f"""
+<tr class="{'inactive-row' if not user['is_active'] else ''}">
+  <td>{user['id']}</td>
+  <td><code>{esc(user['username'])}</code></td>
+  <td>{esc(user['display_name'])}</td>
+  <td><span class='status-badge'>{esc(role_label(user['role_key']))}</span></td>
+  <td>{'Да' if user['is_active'] else 'Нет'}</td>
+  <td>{esc(user['created_at'])}</td>
+  <td>{esc(user['updated_at'])}</td>
+  <td class='actions'>
+    <details><summary>Редактировать</summary>
+      <form class='form-grid' method='post' action='/admin/users/{user['id']}/update'>
+        <label>Отображаемое имя <input name='display_name' value='{esc(user['display_name'])}' required></label>
+        <label>Роль-метка <select name='role_key'>{role_options(user['role_key'])}</select></label>
+        <label>Активен <select name='is_active'><option value='1' {'selected' if user['is_active'] else ''}>Да</option><option value='0' {'selected' if not user['is_active'] else ''}>Нет</option></select></label>
+        <button>Сохранить</button>
+      </form>
+    </details>
+  </td>
+</tr>""")
+    create_html = f"""<form class='form-grid' method='post' action='/admin/users/create'>
+<label>Код пользователя <span class='required'>*</span><input name='username' placeholder='operator2' required></label>
+<label>Отображаемое имя <span class='required'>*</span><input name='display_name' placeholder='Оператор' required></label>
+<label>Роль-метка <select name='role_key'>{role_options('operator')}</select></label>
+<p class='muted wide'>Пароли и права доступа пока не используются: все пользователи имеют полный admin-level доступ.</p>
+<button>Создать</button></form>"""
+    table_html = f"<table><thead><tr><th>ID</th><th>Код</th><th>Имя</th><th>Роль-метка</th><th>Активен</th><th>Создан</th><th>Обновлён</th><th>Действия</th></tr></thead><tbody>{''.join(rows)}</tbody></table>"
+    body = f"""
+<h1>Пользователи</h1>
+<p class='muted'>Это лёгкий выбор текущего пользователя для MVP, без паролей и без ограничений доступа.</p>
+{form_card('+ Создать пользователя', create_html)}
+{table_card(table_html)}"""
+    return page("Пользователи", body)
 
 def server_priorities_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
     q = q or {}
@@ -1756,6 +1886,26 @@ def parse_int(value: str | None) -> int | None:
 
 
 def handle_post(repo: Repository, path: str, data: dict[str, str]):
+    actor_id = current_actor_id()
+    if path == "/admin/users/create":
+        username = data["username"].strip()
+        display_name = data["display_name"].strip()
+        if not username or not display_name:
+            raise BusinessRuleError("Код пользователя и имя обязательны")
+        repo.create_user(username, data.get("role_key") or "operator", display_name)
+        return "/admin/users"
+    if path.startswith("/admin/users/") and path.endswith("/update"):
+        user_id = int(path.strip("/").split("/")[2])
+        display_name = data["display_name"].strip()
+        if not display_name:
+            raise BusinessRuleError("Отображаемое имя обязательно")
+        repo.update_user(
+            user_id,
+            display_name=display_name,
+            role_key=data.get("role_key") or "operator",
+            is_active=data.get("is_active") == "1",
+        )
+        return "/admin/users"
     if path == "/routes/create":
         country_id = int(data["country_id"]); provider_id = int(data["provider_id"]); prefix_id = parse_int(data.get("provider_prefix_id"))
         if prefix_id:
@@ -1765,7 +1915,7 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
         name = build_route_name(repo, country_id, provider_id, data.get("project_label"), data.get("cli_source_label", ""), prefix_id)
         if len(name.replace("/", "").replace("@", "").strip()) < 4:
             raise BusinessRuleError("Некорректное название маршрута: заполните ГЕО, провайдера и источник АОН")
-        repo.create_route(country_id=country_id, provider_id=provider_id, provider_prefix_id=prefix_id, name=name, project_label=data.get("project_label"), cli_source_type=data["cli_source_type"], cli_source_label=data["cli_source_label"], comment=data.get("comment"), created_by=ADMIN_ID, is_actual=data.get("is_actual") == "1")
+        repo.create_route(country_id=country_id, provider_id=provider_id, provider_prefix_id=prefix_id, name=name, project_label=data.get("project_label"), cli_source_type=data["cli_source_type"], cli_source_label=data["cli_source_label"], comment=data.get("comment"), created_by=actor_id, is_actual=data.get("is_actual") == "1")
         return "/routes"
     if path.startswith("/routes/") and path.endswith("/update"):
         route_id = int(path.strip("/").split("/")[1])
@@ -1779,20 +1929,20 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
                 raise BusinessRuleError("Префикс не принадлежит провайдеру маршрута")
         if not name:
             raise BusinessRuleError("Название маршрута обязательно")
-        repo.conn.execute("UPDATE routes SET name = ?, provider_prefix_id = ?, comment = ?, is_actual = ?, priority_status = ?, updated_by = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (name, prefix_id, data.get("comment"), 1 if data.get("is_actual") == "1" else 0, data.get("priority_status") or "unknown", ADMIN_ID, route_id))
-        repo.conn.execute("INSERT INTO route_history(route_id, action, changed_by, field_name, old_value, new_value, comment) VALUES (?, 'updated', ?, 'route', ?, ?, ?)", (route_id, ADMIN_ID, str(dict(old)) if old else None, str({"name": name, "provider_prefix_id": data.get("provider_prefix_id"), "comment": data.get("comment"), "is_actual": data.get("is_actual"), "priority_status": data.get("priority_status")}), data.get("comment")))
+        repo.conn.execute("UPDATE routes SET name = ?, provider_prefix_id = ?, comment = ?, is_actual = ?, priority_status = ?, updated_by = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (name, prefix_id, data.get("comment"), 1 if data.get("is_actual") == "1" else 0, data.get("priority_status") or "unknown", actor_id, route_id))
+        repo.conn.execute("INSERT INTO route_history(route_id, action, changed_by, field_name, old_value, new_value, comment) VALUES (?, 'updated', ?, 'route', ?, ?, ?)", (route_id, actor_id, str(dict(old)) if old else None, str({"name": name, "provider_prefix_id": data.get("provider_prefix_id"), "comment": data.get("comment"), "is_actual": data.get("is_actual"), "priority_status": data.get("priority_status")}), data.get("comment")))
         repo.conn.commit()
         return "/routes"
     if path.startswith("/routes/") and path.endswith("/numbers/add"):
         route_id = int(path.strip("/").split("/")[1])
-        repo.add_phone_to_route_by_number(route_id=route_id, number=data["phone_number"], usage_type=data.get("usage_type") or "pool_member", added_by=ADMIN_ID, comment=data.get("comment"))
+        repo.add_phone_to_route_by_number(route_id=route_id, number=data["phone_number"], usage_type=data.get("usage_type") or "pool_member", added_by=actor_id, comment=data.get("comment"))
         return f"/routes/{route_id}/numbers"
     if path.startswith("/routes/") and path.endswith("/numbers/bulk-add"):
         route_id = int(path.strip("/").split("/")[1])
         added, errors = 0, []
         for number in [n.strip() for n in data.get("phone_numbers", "").replace(",", "\n").splitlines() if n.strip()]:
             try:
-                repo.add_phone_to_route_by_number(route_id=route_id, number=number, usage_type="pool_member", added_by=ADMIN_ID)
+                repo.add_phone_to_route_by_number(route_id=route_id, number=number, usage_type="pool_member", added_by=actor_id)
                 added += 1
             except (BusinessRuleError, sqlite3.IntegrityError) as exc:
                 errors.append(f"{number}: {exc}")
@@ -1802,12 +1952,12 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
     if path.startswith("/routes/") and path.endswith("/numbers/remove"):
         route_id = int(path.strip("/").split("/")[1])
         link_ids = [int(v) for v in parse_qs(data.get("_raw", "")).get("link_ids", []) if v]
-        removed = repo.remove_phone_links_from_route(route_id=route_id, link_ids=link_ids, removed_by=ADMIN_ID, reason=data.get("reason"))
+        removed = repo.remove_phone_links_from_route(route_id=route_id, link_ids=link_ids, removed_by=actor_id, reason=data.get("reason"))
         if removed == 0:
             raise BusinessRuleError("Выберите номера для исключения из маршрута")
         return f"/routes/{route_id}/numbers"
     if path == "/phones/create":
-        repo.create_phone_number(country_id=int(data["country_id"]), provider_id=parse_int(data.get("provider_id")), number=data["number"], assignment_type=data["assignment_type"], status=data["status"], created_by=ADMIN_ID, project_label=data.get("project_label") or None, connection_cost=data.get("connection_cost") or None, monthly_fee=data.get("monthly_fee") or None, currency_id=parse_int(data.get("currency_id")), phone_type=data.get("phone_type") or None, tariff_label=data.get("tariff_label") or None, comment=data.get("comment"))
+        repo.create_phone_number(country_id=int(data["country_id"]), provider_id=parse_int(data.get("provider_id")), number=data["number"], assignment_type=data["assignment_type"], status=data["status"], created_by=actor_id, project_label=data.get("project_label") or None, connection_cost=data.get("connection_cost") or None, monthly_fee=data.get("monthly_fee") or None, currency_id=parse_int(data.get("currency_id")), phone_type=data.get("phone_type") or None, tariff_label=data.get("tariff_label") or None, comment=data.get("comment"))
         return "/phones"
     if path.startswith("/phones/") and path.endswith("/update"):
         phone_id = int(path.strip("/").split("/")[1])
@@ -1824,8 +1974,8 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
         """, (normalized, normalized, int(data["country_id"]), parse_int(data.get("provider_id")), data.get("project_label") or None,
               data.get("assignment_type"), data.get("status"), is_active, data.get("connection_cost") or None,
               data.get("monthly_fee") or None, parse_int(data.get("currency_id")), data.get("phone_type") or None, data.get("tariff_label") or None,
-              data.get("comment"), is_active, is_active, ADMIN_ID, phone_id))
-        repo.conn.execute("INSERT INTO phone_number_history(phone_number_id, action, changed_by, field_name, new_value, comment) VALUES (?, 'updated', ?, 'phone', ?, ?)", (phone_id, ADMIN_ID, str({"number": normalized, "status": data.get("status"), "is_active": data.get("is_active")}), data.get("comment")))
+              data.get("comment"), is_active, is_active, actor_id, phone_id))
+        repo.conn.execute("INSERT INTO phone_number_history(phone_number_id, action, changed_by, field_name, new_value, comment) VALUES (?, 'updated', ?, 'phone', ?, ?)", (phone_id, actor_id, str({"number": normalized, "status": data.get("status"), "is_active": data.get("is_active")}), data.get("comment")))
         repo.conn.commit(); return "/phones"
     if path == "/tariffs/create":
         currency_id = int(data["currency_id"])
@@ -1833,21 +1983,21 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
         if rate is None:
             raise BusinessRuleError("Для выбранной валюты нет курса к EUR. Добавьте курс в Администрирование → Курсы валют")
         prefix_id = parse_int(data.get("provider_prefix_id"))
-        tariff_id = repo.create_tariff(country_id=int(data["country_id"]), provider_id=int(data["provider_id"]), provider_prefix_id=prefix_id, provider_currency_id=currency_id, price_in_provider_currency=data["price"], conversion_rate_to_eur=rate["rate_to_eur"], conversion_rate_date=rate["rate_date"], currency_rate_id=rate["id"], created_by=ADMIN_ID, priority_status=data["priority_status"], comment=data.get("comment"))
+        tariff_id = repo.create_tariff(country_id=int(data["country_id"]), provider_id=int(data["provider_id"]), provider_prefix_id=prefix_id, provider_currency_id=currency_id, price_in_provider_currency=data["price"], conversion_rate_to_eur=rate["rate_to_eur"], conversion_rate_date=rate["rate_date"], currency_rate_id=rate["id"], created_by=actor_id, priority_status=data["priority_status"], comment=data.get("comment"))
         if data.get("is_current") == "0":
             repo.conn.execute("UPDATE tariffs SET is_current = 0 WHERE id = ?", (tariff_id,)); repo.conn.commit()
         return "/tariffs"
     if path.startswith("/tariffs/") and path.endswith("/deactivate"):
         tariff_id = int(path.strip("/").split("/")[1])
-        repo.conn.execute("UPDATE tariffs SET is_current = 0, updated_by = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (ADMIN_ID, tariff_id)); repo.conn.commit(); return "/tariffs"
+        repo.conn.execute("UPDATE tariffs SET is_current = 0, updated_by = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (actor_id, tariff_id)); repo.conn.commit(); return "/tariffs"
     if path == "/companies/create":
-        repo.create_calling_company(server_id=int(data["server_id"]), country_id=int(data["country_id"]), company_name=data["company_name"], company_id_external=data["company_id_external"], has_autorotation=data.get("has_autorotation") == "1", created_by=ADMIN_ID, comment=data.get("comment"), is_active=data.get("is_active") == "1", line_count=int(data.get("line_count") or 0), dial_set_count=int(data.get("dial_set_count") or 0), retry_interval_seconds=int(data.get("retry_interval_seconds") or 0))
+        repo.create_calling_company(server_id=int(data["server_id"]), country_id=int(data["country_id"]), company_name=data["company_name"], company_id_external=data["company_id_external"], has_autorotation=data.get("has_autorotation") == "1", created_by=actor_id, comment=data.get("comment"), is_active=data.get("is_active") == "1", line_count=int(data.get("line_count") or 0), dial_set_count=int(data.get("dial_set_count") or 0), retry_interval_seconds=int(data.get("retry_interval_seconds") or 0))
         return "/companies"
     if path.startswith("/companies/") and path.endswith("/update"):
         company_id = int(path.strip("/").split("/")[1])
         repo.conn.execute("""UPDATE calling_companies SET server_id = ?, country_id = ?, company_name = ?, line_count = ?, dial_set_count = ?, has_autorotation = ?, retry_interval_seconds = ?, is_active = ?, comment = ?, updated_by = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?""",
-                          (int(data["server_id"]), int(data["country_id"]), data["company_name"], int(data.get("line_count") or 0), int(data.get("dial_set_count") or 0), 1 if data.get("has_autorotation") == "1" else 0, int(data.get("retry_interval_seconds") or 0), 1 if data.get("is_active") == "1" else 0, data.get("comment"), ADMIN_ID, company_id))
-        repo._change_log("calling_company", company_id, "calling_company.updated", ADMIN_ID, new_values={"company_name": data["company_name"]})
+                          (int(data["server_id"]), int(data["country_id"]), data["company_name"], int(data.get("line_count") or 0), int(data.get("dial_set_count") or 0), 1 if data.get("has_autorotation") == "1" else 0, int(data.get("retry_interval_seconds") or 0), 1 if data.get("is_active") == "1" else 0, data.get("comment"), actor_id, company_id))
+        repo._change_log("calling_company", company_id, "calling_company.updated", actor_id, new_values={"company_name": data["company_name"]})
         repo.conn.commit(); return "/companies"
     if path == "/provider-changes/create":
         apply_scope = data.get("apply_scope")
@@ -1859,7 +2009,7 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
             affected_route_id=parse_int(data.get("affected_route_id")), old_route_id=parse_int(data.get("old_route_id")), new_route_id=parse_int(data.get("new_route_id")),
             calling_company_id=parse_int(data.get("calling_company_id")), company_change_type=data.get("company_change_type") or None,
             new_company_routing_mode=data.get("new_company_routing_mode") or None, new_company_route_id=parse_int(data.get("new_company_route_id")),
-            new_company_has_autorotation=parse_int(data.get("new_company_has_autorotation")), created_by=ADMIN_ID,
+            new_company_has_autorotation=parse_int(data.get("new_company_has_autorotation")), created_by=actor_id,
         )
         return "/provider-changes"
     if path.startswith("/provider-changes/") and path.endswith("/update"):
@@ -1870,28 +2020,28 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
             affected_route_id=parse_int(data.get("affected_route_id")), old_route_id=parse_int(data.get("old_route_id")), new_route_id=parse_int(data.get("new_route_id")),
             calling_company_id=parse_int(data.get("calling_company_id")), company_change_type=data.get("company_change_type") or None,
             new_company_routing_mode=data.get("new_company_routing_mode") or None, new_company_route_id=parse_int(data.get("new_company_route_id")),
-            new_company_has_autorotation=parse_int(data.get("new_company_has_autorotation")), updated_by=ADMIN_ID,
+            new_company_has_autorotation=parse_int(data.get("new_company_has_autorotation")), updated_by=actor_id,
         )
         return "/provider-changes"
     if path.startswith("/provider-changes/") and path.endswith("/deactivate"):
         change_id = int(path.strip("/").split("/")[1])
-        repo.deactivate_routing_event(change_id, reason=data.get("deactivation_reason"), deactivated_by=ADMIN_ID)
+        repo.deactivate_routing_event(change_id, reason=data.get("deactivation_reason"), deactivated_by=actor_id)
         return "/provider-changes"
     if path in {"/admin/currency-rates/create", "/admin/currency-rates/upsert"}:
         currency_id = int(data["currency_id"])
         today = datetime.now().strftime("%Y-%m-%d")
         existing = repo.conn.execute("SELECT id FROM currency_rates WHERE currency_id = ? ORDER BY rate_date DESC, created_at DESC, id DESC LIMIT 1", (currency_id,)).fetchone()
         if existing:
-            repo.conn.execute("UPDATE currency_rates SET rate_to_eur = ?, rate_date = ?, updated_by = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (data["rate_to_eur"], today, ADMIN_ID, existing["id"]))
+            repo.conn.execute("UPDATE currency_rates SET rate_to_eur = ?, rate_date = ?, updated_by = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (data["rate_to_eur"], today, actor_id, existing["id"]))
         else:
-            repo.conn.execute("INSERT INTO currency_rates(currency_id, rate_to_eur, rate_date, updated_by, source) VALUES (?, ?, ?, ?, 'manual')", (currency_id, data["rate_to_eur"], today, ADMIN_ID))
+            repo.conn.execute("INSERT INTO currency_rates(currency_id, rate_to_eur, rate_date, updated_by, source) VALUES (?, ?, ?, ?, 'manual')", (currency_id, data["rate_to_eur"], today, actor_id))
         repo.conn.commit(); return "/admin/currency-rates"
     if path == "/admin/change-reasons/create":
-        repo.create_change_reason(data["name"], created_by=ADMIN_ID, comment=data.get("comment"), is_active=data.get("is_active") == "1"); return "/admin/change-reasons"
+        repo.create_change_reason(data["name"], created_by=actor_id, comment=data.get("comment"), is_active=data.get("is_active") == "1"); return "/admin/change-reasons"
     if path.startswith("/admin/change-reasons/") and path.endswith("/update"):
         reason_id = int(path.strip("/").split("/")[2])
         repo.conn.execute("UPDATE change_reasons SET name = ?, description = ?, is_active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (data["name"].strip(), data.get("comment"), 1 if data.get("is_active") == "1" else 0, reason_id))
-        repo._change_log("change_reason", reason_id, "change_reason.updated", ADMIN_ID, new_values={"name": data["name"].strip(), "is_active": data.get("is_active")})
+        repo._change_log("change_reason", reason_id, "change_reason.updated", actor_id, new_values={"name": data["name"].strip(), "is_active": data.get("is_active")})
         repo.conn.commit(); return "/admin/change-reasons"
     if path == "/tariffs/countries/create":
         repo.create_country(data["name"].strip()); return "/tariffs"
@@ -1980,7 +2130,7 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
             repo.conn.execute("UPDATE phone_assignment_types SET name = ?, comment = ?, is_active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (data["name"].strip(), data.get("comment") or None, is_active, entity_id))
         else:
             raise BusinessRuleError("Неизвестный справочник")
-        repo._change_log(kind, entity_id, "dictionary.updated", ADMIN_ID, new_values={"is_active": is_active})
+        repo._change_log(kind, entity_id, "dictionary.updated", actor_id, new_values={"is_active": is_active})
         repo.conn.commit()
         return "/admin/dictionaries"
     if path.startswith("/admin/server-priorities/") and path.endswith("/update"):
@@ -1989,7 +2139,7 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
             priority_id=priority_id,
             current_route_id=int(data["current_route_id"]),
             comment=data.get("comment"),
-            changed_by=ADMIN_ID,
+            changed_by=actor_id,
         )
         return "/admin/server-priorities"
     if path.startswith("/admin/server-priorities/") and path.endswith("/comment"):
@@ -2001,7 +2151,7 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
             priority_id=priority_id,
             current_route_id=int(current["current_route_id"]),
             comment=data.get("comment"),
-            changed_by=ADMIN_ID,
+            changed_by=actor_id,
         )
         return "/admin/server-priorities"
     if path == "/admin/company-routing-settings/create":
@@ -2013,15 +2163,15 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
             routing_mode=data["routing_mode"],
             has_autorotation=data.get("has_autorotation") == "1",
             comment=data.get("comment"),
-            created_by=ADMIN_ID,
+            created_by=actor_id,
         )
         if data.get("is_active") != "1":
-            repo.deactivate_company_routing_setting(setting_id=setting_id, updated_by=ADMIN_ID)
+            repo.deactivate_company_routing_setting(setting_id=setting_id, updated_by=actor_id)
         return "/admin/company-routing-settings"
     if path.startswith("/admin/company-routing-settings/") and path.endswith("/update"):
         setting_id = int(path.strip("/").split("/")[2])
         if data.get("is_active") != "1":
-            repo.deactivate_company_routing_setting(setting_id=setting_id, updated_by=ADMIN_ID)
+            repo.deactivate_company_routing_setting(setting_id=setting_id, updated_by=actor_id)
         else:
             repo.update_company_routing_setting(
                 setting_id=setting_id,
@@ -2031,20 +2181,20 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
                 routing_mode=data["routing_mode"],
                 has_autorotation=data.get("has_autorotation") == "1",
                 comment=data.get("comment"),
-                updated_by=ADMIN_ID,
+                updated_by=actor_id,
             )
         return "/admin/company-routing-settings"
     if path.startswith("/admin/company-routing-settings/") and path.endswith("/deactivate"):
         setting_id = int(path.strip("/").split("/")[2])
-        repo.deactivate_company_routing_setting(setting_id=setting_id, updated_by=ADMIN_ID)
+        repo.deactivate_company_routing_setting(setting_id=setting_id, updated_by=actor_id)
         return "/admin/company-routing-settings"
     if path == "/admin/telegram/save":
-        repo.conn.execute("INSERT INTO telegram_settings(is_enabled, chat_id, bot_token_secret_ref, message_template, updated_by) VALUES (?, ?, ?, ?, ?)", (1 if data.get("is_enabled") == "1" else 0, data.get("chat_id"), data.get("bot_token_secret_ref"), data.get("message_template"), ADMIN_ID)); repo.conn.commit(); return "/admin/telegram"
+        repo.conn.execute("INSERT INTO telegram_settings(is_enabled, chat_id, bot_token_secret_ref, message_template, updated_by) VALUES (?, ?, ?, ?, ?)", (1 if data.get("is_enabled") == "1" else 0, data.get("chat_id"), data.get("bot_token_secret_ref"), data.get("message_template"), actor_id)); repo.conn.commit(); return "/admin/telegram"
     if path == "/admin/telegram/test":
-        repo.conn.execute("INSERT INTO telegram_settings(is_enabled, chat_id, bot_token_secret_ref, message_template, last_test_status, last_test_at, last_test_by, updated_by) VALUES (?, ?, ?, ?, 'success', CURRENT_TIMESTAMP, ?, ?)", (1 if data.get("is_enabled") == "1" else 0, data.get("chat_id"), data.get("bot_token_secret_ref"), data.get("message_template"), ADMIN_ID, ADMIN_ID)); repo.conn.execute("INSERT INTO change_log(entity_type, change_type, changed_by, summary, source) VALUES ('telegram', 'telegram.test_message_sent', ?, 'Test Telegram message requested', 'ui')", (ADMIN_ID,)); repo.conn.commit(); return "/admin/telegram"
+        repo.conn.execute("INSERT INTO telegram_settings(is_enabled, chat_id, bot_token_secret_ref, message_template, last_test_status, last_test_at, last_test_by, updated_by) VALUES (?, ?, ?, ?, 'success', CURRENT_TIMESTAMP, ?, ?)", (1 if data.get("is_enabled") == "1" else 0, data.get("chat_id"), data.get("bot_token_secret_ref"), data.get("message_template"), actor_id, actor_id)); repo.conn.execute("INSERT INTO change_log(entity_type, change_type, changed_by, summary, source) VALUES ('telegram', 'telegram.test_message_sent', ?, 'Test Telegram message requested', 'ui')", (actor_id,)); repo.conn.commit(); return "/admin/telegram"
     if path == "/admin/naming-rules/create":
         if data.get("is_active") == "1": repo.conn.execute("UPDATE route_naming_rules SET is_active = 0")
-        repo.conn.execute("INSERT INTO route_naming_rules(name, template, is_active, comment, created_by) VALUES (?, ?, ?, ?, ?)", (data["name"], data["template"], 1 if data.get("is_active") == "1" else 0, data.get("comment"), ADMIN_ID)); repo.conn.commit(); return "/admin/naming-rules"
+        repo.conn.execute("INSERT INTO route_naming_rules(name, template, is_active, comment, created_by) VALUES (?, ?, ?, ?, ?)", (data["name"], data["template"], 1 if data.get("is_active") == "1" else 0, data.get("comment"), actor_id)); repo.conn.commit(); return "/admin/naming-rules"
     raise BusinessRuleError("Unsupported form action")
 
 
@@ -2075,6 +2225,13 @@ def app(environ, start_response):
     method = environ["REQUEST_METHOD"]
     path = environ.get("PATH_INFO", "/")
     q = request_query(environ)
+    current_user_id = resolve_current_user_id(repo, cookie_user_id(environ))
+    _REQUEST_CONTEXT.clear()
+    _REQUEST_CONTEXT.update({
+        "repo": repo,
+        "current_user_id": current_user_id,
+        "redirect_to": current_request_path(environ),
+    })
     try:
         if method == "POST":
             raw_size = int(environ.get("CONTENT_LENGTH") or "0")
@@ -2090,10 +2247,18 @@ def app(environ, start_response):
                 start_response("200 OK", [("Content-Type", "text/html; charset=utf-8")])
                 return [import_page(repo, html_preview, selected_entity=parsed["entity_type"], selected_mode=parsed.get("mode", "append_update"), csv_data=parsed.get("csv_data", ""))]
             if path == "/admin/import/apply":
-                result = apply_import(conn, parsed["entity_type"], parsed.get("csv_data", ""), user_id=ADMIN_ID, mode=parsed.get("mode", "append_update"))
+                result = apply_import(conn, parsed["entity_type"], parsed.get("csv_data", ""), user_id=current_actor_id(), mode=parsed.get("mode", "append_update"))
                 notice = f"<h2>Импорт завершён</h2><ul><li>создано {result.created_rows}</li><li>обновлено {result.updated_rows}</li><li>пропущено {result.skipped_rows}</li><li>ошибок {result.error_rows}</li></ul>"
                 start_response("200 OK", [("Content-Type", "text/html; charset=utf-8")])
                 return [import_page(repo, notice, selected_entity=parsed["entity_type"], selected_mode=parsed.get("mode", "append_update"), csv_data=parsed.get("csv_data", ""))]
+            if path == "/users/select":
+                selected_user_id = resolve_current_user_id(repo, parse_int(parsed.get("user_id")))
+                location = safe_redirect_target(parsed.get("redirect_to"))
+                return redirect(
+                    start_response,
+                    location,
+                    [("Set-Cookie", f"{CURRENT_USER_COOKIE}={selected_user_id}; Path=/; SameSite=Lax")],
+                )
             location = handle_post(repo, path, parsed)
             return redirect(start_response, location)
         if path in {"/", "/routes"}: response = routes_page(repo, q)
@@ -2108,6 +2273,7 @@ def app(environ, start_response):
         elif path == "/admin/import": response = import_page(repo)
         elif path == "/admin/currency-rates": response = currency_rates_page(repo)
         elif path == "/admin/change-reasons": response = change_reasons_page(repo)
+        elif path == "/admin/users": response = users_page(repo)
         elif path == "/admin/dictionaries": response = dictionaries_page(repo, q)
         elif path == "/admin/telegram": response = telegram_page(repo)
         elif path == "/admin/change-log": response = change_log_page(repo)
@@ -2123,6 +2289,7 @@ def app(environ, start_response):
         start_response("400 Bad Request", [("Content-Type", "text/html; charset=utf-8")])
         return [page("Ошибка", f"<div class='error'>{esc(user_error(exc))}</div><p><a href='/'>На главную</a></p>")]
     finally:
+        _REQUEST_CONTEXT.clear()
         conn.close()
 
 

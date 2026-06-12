@@ -74,16 +74,85 @@ class Repository:
     def __init__(self, conn: sqlite3.Connection):
         self.conn = conn
 
-    def create_user(self, username: str, role: str = "Admin", display_name: str | None = None) -> int:
+    def _user_columns(self) -> set[str]:
+        return {row[1] for row in self.conn.execute("PRAGMA table_info(users)")}
+
+    def _role_key(self, role: str) -> str:
+        normalized = (role or "operator").strip().lower()
+        if normalized in {"admin", "operator", "guest"}:
+            return normalized
+        if normalized == "user":
+            return "operator"
+        return normalized or "operator"
+
+    def create_user(self, username: str, role: str = "admin", display_name: str | None = None) -> int:
+        username = username.strip()
+        existing = self.conn.execute("SELECT id FROM users WHERE username = ?", (username,)).fetchone()
+        if existing:
+            return int(existing["id"])
+        columns = self._user_columns()
+        role_key = self._role_key(role)
+        insert_columns = ["username", "display_name", "is_active"]
+        values: list[object] = [username, display_name or username, 1]
+        if "role_key" in columns:
+            insert_columns.append("role_key")
+            values.append(role_key)
+        if "role" in columns:
+            insert_columns.append("role")
+            values.append("Admin" if role_key == "admin" else "User")
+        if "password_hash" in columns:
+            insert_columns.append("password_hash")
+            values.append("")
+        if "auth_provider" in columns:
+            insert_columns.append("auth_provider")
+            values.append("local")
+        placeholders = ", ".join("?" for _ in insert_columns)
         cur = self.conn.execute(
-            """
-            INSERT INTO users(username, password_hash, role, display_name, is_active, auth_provider)
-            VALUES (?, ?, ?, ?, 1, 'local')
-            """,
-            (username, f"dev-hash:{username}", role, display_name),
+            f"INSERT INTO users({', '.join(insert_columns)}) VALUES ({placeholders})",
+            tuple(values),
         )
         self.conn.commit()
         return int(cur.lastrowid)
+
+    def list_users(self, active_only: bool = False) -> list[sqlite3.Row]:
+        where = "WHERE is_active = 1" if active_only else ""
+        role_expr = "role_key" if "role_key" in self._user_columns() else "LOWER(role)"
+        return list(self.conn.execute(
+            f"""
+            SELECT id, username, COALESCE(NULLIF(display_name, ''), username) AS display_name,
+                   {role_expr} AS role_key, is_active, created_at, updated_at
+            FROM users
+            {where}
+            ORDER BY is_active DESC, display_name COLLATE NOCASE, username COLLATE NOCASE
+            """
+        ))
+
+    def get_user(self, user_id: int) -> sqlite3.Row | None:
+        role_expr = "role_key" if "role_key" in self._user_columns() else "LOWER(role)"
+        return self.conn.execute(
+            f"""
+            SELECT id, username, COALESCE(NULLIF(display_name, ''), username) AS display_name,
+                   {role_expr} AS role_key, is_active, created_at, updated_at
+            FROM users
+            WHERE id = ?
+            """,
+            (user_id,),
+        ).fetchone()
+
+    def update_user(self, user_id: int, *, display_name: str, role_key: str, is_active: bool) -> None:
+        columns = self._user_columns()
+        assignments = ["display_name = ?", "is_active = ?", "updated_at = CURRENT_TIMESTAMP"]
+        values: list[object] = [display_name.strip(), 1 if is_active else 0]
+        normalized_role = self._role_key(role_key)
+        if "role_key" in columns:
+            assignments.append("role_key = ?")
+            values.append(normalized_role)
+        if "role" in columns:
+            assignments.append("role = ?")
+            values.append("Admin" if normalized_role == "admin" else "User")
+        values.append(user_id)
+        self.conn.execute(f"UPDATE users SET {', '.join(assignments)} WHERE id = ?", tuple(values))
+        self.conn.commit()
 
     def create_country(self, name: str, code: str | None = None) -> int:
         cur = self.conn.execute(

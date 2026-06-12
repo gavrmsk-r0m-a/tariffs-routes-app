@@ -8,6 +8,13 @@ SCHEMA_PATH = Path(__file__).resolve().parent / "schema.sql"
 DEFAULT_DB_PATH = ROOT / "mvp.sqlite3"
 
 
+DEFAULT_USERS = (
+    ("roman", "Roman", "admin"),
+    ("duty", "Дежурный", "operator"),
+    ("guest", "Гость", "guest"),
+)
+
+
 def connect(path: str | Path = DEFAULT_DB_PATH) -> sqlite3.Connection:
     conn = sqlite3.connect(path)
     conn.row_factory = sqlite3.Row
@@ -75,8 +82,54 @@ def _rebuild_phone_numbers_if_assignment_check(conn: sqlite3.Connection) -> None
     conn.execute("PRAGMA foreign_keys = ON")
 
 
+def _seed_default_users_if_empty(conn: sqlite3.Connection) -> None:
+    if conn.execute("SELECT COUNT(*) FROM users").fetchone()[0] != 0:
+        return
+    columns = _column_names(conn, "users")
+    for username, display_name, role_key in DEFAULT_USERS:
+        insert_columns = ["username", "display_name", "is_active"]
+        values: list[object] = [username, display_name, 1]
+        if "role_key" in columns:
+            insert_columns.append("role_key")
+            values.append(role_key)
+        if "role" in columns:
+            insert_columns.append("role")
+            values.append("Admin" if role_key == "admin" else "User")
+        if "password_hash" in columns:
+            insert_columns.append("password_hash")
+            values.append("")
+        if "auth_provider" in columns:
+            insert_columns.append("auth_provider")
+            values.append("local")
+        placeholders = ", ".join("?" for _ in insert_columns)
+        conn.execute(
+            f"INSERT INTO users({', '.join(insert_columns)}) VALUES ({placeholders})",
+            tuple(values),
+        )
+
+
 def run_lightweight_migrations(conn: sqlite3.Connection) -> None:
     """Keep already-created MVP databases compatible with additive UI changes."""
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT NOT NULL UNIQUE,
+            display_name TEXT NOT NULL,
+            role_key TEXT NOT NULL DEFAULT 'operator',
+            is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    _add_column_if_missing(conn, "users", "role_key", "TEXT NOT NULL DEFAULT 'operator'")
+    _add_column_if_missing(conn, "users", "display_name", "TEXT")
+    _add_column_if_missing(conn, "users", "is_active", "INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1))")
+    _add_column_if_missing(conn, "users", "created_at", "TEXT")
+    _add_column_if_missing(conn, "users", "updated_at", "TEXT")
+    conn.execute("UPDATE users SET display_name = username WHERE display_name IS NULL OR TRIM(display_name) = ''")
+    if "role" in _column_names(conn, "users"):
+        conn.execute("UPDATE users SET role_key = CASE WHEN role = 'Admin' THEN 'admin' ELSE 'operator' END WHERE role_key IS NULL OR role_key = ''")
+    _seed_default_users_if_empty(conn)
     _add_column_if_missing(conn, "calling_companies", "line_count", "INTEGER NOT NULL DEFAULT 0 CHECK (line_count >= 0)")
     _add_column_if_missing(conn, "calling_companies", "dial_set_count", "INTEGER NOT NULL DEFAULT 0 CHECK (dial_set_count >= 0)")
     _add_column_if_missing(conn, "calling_companies", "retry_interval_seconds", "INTEGER NOT NULL DEFAULT 0 CHECK (retry_interval_seconds >= 0)")
