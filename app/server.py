@@ -270,22 +270,29 @@ def page(title: str, body: str, notice: str | None = None) -> bytes:
     .scope-field[hidden], .conditional-field[hidden], .route-empty-message[hidden] {{ display: none !important; }}
     .current-route-box {{ display: block; border: 1px dashed var(--border-strong); border-radius: var(--radius-card); padding: 8px; margin: 4px 12px 4px 0; background: var(--surface-muted); }}
     .star {{ color: var(--warning); font-weight: 800; }}
-    .dictionary-layout {{ display: grid; grid-template-columns: minmax(220px, 20%) 1fr; gap: 18px; align-items: start; }}
-    .dictionary-sidebar {{ display: grid; gap: 10px; }}
-    .dictionary-card {{ border: 1px solid var(--border); border-radius: var(--radius-card); padding: 10px; background: var(--surface); box-shadow: var(--shadow-soft); }}
-    .dictionary-card.active {{ border-color: var(--accent); background: var(--accent-soft); box-shadow: 0 0 0 2px #d3e1d7 inset; }}
-    .dictionary-card-title {{ display: block; font-weight: 780; color: var(--text-strong); text-decoration: none; margin-bottom: 8px; }}
-    .dictionary-card form {{ display: grid; gap: 6px; }}
-    .dictionary-card input, .dictionary-card select {{ width: 100%; box-sizing: border-box; margin: 0; }}
-    .dictionary-workspace {{ min-width: 0; }}
+    .dictionary-layout {{ display: grid; grid-template-columns: minmax(210px, 260px) minmax(0, 1fr); gap: 16px; align-items: start; }}
+    .dictionary-sidebar {{ display: grid; gap: 6px; position: sticky; top: 12px; }}
+    .dictionary-sidebar-title {{ margin: 0 0 2px; color: var(--muted); font-size: 12px; font-weight: 780; text-transform: uppercase; letter-spacing: .04em; }}
+    .dictionary-card {{ display: flex; align-items: center; justify-content: space-between; gap: 8px; border: 1px solid var(--border); border-radius: 10px; padding: 7px 9px; background: var(--surface); color: var(--text); text-decoration: none; box-shadow: none; }}
+    .dictionary-card:hover {{ border-color: var(--border-strong); background: var(--surface-muted); }}
+    .dictionary-card.active {{ border-color: var(--accent); background: var(--accent-soft); box-shadow: 0 0 0 2px #d3e1d7 inset; color: var(--text-strong); }}
+    .dictionary-card-title {{ font-weight: 760; color: inherit; text-decoration: none; }}
+    .dictionary-card-count {{ color: var(--muted); font-size: 12px; white-space: nowrap; }}
+    .dictionary-workspace {{ min-width: 0; display: grid; gap: 10px; }}
     .dictionary-toolbar {{ display: flex; justify-content: space-between; align-items: center; gap: 12px; border: 1px solid var(--border); border-radius: var(--radius-card); padding: 10px 12px; background: var(--surface); box-shadow: var(--shadow-soft); }}
     .dictionary-toolbar h2 {{ margin: 0; }}
+    .dictionary-total {{ color: var(--muted); font-weight: 700; white-space: nowrap; }}
+    .dictionary-add {{ margin: 0; box-shadow: var(--shadow-soft); }}
+    .dictionary-add .form-grid {{ grid-template-columns: repeat(auto-fit, minmax(170px, 260px)); }}
+    .dictionary-add input, .dictionary-add select {{ width: 100%; box-sizing: border-box; }}
     .inactive-row {{ color: var(--muted); background: #f0f4f1; }}
     .status-badge {{ display: inline-flex; align-items: center; min-height: 22px; padding: 2px 7px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface-muted); color: #4d5a54; font-size: 12px; font-weight: 720; white-space: nowrap; }}
     @media (max-width: 900px) {{
       .app-shell {{ grid-template-columns: 1fr; }}
       .sidebar {{ position: static; height: auto; }}
       .workspace {{ padding: 18px 14px 28px; }}
+      .dictionary-layout {{ grid-template-columns: 1fr; }}
+      .dictionary-sidebar {{ position: static; }}
     }}
   </style>
 </head>
@@ -1706,31 +1713,43 @@ def dictionaries_page(repo: Repository, q: dict[str, str] | None = None) -> byte
 
     def add_form(section: str) -> str:
         if section == "countries":
-            return "<form method='post' action='/admin/dictionaries/countries/create'><input name='name' placeholder='GEO'><input name='code' placeholder='Код'><button>Добавить</button></form>"
+            return "<form class='form-grid' method='post' action='/admin/dictionaries/countries/create'><label>GEO <input name='name' placeholder='GEO'></label><label>Код <input name='code' placeholder='Код'></label><button>Добавить</button></form>"
         if section == "providers":
-            return f"<form method='post' action='/admin/dictionaries/providers/create'><input name='name' placeholder='Название провайдера'><select name='default_currency_id'><option value=''>—</option>{options(repo, 'currencies', 'code')}</select><input name='comment' placeholder='Комментарий'><button>Добавить</button></form>"
+            return f"<form class='form-grid' method='post' action='/admin/dictionaries/providers/create'><label>Провайдер <input name='name' placeholder='Название провайдера'></label><label>Валюта <select name='default_currency_id'><option value=''>—</option>{options(repo, 'currencies', 'code')}</select></label><label>Комментарий <input name='comment' placeholder='Комментарий'></label><button>Добавить</button></form>"
         if section == "currencies":
-            return "<form method='post' action='/admin/dictionaries/currencies/create'><input name='code' placeholder='USD'><input name='name' placeholder='Название'><button>Добавить</button></form>"
+            return "<form class='form-grid' method='post' action='/admin/dictionaries/currencies/create'><label>Код <input name='code' placeholder='USD'></label><label>Название <input name='name' placeholder='Название'></label><button>Добавить</button></form>"
         if section == "prefixes":
-            return f"<form method='post' action='/admin/dictionaries/prefixes/create'><select name='provider_id'>{options(repo, 'providers')}</select><input name='prefix' placeholder='0827 или пусто'><input name='name' placeholder='Комментарий'><button>Добавить</button></form>"
+            return f"<form class='form-grid' method='post' action='/admin/dictionaries/prefixes/create'><label>Провайдер <select name='provider_id'>{options(repo, 'providers')}</select></label><label>Префикс <input name='prefix' placeholder='0827 или пусто'></label><label>Комментарий <input name='name' placeholder='Комментарий'></label><button>Добавить</button></form>"
         if section == "servers":
-            return "<form method='post' action='/admin/dictionaries/servers/create'><input name='name' placeholder='EU3'><input name='comment' placeholder='Комментарий'><button>Добавить</button></form>"
+            return "<form class='form-grid' method='post' action='/admin/dictionaries/servers/create'><label>Сервер <input name='name' placeholder='EU3'></label><label>Комментарий <input name='comment' placeholder='Комментарий'></label><button>Добавить</button></form>"
         if section == "phone-types":
-            return "<form method='post' action='/admin/dictionaries/phone-types/create'><input name='name' placeholder='Mobile'><input name='comment' placeholder='Комментарий'><button>Добавить</button></form>"
+            return "<form class='form-grid' method='post' action='/admin/dictionaries/phone-types/create'><label>Тип номера <input name='name' placeholder='Mobile'></label><label>Комментарий <input name='comment' placeholder='Комментарий'></label><button>Добавить</button></form>"
         if section == "projects":
-            return "<form method='post' action='/admin/dictionaries/projects/create'><input name='name' placeholder='Competitors'><input name='comment' placeholder='Комментарий'><button>Добавить</button></form>"
+            return "<form class='form-grid' method='post' action='/admin/dictionaries/projects/create'><label>Проект <input name='name' placeholder='Competitors'></label><label>Комментарий <input name='comment' placeholder='Комментарий'></label><button>Добавить</button></form>"
         if section == "phone-assignments":
-            return "<form method='post' action='/admin/dictionaries/phone-assignments/create'><input name='name' placeholder='Мониторинг'><input name='code' placeholder='Код необязательно'><input name='comment' placeholder='Комментарий'><button>Добавить</button></form>"
+            return "<form class='form-grid' method='post' action='/admin/dictionaries/phone-assignments/create'><label>Назначение <input name='name' placeholder='Мониторинг'></label><label>Код <input name='code' placeholder='Код необязательно'></label><label>Комментарий <input name='comment' placeholder='Комментарий'></label><button>Добавить</button></form>"
         return ""
+
+    count_queries = {
+        "countries": "SELECT COUNT(*) FROM countries",
+        "providers": "SELECT COUNT(*) FROM providers",
+        "currencies": "SELECT COUNT(*) FROM currencies",
+        "prefixes": "SELECT COUNT(*) FROM provider_prefixes",
+        "servers": "SELECT COUNT(*) FROM servers",
+        "phone-types": "SELECT COUNT(*) FROM phone_number_types",
+        "projects": "SELECT COUNT(*) FROM projects",
+        "phone-assignments": "SELECT COUNT(*) FROM phone_assignment_types",
+    }
 
     cards = []
     for section, title in sections:
         active = " active" if section == active_section else ""
+        count = repo.conn.execute(count_queries[section]).fetchone()[0]
         cards.append(f"""
-<div class='dictionary-card{active}'>
-  <a class='dictionary-card-title' href='/admin/dictionaries?section={section}'>{esc(title)}</a>
-  {add_form(section)}
-</div>""")
+<a class='dictionary-card{active}' href='/admin/dictionaries?section={section}' aria-current='{'page' if section == active_section else 'false'}'>
+  <span class='dictionary-card-title'>{esc(title)}</span>
+  <span class='dictionary-card-count'>{count}</span>
+</a>""")
 
     rows: list[str] = []
     headers: list[str]
@@ -1785,9 +1804,10 @@ def dictionaries_page(repo: Repository, q: dict[str, str] | None = None) -> byte
 <h1>Администрирование → Справочные значения</h1>
 <p class='muted'>Неактивные значения остаются в таблицах, но не показываются в формах создания новых записей.</p>
 <div class='dictionary-layout'>
-  <aside class='dictionary-sidebar'>{''.join(cards)}</aside>
+  <aside class='dictionary-sidebar'><p class='dictionary-sidebar-title'>Справочники</p>{''.join(cards)}</aside>
   <section class='dictionary-workspace'>
-    <div class='dictionary-toolbar'><h2>Справочник: {esc(titles[active_section])}</h2><span>Всего записей: {len(source)}</span></div>
+    <div class='dictionary-toolbar'><h2>Справочник: {esc(titles[active_section])}</h2><span class='dictionary-total'>Всего записей: {len(source)}</span></div>
+    <details class='dictionary-add'><summary>+ Добавить значение</summary>{add_form(active_section)}</details>
     {table_card(table_html)}
   </section>
 </div>"""
