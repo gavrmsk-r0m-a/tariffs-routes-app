@@ -104,108 +104,143 @@ def page(title: str, body: str, notice: str | None = None) -> bytes:
   <meta charset="utf-8">
   <title>{esc(title)}</title>
   <style>
+    :root {{
+      --bg: #f3f0ea;
+      --surface: #fffdf9;
+      --surface-muted: #f8f5ef;
+      --surface-strong: #efebe4;
+      --sidebar-bg: #e7e2da;
+      --text: #2d2a26;
+      --text-strong: #171512;
+      --muted: #736c63;
+      --border: #d8d0c4;
+      --border-strong: #c5baaa;
+      --accent: #6d5d46;
+      --accent-strong: #514432;
+      --accent-soft: #eee7dc;
+      --danger: #8f3d32;
+      --danger-soft: #f4e5e1;
+      --success: #486548;
+      --success-soft: #e7eee3;
+      --warning: #8a651f;
+      --focus: #8b7355;
+      --shadow-soft: 0 1px 2px rgba(47, 42, 35, 0.06);
+      --shadow-card: 0 8px 24px rgba(47, 42, 35, 0.05);
+      --radius-control: 6px;
+      --radius-card: 9px;
+    }}
     * {{ box-sizing: border-box; }}
-    body {{ font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 0; color: #1f2937; background: #f4f6f8; font-size: 14px; line-height: 1.45; }}
-    h1 {{ margin: 0 0 14px; font-size: 26px; line-height: 1.2; letter-spacing: 0; color: #111827; }}
-    h2 {{ margin: 18px 0 10px; font-size: 18px; line-height: 1.25; letter-spacing: 0; }}
-    h3 {{ margin: 14px 0 8px; font-size: 15px; letter-spacing: 0; }}
+    body {{ font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 0; color: var(--text); background: var(--bg); font-size: 14px; line-height: 1.45; }}
+    h1 {{ margin: 0 0 14px; font-size: 26px; line-height: 1.18; letter-spacing: -0.02em; color: var(--text-strong); font-weight: 760; }}
+    h2 {{ margin: 18px 0 10px; font-size: 18px; line-height: 1.25; letter-spacing: -0.01em; color: var(--text-strong); font-weight: 740; }}
+    h3 {{ margin: 14px 0 8px; font-size: 15px; letter-spacing: -0.005em; color: var(--text-strong); font-weight: 720; }}
     p {{ margin: 8px 0; }}
     .app-shell {{ display: grid; grid-template-columns: 258px minmax(0, 1fr); min-height: 100vh; }}
-    .sidebar {{ background: #e9edf2; border-right: 1px solid #d6dde6; padding: 18px 14px; position: sticky; top: 0; height: 100vh; overflow-y: auto; }}
-    .app-title {{ color: #111827; font-weight: 800; font-size: 17px; margin: 2px 8px 18px; }}
+    .sidebar {{ background: var(--sidebar-bg); border-right: 1px solid var(--border); padding: 18px 14px; position: sticky; top: 0; height: 100vh; overflow-y: auto; }}
+    .app-title {{ color: var(--text-strong); font-weight: 820; font-size: 17px; letter-spacing: -0.01em; margin: 2px 8px 18px; }}
     .side-nav {{ display: grid; gap: 4px; }}
-    .side-link, .admin-link, .button, button {{ border: 1px solid transparent; border-radius: 6px; color: #1f2937; padding: 7px 10px; text-decoration: none; background: transparent; cursor: pointer; font: inherit; }}
+    .side-link, .admin-link, .button, button {{ border: 1px solid transparent; border-radius: var(--radius-control); color: var(--text); padding: 7px 10px; text-decoration: none; background: transparent; cursor: pointer; font: inherit; transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease, box-shadow 120ms ease; }}
     .side-link {{ display: flex; width: 100%; align-items: center; justify-content: space-between; text-align: left; font-weight: 650; }}
-    .side-link:hover, .admin-link:hover {{ background: #f7f9fb; border-color: #d6dde6; }}
-    .side-link.active {{ background: #ffffff; border-color: #c6d2df; color: #0f3f75; box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06); }}
-    .admin-toggle::after {{ content: ">"; color: #64748b; font-size: 12px; }}
-    .admin-toggle[aria-expanded="true"]::after {{ content: "v"; }}
-    .admin-tree {{ display: none; margin: 2px 0 6px 13px; padding: 3px 0 3px 12px; border-left: 1px solid #c7d0dc; }}
+    .side-link:hover, .admin-link:hover {{ background: rgba(255, 253, 249, 0.62); border-color: var(--border); color: var(--text-strong); }}
+    .side-link.active {{ background: var(--surface); border-color: var(--border-strong); color: var(--accent-strong); box-shadow: var(--shadow-soft); }}
+    .admin-toggle::after {{ content: "›"; color: var(--muted); font-size: 14px; line-height: 1; }}
+    .admin-toggle[aria-expanded="true"]::after {{ content: "⌄"; }}
+    .admin-tree {{ display: none; margin: 3px 0 7px 13px; padding: 4px 0 4px 12px; border-left: 1px solid var(--border-strong); }}
     .admin-tree.open {{ display: grid; gap: 2px; }}
-    .admin-link {{ display: block; padding: 6px 8px; font-size: 13px; line-height: 1.25; }}
-    .admin-link.active {{ background: #ffffff; border-color: #c6d2df; color: #0f3f75; font-weight: 700; }}
+    .admin-link {{ display: block; padding: 6px 8px; font-size: 13px; line-height: 1.25; color: #4a443d; }}
+    .admin-link.active {{ background: var(--surface); border-color: var(--border-strong); color: var(--accent-strong); font-weight: 730; box-shadow: var(--shadow-soft); }}
     .workspace {{ min-width: 0; padding: 22px 26px 38px; }}
     .content {{ max-width: 1460px; margin: 0 auto; }}
-    a {{ color: #155e9f; }}
-    .button, button {{ background: #ffffff; border-color: #cbd5e1; color: #111827; min-height: 30px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; }}
-    .button:hover, button:hover {{ background: #f8fafc; border-color: #94a3b8; }}
-    .button:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, summary:focus-visible, a:focus-visible {{ outline: 2px solid #2563eb; outline-offset: 2px; }}
-    table {{ border-collapse: separate; border-spacing: 0; width: 100%; background: #fff; min-width: 760px; }}
-    th, td {{ border: 0; border-bottom: 1px solid #e5eaf0; padding: 7px 9px; vertical-align: top; }}
+    a {{ color: #5f5140; text-underline-offset: 2px; }}
+    a:hover {{ color: var(--accent-strong); }}
+    .button, button {{ background: var(--surface); border-color: var(--border-strong); color: var(--text-strong); min-height: 30px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; font-weight: 650; box-shadow: 0 1px 0 rgba(47, 42, 35, 0.03); }}
+    .admin-toggle {{ background: transparent; border-color: transparent; box-shadow: none; }}
+    .button:hover, button:hover {{ background: var(--surface-muted); border-color: var(--accent); }}
+    .button:active, button:active {{ background: var(--surface-strong); }}
+    .button:disabled, button:disabled, input:disabled, select:disabled, textarea:disabled {{ opacity: 0.62; cursor: not-allowed; }}
+    button[onclick*="Деактив"], button[onclick*="Удал"], button[onclick*="Отключ"], form[action$="/deactivate"] button {{ color: var(--danger); border-color: #d6b4ad; background: var(--danger-soft); }}
+    button[onclick*="Деактив"]:hover, button[onclick*="Удал"]:hover, button[onclick*="Отключ"]:hover, form[action$="/deactivate"] button:hover {{ background: #efd7d2; border-color: #bd8e84; }}
+    .button:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, summary:focus-visible, a:focus-visible {{ outline: 2px solid var(--focus); outline-offset: 2px; }}
+    table {{ border-collapse: separate; border-spacing: 0; width: 100%; background: var(--surface); min-width: 760px; }}
+    th, td {{ border: 0; border-bottom: 1px solid #e6ded3; padding: 7px 9px; vertical-align: top; }}
     tr:last-child td {{ border-bottom: 0; }}
-    th {{ background: #eef2f7; text-align: left; font-weight: 750; color: #334155; position: sticky; top: 0; z-index: 1; }}
-    tbody tr:nth-child(even) {{ background: #fbfcfe; }}
-    tbody tr:hover {{ background: #f1f5f9; }}
+    th {{ background: var(--surface-strong); text-align: left; font-weight: 750; color: #4b453d; position: sticky; top: 0; z-index: 1; }}
+    tbody tr:nth-child(even) {{ background: #fbf8f2; }}
+    tbody tr:hover {{ background: var(--accent-soft); }}
     td {{ max-width: 360px; overflow-wrap: anywhere; }}
-    input, select, textarea {{ border: 1px solid #b8c2cf; border-radius: 6px; padding: 6px 8px; margin: 0; max-width: 100%; background: #fff; color: #111827; font: inherit; min-height: 32px; }}
+    input, select, textarea {{ border: 1px solid var(--border-strong); border-radius: var(--radius-control); padding: 6px 8px; margin: 0; max-width: 100%; background: var(--surface); color: var(--text-strong); font: inherit; min-height: 32px; box-shadow: inset 0 1px 1px rgba(47, 42, 35, 0.03); }}
+    input:hover, select:hover, textarea:hover {{ border-color: var(--accent); }}
+    input:focus, select:focus, textarea:focus {{ border-color: var(--focus); background: #fffefa; }}
+    input::placeholder, textarea::placeholder {{ color: #9a9186; }}
     textarea {{ width: 100%; }}
-    input[type="checkbox"], input[type="radio"] {{ width: auto; margin: 0 6px 0 0; vertical-align: middle; }}
-    label {{ display: inline-grid; gap: 4px; margin: 0; align-items: start; color: #374151; }}
+    input[type="checkbox"], input[type="radio"] {{ width: auto; margin: 0 6px 0 0; vertical-align: middle; accent-color: var(--accent); }}
+    label {{ display: inline-grid; gap: 4px; margin: 0; align-items: start; color: #4a443d; font-weight: 620; }}
     form {{ display: flex; flex-wrap: wrap; gap: 8px 10px; align-items: end; }}
     form button {{ align-self: end; }}
     .checkbox-list {{ display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 4px 0; }}
-    .checkbox-list label {{ margin: 0; }}
+    .checkbox-list label {{ margin: 0; font-weight: 520; }}
     .server-checkbox-toolbar {{ display: flex; gap: 8px; margin: 0 0 8px; }}
     .server-checkbox-toolbar button {{ padding: 3px 8px; font-size: 0.9em; }}
     .server-checkbox-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 6px 10px; margin-top: 6px; }}
-    .server-checkbox-item {{ display: flex; align-items: flex-start; gap: 6px; border: 1px solid #e5e7eb; border-radius: 8px; padding: 6px 8px; background: #fff; margin: 0; }}
-    .server-checkbox-item:has(input:checked) {{ border-color: #2563eb; background: #eff6ff; box-shadow: 0 0 0 1px #bfdbfe inset; }}
-    .server-checkbox-main {{ font-weight: 700; }}
-    .server-route-hint {{ display: block; margin-top: 2px; font-size: 0.9em; color: #6b7280; line-height: 1.25; }}
+    .server-checkbox-item {{ display: flex; align-items: flex-start; gap: 6px; border: 1px solid var(--border); border-radius: var(--radius-control); padding: 6px 8px; background: var(--surface); margin: 0; font-weight: 520; }}
+    .server-checkbox-item:has(input:checked) {{ border-color: var(--accent); background: var(--accent-soft); box-shadow: 0 0 0 1px #d8cdbd inset; }}
+    .server-checkbox-main {{ font-weight: 720; }}
+    .server-route-hint {{ display: block; margin-top: 2px; font-size: 0.9em; color: var(--muted); line-height: 1.25; }}
     .event-server-list {{ margin: 4px 0 0 18px; padding: 0; }}
     .event-server-list li {{ margin: 2px 0; }}
-    fieldset {{ border: 1px solid #d7dee8; border-radius: 8px; margin: 12px 0; padding: 12px; background: #fff; }}
-    fieldset > legend {{ padding: 0 6px; color: #475569; font-weight: 750; }}
+    fieldset {{ border: 1px solid var(--border); border-radius: var(--radius-card); margin: 12px 0; padding: 12px; background: var(--surface); }}
+    fieldset > legend {{ padding: 0 6px; color: #5d554b; font-weight: 750; }}
     h1 + fieldset, h1 + p + fieldset {{ margin-top: 6px; }}
-    .required {{ color: #b91c1c; font-weight: 700; }}
-    .muted {{ color: #6b7280; }}
-    .error {{ border: 1px solid #dc2626; background: #fee2e2; padding: 12px; border-radius: 8px; }}
-    .ok {{ border: 1px solid #16a34a; background: #dcfce7; padding: 12px; border-radius: 8px; margin: 10px 0; }}
+    .required {{ color: var(--danger); font-weight: 760; }}
+    .muted {{ color: var(--muted); font-weight: 500; }}
+    .error {{ border: 1px solid #c8796f; background: var(--danger-soft); color: #6f2d27; padding: 12px; border-radius: var(--radius-card); }}
+    .ok {{ border: 1px solid #a8bea0; background: var(--success-soft); color: #334d33; padding: 12px; border-radius: var(--radius-card); margin: 10px 0; }}
     .grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }}
-    .card {{ border: 1px solid #d7dee8; border-radius: 8px; padding: 12px; background: #fff; }}
-    details {{ border: 1px solid #d7dee8; border-radius: 8px; padding: 0; margin: 12px 0; background: #fff; }}
-    summary {{ cursor: pointer; padding: 8px 12px; font-weight: 750; color: #263445; }}
-    details[open] > summary {{ border-bottom: 1px solid #edf1f5; }}
+    .card {{ border: 1px solid var(--border); border-radius: var(--radius-card); padding: 12px; background: var(--surface); box-shadow: var(--shadow-soft); }}
+    details {{ border: 1px solid var(--border); border-radius: var(--radius-card); padding: 0; margin: 12px 0; background: var(--surface); box-shadow: var(--shadow-soft); }}
+    summary {{ cursor: pointer; padding: 8px 12px; font-weight: 750; color: var(--text-strong); }}
+    details[open] > summary {{ border-bottom: 1px solid #e9e1d6; background: var(--surface-muted); border-radius: var(--radius-card) var(--radius-card) 0 0; }}
     details > form, details > .card, details > textarea, details > p, details > table {{ margin: 12px; }}
-    .filter-card, .form-card {{ border-color: #cfd8e3; box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04); }}
+    .filter-card, .form-card {{ border-color: var(--border); box-shadow: var(--shadow-soft); }}
     .filter-card {{ margin: 8px 0 10px; }}
     .filter-summary, .form-summary {{ min-height: 34px; display: flex; align-items: center; justify-content: space-between; }}
     .filter-grid, .form-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, max-content)); gap: 8px 10px; align-items: end; padding: 12px; }}
     .filter-grid label, .form-grid label {{ min-width: 150px; }}
     .filter-grid input, .filter-grid select, .form-grid input, .form-grid select {{ width: 100%; }}
-    .filter-grid .checkbox-inline, .form-grid .checkbox-inline {{ min-width: auto; display: flex; align-items: center; gap: 5px; align-self: center; }}
+    .filter-grid .checkbox-inline, .form-grid .checkbox-inline {{ min-width: auto; display: flex; align-items: center; gap: 5px; align-self: center; font-weight: 560; }}
     .form-grid .wide, .filter-grid .wide {{ grid-column: 1 / -1; }}
     .form-grid fieldset, .filter-grid fieldset {{ grid-column: 1 / -1; margin: 0; }}
     .form-grid textarea {{ min-width: min(620px, 100%); }}
-    .table-card, .journal-card {{ border: 1px solid #d7dee8; border-radius: 8px; background: #fff; margin: 12px 0; overflow: hidden; box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04); }}
-    .table-card h2, .journal-card h2 {{ margin: 0; padding: 12px 14px; border-bottom: 1px solid #edf1f5; background: #fbfcfe; }}
+    .table-card, .journal-card {{ border: 1px solid var(--border); border-radius: var(--radius-card); background: var(--surface); margin: 12px 0; overflow: hidden; box-shadow: var(--shadow-card); }}
+    .table-card h2, .journal-card h2 {{ margin: 0; padding: 12px 14px; border-bottom: 1px solid #e9e1d6; background: var(--surface-muted); color: var(--text-strong); }}
+    .journal-card h2 {{ font-size: 19px; }}
     .table-scroll {{ overflow-x: auto; }}
     .table-card table, .journal-card table {{ margin: 0; border: 0; border-radius: 0; }}
-    .journal-card {{ min-height: 420px; }}
+    .journal-card {{ min-height: 420px; border-color: var(--border-strong); }}
     .journal-card .table-scroll {{ min-height: 360px; }}
-    .empty-state {{ padding: 26px 14px; color: #64748b; }}
+    .empty-state {{ padding: 24px 14px; color: var(--muted); background: #fbf8f2; }}
     .compact-actions, .actions {{ white-space: nowrap; min-width: 130px; }}
     .actions .button, .actions button, .compact-actions .button, .compact-actions button {{ min-height: 28px; padding: 4px 8px; font-size: 12px; }}
-    .actions details, .compact-actions details {{ margin: 6px 0 0; }}
+    .actions details, .compact-actions details {{ margin: 6px 0 0; box-shadow: none; }}
     .actions summary, .compact-actions summary {{ padding: 4px 7px; font-size: 12px; }}
     .scope-cards {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px; }}
-    .scope-card {{ cursor: pointer; display: block; }}
-    .scope-card.selected {{ border-color: #2563eb; background: #eff6ff; box-shadow: 0 0 0 2px #bfdbfe inset; }}
+    .scope-card {{ cursor: pointer; display: block; box-shadow: none; }}
+    .scope-card.selected {{ border-color: var(--accent); background: var(--accent-soft); box-shadow: 0 0 0 2px #d8cdbd inset; }}
     .scope-field[hidden], .conditional-field[hidden], .route-empty-message[hidden] {{ display: none !important; }}
-    .current-route-box {{ display: block; border: 1px dashed #9ca3af; border-radius: 8px; padding: 8px; margin: 4px 12px 4px 0; background: #f9fafb; }}
-    .star {{ color: #f59e0b; font-weight: 800; }}
+    .current-route-box {{ display: block; border: 1px dashed var(--border-strong); border-radius: var(--radius-card); padding: 8px; margin: 4px 12px 4px 0; background: var(--surface-muted); }}
+    .star {{ color: var(--warning); font-weight: 800; }}
     .dictionary-layout {{ display: grid; grid-template-columns: minmax(220px, 20%) 1fr; gap: 18px; align-items: start; }}
     .dictionary-sidebar {{ display: grid; gap: 10px; }}
-    .dictionary-card {{ border: 1px solid #d1d5db; border-radius: 8px; padding: 10px; background: #fff; }}
-    .dictionary-card.active {{ border-color: #2563eb; background: #eff6ff; box-shadow: 0 0 0 2px #bfdbfe inset; }}
-    .dictionary-card-title {{ display: block; font-weight: 800; color: #111827; text-decoration: none; margin-bottom: 8px; }}
+    .dictionary-card {{ border: 1px solid var(--border); border-radius: var(--radius-card); padding: 10px; background: var(--surface); box-shadow: var(--shadow-soft); }}
+    .dictionary-card.active {{ border-color: var(--accent); background: var(--accent-soft); box-shadow: 0 0 0 2px #d8cdbd inset; }}
+    .dictionary-card-title {{ display: block; font-weight: 780; color: var(--text-strong); text-decoration: none; margin-bottom: 8px; }}
     .dictionary-card form {{ display: grid; gap: 6px; }}
     .dictionary-card input, .dictionary-card select {{ width: 100%; box-sizing: border-box; margin: 0; }}
     .dictionary-workspace {{ min-width: 0; }}
-    .dictionary-toolbar {{ display: flex; justify-content: space-between; align-items: center; gap: 12px; border: 1px solid #d1d5db; border-radius: 8px; padding: 10px 12px; background: #fff; }}
+    .dictionary-toolbar {{ display: flex; justify-content: space-between; align-items: center; gap: 12px; border: 1px solid var(--border); border-radius: var(--radius-card); padding: 10px 12px; background: var(--surface); box-shadow: var(--shadow-soft); }}
     .dictionary-toolbar h2 {{ margin: 0; }}
-    .inactive-row {{ color: #6b7280; background: #f3f4f6; }}
-    .status-badge {{ white-space: nowrap; }}
+    .inactive-row {{ color: var(--muted); background: #f0ebe3; }}
+    .status-badge {{ display: inline-flex; align-items: center; min-height: 22px; padding: 2px 7px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface-muted); color: #514a42; font-size: 12px; font-weight: 720; white-space: nowrap; }}
     @media (max-width: 900px) {{
       .app-shell {{ grid-template-columns: 1fr; }}
       .sidebar {{ position: static; height: auto; }}
