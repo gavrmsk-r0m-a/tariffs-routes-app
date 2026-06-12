@@ -3,14 +3,11 @@ PRAGMA foreign_keys = ON;
 CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     username TEXT NOT NULL UNIQUE,
-    password_hash TEXT NOT NULL,
-    role TEXT NOT NULL CHECK (role IN ('Admin', 'User')),
-    display_name TEXT,
+    display_name TEXT NOT NULL,
+    role_key TEXT NOT NULL DEFAULT 'operator',
     is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
-    auth_provider TEXT NOT NULL DEFAULT 'local' CHECK (auth_provider IN ('local', 'ad', 'ldap', 'sso')),
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    last_login_at TEXT
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS countries (

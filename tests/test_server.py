@@ -17,7 +17,7 @@ class ServerSmokeTest(unittest.TestCase):
         server.DB_PATH = self.old_path
         os.unlink(self.tmp.name)
 
-    def request(self, path, method="GET", body=""):
+    def request(self, path, method="GET", body="", cookie=""):
         captured = {}
 
         def start_response(status, headers):
@@ -34,6 +34,8 @@ class ServerSmokeTest(unittest.TestCase):
             "CONTENT_LENGTH": str(len(body.encode("utf-8"))),
             "wsgi.input": io.BytesIO(body.encode("utf-8")),
         }
+        if cookie:
+            environ["HTTP_COOKIE"] = cookie
         content = b"".join(server.app(environ, start_response)).decode("utf-8")
         return captured, content
 
@@ -55,6 +57,56 @@ class ServerSmokeTest(unittest.TestCase):
                 captured, content = self.request(path)
                 self.assertEqual(captured["status"], "200 OK")
                 self.assertIn(marker, content)
+
+
+    def test_users_admin_page_returns_200_and_defaults_exist(self):
+        captured, content = self.request("/admin/users")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("Пользователи", content)
+        self.assertIn("Roman", content)
+        self.assertIn("Дежурный", content)
+        self.assertIn("Гость", content)
+        self.assertIn("без паролей", content)
+
+    def test_current_user_selector_appears_in_layout(self):
+        captured, content = self.request("/routes")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn('class="current-user-selector"', content)
+        self.assertIn('action="/users/select"', content)
+        self.assertIn("Текущий пользователь", content)
+        self.assertIn("Roman", content)
+
+    def test_selecting_user_persists_cookie_and_redirects(self):
+        self.request("/routes")
+        conn = server.connect(server.DB_PATH)
+        try:
+            duty_id = conn.execute("SELECT id FROM users WHERE username = 'duty'").fetchone()["id"]
+        finally:
+            conn.close()
+        body = urlencode({"user_id": str(duty_id), "redirect_to": "/phones"})
+        captured, content = self.request("/users/select", method="POST", body=body)
+        self.assertEqual(captured["status"], "303 See Other")
+        self.assertIn(("Location", "/phones"), captured["headers"])
+        set_cookie = dict(captured["headers"]).get("Set-Cookie", "")
+        self.assertIn(f"mvp_current_user_id={duty_id}", set_cookie)
+
+        captured, content = self.request("/routes", cookie=f"mvp_current_user_id={duty_id}")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn(f"<option value='{duty_id}' selected>Дежурный", content)
+
+    def test_inactive_users_are_not_selectable(self):
+        self.request("/routes")
+        conn = server.connect(server.DB_PATH)
+        try:
+            guest_id = conn.execute("SELECT id FROM users WHERE username = 'guest'").fetchone()["id"]
+            conn.execute("UPDATE users SET is_active = 0 WHERE id = ?", (guest_id,))
+            conn.commit()
+        finally:
+            conn.close()
+        captured, content = self.request("/routes")
+        self.assertEqual(captured["status"], "200 OK")
+        selector = content.split('<form class="current-user-selector"', 1)[1].split("</form>", 1)[0]
+        self.assertNotIn(f"<option value='{guest_id}'", selector)
 
     def test_provider_change_page_has_three_apply_scopes(self):
         self.request("/routes")
