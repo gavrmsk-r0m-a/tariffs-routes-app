@@ -534,10 +534,7 @@ def page(title: str, body: str, notice: str | None = None) -> bytes:
     .journal-card {{ min-height: 420px; border-color: var(--border-strong); }}
     .journal-card .table-scroll {{ min-height: 360px; }}
     .empty-state {{ padding: 24px 14px; color: var(--muted); background: var(--surface-muted); }}
-    .compact-actions, .actions {{ white-space: nowrap; min-width: 130px; }}
-    .actions .button, .actions button, .compact-actions .button, .compact-actions button {{ min-height: 28px; padding: 4px 8px; font-size: 12px; }}
-    .actions details, .compact-actions details {{ margin: 6px 0 0; box-shadow: none; }}
-    .actions summary, .compact-actions summary {{ padding: 4px 7px; font-size: 12px; }}
+    .compact-actions, .actions {{ white-space: nowrap; }}
     .scope-cards {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px; }}
     .scope-card {{ cursor: pointer; display: block; box-shadow: none; }}
     .scope-card.selected {{ border-color: var(--accent); background: var(--accent-soft); box-shadow: 0 0 0 2px var(--border-strong) inset; }}
@@ -585,17 +582,28 @@ def page(title: str, body: str, notice: str | None = None) -> bytes:
     .quick-link-card span {{ font-weight: 780; }}
     .quick-link-card small {{ color: var(--muted); line-height: 1.35; }}
     .table-scroll {{ max-height: calc(100vh - 270px); overflow: auto; position: relative; }}
-    th[data-col="actions"], td[data-col="actions"], th:last-child, td:last-child {{ position: sticky; right: 0; z-index: 2; box-shadow: -8px 0 14px rgba(34, 48, 42, 0.06); }}
-    th[data-col="actions"], th:last-child {{ z-index: 4; }}
-    td[data-col="actions"], td:last-child {{ background: inherit; }}
-    tbody tr:nth-child(even) td[data-col="actions"], tbody tr:nth-child(even) td:last-child {{ background: var(--surface-muted); }}
-    tbody tr:hover td[data-col="actions"], tbody tr:hover td:last-child {{ background: var(--accent-soft); }}
-    .actions, .compact-actions, td[data-col="actions"] {{ white-space: nowrap; min-width: 96px; }}
-    .action-button, .actions .button, .actions button, .compact-actions .button, .compact-actions button, td[data-col="actions"] .button, td[data-col="actions"] button {{ min-width: 30px; min-height: 28px; padding: 4px 7px; border-radius: 7px; font-size: 12px; line-height: 1; }}
-    .edit-action {{ min-width: 30px; width: 30px; padding: 4px; font-size: 0; }}
-    .edit-action::before {{ content: "✏️"; font-size: 13px; line-height: 1; }}
-    .danger-action, form[action$="/deactivate"] button {{ min-height: 26px; padding: 3px 7px; color: var(--danger-strong, var(--danger)); border-color: var(--danger); background: var(--danger-soft); font-size: 12px; font-weight: 720; box-shadow: none; }}
-    .danger-action:hover, form[action$="/deactivate"] button:hover {{ background: var(--danger-soft); border-color: var(--danger); color: var(--danger); }}
+    th[data-col="actions"], td[data-col="actions"], .dictionary-workspace th:last-child {{ position: sticky; right: 0; z-index: 2; width: 64px; min-width: 64px; max-width: 72px; text-align: center; box-shadow: -10px 0 16px rgba(34, 48, 42, 0.08); }}
+    th[data-col="actions"], .dictionary-workspace th:last-child {{ z-index: 4; padding-left: 8px; padding-right: 8px; }}
+    td[data-col="actions"] {{ background: inherit; padding: 6px 8px; overflow: visible; }}
+    tbody tr:nth-child(even) td[data-col="actions"] {{ background: var(--surface-muted); }}
+    tbody tr:hover td[data-col="actions"] {{ background: var(--accent-soft); }}
+    .actions, .compact-actions, td[data-col="actions"] {{ white-space: nowrap; text-align: center; }}
+    td[data-col="actions"] form {{ justify-content: center; }}
+    .action-button, .actions .button, .actions button, .compact-actions .button, .compact-actions button, td[data-col="actions"] .button, td[data-col="actions"] button {{ min-width: 30px; min-height: 30px; padding: 4px 7px; border-radius: 8px; font-size: 12px; line-height: 1; box-shadow: none; }}
+    .edit-action, td[data-col="actions"] details.edit-details > summary {{ position: relative; width: 32px; min-width: 32px; height: 32px; min-height: 32px; padding: 0; display: inline-flex; align-items: center; justify-content: center; overflow: visible; color: transparent; font-size: 0; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--surface); box-shadow: none; list-style: none; }}
+    .edit-action:hover, td[data-col="actions"] details.edit-details > summary:hover {{ background: var(--accent-soft); border-color: var(--accent); color: transparent; }}
+    .edit-action::before, td[data-col="actions"] details.edit-details > summary::before {{ content: "✏️"; color: var(--accent-strong); font-size: 14px; line-height: 1; }}
+    td[data-col="actions"] details.edit-details > summary::-webkit-details-marker {{ display: none; }}
+    td[data-col="actions"] details {{ position: relative; display: inline-block; margin: 0; border: 0; background: transparent; box-shadow: none; }}
+    td[data-col="actions"] details.edit-details[open] > summary {{ border-radius: 8px; background: var(--accent-soft); border-color: var(--accent); }}
+    td[data-col="actions"] details:not(.edit-details) > summary {{ width: 32px; min-width: 32px; height: 30px; min-height: 30px; padding: 0; display: inline-flex; align-items: center; justify-content: center; overflow: hidden; color: transparent; font-size: 0; border: 1px solid var(--danger); border-radius: 8px; background: var(--danger-soft); box-shadow: none; list-style: none; }}
+    td[data-col="actions"] details:not(.edit-details) > summary::before {{ content: "!"; color: var(--danger-strong, var(--danger)); font-size: 14px; font-weight: 820; line-height: 1; }}
+    td[data-col="actions"] details:not(.edit-details) > summary::-webkit-details-marker {{ display: none; }}
+    td[data-col="actions"] details:not(.edit-details)[open] > summary, td[data-col="actions"] details:not(.edit-details) > summary:hover {{ background: color-mix(in srgb, var(--danger-soft) 78%, var(--surface)); border-color: var(--danger); }}
+    td[data-col="actions"] details > form {{ text-align: left; }}
+    td[data-col="actions"] details[open] > form {{ position: absolute; right: 0; top: calc(100% + 6px); z-index: 20; min-width: 280px; max-width: min(520px, 70vw); margin: 0; padding: 12px; border: 1px solid var(--border-strong); border-radius: var(--radius-card); background: var(--surface); box-shadow: var(--shadow-card); }}
+    .danger-action, form[action$="/deactivate"] button {{ min-height: 28px; min-width: auto; padding: 4px 8px; color: var(--danger-strong, var(--danger)); border-color: var(--danger); background: var(--danger-soft); font-size: 12px; font-weight: 720; box-shadow: none; }}
+    .danger-action:hover, form[action$="/deactivate"] button:hover {{ background: color-mix(in srgb, var(--danger-soft) 78%, var(--surface)); border-color: var(--danger); color: var(--danger); }}
     html[data-theme="calm-blue"] .side-link:hover, html[data-theme="calm-blue"] .admin-link:hover, html[data-theme="terminal-paper"] .side-link:hover, html[data-theme="terminal-paper"] .admin-link:hover {{ background: color-mix(in srgb, var(--surface) 78%, transparent); border-color: var(--border); color: var(--text-strong); }}
     html[data-theme="calm-blue"] .side-link.active, html[data-theme="terminal-paper"] .side-link.active {{ background: var(--surface); border-color: var(--border-strong); color: var(--accent-strong); box-shadow: var(--shadow-soft); font-weight: 780; }}
     html[data-theme="calm-blue"] .side-link.active::before, html[data-theme="terminal-paper"] .side-link.active::before {{ content: none; }}
@@ -653,6 +661,11 @@ def page(title: str, body: str, notice: str | None = None) -> bytes:
         button.setAttribute("aria-expanded", expanded ? "false" : "true");
         target.classList.toggle("open", !expanded);
       }});
+    }});
+    document.querySelectorAll('td[data-col="actions"] details > summary').forEach((summary) => {{
+      const label = (summary.textContent || '').trim() || 'Редактировать';
+      if (!summary.title) summary.title = label;
+      if (!summary.getAttribute('aria-label')) summary.setAttribute('aria-label', label);
     }});
     function fallbackCopyText(text) {{
       const textarea = document.createElement("textarea");
@@ -1540,7 +1553,7 @@ def routes_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
         numbers = f'{route["phone_count"]} номеров <a class="button" href="/routes/{route["id"]}/numbers">Показать номера</a>'
         if route["cli_source_type"] == "rnd":
             numbers = f'RND провайдера <a class="button" href="/routes/{route["id"]}/numbers">Номера</a>'
-        edit = f"<a class='button edit-action' href='/routes/{route['id']}/edit' title='Редактировать' aria-label='Редактировать'>Редактировать</a>" if can_write("routes") else ""
+        edit = f"<a class='button edit-action' href='/routes/{route['id']}/edit' title='Редактировать' aria-label='Редактировать' data-tooltip='Редактировать'>Редактировать</a>" if can_write("routes") else ""
         rows.append(f"<tr><td data-col='geo'>{esc(route['country_name'])}</td><td data-col='route' data-copy-column='route-name'>{esc(route['name'])}</td><td data-col='provider'>{esc(route['provider_name'])}</td><td data-col='prefix'>{esc(prefix)}</td><td data-col='actual'>{'Да' if route['is_actual'] else 'Нет'}</td><td data-col='comment' class='comment-cell'>{esc(route['comment'])}</td><td data-col='numbers'>{numbers}</td><td data-col='actions' class='actions'>{edit}</td></tr>")
     filters_html = f"""<form class="filter-grid" method="get" action="/routes">
 <label>ГЕО <select name="country_id">{options(repo, 'countries', selected=q.get('country_id'), empty='Все')}</select></label>
@@ -1644,7 +1657,7 @@ def phones_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
     rows = []
     for phone in records:
         assignment_label = phone["assignment_type_label"] or ASSIGNMENT_LABELS.get(phone["assignment_type"], phone["assignment_type"])
-        actions = f"<a class='button edit-action' href='/phones/{phone['id']}/edit' title='Редактировать' aria-label='Редактировать'>Редактировать</a>" if can_write("phones") else ""
+        actions = f"<a class='button edit-action' href='/phones/{phone['id']}/edit' title='Редактировать' aria-label='Редактировать' data-tooltip='Редактировать'>Редактировать</a>" if can_write("phones") else ""
         review_badge = "<span class='badge'>Требует проверки</span>" if phone["review_required"] else ""
         rows.append(f"""<tr><td data-col='number' data-copy-column='phone-number'>{esc(phone['number'])} {review_badge}</td><td data-col='geo'>{esc(phone['country_name'])}</td><td data-col='provider'>{esc(phone['provider_name'])}</td><td data-col='project'>{esc(phone['project_label'])}</td><td data-col='assignment'>{esc(assignment_label)}</td><td data-col='status'>{esc(STATUS_LABELS.get(phone['status'], phone['status']))}</td><td data-col='active'>{'Да' if phone['is_active'] else 'Нет'}</td><td data-col='routes'>{esc(phone['route_names'] or '—')}</td><td data-col='connection'>{esc(phone['connection_cost'])}</td><td data-col='monthly'>{esc(phone['monthly_fee'])}</td><td data-col='currency'>{esc(phone['currency_code'])}</td><td data-col='phone_type'>{esc(phone['phone_type'])}</td><td data-col='tariff'>{esc(phone['tariff_label'])}</td><td data-col='created'>{esc(phone['created_at'])}</td><td data-col='updated'>{esc(phone['updated_at'])}</td><td data-col='deactivated'>{esc(phone['deactivated_at'])}</td><td data-col='comment' class='comment-cell'>{esc(phone['comment'] or '—')}</td><td data-col='actions'>{actions}</td></tr>""")
     filters_html = f"""<form class="filter-grid" method="get" action="/phones">
@@ -1675,7 +1688,7 @@ def companies_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
     records, pagination_html = paginate_rows(records, q, "/companies")
     rows = []
     for cc in records:
-        actions = f"<a class='button' href='/companies/{cc['id']}/edit'>✏️ Редактировать</a>" if can_write("companies") else ""
+        actions = f"<a class='button edit-action' href='/companies/{cc['id']}/edit' title='Редактировать' aria-label='Редактировать' data-tooltip='Редактировать'>Редактировать</a>" if can_write("companies") else ""
         rows.append(f"<tr><td data-col='server'>{esc(cc['server_name'])}</td><td data-col='geo'>{esc(cc['country_name'])}</td><td data-col='company_name'>{esc(cc['company_name'])}</td><td data-col='company_id'>{esc(cc['company_id_external'])}</td><td data-col='lines'>{esc(cc['line_count'])}</td><td data-col='dial_sets'>{esc(cc['dial_set_count'])}</td><td data-col='autorotation'>{'Да' if cc['has_autorotation'] else 'Нет'}</td><td data-col='retry_interval'>{esc(cc['retry_interval_seconds'])}</td><td data-col='active'>{'Активна' if cc['is_active'] else 'Неактивна'}</td><td data-col='comment' class='comment-cell'>{esc(cc['comment'])}</td><td data-col='actions'>{actions}</td></tr>")
     filters_html = f"""<form class="filter-grid" method="get" action="/companies">
 <label>Сервер <select name="server_id">{options(repo, 'servers', selected=q.get('server_id'), empty='Все')}</select></label><label>ГЕО <select name="country_id">{options(repo, 'countries', selected=q.get('country_id'), empty='Все')}</select></label><label>Название кампании <input name="company" value="{esc(q.get('company'))}"></label><label>ID кампании <input name="external_id" value="{esc(q.get('external_id'))}"></label><label>Авторотация <select name="has_autorotation"><option value="">Все</option><option value="1" {'selected' if q.get('has_autorotation')=='1' else ''}>Да</option><option value="0" {'selected' if q.get('has_autorotation')=='0' else ''}>Нет</option></select></label><label>Активность <select name="is_active"><option value="">Все</option><option value="1" {'selected' if q.get('is_active')=='1' else ''}>Активна</option><option value="0" {'selected' if q.get('is_active')=='0' else ''}>Неактивна</option></select></label><button>Найти</button></form>"""
@@ -1982,7 +1995,7 @@ def provider_changes_page(repo: Repository, q: dict[str, str] | None = None) -> 
     rows = []
     for ev in records:
         server_text, campaign_text, details_text = provider_event_details(ev)
-        actions = f"<a class='button edit-action' href='/provider-changes/{ev['id']}/edit' title='Редактировать' aria-label='Редактировать'>Редактировать</a>" if can_write("provider_changes") else ""
+        actions = f"<a class='button edit-action' href='/provider-changes/{ev['id']}/edit' title='Редактировать' aria-label='Редактировать' data-tooltip='Редактировать'>Редактировать</a>" if can_write("provider_changes") else ""
         if ev["is_active"] and can_write("provider_changes"):
             actions += f"<details><summary>Деактивировать</summary><form method='post' action='/provider-changes/{ev['id']}/deactivate'><label>Причина <span class='required'>*</span><input name='deactivation_reason' required></label><button>Деактивировать</button></form></details>"
         rows.append(f"<tr class='{'' if ev['is_active'] else 'inactive-row'}'><td data-col='event_at'>{esc(ev['event_at'])}</td><td data-col='scope'>{esc(ROUTING_SCOPE_LABELS.get(ev['apply_scope'], ev['apply_scope']))}</td><td data-col='geo'>{esc(ev['country_name'])}</td><td data-col='server'>{esc(server_text)}</td><td data-col='campaign'>{esc(campaign_text)}</td><td data-col='details'>{details_text}</td><td data-col='reason'>{esc(ev['reason'])}</td><td data-col='comment'>{esc(ev['comment'])}</td><td data-col='active'>{'Да' if ev['is_active'] else 'Нет'}</td><td data-col='actions' class='actions'>{actions}</td></tr>")
@@ -2039,8 +2052,8 @@ def users_page(repo: Repository) -> bytes:
   <td>{'Да' if user['is_active'] else 'Нет'}</td>
   <td>{esc(user['created_at'])}</td>
   <td>{esc(user['updated_at'])}</td>
-  <td class='actions'>
-    <details><summary>Редактировать</summary>
+  <td data-col='actions' class='actions'>
+    <details class='edit-details'><summary>Редактировать</summary>
       <form class='form-grid' method='post' action='/admin/users/{user['id']}/update'>
         <label>Отображаемое имя <input name='display_name' value='{esc(user['display_name'])}' required></label>
         <label>Роль-метка <select name='role_key'>{role_options(user['role_key'])}</select></label>
@@ -2056,7 +2069,7 @@ def users_page(repo: Repository) -> bytes:
 <label>Роль-метка <select name='role_key'>{role_options('operator')}</select></label>
 <p class='muted wide'>Пароли не используются. Доступ определяется ролью: admin, operator или guest.</p>
 <button>Создать</button></form>"""
-    table_html = f"<table><thead><tr><th>ID</th><th>Код</th><th>Имя</th><th>Роль-метка</th><th>Активен</th><th>Создан</th><th>Обновлён</th><th>Действия</th></tr></thead><tbody>{''.join(rows)}</tbody></table>"
+    table_html = f"<table><thead><tr><th>ID</th><th>Код</th><th>Имя</th><th>Роль-метка</th><th>Активен</th><th>Создан</th><th>Обновлён</th><th data-col='actions'>Действия</th></tr></thead><tbody>{''.join(rows)}</tbody></table>"
     body = f"""
 <h1>Пользователи</h1>
 <p class='muted'>Это лёгкий выбор текущего пользователя для MVP, без паролей. Права доступа зависят от роли. Индивидуальные права по разделам для отдельных пользователей пока не реализованы.</p>
@@ -2117,7 +2130,7 @@ def server_priorities_page(repo: Repository, q: dict[str, str] | None = None) ->
         actions = ""
         if can_write("admin_server_priorities"):
             actions = f"""
-        <details><summary>Редактировать</summary>
+        <details class='edit-details'><summary>Редактировать</summary>
           <div class='card'>
             ГЕО: {esc(row['country_name'])}<br>
             Сервер: {esc(row['server_name'])}<br>
@@ -2182,7 +2195,7 @@ def company_routing_settings_page(repo: Repository, q: dict[str, str] | None = N
         actions = ""
         if can_write("admin_company_routing_settings") and setting["is_active"] and setting["valid_to"] is None:
             actions = f"""
-            <details><summary>Редактировать</summary>
+            <details class='edit-details'><summary>Редактировать</summary>
               <form method='post' action='/admin/company-routing-settings/{setting['id']}/update'>
                 <p class='muted'>Кампания: {esc(setting['company_id_external'])} — {esc(setting['company_name'])}</p>
                 <label>GEO <select name='country_id'>{options(repo, 'countries', selected=setting['country_id'])}</select></label>
@@ -2305,9 +2318,9 @@ def currency_rates_page(repo: Repository) -> bytes:
 def change_reasons_page(repo: Repository) -> bytes:
     rows = []
     for reason in repo.conn.execute("SELECT * FROM change_reasons ORDER BY is_active DESC, name"):
-        rows.append(f"""<tr><td>{esc(reason['name'])}</td><td>{'Да' if reason['is_active'] else 'Нет'}</td><td>{esc(reason['description'])}</td><td><details><summary>✏️</summary><form method='post' action='/admin/change-reasons/{reason['id']}/update'><label>Название <input name='name' value='{esc(reason['name'])}'></label><label>Активна <select name='is_active'><option value='1' {'selected' if reason['is_active'] else ''}>Да</option><option value='0' {'selected' if not reason['is_active'] else ''}>Нет</option></select></label><label>Комментарий <input name='comment' value='{esc(reason['description'])}'></label><button>Сохранить</button></form></details></td></tr>""")
+        rows.append(f"""<tr><td>{esc(reason['name'])}</td><td>{'Да' if reason['is_active'] else 'Нет'}</td><td>{esc(reason['description'])}</td><td data-col='actions'><details class='edit-details'><summary title='Редактировать' aria-label='Редактировать'>Редактировать</summary><form method='post' action='/admin/change-reasons/{reason['id']}/update'><label>Название <input name='name' value='{esc(reason['name'])}'></label><label>Активна <select name='is_active'><option value='1' {'selected' if reason['is_active'] else ''}>Да</option><option value='0' {'selected' if not reason['is_active'] else ''}>Нет</option></select></label><label>Комментарий <input name='comment' value='{esc(reason['description'])}'></label><button>Сохранить</button></form></details></td></tr>""")
     create_html = "<form class='form-grid' method='post' action='/admin/change-reasons/create'><label>Название причины <span class='required'>*</span><input name='name'></label><label>Активна <select name='is_active'><option value='1'>Да</option><option value='0'>Нет</option></select></label><label>Комментарий <input name='comment'></label><button>Сохранить</button></form>"
-    table_html = f"<table><thead><tr><th>Название причины</th><th>Активна</th><th>Комментарий</th><th>Действия</th></tr></thead><tbody>{''.join(rows)}</tbody></table>"
+    table_html = f"<table><thead><tr><th>Название причины</th><th>Активна</th><th>Комментарий</th><th data-col='actions'>Действия</th></tr></thead><tbody>{''.join(rows)}</tbody></table>"
     return page("Причины смены провайдера", f"<h1>Администрирование → Причины смены провайдера</h1>{form_card('Добавить причину', create_html)}{table_card(table_html)}")
 
 
@@ -2381,17 +2394,17 @@ def dictionaries_page(repo: Repository, q: dict[str, str] | None = None) -> byte
         headers = ["GEO", "Код", "Активен", "Комментарий", "Действия"]
         source = list(repo.conn.execute("SELECT * FROM countries ORDER BY name"))
         for row in source:
-            rows.append(f"""<tr{row_class(row)}><td>{esc(row['name'])}</td><td>{esc(row['code'])}</td><td><span class='status-badge'>{active_label(row['is_active'])}</span></td><td class='muted'>—</td><td><details><summary>Редактировать</summary><form method='post' action='/admin/dictionaries/countries/{row['id']}/update'><input name='name' value='{esc(row['name'])}'><input name='code' value='{esc(row['code'])}' placeholder='Код'>{active_select(row['is_active'])}<button>Сохранить</button></form></details></td></tr>""")
+            rows.append(f"""<tr{row_class(row)}><td>{esc(row['name'])}</td><td>{esc(row['code'])}</td><td><span class='status-badge'>{active_label(row['is_active'])}</span></td><td class='muted'>—</td><td data-col='actions'><details class='edit-details'><summary title='Редактировать' aria-label='Редактировать'>Редактировать</summary><form method='post' action='/admin/dictionaries/countries/{row['id']}/update'><input name='name' value='{esc(row['name'])}'><input name='code' value='{esc(row['code'])}' placeholder='Код'>{active_select(row['is_active'])}<button>Сохранить</button></form></details></td></tr>""")
     elif active_section == "providers":
         headers = ["Название", "Активен", "Комментарий", "Действия"]
         source = list(repo.conn.execute("SELECT p.*, c.code AS currency_code FROM providers p LEFT JOIN currencies c ON c.id = p.default_currency_id ORDER BY p.name"))
         for row in source:
-            rows.append(f"""<tr{row_class(row)}><td>{esc(row['name'])}</td><td><span class='status-badge'>{active_label(row['is_active'])}</span></td><td>{esc(row['comment'])}</td><td><details><summary>Редактировать</summary><form method='post' action='/admin/dictionaries/providers/{row['id']}/update'><input name='name' value='{esc(row['name'])}'><select name='default_currency_id'><option value=''>—</option>{options(repo, 'currencies', 'code', selected=row['default_currency_id'])}</select><input name='comment' value='{esc(row['comment'])}' placeholder='Комментарий'>{active_select(row['is_active'])}<button>Сохранить</button></form></details></td></tr>""")
+            rows.append(f"""<tr{row_class(row)}><td>{esc(row['name'])}</td><td><span class='status-badge'>{active_label(row['is_active'])}</span></td><td>{esc(row['comment'])}</td><td data-col='actions'><details class='edit-details'><summary title='Редактировать' aria-label='Редактировать'>Редактировать</summary><form method='post' action='/admin/dictionaries/providers/{row['id']}/update'><input name='name' value='{esc(row['name'])}'><select name='default_currency_id'><option value=''>—</option>{options(repo, 'currencies', 'code', selected=row['default_currency_id'])}</select><input name='comment' value='{esc(row['comment'])}' placeholder='Комментарий'>{active_select(row['is_active'])}<button>Сохранить</button></form></details></td></tr>""")
     elif active_section == "currencies":
         headers = ["Код валюты", "Активен", "Комментарий", "Действия"]
         source = list(repo.conn.execute("SELECT * FROM currencies ORDER BY code"))
         for row in source:
-            rows.append(f"""<tr{row_class(row)}><td>{esc(row['code'])}</td><td><span class='status-badge'>{active_label(row['is_active'])}</span></td><td>{esc(row['name'])}</td><td><details><summary>Редактировать</summary><form method='post' action='/admin/dictionaries/currencies/{row['id']}/update'><input name='code' value='{esc(row['code'])}'><input name='name' value='{esc(row['name'])}' placeholder='Комментарий'>{active_select(row['is_active'])}<button>Сохранить</button></form></details></td></tr>""")
+            rows.append(f"""<tr{row_class(row)}><td>{esc(row['code'])}</td><td><span class='status-badge'>{active_label(row['is_active'])}</span></td><td>{esc(row['name'])}</td><td data-col='actions'><details class='edit-details'><summary title='Редактировать' aria-label='Редактировать'>Редактировать</summary><form method='post' action='/admin/dictionaries/currencies/{row['id']}/update'><input name='code' value='{esc(row['code'])}'><input name='name' value='{esc(row['name'])}' placeholder='Комментарий'>{active_select(row['is_active'])}<button>Сохранить</button></form></details></td></tr>""")
     elif active_section == "prefixes":
         headers = ["Префикс", "Провайдер", "Активен", "Комментарий", "Действия"]
         source = list(repo.conn.execute("""
@@ -2400,27 +2413,27 @@ def dictionaries_page(repo: Repository, q: dict[str, str] | None = None) -> byte
             ORDER BY p.name, COALESCE(pp.prefix, '')
         """))
         for row in source:
-            rows.append(f"""<tr{row_class(row)}><td>{esc(row['prefix'] or 'Без префикса')}</td><td>{esc(row['provider_name'])}</td><td><span class='status-badge'>{active_label(row['is_active'])}</span></td><td>{esc(row['name'])}</td><td><details><summary>Редактировать</summary><form method='post' action='/admin/dictionaries/prefixes/{row['id']}/update'><select name='provider_id'>{options(repo, 'providers', selected=row['provider_id'])}</select><input name='prefix' value='{esc(row['prefix'])}' placeholder='Без префикса или цифры'><input name='name' value='{esc(row['name'])}' placeholder='Комментарий'>{active_select(row['is_active'])}<button>Сохранить</button></form></details></td></tr>""")
+            rows.append(f"""<tr{row_class(row)}><td>{esc(row['prefix'] or 'Без префикса')}</td><td>{esc(row['provider_name'])}</td><td><span class='status-badge'>{active_label(row['is_active'])}</span></td><td>{esc(row['name'])}</td><td data-col='actions'><details class='edit-details'><summary title='Редактировать' aria-label='Редактировать'>Редактировать</summary><form method='post' action='/admin/dictionaries/prefixes/{row['id']}/update'><select name='provider_id'>{options(repo, 'providers', selected=row['provider_id'])}</select><input name='prefix' value='{esc(row['prefix'])}' placeholder='Без префикса или цифры'><input name='name' value='{esc(row['name'])}' placeholder='Комментарий'>{active_select(row['is_active'])}<button>Сохранить</button></form></details></td></tr>""")
     elif active_section == "servers":
         headers = ["Сервер", "Активен", "Комментарий", "Действия"]
         source = list(repo.conn.execute("SELECT * FROM servers ORDER BY name"))
         for row in source:
-            rows.append(f"""<tr{row_class(row)}><td>{esc(row['name'])}</td><td><span class='status-badge'>{active_label(row['is_active'])}</span></td><td>{esc(row['comment'])}</td><td><details><summary>Редактировать</summary><form method='post' action='/admin/dictionaries/servers/{row['id']}/update'><input name='name' value='{esc(row['name'])}'><input name='comment' value='{esc(row['comment'])}' placeholder='Комментарий'>{active_select(row['is_active'])}<button>Сохранить</button></form></details></td></tr>""")
+            rows.append(f"""<tr{row_class(row)}><td>{esc(row['name'])}</td><td><span class='status-badge'>{active_label(row['is_active'])}</span></td><td>{esc(row['comment'])}</td><td data-col='actions'><details class='edit-details'><summary title='Редактировать' aria-label='Редактировать'>Редактировать</summary><form method='post' action='/admin/dictionaries/servers/{row['id']}/update'><input name='name' value='{esc(row['name'])}'><input name='comment' value='{esc(row['comment'])}' placeholder='Комментарий'>{active_select(row['is_active'])}<button>Сохранить</button></form></details></td></tr>""")
     elif active_section == "phone-types":
         headers = ["Тип номера", "Активен", "Комментарий", "Действия"]
         source = list(repo.conn.execute("SELECT * FROM phone_number_types ORDER BY name"))
         for row in source:
-            rows.append(f"""<tr{row_class(row)}><td>{esc(row['name'])}</td><td><span class='status-badge'>{active_label(row['is_active'])}</span></td><td>{esc(row['comment'])}</td><td><details><summary>Редактировать</summary><form method='post' action='/admin/dictionaries/phone-types/{row['id']}/update'><input name='name' value='{esc(row['name'])}'><input name='comment' value='{esc(row['comment'])}' placeholder='Комментарий'>{active_select(row['is_active'])}<button>Сохранить</button></form></details></td></tr>""")
+            rows.append(f"""<tr{row_class(row)}><td>{esc(row['name'])}</td><td><span class='status-badge'>{active_label(row['is_active'])}</span></td><td>{esc(row['comment'])}</td><td data-col='actions'><details class='edit-details'><summary title='Редактировать' aria-label='Редактировать'>Редактировать</summary><form method='post' action='/admin/dictionaries/phone-types/{row['id']}/update'><input name='name' value='{esc(row['name'])}'><input name='comment' value='{esc(row['comment'])}' placeholder='Комментарий'>{active_select(row['is_active'])}<button>Сохранить</button></form></details></td></tr>""")
     elif active_section == "projects":
         headers = ["Название проекта", "Активен", "Комментарий", "Действия"]
         source = list(repo.conn.execute("SELECT * FROM projects ORDER BY name"))
         for row in source:
-            rows.append(f"""<tr{row_class(row)}><td>{esc(row['name'])}</td><td><span class='status-badge'>{active_label(row['is_active'])}</span></td><td>{esc(row['comment'])}</td><td><details><summary>Редактировать</summary><form method='post' action='/admin/dictionaries/projects/{row['id']}/update'><input name='name' value='{esc(row['name'])}'><input name='comment' value='{esc(row['comment'])}' placeholder='Комментарий'>{active_select(row['is_active'])}<button>Сохранить</button></form></details></td></tr>""")
+            rows.append(f"""<tr{row_class(row)}><td>{esc(row['name'])}</td><td><span class='status-badge'>{active_label(row['is_active'])}</span></td><td>{esc(row['comment'])}</td><td data-col='actions'><details class='edit-details'><summary title='Редактировать' aria-label='Редактировать'>Редактировать</summary><form method='post' action='/admin/dictionaries/projects/{row['id']}/update'><input name='name' value='{esc(row['name'])}'><input name='comment' value='{esc(row['comment'])}' placeholder='Комментарий'>{active_select(row['is_active'])}<button>Сохранить</button></form></details></td></tr>""")
     else:
         headers = ["Назначение", "Активен", "Комментарий", "Действия"]
         source = list(repo.conn.execute("SELECT * FROM phone_assignment_types ORDER BY name"))
         for row in source:
-            rows.append(f"""<tr{row_class(row)}><td>{esc(row['name'])}</td><td><span class='status-badge'>{active_label(row['is_active'])}</span></td><td>{esc(row['comment'])}</td><td><details><summary>Редактировать</summary><form method='post' action='/admin/dictionaries/phone-assignments/{row['id']}/update'><input name='name' value='{esc(row['name'])}'><input name='code' value='{esc(row['code'])}' readonly><input name='comment' value='{esc(row['comment'])}' placeholder='Комментарий'>{active_select(row['is_active'])}<button>Сохранить</button></form></details></td></tr>""")
+            rows.append(f"""<tr{row_class(row)}><td>{esc(row['name'])}</td><td><span class='status-badge'>{active_label(row['is_active'])}</span></td><td>{esc(row['comment'])}</td><td data-col='actions'><details class='edit-details'><summary title='Редактировать' aria-label='Редактировать'>Редактировать</summary><form method='post' action='/admin/dictionaries/phone-assignments/{row['id']}/update'><input name='name' value='{esc(row['name'])}'><input name='code' value='{esc(row['code'])}' readonly><input name='comment' value='{esc(row['comment'])}' placeholder='Комментарий'>{active_select(row['is_active'])}<button>Сохранить</button></form></details></td></tr>""")
 
     header_html = "".join(f"<th>{esc(header)}</th>" for header in headers)
     table_html = f"<table><thead><tr>{header_html}</tr></thead><tbody>{''.join(rows)}</tbody></table>"
