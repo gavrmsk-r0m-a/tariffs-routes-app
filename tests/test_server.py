@@ -1173,7 +1173,7 @@ class RolePermissionTest(ServerSmokeTest):
             self.assertIn(label, content)
         self.assertIn("href='/admin/users'", content)
 
-    def test_operator_sees_working_sections_and_server_priority_admin_navigation_only(self):
+    def test_operator_sees_working_sections_and_allowed_admin_navigation_only(self):
         captured, content = self.request("/routes", cookie=self.user_cookie("duty"))
         self.assertEqual(captured["status"], "200 OK")
         for label in ["Маршруты", "Тарифы", "Купленные номера", "Кампании прозвона", "Смена провайдеров"]:
@@ -1181,9 +1181,15 @@ class RolePermissionTest(ServerSmokeTest):
         self.assertIn("Администрирование</button>", content)
         self.assertIn("href='/admin/server-priorities'", content)
         self.assertIn("Приоритет по серверам", content)
+        self.assertIn("href='/admin/company-routing-settings'", content)
+        self.assertIn("Схема маршрутизации кампаний", content)
         self.assertNotIn("href='/admin/users'", content)
         self.assertNotIn("href='/admin/dictionaries'", content)
         self.assertNotIn("href='/admin/import'", content)
+        self.assertNotIn("href='/admin/change-log'", content)
+        self.assertNotIn("href='/admin/currency-rates'", content)
+        self.assertNotIn("href='/admin/change-reasons'", content)
+        self.assertNotIn("href='/admin/naming-rules'", content)
 
     def test_guest_sees_only_routes_and_tariffs(self):
         captured, content = self.request("/routes", cookie=self.user_cookie("guest"))
@@ -1215,9 +1221,46 @@ class RolePermissionTest(ServerSmokeTest):
         self.assertEqual(captured["status"], "403 Forbidden")
         self.assertIn("Нет доступа", content)
 
+    def test_operator_can_read_but_not_write_company_routing_settings(self):
+        cookie = self.user_cookie("duty")
+        captured, content = self.request("/admin/company-routing-settings", cookie=cookie)
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("Схема маршрутизации кампаний", content)
+        self.assertNotIn("+ Добавить схему маршрутизации кампании", content)
+        self.assertNotIn("/admin/company-routing-settings/create", content)
+        self.assertNotIn("/admin/company-routing-settings/1/update", content)
+        self.assertNotIn("/admin/company-routing-settings/1/deactivate", content)
+
+        captured, content = self.request(
+            "/admin/company-routing-settings/create",
+            method="POST",
+            body=urlencode({"calling_company_id": "1", "country_id": "1", "server_id": "1", "routing_mode": "server_priority"}),
+            cookie=cookie,
+        )
+        self.assertEqual(captured["status"], "403 Forbidden")
+        self.assertIn("Нет доступа", content)
+
+        captured, content = self.request(
+            "/admin/company-routing-settings/1/update",
+            method="POST",
+            body=urlencode({"country_id": "1", "server_id": "1", "routing_mode": "server_priority"}),
+            cookie=cookie,
+        )
+        self.assertEqual(captured["status"], "403 Forbidden")
+        self.assertIn("Нет доступа", content)
+
+        captured, content = self.request("/admin/company-routing-settings/1/deactivate", method="POST", body=urlencode({}), cookie=cookie)
+        self.assertEqual(captured["status"], "403 Forbidden")
+        self.assertIn("Нет доступа", content)
+
+    def test_guest_cannot_access_company_routing_settings(self):
+        captured, content = self.request("/admin/company-routing-settings", cookie=self.user_cookie("guest"))
+        self.assertEqual(captured["status"], "403 Forbidden")
+        self.assertIn("Нет доступа", content)
+
     def test_operator_still_cannot_access_other_admin_sections(self):
         cookie = self.user_cookie("duty")
-        for path in ["/admin/users", "/admin/dictionaries", "/admin/import", "/admin/change-log"]:
+        for path in ["/admin/users", "/admin/dictionaries", "/admin/import", "/admin/change-log", "/admin/currency-rates", "/admin/change-reasons", "/admin/naming-rules"]:
             with self.subTest(path=path):
                 captured, content = self.request(path, cookie=cookie)
                 self.assertEqual(captured["status"], "403 Forbidden")
