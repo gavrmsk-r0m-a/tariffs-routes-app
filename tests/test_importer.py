@@ -12,6 +12,8 @@ class ImporterTest(unittest.TestCase):
         self.conn.row_factory = sqlite3.Row
         self.conn.execute("PRAGMA foreign_keys = ON")
         init_db(self.conn)
+        self.conn.execute("INSERT INTO projects(name, is_active) VALUES ('Alpha', 1)")
+        self.conn.commit()
         self.repo = Repository(self.conn)
         self.admin_id = self.repo.create_user("admin", "Admin")
 
@@ -37,7 +39,9 @@ class ImporterTest(unittest.TestCase):
         self.assertIn("duplicate_in_db", {row["status"] for row in preview.rows})
 
     def test_phone_import_rejects_invalid_numbers_and_imports_valid(self):
-        csv_text = "country,number,assignment_type,status\nИталия,+393331234567,pool_number,used\nИталия,393331234568,pool_number,used\n"
+        self.conn.execute("INSERT INTO projects(name, is_active) VALUES ('Competitors', 1)")
+        self.conn.commit()
+        csv_text = "country,project,number,assignment_type,status\nИталия,Competitors,+393331234567,pool_number,used\nИталия,Competitors,393331234568,pool_number,used\n"
         preview = preview_import(self.conn, "phone_numbers", csv_text)
         self.assertEqual(preview.error_rows, 1)
         self.assertEqual(preview.new_rows, 1)
@@ -76,6 +80,56 @@ class ImporterTest(unittest.TestCase):
         bad_preview = preview_import(self.conn, "phone_numbers", "number;country;project;assignment_type\n393331234568;Италия;NoSuchProject;Номер из пула\n")
         self.assertEqual(bad_preview.error_rows, 1)
 
+
+    def test_phone_import_requires_country_project_and_number(self):
+        self.conn.execute("INSERT INTO projects(name, is_active) VALUES ('Competitors', 1)")
+        self.conn.commit()
+        cases = [
+            "project,number\nCompetitors,393331234569\n",
+            "country,number\nИталия,393331234569\n",
+            "country,project\nИталия,Competitors\n",
+        ]
+        for csv_text in cases:
+            with self.subTest(csv_text=csv_text):
+                preview = preview_import(self.conn, "phone_numbers", csv_text)
+                self.assertEqual(preview.error_rows, 1)
+
+    def test_phone_import_allows_empty_provider_and_sets_review_required(self):
+        self.conn.execute("INSERT INTO projects(name, is_active) VALUES ('Competitors', 1)")
+        self.conn.commit()
+        csv_text = "country,project,number,provider,assignment_type,status,is_active\nИталия,Competitors,393331234570,, , , \n"
+        preview = preview_import(self.conn, "phone_numbers", csv_text)
+        self.assertEqual(preview.error_rows, 0)
+        result = apply_import(self.conn, "phone_numbers", csv_text, user_id=self.admin_id)
+        self.assertEqual(result.created_rows, 1)
+        row = self.conn.execute("SELECT provider_id, review_required, assignment_type, status, is_active FROM phone_numbers WHERE number = '393331234570'").fetchone()
+        self.assertIsNone(row["provider_id"])
+        self.assertEqual(row["review_required"], 1)
+        self.assertEqual(row["assignment_type"], "other")
+        self.assertEqual(row["status"], "unknown")
+        self.assertEqual(row["is_active"], 1)
+
+    def test_phone_import_with_provider_resolves_provider_without_review_flag(self):
+        self.conn.execute("INSERT INTO projects(name, is_active) VALUES ('Competitors', 1)")
+        self.conn.commit()
+        csv_text = "country,project,number,provider\nИталия,Competitors,393331234571,Miatel\n"
+        result = apply_import(self.conn, "phone_numbers", csv_text, user_id=self.admin_id)
+        self.assertEqual(result.created_rows, 1)
+        row = self.conn.execute("""
+            SELECT pn.review_required, p.name AS provider_name
+            FROM phone_numbers pn JOIN providers p ON p.id = pn.provider_id
+            WHERE pn.number = '393331234571'
+        """).fetchone()
+        self.assertEqual(row["provider_name"], "Miatel")
+        self.assertEqual(row["review_required"], 0)
+
+    def test_phone_import_without_created_at_uses_timestamp(self):
+        self.conn.execute("INSERT INTO projects(name, is_active) VALUES ('Competitors', 1)")
+        self.conn.commit()
+        apply_import(self.conn, "phone_numbers", "country,project,number\nИталия,Competitors,393331234572\n", user_id=self.admin_id)
+        row = self.conn.execute("SELECT created_at FROM phone_numbers WHERE number = '393331234572'").fetchone()
+        self.assertIsNotNone(row["created_at"])
+
     def test_tariff_replace_section_is_forbidden(self):
         with self.assertRaises(BusinessRuleError):
             apply_import(self.conn, "tariffs", "country,provider\nМексика,Miatel\n", user_id=self.admin_id, mode="replace_section")
@@ -90,6 +144,8 @@ class ImportReplaceModeTest(unittest.TestCase):
         self.conn.row_factory = sqlite3.Row
         self.conn.execute("PRAGMA foreign_keys = ON")
         init_db(self.conn)
+        self.conn.execute("INSERT INTO projects(name, is_active) VALUES ('Alpha', 1)")
+        self.conn.commit()
         self.repo = Repository(self.conn)
         self.admin_id = self.repo.create_user("admin2", "Admin")
 
@@ -97,7 +153,7 @@ class ImportReplaceModeTest(unittest.TestCase):
         self.conn.close()
 
     def test_replace_phone_numbers_clears_only_phone_section(self):
-        apply_import(self.conn, "phone_numbers", "country,number,assignment_type,status\nA,1111111,pool_number,used\n", user_id=self.admin_id)
-        apply_import(self.conn, "phone_numbers", "country,number,assignment_type,status\nB,2222222,pool_number,used\n", user_id=self.admin_id, mode="replace_section")
+        apply_import(self.conn, "phone_numbers", "country,project,number,assignment_type,status\nA,Alpha,1111111,pool_number,used\n", user_id=self.admin_id)
+        apply_import(self.conn, "phone_numbers", "country,project,number,assignment_type,status\nB,Alpha,2222222,pool_number,used\n", user_id=self.admin_id, mode="replace_section")
         rows = self.conn.execute("SELECT number FROM phone_numbers ORDER BY number").fetchall()
         self.assertEqual([row["number"] for row in rows], ["2222222"])

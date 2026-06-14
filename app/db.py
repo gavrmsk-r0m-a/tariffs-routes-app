@@ -55,6 +55,7 @@ def _rebuild_phone_numbers_if_assignment_check(conn: sqlite3.Connection) -> None
             currency_id INTEGER REFERENCES currencies(id) ON DELETE RESTRICT,
             comment TEXT,
             is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
+            review_required INTEGER NOT NULL DEFAULT 0 CHECK (review_required IN (0, 1)),
             created_by INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_by INTEGER REFERENCES users(id) ON DELETE RESTRICT,
@@ -68,12 +69,12 @@ def _rebuild_phone_numbers_if_assignment_check(conn: sqlite3.Connection) -> None
         INSERT INTO phone_numbers_new(
             id, country_id, provider_id, number, normalized_number, project_label,
             assignment_type, phone_type, tariff_label, status, connection_cost, monthly_fee,
-            outgoing_rate, incoming_rate, currency_id, comment, is_active, created_by,
+            outgoing_rate, incoming_rate, currency_id, comment, is_active, review_required, created_by,
             created_at, updated_by, updated_at, deactivated_at
         )
         SELECT id, country_id, provider_id, number, normalized_number, project_label,
             assignment_type, phone_type, tariff_label, status, connection_cost, monthly_fee,
-            outgoing_rate, incoming_rate, currency_id, comment, is_active, created_by,
+            outgoing_rate, incoming_rate, currency_id, comment, is_active, review_required, created_by,
             created_at, updated_by, updated_at, deactivated_at
         FROM phone_numbers
     """)
@@ -136,6 +137,7 @@ def run_lightweight_migrations(conn: sqlite3.Connection) -> None:
     _add_column_if_missing(conn, "phone_numbers", "phone_type", "TEXT")
     _add_column_if_missing(conn, "phone_numbers", "tariff_label", "TEXT")
     _add_column_if_missing(conn, "phone_numbers", "deactivated_at", "TEXT")
+    _add_column_if_missing(conn, "phone_numbers", "review_required", "INTEGER NOT NULL DEFAULT 0 CHECK (review_required IN (0, 1))")
     _rebuild_phone_numbers_if_assignment_check(conn)
     conn.execute("""
         CREATE TABLE IF NOT EXISTS phone_number_types (
