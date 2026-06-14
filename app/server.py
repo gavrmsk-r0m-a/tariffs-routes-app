@@ -264,6 +264,17 @@ def current_user_selector() -> str:
     """
 
 
+def theme_selector() -> str:
+    return """
+        <label class="theme-selector">Тема
+          <select data-theme-select aria-label="Тема интерфейса">
+            <option value="cyber-sketch">Cyber Sketch</option>
+            <option value="calm-blue">Calm Blue</option>
+            <option value="terminal-paper">Terminal Paper</option>
+          </select>
+        </label>
+    """
+
 
 def breadcrumbs(title: str) -> str:
     trails = {
@@ -305,95 +316,148 @@ def page(title: str, body: str, notice: str | None = None) -> bytes:
   <title>{esc(title)}</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/core@1.0.0-beta20/dist/css/tabler.min.css">
   <style>
-    :root {{
-      --bg: #f6f8f5;
+    :root,
+    html[data-theme="cyber-sketch"] {{
+      --bg: #f7f7f2;
       --surface: #ffffff;
-      --surface-muted: #f8faf7;
-      --surface-strong: #edf3ee;
-      --sidebar-bg: #eef3ef;
-      --text: #2b3030;
-      --text-strong: #161a1a;
-      --muted: #687272;
-      --border: #dce5de;
-      --border-strong: #c7d4ca;
-      --accent: #5f7f6f;
-      --accent-strong: #3f6353;
-      --accent-soft: #eaf3ed;
-      --danger: #9a3f38;
-      --danger-soft: #f7e8e5;
-      --success: #476a55;
-      --success-soft: #e8f2ea;
-      --warning: #8a5f45;
-      --focus: #6f917f;
-      --shadow-soft: 0 1px 2px rgba(34, 48, 42, 0.06);
-      --shadow-card: 0 8px 24px rgba(34, 48, 42, 0.05);
+      --surface-muted: #fafaf5;
+      --surface-strong: #f0f0ea;
+      --sidebar-bg: #f0f0ea;
+      --text-strong: #18181b;
+      --text: #3f3f46;
+      --muted: #71717a;
+      --border: #e4e4dc;
+      --border-strong: #cfcfc3;
+      --accent: #6d5dfc;
+      --accent-strong: #4f46e5;
+      --accent-soft: #eeedff;
+      --cyber: #00c2a8;
+      --cyber-soft: #dcfff8;
+      --warning: #f59e0b;
+      --warning-soft: #fff7d6;
+      --danger: #ef4444;
+      --danger-soft: #fee2e2;
+      --success: var(--cyber);
+      --success-soft: var(--cyber-soft);
+      --focus: var(--accent);
+      --shadow-soft: 0 1px 2px rgba(24, 24, 27, 0.06);
+      --shadow-card: 0 8px 24px rgba(24, 24, 27, 0.07);
       --radius-control: 6px;
       --radius-card: 9px;
+    }}
+    html[data-theme="calm-blue"] {{
+      --bg: #f5f7fb;
+      --surface: #ffffff;
+      --surface-muted: #f8fafc;
+      --surface-strong: #eef2f7;
+      --sidebar-bg: #eef2f7;
+      --text-strong: #111827;
+      --text: #334155;
+      --muted: #64748b;
+      --border: #e2e8f0;
+      --border-strong: #cbd5e1;
+      --accent: #2563eb;
+      --accent-strong: #1d4ed8;
+      --accent-soft: #eff6ff;
+      --cyber: #0ea5e9;
+      --cyber-soft: #e0f2fe;
+      --warning: #d97706;
+      --warning-soft: #fef3c7;
+      --danger: #dc2626;
+      --danger-soft: #fee2e2;
+      --success: var(--cyber);
+      --success-soft: var(--cyber-soft);
+      --focus: var(--accent);
+    }}
+    html[data-theme="terminal-paper"] {{
+      --bg: #f5f2e8;
+      --surface: #fffdf7;
+      --surface-muted: #faf7ed;
+      --surface-strong: #eee8d8;
+      --sidebar-bg: #eee8d8;
+      --text-strong: #1f2933;
+      --text: #374151;
+      --muted: #6b7280;
+      --border: #ddd6c4;
+      --border-strong: #c8bea6;
+      --accent: #16803c;
+      --accent-strong: #0f6b2f;
+      --accent-soft: #e7f7ec;
+      --cyber: #d97706;
+      --cyber-soft: #fff3d6;
+      --warning: #d97706;
+      --warning-soft: #fff3d6;
+      --danger: #b42318;
+      --danger-soft: #ffe4df;
+      --success: var(--accent);
+      --success-soft: var(--accent-soft);
+      --focus: var(--accent);
     }}
     * {{ box-sizing: border-box; }}
     body {{ font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 0; color: var(--text); background: var(--bg); font-size: 14px; line-height: 1.45; }}
     .breadcrumbs {{ display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 10px; color: var(--muted); font-size: 12px; font-weight: 650; }}
     .breadcrumbs a {{ color: var(--accent-strong); text-decoration: none; }}
     .breadcrumbs a:hover {{ text-decoration: underline; }}
-    .breadcrumbs .separator {{ color: #91a098; }}
+    .breadcrumbs .separator {{ color: var(--muted); }}
     h1 {{ margin: 0 0 14px; font-size: 26px; line-height: 1.18; letter-spacing: -0.02em; color: var(--text-strong); font-weight: 760; }}
     h2 {{ margin: 18px 0 10px; font-size: 18px; line-height: 1.25; letter-spacing: -0.01em; color: var(--text-strong); font-weight: 740; }}
     h3 {{ margin: 14px 0 8px; font-size: 15px; letter-spacing: -0.005em; color: var(--text-strong); font-weight: 720; }}
     p {{ margin: 8px 0; }}
     .app-shell {{ display: grid; grid-template-columns: 258px minmax(0, 1fr); min-height: 100vh; }}
-    .sidebar {{ background: linear-gradient(180deg, #f1f6f2 0%, var(--sidebar-bg) 100%); border-right: 1px solid var(--border); padding: 20px 14px; position: sticky; top: 0; height: 100vh; overflow-y: auto; }}
+    .sidebar {{ background: linear-gradient(180deg, var(--surface-muted) 0%, var(--sidebar-bg) 100%); border-right: 1px solid var(--border); padding: 20px 14px; position: sticky; top: 0; height: 100vh; overflow-y: auto; }}
     .app-title {{ color: var(--text-strong); font-weight: 820; font-size: 17px; letter-spacing: -0.01em; margin: 2px 8px 20px; padding: 0 0 14px; border-bottom: 1px solid var(--border); }}
     .side-nav {{ display: grid; gap: 5px; }}
     .side-link, .admin-link, .button, button {{ border: 1px solid transparent; border-radius: var(--radius-control); color: var(--text); padding: 7px 10px; text-decoration: none; background: transparent; cursor: pointer; font: inherit; transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease, box-shadow 120ms ease; }}
     .side-link {{ display: flex; width: 100%; align-items: center; justify-content: space-between; text-align: left; font-weight: 650; min-height: 36px; }}
-    .side-link:hover, .admin-link:hover {{ background: rgba(255, 255, 255, 0.7); border-color: var(--border); color: var(--text-strong); }}
+    .side-link:hover, .admin-link:hover {{ background: color-mix(in srgb, var(--surface) 78%, transparent); border-color: var(--border); color: var(--text-strong); }}
     .side-link.active {{ background: var(--surface); border-color: var(--border-strong); color: var(--accent-strong); box-shadow: var(--shadow-soft); font-weight: 780; }}
     .admin-toggle::after {{ content: "›"; color: var(--muted); font-size: 14px; line-height: 1; }}
     .admin-toggle[aria-expanded="true"]::after {{ content: "⌄"; }}
-    .admin-tree {{ display: none; margin: 4px 0 8px; padding: 6px; border: 1px solid var(--border); border-radius: 10px; background: rgba(255, 255, 255, 0.42); }}
+    .admin-tree {{ display: none; margin: 4px 0 8px; padding: 6px; border: 1px solid var(--border); border-radius: 10px; background: color-mix(in srgb, var(--surface) 55%, transparent); }}
     .admin-tree.open {{ display: grid; gap: 2px; }}
-    .admin-link {{ display: block; padding: 6px 8px; font-size: 13px; line-height: 1.25; color: #44504a; }}
+    .admin-link {{ display: block; padding: 6px 8px; font-size: 13px; line-height: 1.25; color: var(--text); }}
     .admin-link.active {{ background: var(--surface); border-color: var(--border-strong); color: var(--accent-strong); font-weight: 730; box-shadow: var(--shadow-soft); }}
     .workspace {{ min-width: 0; padding: 20px 28px 42px; background:
-      radial-gradient(circle at top left, rgba(111, 145, 127, 0.08), transparent 32rem),
+      radial-gradient(circle at top left, color-mix(in srgb, var(--accent) 8%, transparent), transparent 32rem),
       var(--bg); }}
-    .topbar {{ display: flex; justify-content: flex-end; align-items: center; min-height: 40px; margin: 0 0 10px; }}
-    .current-user-selector label {{ display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; font-weight: 700; }}
+    .topbar {{ display: flex; justify-content: flex-end; align-items: center; gap: 10px; min-height: 40px; margin: 0 0 10px; flex-wrap: wrap; }}
+    .current-user-selector label, .theme-selector {{ display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; font-weight: 700; }}
     .current-user-selector select {{ min-width: 190px; }}
+    .theme-selector select {{ min-width: 138px; max-width: 150px; }}
     .content {{ max-width: 1460px; margin: 0 auto; }}
-    .content > h1:first-of-type {{ margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid rgba(199, 212, 202, 0.72); }}
-    a {{ color: #426a5a; text-underline-offset: 2px; }}
+    .content > h1:first-of-type {{ margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid var(--border); }}
+    a {{ color: var(--accent-strong); text-underline-offset: 2px; }}
     a:hover {{ color: var(--accent-strong); }}
     .button, button {{ background: var(--surface); border-color: var(--border-strong); color: var(--text-strong); min-height: 32px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; font-weight: 650; box-shadow: 0 1px 0 rgba(34, 48, 42, 0.03); }}
     .admin-toggle {{ background: transparent; border-color: transparent; box-shadow: none; }}
     .button:hover, button:hover {{ background: var(--surface-muted); border-color: var(--accent); }}
     .button:active, button:active {{ background: var(--surface-strong); }}
     .button:disabled, button:disabled, input:disabled, select:disabled, textarea:disabled {{ opacity: 0.62; cursor: not-allowed; }}
-    button[onclick*="Деактив"], button[onclick*="Удал"], button[onclick*="Отключ"], form[action$="/deactivate"] button {{ color: var(--danger); border-color: #dfbbb6; background: var(--danger-soft); }}
-    button[onclick*="Деактив"]:hover, button[onclick*="Удал"]:hover, button[onclick*="Отключ"]:hover, form[action$="/deactivate"] button:hover {{ background: #f2d9d5; border-color: #c9938b; }}
+    button[onclick*="Деактив"], button[onclick*="Удал"], button[onclick*="Отключ"], form[action$="/deactivate"] button {{ color: var(--danger); border-color: var(--danger); background: var(--danger-soft); }}
+    button[onclick*="Деактив"]:hover, button[onclick*="Удал"]:hover, button[onclick*="Отключ"]:hover, form[action$="/deactivate"] button:hover {{ background: var(--danger-soft); border-color: var(--danger); }}
     .button:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, summary:focus-visible, a:focus-visible {{ outline: 2px solid var(--focus); outline-offset: 2px; }}
     table {{ border-collapse: separate; border-spacing: 0; width: max-content; min-width: 100%; background: var(--surface); }}
-    th, td {{ border: 0; border-bottom: 1px solid #e5ebe6; padding: 9px 12px; vertical-align: top; }}
+    th, td {{ border: 0; border-bottom: 1px solid var(--border); padding: 9px 12px; vertical-align: top; }}
     tr:last-child td {{ border-bottom: 0; }}
-    th {{ background: linear-gradient(180deg, #f2f6f2 0%, var(--surface-strong) 100%); text-align: left; font-weight: 760; color: #44504a; position: sticky; top: 0; z-index: 1; font-size: 12px; letter-spacing: .015em; white-space: nowrap; }}
+    th {{ background: linear-gradient(180deg, var(--surface-muted) 0%, var(--surface-strong) 100%); text-align: left; font-weight: 760; color: var(--text); position: sticky; top: 0; z-index: 1; font-size: 12px; letter-spacing: .015em; white-space: nowrap; }}
     .copyable-header {{ display: inline-flex; align-items: center; gap: 6px; }}
     .copy-column-button {{ min-height: 24px; padding: 2px 6px; font-size: 12px; color: var(--accent-strong); border-color: var(--border-strong); background: var(--accent-soft); box-shadow: none; }}
-    .copy-column-button:hover {{ background: #dfece3; border-color: var(--accent); }}
+    .copy-column-button:hover {{ background: var(--cyber-soft); border-color: var(--accent); }}
     .copy-column-status {{ margin-left: 4px; color: var(--success); font-size: 12px; font-weight: 720; white-space: nowrap; }}
-    tbody tr:nth-child(even) {{ background: #fbfcfb; }}
+    tbody tr:nth-child(even) {{ background: var(--surface-muted); }}
     tbody tr:hover {{ background: var(--accent-soft); }}
-    tbody tr:hover td {{ border-bottom-color: #d6e4da; }}
+    tbody tr:hover td {{ border-bottom-color: var(--border-strong); }}
     td {{ max-width: 360px; overflow-wrap: normal; }}
     .table-card td, .journal-card td {{ white-space: nowrap; }}
     .table-card td:nth-last-child(2), .journal-card td:nth-last-child(2), .table-card td.comment-cell, .journal-card td.comment-cell {{ white-space: normal; min-width: 180px; max-width: 360px; overflow-wrap: anywhere; }}
     .table-card td[data-copy-column="phone-number"], .table-card td[data-copy-column="route-name"], .table-card td:nth-child(1), .table-card td:nth-child(2), .status-badge {{ white-space: nowrap; }}
     input, select, textarea {{ border: 1px solid var(--border-strong); border-radius: var(--radius-control); padding: 6px 8px; margin: 0; max-width: 100%; background: var(--surface); color: var(--text-strong); font: inherit; min-height: 32px; box-shadow: inset 0 1px 1px rgba(34, 48, 42, 0.03); }}
     input:hover, select:hover, textarea:hover {{ border-color: var(--accent); }}
-    input:focus, select:focus, textarea:focus {{ border-color: var(--focus); background: #ffffff; }}
-    input::placeholder, textarea::placeholder {{ color: #95a09a; }}
+    input:focus, select:focus, textarea:focus {{ border-color: var(--focus); background: var(--surface); }}
+    input::placeholder, textarea::placeholder {{ color: var(--muted); }}
     textarea {{ width: 100%; }}
     input[type="checkbox"], input[type="radio"] {{ width: auto; margin: 0 6px 0 0; vertical-align: middle; accent-color: var(--accent); }}
-    label {{ display: inline-grid; gap: 4px; margin: 0; align-items: start; color: #44504a; font-weight: 620; }}
+    label {{ display: inline-grid; gap: 4px; margin: 0; align-items: start; color: var(--text); font-weight: 620; }}
     form {{ display: flex; flex-wrap: wrap; gap: 8px 10px; align-items: end; }}
     form button {{ align-self: end; }}
     .checkbox-list {{ display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 4px 0; }}
@@ -402,27 +466,27 @@ def page(title: str, body: str, notice: str | None = None) -> bytes:
     .server-checkbox-toolbar button {{ padding: 3px 8px; font-size: 0.9em; }}
     .server-checkbox-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 6px 10px; margin-top: 6px; }}
     .server-checkbox-item {{ display: flex; align-items: flex-start; gap: 6px; border: 1px solid var(--border); border-radius: var(--radius-control); padding: 6px 8px; background: var(--surface); margin: 0; font-weight: 520; }}
-    .server-checkbox-item:has(input:checked) {{ border-color: var(--accent); background: var(--accent-soft); box-shadow: 0 0 0 1px #d3e1d7 inset; }}
+    .server-checkbox-item:has(input:checked) {{ border-color: var(--accent); background: var(--accent-soft); box-shadow: 0 0 0 1px var(--border-strong) inset; }}
     .server-checkbox-main {{ font-weight: 720; }}
     .server-route-hint {{ display: block; margin-top: 2px; font-size: 0.9em; color: var(--muted); line-height: 1.25; }}
     .event-server-list {{ margin: 4px 0 0 18px; padding: 0; }}
     .event-server-list li {{ margin: 2px 0; }}
     fieldset {{ border: 1px solid var(--border); border-radius: var(--radius-card); margin: 12px 0; padding: 12px; background: var(--surface); }}
-    fieldset > legend {{ padding: 0 6px; color: #52605a; font-weight: 750; }}
+    fieldset > legend {{ padding: 0 6px; color: var(--text); font-weight: 750; }}
     h1 + fieldset, h1 + p + fieldset {{ margin-top: 6px; }}
     .required {{ color: var(--danger); font-weight: 760; }}
     .muted {{ color: var(--muted); font-weight: 500; }}
-    .message-card, .error {{ border: 1px solid #c8796f; background: var(--danger-soft); color: #71322d; padding: 14px; border-radius: var(--radius-card); }}
+    .message-card, .error {{ border: 1px solid var(--danger); background: var(--danger-soft); color: var(--danger); padding: 14px; border-radius: var(--radius-card); }}
     .message-card h1 {{ border: 0; padding: 0; margin-bottom: 8px; }}
-    .ok {{ border: 1px solid #abc6b2; background: var(--success-soft); color: #345541; padding: 12px 14px; border-radius: var(--radius-card); margin: 10px 0 14px; box-shadow: var(--shadow-soft); }}
+    .ok {{ border: 1px solid var(--cyber); background: var(--success-soft); color: var(--text-strong); padding: 12px 14px; border-radius: var(--radius-card); margin: 10px 0 14px; box-shadow: var(--shadow-soft); }}
     .grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }}
     .card {{ border: 1px solid var(--border); border-radius: var(--radius-card); padding: 14px; background: var(--surface); box-shadow: var(--shadow-soft); }}
     details {{ border: 1px solid var(--border); border-radius: var(--radius-card); padding: 0; margin: 12px 0; background: var(--surface); box-shadow: var(--shadow-soft); }}
     summary {{ cursor: pointer; padding: 8px 12px; font-weight: 750; color: var(--text-strong); }}
-    details[open] > summary {{ border-bottom: 1px solid #e6ece7; background: var(--surface-muted); border-radius: var(--radius-card) var(--radius-card) 0 0; }}
+    details[open] > summary {{ border-bottom: 1px solid var(--border); background: var(--surface-muted); border-radius: var(--radius-card) var(--radius-card) 0 0; }}
     details > form, details > .card, details > textarea, details > p, details > table {{ margin: 12px; }}
     .filter-card, .form-card {{ border-color: var(--border); box-shadow: var(--shadow-soft); }}
-    .filter-card {{ margin: 8px 0 12px; background: rgba(255, 255, 255, 0.82); }}
+    .filter-card {{ margin: 8px 0 12px; background: color-mix(in srgb, var(--surface) 86%, transparent); }}
     .filter-summary, .form-summary {{ min-height: 38px; display: flex; align-items: center; justify-content: space-between; }}
     .filter-summary::after, .form-summary::after {{ content: "Настроить"; color: var(--muted); font-size: 12px; font-weight: 650; }}
     details[open] > .filter-summary::after, details[open] > .form-summary::after {{ content: "Свернуть"; }}
@@ -435,9 +499,9 @@ def page(title: str, body: str, notice: str | None = None) -> bytes:
     .form-grid fieldset, .filter-grid fieldset {{ grid-column: 1 / -1; margin: 0; }}
     .form-grid textarea {{ min-width: min(620px, 100%); }}
     .filter-grid button[type="submit"], .filter-grid > button, .form-grid button[type="submit"], .form-grid > button {{ background: var(--accent-strong); border-color: var(--accent-strong); color: #fff; }}
-    .filter-grid button[type="submit"]:hover, .filter-grid > button:hover, .form-grid button[type="submit"]:hover, .form-grid > button:hover {{ background: #355848; border-color: #355848; color: #fff; }}
-    .form-grid button[onclick*="Деактив"], .form-grid button[onclick*="Удал"], .form-grid button[onclick*="Отключ"], .filter-grid button[onclick*="Деактив"], .filter-grid button[onclick*="Удал"], .filter-grid button[onclick*="Отключ"] {{ color: var(--danger); border-color: #dfbbb6; background: var(--danger-soft); }}
-    .form-grid button[onclick*="Деактив"]:hover, .form-grid button[onclick*="Удал"]:hover, .form-grid button[onclick*="Отключ"]:hover, .filter-grid button[onclick*="Деактив"]:hover, .filter-grid button[onclick*="Удал"]:hover, .filter-grid button[onclick*="Отключ"]:hover {{ background: #f2d9d5; border-color: #c9938b; color: var(--danger); }}
+    .filter-grid button[type="submit"]:hover, .filter-grid > button:hover, .form-grid button[type="submit"]:hover, .form-grid > button:hover {{ background: var(--accent); border-color: var(--accent); color: #fff; }}
+    .form-grid button[onclick*="Деактив"], .form-grid button[onclick*="Удал"], .form-grid button[onclick*="Отключ"], .filter-grid button[onclick*="Деактив"], .filter-grid button[onclick*="Удал"], .filter-grid button[onclick*="Отключ"] {{ color: var(--danger); border-color: var(--danger); background: var(--danger-soft); }}
+    .form-grid button[onclick*="Деактив"]:hover, .form-grid button[onclick*="Удал"]:hover, .form-grid button[onclick*="Отключ"]:hover, .filter-grid button[onclick*="Деактив"]:hover, .filter-grid button[onclick*="Удал"]:hover, .filter-grid button[onclick*="Отключ"]:hover {{ background: var(--danger-soft); border-color: var(--danger); color: var(--danger); }}
     .reset-filters {{ background: var(--surface-muted); color: var(--accent-strong); }}
     .table-footer {{ display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin: 8px 0 12px; }}
     .table-footer-summary p, .table-footer-summary nav {{ margin: 0; }}
@@ -452,20 +516,20 @@ def page(title: str, body: str, notice: str | None = None) -> bytes:
     .column-reset {{ justify-content: flex-start; margin-top: 5px; padding: 4px 0; min-height: 24px; border: 0; background: transparent; box-shadow: none; color: var(--accent-strong); font-size: 12px; }}
     [data-column-hidden="true"] {{ display: none !important; }}
     .table-card, .journal-card {{ border: 1px solid var(--border); border-radius: var(--radius-card); background: var(--surface); margin: 12px 0; overflow: hidden; box-shadow: var(--shadow-card); }}
-    .table-card h2, .journal-card h2 {{ margin: 0; padding: 12px 14px; border-bottom: 1px solid #e6ece7; background: var(--surface-muted); color: var(--text-strong); }}
+    .table-card h2, .journal-card h2 {{ margin: 0; padding: 12px 14px; border-bottom: 1px solid var(--border); background: var(--surface-muted); color: var(--text-strong); }}
     .journal-card h2 {{ font-size: 19px; }}
     .table-scroll {{ overflow-x: auto; overscroll-behavior-x: contain; }}
     .table-card table, .journal-card table {{ margin: 0; border: 0; border-radius: 0; }}
     .journal-card {{ min-height: 420px; border-color: var(--border-strong); }}
     .journal-card .table-scroll {{ min-height: 360px; }}
-    .empty-state {{ padding: 24px 14px; color: var(--muted); background: #fbfcfb; }}
+    .empty-state {{ padding: 24px 14px; color: var(--muted); background: var(--surface-muted); }}
     .compact-actions, .actions {{ white-space: nowrap; min-width: 130px; }}
     .actions .button, .actions button, .compact-actions .button, .compact-actions button {{ min-height: 28px; padding: 4px 8px; font-size: 12px; }}
     .actions details, .compact-actions details {{ margin: 6px 0 0; box-shadow: none; }}
     .actions summary, .compact-actions summary {{ padding: 4px 7px; font-size: 12px; }}
     .scope-cards {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px; }}
     .scope-card {{ cursor: pointer; display: block; box-shadow: none; }}
-    .scope-card.selected {{ border-color: var(--accent); background: var(--accent-soft); box-shadow: 0 0 0 2px #d3e1d7 inset; }}
+    .scope-card.selected {{ border-color: var(--accent); background: var(--accent-soft); box-shadow: 0 0 0 2px var(--border-strong) inset; }}
     .scope-field[hidden], .conditional-field[hidden], .route-empty-message[hidden] {{ display: none !important; }}
     .current-route-box {{ display: block; border: 1px dashed var(--border-strong); border-radius: var(--radius-card); padding: 8px; margin: 4px 12px 4px 0; background: var(--surface-muted); }}
     .star {{ color: var(--warning); font-weight: 800; }}
@@ -474,7 +538,7 @@ def page(title: str, body: str, notice: str | None = None) -> bytes:
     .dictionary-sidebar-title {{ margin: 0 0 2px; color: var(--muted); font-size: 12px; font-weight: 780; text-transform: uppercase; letter-spacing: .04em; }}
     .dictionary-card {{ display: flex; align-items: center; justify-content: space-between; gap: 8px; border: 1px solid var(--border); border-radius: 10px; padding: 7px 9px; background: var(--surface); color: var(--text); text-decoration: none; box-shadow: none; }}
     .dictionary-card:hover {{ border-color: var(--border-strong); background: var(--surface-muted); }}
-    .dictionary-card.active {{ border-color: var(--accent); background: var(--accent-soft); box-shadow: 0 0 0 2px #d3e1d7 inset; color: var(--text-strong); }}
+    .dictionary-card.active {{ border-color: var(--accent); background: var(--accent-soft); box-shadow: 0 0 0 2px var(--border-strong) inset; color: var(--text-strong); }}
     .dictionary-card-title {{ font-weight: 760; color: inherit; text-decoration: none; }}
     .dictionary-card-count {{ color: var(--muted); font-size: 12px; white-space: nowrap; }}
     .dictionary-workspace {{ min-width: 0; display: grid; gap: 10px; }}
@@ -484,15 +548,15 @@ def page(title: str, body: str, notice: str | None = None) -> bytes:
     .dictionary-add {{ margin: 0; box-shadow: var(--shadow-soft); }}
     .dictionary-add .form-grid {{ grid-template-columns: repeat(auto-fit, minmax(170px, 260px)); }}
     .dictionary-add input, .dictionary-add select {{ width: 100%; box-sizing: border-box; }}
-    .inactive-row {{ color: var(--muted); background: #f0f4f1; }}
-    .status-badge {{ display: inline-flex; align-items: center; min-height: 22px; padding: 2px 7px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface-muted); color: #4d5a54; font-size: 12px; font-weight: 720; white-space: nowrap; }}
+    .inactive-row {{ color: var(--muted); background: var(--surface-strong); }}
+    .status-badge {{ display: inline-flex; align-items: center; min-height: 22px; padding: 2px 7px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface-muted); color: var(--text); font-size: 12px; font-weight: 720; white-space: nowrap; }}
 
-    .dashboard-hero {{ display: flex; align-items: center; justify-content: space-between; gap: 18px; border: 1px solid var(--border); border-radius: 18px; padding: 26px; margin: 0 0 18px; background: linear-gradient(135deg, #ffffff 0%, #eef6f1 100%); box-shadow: var(--shadow-card); }}
+    .dashboard-hero {{ display: flex; align-items: center; justify-content: space-between; gap: 18px; border: 1px solid var(--border); border-radius: 18px; padding: 26px; margin: 0 0 18px; background: linear-gradient(135deg, var(--surface) 0%, var(--accent-soft) 100%); box-shadow: var(--shadow-card); }}
     .dashboard-hero h1 {{ margin: 0 0 8px; padding: 0; border: 0; font-size: 34px; }}
     .eyebrow {{ margin: 0 0 6px; color: var(--accent-strong); font-size: 12px; font-weight: 820; text-transform: uppercase; letter-spacing: .08em; }}
     .hero-text {{ max-width: 760px; margin: 0; color: var(--muted); font-size: 16px; }}
     .hero-action {{ background: var(--accent-strong); border-color: var(--accent-strong); color: #fff; white-space: nowrap; }}
-    .hero-action:hover {{ background: #355848; border-color: #355848; color: #fff; }}
+    .hero-action:hover {{ background: var(--accent); border-color: var(--accent); color: #fff; }}
     .metrics-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; margin: 0 0 18px; }}
     .metric-card {{ border: 1px solid var(--border); border-radius: var(--radius-card); padding: 15px; background: var(--surface); box-shadow: var(--shadow-soft); }}
     .metric-label {{ display: block; min-height: 36px; color: var(--muted); font-size: 12px; font-weight: 760; text-transform: uppercase; letter-spacing: .04em; }}
@@ -509,14 +573,14 @@ def page(title: str, body: str, notice: str | None = None) -> bytes:
     th[data-col="actions"], td[data-col="actions"], th:last-child, td:last-child {{ position: sticky; right: 0; z-index: 2; box-shadow: -8px 0 14px rgba(34, 48, 42, 0.06); }}
     th[data-col="actions"], th:last-child {{ z-index: 4; }}
     td[data-col="actions"], td:last-child {{ background: inherit; }}
-    tbody tr:nth-child(even) td[data-col="actions"], tbody tr:nth-child(even) td:last-child {{ background: #fbfcfb; }}
+    tbody tr:nth-child(even) td[data-col="actions"], tbody tr:nth-child(even) td:last-child {{ background: var(--surface-muted); }}
     tbody tr:hover td[data-col="actions"], tbody tr:hover td:last-child {{ background: var(--accent-soft); }}
     .actions, .compact-actions, td[data-col="actions"] {{ white-space: nowrap; min-width: 96px; }}
     .action-button, .actions .button, .actions button, .compact-actions .button, .compact-actions button, td[data-col="actions"] .button, td[data-col="actions"] button {{ min-width: 30px; min-height: 28px; padding: 4px 7px; border-radius: 7px; font-size: 12px; line-height: 1; }}
     .edit-action {{ min-width: 30px; width: 30px; padding: 4px; font-size: 0; }}
     .edit-action::before {{ content: "✏️"; font-size: 13px; line-height: 1; }}
-    .danger-action, form[action$="/deactivate"] button {{ min-height: 28px; padding: 4px 8px; color: var(--danger); border-color: #dfbbb6; background: var(--danger-soft); font-size: 12px; font-weight: 720; }}
-    .danger-action:hover, form[action$="/deactivate"] button:hover {{ background: #f2d9d5; border-color: #c9938b; color: var(--danger); }}
+    .danger-action, form[action$="/deactivate"] button {{ min-height: 28px; padding: 4px 8px; color: var(--danger); border-color: var(--danger); background: var(--danger-soft); font-size: 12px; font-weight: 720; }}
+    .danger-action:hover, form[action$="/deactivate"] button:hover {{ background: var(--danger-soft); border-color: var(--danger); color: var(--danger); }}
     @media (max-width: 900px) {{
       .app-shell {{ grid-template-columns: 1fr; }}
       .sidebar {{ position: static; height: auto; }}
@@ -530,7 +594,7 @@ def page(title: str, body: str, notice: str | None = None) -> bytes:
   <div class="app-shell">
     {sidebar(title)}
     <main class="workspace">
-      <div class="topbar">{current_user_selector()}</div>
+      <div class="topbar">{theme_selector()}{current_user_selector()}</div>
       <div class="content">
         {breadcrumbs(title)}
         {notice_html}
@@ -539,6 +603,18 @@ def page(title: str, body: str, notice: str | None = None) -> bytes:
     </main>
   </div>
   <script>
+    const themeSelect = document.querySelector("[data-theme-select]");
+    const savedTheme = localStorage.getItem("mvp-theme") || "cyber-sketch";
+    document.documentElement.dataset.theme = savedTheme;
+    if (themeSelect) themeSelect.value = savedTheme;
+    if (themeSelect) {{
+      themeSelect.addEventListener("change", () => {{
+        const theme = themeSelect.value || "cyber-sketch";
+        document.documentElement.dataset.theme = theme;
+        localStorage.setItem("mvp-theme", theme);
+      }});
+    }}
+
     document.querySelectorAll(".admin-toggle").forEach((button) => {{
       button.addEventListener("click", () => {{
         const target = document.getElementById(button.getAttribute("aria-controls"));
