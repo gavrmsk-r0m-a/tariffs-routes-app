@@ -3,6 +3,7 @@ from __future__ import annotations
 import html
 import json
 import os
+import re
 import sqlite3
 from datetime import datetime
 from http.cookies import SimpleCookie
@@ -44,7 +45,7 @@ def esc(value: object) -> str:
 ROLE_PERMISSIONS = {
     "admin": {"read": {"*"}, "write": {"*"}},
     "operator": {
-        "read": {"routes", "tariffs", "phones", "companies", "provider_changes"},
+        "read": {"routes", "tariffs", "phones", "companies", "provider_changes", "admin_server_priorities"},
         "write": {"provider_changes"},
     },
     "guest": {"read": {"routes", "tariffs"}, "write": set()},
@@ -187,6 +188,37 @@ def current_user_selector() -> str:
     """
 
 
+
+def breadcrumbs(title: str) -> str:
+    trails = {
+        "Маршруты": [("Главная", "/routes"), ("Маршруты", None)],
+        "Номера маршрута": [("Главная", "/routes"), ("Маршруты", "/routes"), ("Номера маршрута", None)],
+        "Тарифы": [("Главная", "/routes"), ("Тарифы", None)],
+        "Купленные номера": [("Главная", "/routes"), ("Купленные номера", None)],
+        "Кампании прозвона": [("Главная", "/routes"), ("Кампании прозвона", None)],
+        "Смена провайдеров": [("Главная", "/routes"), ("Смена провайдеров", None)],
+        "Приоритет по серверам": [("Главная", "/routes"), ("Администрирование", "/admin"), ("Приоритет по серверам", None)],
+        "Пользователи": [("Главная", "/routes"), ("Администрирование", "/admin"), ("Пользователи", None)],
+        "Справочные значения": [("Главная", "/routes"), ("Администрирование", "/admin"), ("Справочные значения", None)],
+        "Схема маршрутизации кампаний": [("Главная", "/routes"), ("Администрирование", "/admin"), ("Схема маршрутизации кампаний", None)],
+        "Правила нейминга": [("Главная", "/routes"), ("Администрирование", "/admin"), ("Правила нейминга", None)],
+        "Импорт": [("Главная", "/routes"), ("Администрирование", "/admin"), ("Импорт / экспорт", None)],
+        "Курсы валют": [("Главная", "/routes"), ("Администрирование", "/admin"), ("Курсы валют", None)],
+        "Причины смены провайдера": [("Главная", "/routes"), ("Администрирование", "/admin"), ("Причины смены провайдера", None)],
+        "Change log": [("Главная", "/routes"), ("Администрирование", "/admin"), ("Change log", None)],
+    }
+    trail = trails.get(title)
+    if not trail:
+        return ""
+    parts = []
+    for label, href in trail:
+        section = section_for_get_path(href or "") if href else None
+        if href and (section is None or can_read(section)):
+            parts.append(f"<a href='{esc(href)}'>{esc(label)}</a>")
+        else:
+            parts.append(f"<span>{esc(label)}</span>")
+    return "<nav class='breadcrumbs' aria-label='Хлебные крошки'>" + "<span class='separator'>→</span>".join(parts) + "</nav>"
+
 def page(title: str, body: str, notice: str | None = None) -> bytes:
     notice_html = f"<div class='ok'>{esc(notice)}</div>" if notice else ""
     return f"""<!doctype html>
@@ -222,6 +254,10 @@ def page(title: str, body: str, notice: str | None = None) -> bytes:
     }}
     * {{ box-sizing: border-box; }}
     body {{ font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 0; color: var(--text); background: var(--bg); font-size: 14px; line-height: 1.45; }}
+    .breadcrumbs {{ display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 8px; color: var(--muted); font-size: 12px; font-weight: 650; }}
+    .breadcrumbs a {{ color: var(--accent-strong); text-decoration: none; }}
+    .breadcrumbs a:hover {{ text-decoration: underline; }}
+    .breadcrumbs .separator {{ color: #91a098; }}
     h1 {{ margin: 0 0 14px; font-size: 26px; line-height: 1.18; letter-spacing: -0.02em; color: var(--text-strong); font-weight: 760; }}
     h2 {{ margin: 18px 0 10px; font-size: 18px; line-height: 1.25; letter-spacing: -0.01em; color: var(--text-strong); font-weight: 740; }}
     h3 {{ margin: 14px 0 8px; font-size: 15px; letter-spacing: -0.005em; color: var(--text-strong); font-weight: 720; }}
@@ -355,6 +391,7 @@ def page(title: str, body: str, notice: str | None = None) -> bytes:
     <main class="workspace">
       <div class="topbar">{current_user_selector()}</div>
       <div class="content">
+        {breadcrumbs(title)}
         {notice_html}
         {body}
       </div>
@@ -466,6 +503,8 @@ def section_for_write_path(path: str) -> str | None:
         return "phones"
     if path.startswith("/companies/") or path == "/companies/create":
         return "companies"
+    if path.startswith("/admin/server-priorities/"):
+        return "admin_server_priorities"
     if path.startswith("/admin/"):
         return "admin"
     return None
@@ -485,6 +524,13 @@ def active_query(q: dict[str, str], keys: list[str] | tuple[str, ...]) -> bool:
 
 def filter_card(form_html: str, q: dict[str, str], keys: list[str] | tuple[str, ...]) -> str:
     open_attr = " open" if active_query(q, keys) else ""
+    action_match = re.search(r'action=["\']([^"\']+)["\']', form_html)
+    reset_href = action_match.group(1) if action_match else current_request_path({"PATH_INFO": "/", "QUERY_STRING": ""})
+    reset_link = f"<a class='button reset-filters' href='{esc(reset_href)}'>Сбросить фильтры</a>"
+    if "</form>" in form_html:
+        form_html = form_html.replace("</form>", reset_link + "</form>", 1)
+    else:
+        form_html += reset_link
     return f"<details class='filter-card'{open_attr}><summary class='filter-summary'>Фильтры</summary>{form_html}</details>"
 
 
@@ -1508,18 +1554,14 @@ def provider_changes_page(repo: Repository, q: dict[str, str] | None = None) -> 
 
 
 def admin_page(repo: Repository) -> bytes:
-    body = """
+    cards = "".join(
+        f'<a class="card" href="{href}">{label}</a>'
+        for key, href, label, _ in ADMIN_NAV_ITEMS
+        if can_read(key)
+    )
+    body = f"""
 <h1>Администрирование</h1><div class="grid">
-<a class="card" href="/admin/server-priorities">Приоритет по серверам</a>
-<a class="card" href="/admin/company-routing-settings">Схема маршрутизации кампаний</a>
-<a class="card" href="/admin/naming-rules">Правила нейминга маршрутов</a>
-<a class="card" href="/admin/import">Импорт / экспорт</a>
-<a class="card" href="/admin/currency-rates">Курсы валют</a>
-<a class="card" href="/admin/change-reasons">Причины смены провайдера</a>
-<a class="card" href="/admin/users">Пользователи</a>
-<a class="card" href="/admin/dictionaries">Справочные значения</a>
-<a class="card" href="/admin/change-log">Change log</a>
-<a class="card" href="/companies">Кампании прозвона</a>
+{cards}
 </div>"""
     return page("Администрирование", body)
 
@@ -1564,7 +1606,7 @@ def users_page(repo: Repository) -> bytes:
     table_html = f"<table><thead><tr><th>ID</th><th>Код</th><th>Имя</th><th>Роль-метка</th><th>Активен</th><th>Создан</th><th>Обновлён</th><th>Действия</th></tr></thead><tbody>{''.join(rows)}</tbody></table>"
     body = f"""
 <h1>Пользователи</h1>
-<p class='muted'>Это лёгкий выбор текущего пользователя для MVP, без паролей. Права доступа зависят от роли.</p>
+<p class='muted'>Это лёгкий выбор текущего пользователя для MVP, без паролей. Права доступа зависят от роли. Индивидуальные права по разделам для отдельных пользователей пока не реализованы.</p>
 {form_card('+ Создать пользователя', create_html)}
 {table_card(table_html)}"""
     return page("Пользователи", body)
@@ -1615,7 +1657,9 @@ def server_priorities_page(repo: Repository, q: dict[str, str] | None = None) ->
         previous_route = row["previous_route_name"] or "—"
         current_priority = "—" if not row["current_route_id"] else f"{esc(current_provider)} / {esc(current_route)}"
         previous_priority = "—" if not row["previous_route_id"] else f"{esc(previous_provider)} / {esc(previous_route)}"
-        actions = f"""
+        actions = ""
+        if can_write("admin_server_priorities"):
+            actions = f"""
         <details><summary>Редактировать</summary>
           <div class='card'>
             ГЕО: {esc(row['country_name'])}<br>
@@ -2335,6 +2379,58 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
     raise BusinessRuleError("Unsupported form action")
 
 
+
+def error_return_path(path: str) -> str:
+    if path.startswith("/routes/") and "/numbers/" in path:
+        return "/routes/" + path.strip("/").split("/")[1] + "/numbers"
+    if path.startswith("/routes/") and path.endswith("/update"):
+        return "/routes/" + path.strip("/").split("/")[1] + "/edit"
+    if path == "/routes/create":
+        return "/routes"
+    if path.startswith("/phones/") and path.endswith("/update"):
+        return "/phones/" + path.strip("/").split("/")[1] + "/edit"
+    if path == "/phones/create":
+        return "/phones"
+    if path.startswith("/companies/") and path.endswith("/update"):
+        return "/companies/" + path.strip("/").split("/")[1] + "/edit"
+    if path == "/companies/create":
+        return "/companies"
+    if path.startswith("/provider-changes/") and path.endswith("/update"):
+        return "/provider-changes/" + path.strip("/").split("/")[1] + "/edit"
+    if path.startswith("/provider-changes/") or path == "/provider-changes/create":
+        return "/provider-changes"
+    if path.startswith("/tariffs/") or path == "/tariffs/create":
+        return "/tariffs"
+    if path.startswith("/admin/server-priorities/"):
+        return "/admin/server-priorities"
+    if path.startswith("/admin/users/") or path == "/admin/users/create":
+        return "/admin/users"
+    if path.startswith("/admin/dictionaries/"):
+        return "/admin/dictionaries"
+    if path.startswith("/admin/company-routing-settings/") or path == "/admin/company-routing-settings/create":
+        return "/admin/company-routing-settings"
+    if path.startswith("/admin/"):
+        parts = path.strip("/").split("/")
+        return "/" + "/".join(parts[:2]) if len(parts) >= 2 else "/admin"
+    return "/routes"
+
+
+def validation_error_page(return_path: str, message: str) -> bytes:
+    titles = {
+        "/routes": "Маршруты",
+        "/tariffs": "Тарифы",
+        "/phones": "Купленные номера",
+        "/companies": "Кампании прозвона",
+        "/provider-changes": "Смена провайдеров",
+        "/admin/server-priorities": "Приоритет по серверам",
+        "/admin/users": "Пользователи",
+        "/admin/dictionaries": "Справочные значения",
+        "/admin/company-routing-settings": "Схема маршрутизации кампаний",
+    }
+    title = titles.get(return_path, "Ошибка")
+    body = f"<div class='error'>{esc(message)}</div><h1>{esc(title)}</h1><p><a class='button' href='{esc(return_path)}'>Вернуться и исправить</a></p>"
+    return page(title, body)
+
 def user_error(exc: Exception) -> str:
     text = str(exc)
     if isinstance(exc, sqlite3.IntegrityError):
@@ -2436,7 +2532,7 @@ def app(environ, start_response):
         return [forbidden_page()]
     except (BusinessRuleError, ValueError, sqlite3.IntegrityError) as exc:
         start_response("400 Bad Request", [("Content-Type", "text/html; charset=utf-8")])
-        return [page("Ошибка", f"<div class='error'>{esc(user_error(exc))}</div><p><a href='/'>На главную</a></p>")]
+        return [validation_error_page(error_return_path(path), user_error(exc))]
     finally:
         _REQUEST_CONTEXT.clear()
         conn.close()

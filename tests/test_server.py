@@ -108,6 +108,35 @@ class ServerSmokeTest(unittest.TestCase):
         selector = content.split('<form class="current-user-selector"', 1)[1].split("</form>", 1)[0]
         self.assertNotIn(f"<option value='{guest_id}'", selector)
 
+
+    def test_breadcrumbs_appear_on_representative_pages(self):
+        for path, crumbs in [
+            ("/routes", ["Главная", "Маршруты"]),
+            ("/phones", ["Главная", "Купленные номера"]),
+            ("/admin/server-priorities", ["Главная", "Администрирование", "Приоритет по серверам"]),
+        ]:
+            with self.subTest(path=path):
+                captured, content = self.request(path)
+                self.assertEqual(captured["status"], "200 OK")
+                self.assertIn("class='breadcrumbs'", content)
+                for crumb in crumbs:
+                    self.assertIn(crumb, content)
+
+    def test_reset_filters_links_point_to_base_pages(self):
+        for path, base in [
+            ("/routes?country_id=1", "/routes"),
+            ("/tariffs?country_id=1", "/tariffs"),
+            ("/phones?number=525", "/phones"),
+            ("/companies?company=Demo", "/companies"),
+            ("/provider-changes?country_id=1", "/provider-changes"),
+            ("/admin/server-priorities?server_id=1", "/admin/server-priorities"),
+        ]:
+            with self.subTest(path=path):
+                captured, content = self.request(path)
+                self.assertEqual(captured["status"], "200 OK")
+                self.assertIn("Сбросить фильтры", content)
+                self.assertIn(f"href='{base}'", content)
+
     def test_provider_change_page_has_three_apply_scopes(self):
         self.request("/routes")
         captured, content = self.request("/provider-changes")
@@ -422,6 +451,8 @@ class ServerSmokeTest(unittest.TestCase):
         captured, content = self.request("/phones/create", method="POST", body=body)
         self.assertEqual(captured["status"], "400 Bad Request")
         self.assertIn("Номер уже существует", content)
+        self.assertIn("Купленные номера", content)
+        self.assertNotIn("<h1>Маршруты</h1>", content)
 
     def test_route_number_add_uses_phone_number_not_internal_id(self):
         self.request("/routes")
@@ -1028,13 +1059,17 @@ class RolePermissionTest(ServerSmokeTest):
             self.assertIn(label, content)
         self.assertIn("href='/admin/users'", content)
 
-    def test_operator_sees_working_sections_but_no_admin_navigation(self):
+    def test_operator_sees_working_sections_and_server_priority_admin_navigation_only(self):
         captured, content = self.request("/routes", cookie=self.user_cookie("duty"))
         self.assertEqual(captured["status"], "200 OK")
         for label in ["Маршруты", "Тарифы", "Купленные номера", "Кампании прозвона", "Смена провайдеров"]:
             self.assertIn(label, content)
-        self.assertNotIn("Администрирование</button>", content)
+        self.assertIn("Администрирование</button>", content)
+        self.assertIn("href='/admin/server-priorities'", content)
+        self.assertIn("Приоритет по серверам", content)
         self.assertNotIn("href='/admin/users'", content)
+        self.assertNotIn("href='/admin/dictionaries'", content)
+        self.assertNotIn("href='/admin/import'", content)
 
     def test_guest_sees_only_routes_and_tariffs(self):
         captured, content = self.request("/routes", cookie=self.user_cookie("guest"))
@@ -1053,6 +1088,29 @@ class RolePermissionTest(ServerSmokeTest):
 
     def test_guest_cannot_open_provider_changes(self):
         captured, content = self.request("/provider-changes", cookie=self.user_cookie("guest"))
+        self.assertEqual(captured["status"], "403 Forbidden")
+        self.assertIn("Нет доступа", content)
+
+    def test_operator_can_read_but_not_write_server_priorities(self):
+        cookie = self.user_cookie("duty")
+        captured, content = self.request("/admin/server-priorities", cookie=cookie)
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("Приоритет по серверам", content)
+        self.assertNotIn("Сохранить текущий маршрут", content)
+        captured, content = self.request("/admin/server-priorities/1/update", method="POST", body=urlencode({"current_route_id": "1", "comment": "blocked"}), cookie=cookie)
+        self.assertEqual(captured["status"], "403 Forbidden")
+        self.assertIn("Нет доступа", content)
+
+    def test_operator_still_cannot_access_other_admin_sections(self):
+        cookie = self.user_cookie("duty")
+        for path in ["/admin/users", "/admin/dictionaries", "/admin/import", "/admin/change-log"]:
+            with self.subTest(path=path):
+                captured, content = self.request(path, cookie=cookie)
+                self.assertEqual(captured["status"], "403 Forbidden")
+                self.assertIn("Нет доступа", content)
+
+    def test_guest_cannot_access_server_priorities(self):
+        captured, content = self.request("/admin/server-priorities", cookie=self.user_cookie("guest"))
         self.assertEqual(captured["status"], "403 Forbidden")
         self.assertIn("Нет доступа", content)
 
