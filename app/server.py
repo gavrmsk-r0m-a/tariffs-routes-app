@@ -69,7 +69,7 @@ def paginate_rows(rows: list, q: dict[str, str], base_path: str) -> tuple[list, 
 def export_link(base_path: str, q: dict[str, str]) -> str:
     params = {key: value for key, value in q.items() if key not in {"page", "limit", "export"} and value not in (None, "")}
     params["export"] = "csv"
-    return f"<p><a class='button' href='{esc(base_path + '?' + urlencode(params))}'>Экспорт в Excel</a></p>"
+    return f"<p class='export-actions'><a class='button export-button' href='{esc(base_path + '?' + urlencode(params))}'>Экспорт в Excel</a></p>"
 
 
 def copy_column_button(column: str) -> str:
@@ -154,7 +154,7 @@ def can_write(section: str) -> bool:
 
 
 def forbidden_page() -> bytes:
-    return page("Нет доступа", "<h1>Нет доступа</h1><p>У текущего пользователя нет прав для этого раздела или действия.</p>")
+    return page("Нет доступа", "<section class='message-card error'><h1>Нет доступа</h1><p>У текущего пользователя нет прав для этого раздела или действия.</p></section>")
 
 
 class ForbiddenError(Exception):
@@ -321,7 +321,7 @@ def page(title: str, body: str, notice: str | None = None) -> bytes:
     }}
     * {{ box-sizing: border-box; }}
     body {{ font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 0; color: var(--text); background: var(--bg); font-size: 14px; line-height: 1.45; }}
-    .breadcrumbs {{ display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 8px; color: var(--muted); font-size: 12px; font-weight: 650; }}
+    .breadcrumbs {{ display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 10px; color: var(--muted); font-size: 12px; font-weight: 650; }}
     .breadcrumbs a {{ color: var(--accent-strong); text-decoration: none; }}
     .breadcrumbs a:hover {{ text-decoration: underline; }}
     .breadcrumbs .separator {{ color: #91a098; }}
@@ -330,27 +330,31 @@ def page(title: str, body: str, notice: str | None = None) -> bytes:
     h3 {{ margin: 14px 0 8px; font-size: 15px; letter-spacing: -0.005em; color: var(--text-strong); font-weight: 720; }}
     p {{ margin: 8px 0; }}
     .app-shell {{ display: grid; grid-template-columns: 258px minmax(0, 1fr); min-height: 100vh; }}
-    .sidebar {{ background: var(--sidebar-bg); border-right: 1px solid var(--border); padding: 18px 14px; position: sticky; top: 0; height: 100vh; overflow-y: auto; }}
-    .app-title {{ color: var(--text-strong); font-weight: 820; font-size: 17px; letter-spacing: -0.01em; margin: 2px 8px 18px; }}
-    .side-nav {{ display: grid; gap: 4px; }}
+    .sidebar {{ background: linear-gradient(180deg, #f1f6f2 0%, var(--sidebar-bg) 100%); border-right: 1px solid var(--border); padding: 20px 14px; position: sticky; top: 0; height: 100vh; overflow-y: auto; }}
+    .app-title {{ color: var(--text-strong); font-weight: 820; font-size: 17px; letter-spacing: -0.01em; margin: 2px 8px 20px; padding: 0 0 14px; border-bottom: 1px solid var(--border); }}
+    .side-nav {{ display: grid; gap: 5px; }}
     .side-link, .admin-link, .button, button {{ border: 1px solid transparent; border-radius: var(--radius-control); color: var(--text); padding: 7px 10px; text-decoration: none; background: transparent; cursor: pointer; font: inherit; transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease, box-shadow 120ms ease; }}
-    .side-link {{ display: flex; width: 100%; align-items: center; justify-content: space-between; text-align: left; font-weight: 650; }}
+    .side-link {{ display: flex; width: 100%; align-items: center; justify-content: space-between; text-align: left; font-weight: 650; min-height: 36px; }}
     .side-link:hover, .admin-link:hover {{ background: rgba(255, 255, 255, 0.7); border-color: var(--border); color: var(--text-strong); }}
     .side-link.active {{ background: var(--surface); border-color: var(--border-strong); color: var(--accent-strong); box-shadow: var(--shadow-soft); }}
+    .side-link.active::before {{ content: ""; width: 3px; align-self: stretch; border-radius: 999px; background: var(--accent); margin: 1px 7px 1px -4px; }}
     .admin-toggle::after {{ content: "›"; color: var(--muted); font-size: 14px; line-height: 1; }}
     .admin-toggle[aria-expanded="true"]::after {{ content: "⌄"; }}
     .admin-tree {{ display: none; margin: 3px 0 7px 13px; padding: 4px 0 4px 12px; border-left: 1px solid var(--border-strong); }}
     .admin-tree.open {{ display: grid; gap: 2px; }}
     .admin-link {{ display: block; padding: 6px 8px; font-size: 13px; line-height: 1.25; color: #44504a; }}
     .admin-link.active {{ background: var(--surface); border-color: var(--border-strong); color: var(--accent-strong); font-weight: 730; box-shadow: var(--shadow-soft); }}
-    .workspace {{ min-width: 0; padding: 18px 26px 38px; }}
-    .topbar {{ display: flex; justify-content: flex-end; align-items: center; min-height: 38px; margin: 0 0 8px; }}
+    .workspace {{ min-width: 0; padding: 20px 28px 42px; background:
+      radial-gradient(circle at top left, rgba(111, 145, 127, 0.08), transparent 32rem),
+      var(--bg); }}
+    .topbar {{ display: flex; justify-content: flex-end; align-items: center; min-height: 40px; margin: 0 0 10px; }}
     .current-user-selector label {{ display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; font-weight: 700; }}
     .current-user-selector select {{ min-width: 190px; }}
     .content {{ max-width: 1460px; margin: 0 auto; }}
+    .content > h1:first-of-type {{ margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid rgba(199, 212, 202, 0.72); }}
     a {{ color: #426a5a; text-underline-offset: 2px; }}
     a:hover {{ color: var(--accent-strong); }}
-    .button, button {{ background: var(--surface); border-color: var(--border-strong); color: var(--text-strong); min-height: 30px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; font-weight: 650; box-shadow: 0 1px 0 rgba(34, 48, 42, 0.03); }}
+    .button, button {{ background: var(--surface); border-color: var(--border-strong); color: var(--text-strong); min-height: 32px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; font-weight: 650; box-shadow: 0 1px 0 rgba(34, 48, 42, 0.03); }}
     .admin-toggle {{ background: transparent; border-color: transparent; box-shadow: none; }}
     .button:hover, button:hover {{ background: var(--surface-muted); border-color: var(--accent); }}
     .button:active, button:active {{ background: var(--surface-strong); }}
@@ -359,15 +363,16 @@ def page(title: str, body: str, notice: str | None = None) -> bytes:
     button[onclick*="Деактив"]:hover, button[onclick*="Удал"]:hover, button[onclick*="Отключ"]:hover, form[action$="/deactivate"] button:hover {{ background: #f2d9d5; border-color: #c9938b; }}
     .button:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, summary:focus-visible, a:focus-visible {{ outline: 2px solid var(--focus); outline-offset: 2px; }}
     table {{ border-collapse: separate; border-spacing: 0; width: 100%; background: var(--surface); min-width: 760px; }}
-    th, td {{ border: 0; border-bottom: 1px solid #e5ebe6; padding: 7px 9px; vertical-align: top; }}
+    th, td {{ border: 0; border-bottom: 1px solid #e5ebe6; padding: 8px 10px; vertical-align: top; }}
     tr:last-child td {{ border-bottom: 0; }}
-    th {{ background: var(--surface-strong); text-align: left; font-weight: 750; color: #44504a; position: sticky; top: 0; z-index: 1; }}
+    th {{ background: linear-gradient(180deg, #f2f6f2 0%, var(--surface-strong) 100%); text-align: left; font-weight: 760; color: #44504a; position: sticky; top: 0; z-index: 1; font-size: 12px; letter-spacing: .015em; }}
     .copyable-header {{ display: inline-flex; align-items: center; gap: 6px; }}
     .copy-column-button {{ min-height: 24px; padding: 2px 6px; font-size: 12px; color: var(--accent-strong); border-color: var(--border-strong); background: var(--accent-soft); box-shadow: none; }}
     .copy-column-button:hover {{ background: #dfece3; border-color: var(--accent); }}
     .copy-column-status {{ margin-left: 4px; color: var(--success); font-size: 12px; font-weight: 720; white-space: nowrap; }}
     tbody tr:nth-child(even) {{ background: #fbfcfb; }}
     tbody tr:hover {{ background: var(--accent-soft); }}
+    tbody tr:hover td {{ border-bottom-color: #d6e4da; }}
     td {{ max-width: 360px; overflow-wrap: anywhere; }}
     input, select, textarea {{ border: 1px solid var(--border-strong); border-radius: var(--radius-control); padding: 6px 8px; margin: 0; max-width: 100%; background: var(--surface); color: var(--text-strong); font: inherit; min-height: 32px; box-shadow: inset 0 1px 1px rgba(34, 48, 42, 0.03); }}
     input:hover, select:hover, textarea:hover {{ border-color: var(--accent); }}
@@ -394,24 +399,33 @@ def page(title: str, body: str, notice: str | None = None) -> bytes:
     h1 + fieldset, h1 + p + fieldset {{ margin-top: 6px; }}
     .required {{ color: var(--danger); font-weight: 760; }}
     .muted {{ color: var(--muted); font-weight: 500; }}
-    .error {{ border: 1px solid #c8796f; background: var(--danger-soft); color: #71322d; padding: 12px; border-radius: var(--radius-card); }}
-    .ok {{ border: 1px solid #abc6b2; background: var(--success-soft); color: #345541; padding: 12px; border-radius: var(--radius-card); margin: 10px 0; }}
+    .message-card, .error {{ border: 1px solid #c8796f; background: var(--danger-soft); color: #71322d; padding: 14px; border-radius: var(--radius-card); }}
+    .message-card h1 {{ border: 0; padding: 0; margin-bottom: 8px; }}
+    .ok {{ border: 1px solid #abc6b2; background: var(--success-soft); color: #345541; padding: 12px 14px; border-radius: var(--radius-card); margin: 10px 0 14px; box-shadow: var(--shadow-soft); }}
     .grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }}
-    .card {{ border: 1px solid var(--border); border-radius: var(--radius-card); padding: 12px; background: var(--surface); box-shadow: var(--shadow-soft); }}
+    .card {{ border: 1px solid var(--border); border-radius: var(--radius-card); padding: 14px; background: var(--surface); box-shadow: var(--shadow-soft); }}
     details {{ border: 1px solid var(--border); border-radius: var(--radius-card); padding: 0; margin: 12px 0; background: var(--surface); box-shadow: var(--shadow-soft); }}
     summary {{ cursor: pointer; padding: 8px 12px; font-weight: 750; color: var(--text-strong); }}
     details[open] > summary {{ border-bottom: 1px solid #e6ece7; background: var(--surface-muted); border-radius: var(--radius-card) var(--radius-card) 0 0; }}
     details > form, details > .card, details > textarea, details > p, details > table {{ margin: 12px; }}
     .filter-card, .form-card {{ border-color: var(--border); box-shadow: var(--shadow-soft); }}
-    .filter-card {{ margin: 8px 0 10px; }}
-    .filter-summary, .form-summary {{ min-height: 34px; display: flex; align-items: center; justify-content: space-between; }}
-    .filter-grid, .form-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, max-content)); gap: 8px 10px; align-items: end; padding: 12px; }}
+    .filter-card {{ margin: 8px 0 12px; }}
+    .filter-summary, .form-summary {{ min-height: 38px; display: flex; align-items: center; justify-content: space-between; }}
+    .filter-summary::after, .form-summary::after {{ content: "Настроить"; color: var(--muted); font-size: 12px; font-weight: 650; }}
+    details[open] > .filter-summary::after, details[open] > .form-summary::after {{ content: "Свернуть"; }}
+    .filter-grid, .form-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, max-content)); gap: 10px 12px; align-items: end; padding: 14px; }}
     .filter-grid label, .form-grid label {{ min-width: 150px; }}
     .filter-grid input, .filter-grid select, .form-grid input, .form-grid select {{ width: 100%; }}
     .filter-grid .checkbox-inline, .form-grid .checkbox-inline {{ min-width: auto; display: flex; align-items: center; gap: 5px; align-self: center; font-weight: 560; }}
     .form-grid .wide, .filter-grid .wide {{ grid-column: 1 / -1; }}
     .form-grid fieldset, .filter-grid fieldset {{ grid-column: 1 / -1; margin: 0; }}
     .form-grid textarea {{ min-width: min(620px, 100%); }}
+    .filter-grid button[type="submit"], .filter-grid > button, .form-grid button[type="submit"], .form-grid > button, .export-button {{ background: var(--accent-strong); border-color: var(--accent-strong); color: #fff; }}
+    .filter-grid button[type="submit"]:hover, .filter-grid > button:hover, .form-grid button[type="submit"]:hover, .form-grid > button:hover, .export-button:hover {{ background: #355848; border-color: #355848; color: #fff; }}
+    .form-grid button[onclick*="Деактив"], .form-grid button[onclick*="Удал"], .form-grid button[onclick*="Отключ"], .filter-grid button[onclick*="Деактив"], .filter-grid button[onclick*="Удал"], .filter-grid button[onclick*="Отключ"] {{ color: var(--danger); border-color: #dfbbb6; background: var(--danger-soft); }}
+    .form-grid button[onclick*="Деактив"]:hover, .form-grid button[onclick*="Удал"]:hover, .form-grid button[onclick*="Отключ"]:hover, .filter-grid button[onclick*="Деактив"]:hover, .filter-grid button[onclick*="Удал"]:hover, .filter-grid button[onclick*="Отключ"]:hover {{ background: #f2d9d5; border-color: #c9938b; color: var(--danger); }}
+    .reset-filters {{ background: var(--surface-muted); color: var(--accent-strong); }}
+    .export-actions {{ margin: 8px 0 10px; display: flex; justify-content: flex-end; }}
     .table-card, .journal-card {{ border: 1px solid var(--border); border-radius: var(--radius-card); background: var(--surface); margin: 12px 0; overflow: hidden; box-shadow: var(--shadow-card); }}
     .table-card h2, .journal-card h2 {{ margin: 0; padding: 12px 14px; border-bottom: 1px solid #e6ece7; background: var(--surface-muted); color: var(--text-strong); }}
     .journal-card h2 {{ font-size: 19px; }}
