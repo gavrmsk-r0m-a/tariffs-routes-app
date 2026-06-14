@@ -123,6 +123,16 @@ class ImporterTest(unittest.TestCase):
         self.assertEqual(row["provider_name"], "Miatel")
         self.assertEqual(row["review_required"], 0)
 
+
+    def test_phone_import_maps_old_statuses_to_new_statuses(self):
+        self.conn.execute("INSERT INTO projects(name, is_active) VALUES ('Competitors', 1)")
+        self.conn.commit()
+        csv_text = "country,project,number,assignment_type,status\nИталия,Competitors,393331234573,pool_number,reserved\nИталия,Competitors,393331234574,pool_number,blocked\nИталия,Competitors,393331234575,pool_number,disabled\n"
+        result = apply_import(self.conn, "phone_numbers", csv_text, user_id=self.admin_id)
+        self.assertEqual(result.created_rows, 3)
+        rows = self.conn.execute("SELECT number, status FROM phone_numbers WHERE number IN ('393331234573', '393331234574', '393331234575') ORDER BY number").fetchall()
+        self.assertEqual([(row["number"], row["status"]) for row in rows], [("393331234573", "free"), ("393331234574", "problem"), ("393331234575", "problem")])
+
     def test_phone_import_without_created_at_uses_timestamp(self):
         self.conn.execute("INSERT INTO projects(name, is_active) VALUES ('Competitors', 1)")
         self.conn.commit()

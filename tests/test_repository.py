@@ -2,7 +2,7 @@ import json
 import sqlite3
 import unittest
 
-from app.db import init_db
+from app.db import init_db, run_lightweight_migrations
 from app.repository import BusinessRuleError, Repository
 
 
@@ -51,29 +51,19 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
         )
         self.assertGreater(result.route_phone_number_id, 0)
 
-    def test_disabled_phone_cannot_be_added_to_route(self):
-        phone_id = self.create_phone(status="disabled")
-        with self.assertRaisesRegex(BusinessRuleError, "Disabled or blocked"):
-            self.repo.add_phone_to_route(
-                route_id=self.route_id,
-                phone_number_id=phone_id,
-                usage_type="pool_member",
-                added_by=self.admin_id,
-            )
-
-    def test_blocked_phone_cannot_be_added_to_route(self):
-        phone_id = self.create_phone(status="blocked")
-        with self.assertRaisesRegex(BusinessRuleError, "Disabled or blocked"):
-            self.repo.add_phone_to_route(
-                route_id=self.route_id,
-                phone_number_id=phone_id,
-                usage_type="pool_member",
-                added_by=self.admin_id,
-            )
+    def test_problem_phone_can_be_added_to_route_when_provider_active(self):
+        phone_id = self.create_phone(status="problem")
+        result = self.repo.add_phone_to_route(
+            route_id=self.route_id,
+            phone_number_id=phone_id,
+            usage_type="pool_member",
+            added_by=self.admin_id,
+        )
+        self.assertGreater(result.route_phone_number_id, 0)
 
     def test_inactive_phone_cannot_be_added_to_route(self):
         phone_id = self.create_phone(is_active=False)
-        with self.assertRaisesRegex(BusinessRuleError, "Inactive"):
+        with self.assertRaisesRegex(BusinessRuleError, "не активен у провайдера"):
             self.repo.add_phone_to_route(
                 route_id=self.route_id,
                 phone_number_id=phone_id,
@@ -82,14 +72,12 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
             )
 
     def test_route_numbers_only_lists_currently_usable_provider_active_numbers(self):
-        visible_statuses = ["used", "free", "reserved", "unknown"]
+        visible_statuses = ["used", "free", "problem", "unknown"]
         for index, status in enumerate(visible_statuses):
             phone_id = self.create_phone(status=status, number=f"39333123456{index}")
             self.repo.add_phone_to_route(route_id=self.route_id, phone_number_id=phone_id, usage_type="pool_member", added_by=self.admin_id)
         inactive_id = self.create_phone(status="used", number="393331234580")
-        disabled_id = self.create_phone(status="disabled", number="393331234581")
-        blocked_id = self.create_phone(status="blocked", number="393331234582")
-        for phone_id in (inactive_id, disabled_id, blocked_id):
+        for phone_id in (inactive_id,):
             self.conn.execute(
                 "INSERT INTO route_phone_numbers(route_id, phone_number_id, usage_type, is_active, added_by) VALUES (?, ?, 'pool_member', 1, ?)",
                 (self.route_id, phone_id, self.admin_id),
@@ -139,7 +127,7 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
         self.assertIsNotNone(log)
 
     def test_reactivating_previously_deactivated_phone_sets_review_required(self):
-        phone_id = self.create_phone(status="disabled", is_active=False, number="393331234591")
+        phone_id = self.create_phone(status="problem", is_active=False, number="393331234591")
         self.repo.update_phone_number(
             phone_id,
             country_id=self.country_id,
@@ -158,6 +146,66 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
         self.assertEqual(row["status"], "free")
         self.assertEqual(row["review_required"], 1)
         self.assertIsNotNone(row["deactivated_at"])
+
+
+    def test_old_phone_statuses_are_normalized_on_create(self):
+        cases = {"reserved": "free", "blocked": "problem", "disabled": "problem", "": "unknown", "invalid": "unknown"}
+        for index, (old_status, expected) in enumerate(cases.items()):
+            with self.subTest(old_status=old_status):
+                phone_id = self.create_phone(status=old_status, number=f"3933312350{index:02d}")
+                row = self.conn.execute("SELECT status FROM phone_numbers WHERE id = ?", (phone_id,)).fetchone()
+                self.assertEqual(row["status"], expected)
+
+
+    def test_lightweight_migration_maps_old_statuses_without_deleting_links(self):
+        phone_id = self.create_phone(status="used", number="393331234599")
+        link_id = self.repo.add_phone_to_route(
+            route_id=self.route_id,
+            phone_number_id=phone_id,
+            usage_type="pool_member",
+            added_by=self.admin_id,
+        ).route_phone_number_id
+        self.conn.execute("PRAGMA ignore_check_constraints = ON")
+        self.conn.execute("UPDATE phone_numbers SET status = 'reserved' WHERE id = ?", (phone_id,))
+        self.conn.execute("PRAGMA writable_schema = ON")
+        self.conn.execute(
+            "UPDATE sqlite_master SET sql = REPLACE(sql, ?, ?) WHERE type = 'table' AND name = 'phone_numbers'",
+            ("'used', 'free', 'problem', 'unknown'", "'used', 'free', 'disabled', 'reserved', 'blocked', 'unknown'"),
+        )
+        self.conn.execute("PRAGMA writable_schema = OFF")
+        self.conn.commit()
+
+        run_lightweight_migrations(self.conn)
+
+        phone = self.conn.execute("SELECT status FROM phone_numbers WHERE id = ?", (phone_id,)).fetchone()
+        link = self.conn.execute("SELECT route_id, phone_number_id, is_active FROM route_phone_numbers WHERE id = ?", (link_id,)).fetchone()
+        self.assertEqual(phone["status"], "free")
+        self.assertEqual(dict(link), {"route_id": self.route_id, "phone_number_id": phone_id, "is_active": 1})
+
+    def test_valid_phone_statuses_are_simplified_set(self):
+        table_sql = self.conn.execute("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'phone_numbers'").fetchone()["sql"]
+        self.assertIn("'used', 'free', 'problem', 'unknown'", table_sql)
+        self.assertNotIn("'reserved'", table_sql)
+        self.assertNotIn("'blocked'", table_sql)
+        self.assertNotIn("'disabled'", table_sql)
+
+
+    def test_reactivated_phone_can_be_added_to_route(self):
+        phone_id = self.create_phone(status="free", is_active=False, number="393331234592")
+        self.repo.update_phone_number(
+            phone_id,
+            country_id=self.country_id,
+            provider_id=self.provider_id,
+            number="393331234592",
+            assignment_type="pool_number",
+            status="free",
+            is_active=True,
+            updated_by=self.admin_id,
+            currency_id=self.currency_id,
+            review_required=True,
+        )
+        result = self.repo.add_phone_to_route(route_id=self.route_id, phone_number_id=phone_id, usage_type="pool_member", added_by=self.admin_id)
+        self.assertGreater(result.route_phone_number_id, 0)
 
     def test_phone_number_must_use_strict_international_format(self):
         invalid_numbers = ["+393331234567", "00393331234567", "393 331 234567", "(393)331234567"]
