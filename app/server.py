@@ -69,7 +69,7 @@ def paginate_rows(rows: list, q: dict[str, str], base_path: str) -> tuple[list, 
 def export_link(base_path: str, q: dict[str, str]) -> str:
     params = {key: value for key, value in q.items() if key not in {"page", "limit", "export"} and value not in (None, "")}
     params["export"] = "csv"
-    return f"<p class='export-actions'><a class='button export-button' href='{esc(base_path + '?' + urlencode(params))}'>Экспорт в Excel</a></p>"
+    return f"<a class='button export-button table-utility-button' href='{esc(base_path + '?' + urlencode(params))}'>Экспорт</a>"
 
 
 def copy_column_button(column: str) -> str:
@@ -423,13 +423,15 @@ def page(title: str, body: str, notice: str | None = None) -> bytes:
     .form-grid .wide, .filter-grid .wide {{ grid-column: 1 / -1; }}
     .form-grid fieldset, .filter-grid fieldset {{ grid-column: 1 / -1; margin: 0; }}
     .form-grid textarea {{ min-width: min(620px, 100%); }}
-    .filter-grid button[type="submit"], .filter-grid > button, .form-grid button[type="submit"], .form-grid > button, .export-button {{ background: var(--accent-strong); border-color: var(--accent-strong); color: #fff; }}
-    .filter-grid button[type="submit"]:hover, .filter-grid > button:hover, .form-grid button[type="submit"]:hover, .form-grid > button:hover, .export-button:hover {{ background: #355848; border-color: #355848; color: #fff; }}
+    .filter-grid button[type="submit"], .filter-grid > button, .form-grid button[type="submit"], .form-grid > button {{ background: var(--accent-strong); border-color: var(--accent-strong); color: #fff; }}
+    .filter-grid button[type="submit"]:hover, .filter-grid > button:hover, .form-grid button[type="submit"]:hover, .form-grid > button:hover {{ background: #355848; border-color: #355848; color: #fff; }}
     .form-grid button[onclick*="Деактив"], .form-grid button[onclick*="Удал"], .form-grid button[onclick*="Отключ"], .filter-grid button[onclick*="Деактив"], .filter-grid button[onclick*="Удал"], .filter-grid button[onclick*="Отключ"] {{ color: var(--danger); border-color: #dfbbb6; background: var(--danger-soft); }}
     .form-grid button[onclick*="Деактив"]:hover, .form-grid button[onclick*="Удал"]:hover, .form-grid button[onclick*="Отключ"]:hover, .filter-grid button[onclick*="Деактив"]:hover, .filter-grid button[onclick*="Удал"]:hover, .filter-grid button[onclick*="Отключ"]:hover {{ background: #f2d9d5; border-color: #c9938b; color: var(--danger); }}
     .reset-filters {{ background: var(--surface-muted); color: var(--accent-strong); }}
-    .export-actions {{ margin: 8px 0 10px; display: flex; justify-content: flex-end; }}
-    .table-toolbar {{ display: flex; justify-content: flex-end; gap: 8px; margin: 8px 0 10px; }}
+    .table-footer {{ display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin: 8px 0 12px; }}
+    .table-footer-summary p, .table-footer-summary nav {{ margin: 0; }}
+    .table-footer-tools {{ display: flex; align-items: center; justify-content: flex-end; gap: 6px; flex-wrap: wrap; margin-left: auto; }}
+    .table-utility-button, .table-footer-tools .column-settings > summary {{ min-height: 28px; padding: 4px 8px; font-size: 12px; font-weight: 650; }}
     .column-settings {{ position: relative; display: inline-block; }}
     .column-settings summary {{ min-height: 28px; padding: 4px 9px; border: 1px solid var(--border-strong); border-radius: var(--radius-control); background: var(--surface); color: var(--accent-strong); font-size: 12px; font-weight: 720; list-style: none; box-shadow: 0 1px 0 rgba(34, 48, 42, 0.03); }}
     .column-settings summary::-webkit-details-marker {{ display: none; }}
@@ -742,11 +744,14 @@ def column_settings(table_key: str, columns: list[tuple[str, str]]) -> str:
         f"<label><input type='checkbox' data-col-toggle='{esc(key)}' checked> {esc(label)}</label>"
         for key, label in columns
     )
-    return f"""<div class='table-toolbar'><details class='column-settings' data-column-settings='{esc(table_key)}'>
+    return f"""<details class='column-settings' data-column-settings='{esc(table_key)}'>
 <summary>Колонки</summary>
 <div class='column-settings-panel'>{checks}<button type='button' class='column-reset' data-column-reset>Сбросить колонки</button></div>
-</details></div>"""
+</details>"""
 
+
+def table_footer(summary_html: str, utility_html: str) -> str:
+    return f"<div class='table-footer'><div class='table-footer-summary'>{summary_html}</div><div class='table-footer-tools'>{utility_html}</div></div>"
 
 def data_table(table_key: str, columns: list[tuple[str, str]], rows_html: str) -> str:
     header = "".join(f"<th data-col='{esc(key)}'>{label}</th>" for key, label in columns)
@@ -1354,12 +1359,9 @@ def routes_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
     body = f"""
 <h1>Маршруты</h1>
 {filter_card(filters_html, q, ('country_id', 'provider_id', 'prefix_id', 'is_actual', 'search'))}
-{export_link('/routes', q)}
-{column_settings('routes', [('geo', 'ГЕО'), ('route', 'Название маршрута'), ('provider', 'Провайдер'), ('prefix', 'Префикс'), ('actual', 'Актуальный'), ('comment', 'Комментарий'), ('numbers', 'Номера'), ('actions', 'Действия')])}
 {form_card('+ Добавить маршрут <span class="muted">Admin</span>', create_html) if can_write("routes") else ""}
-{pagination_html}
 {table_card(table_html)}
-{pagination_html}
+{table_footer(pagination_html, export_link('/routes', q) + column_settings('routes', [('geo', 'ГЕО'), ('route', 'Название маршрута'), ('provider', 'Провайдер'), ('prefix', 'Префикс'), ('actual', 'Актуальный'), ('comment', 'Комментарий'), ('numbers', 'Номера'), ('actions', 'Действия')]))}
 """
     return page("Маршруты", body)
 
@@ -1421,12 +1423,9 @@ def tariffs_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
     body = f"""
 <h1>Тарифы</h1>
 {filter_card(filters_html, q, ('country_id', 'provider_id', 'priority_status', 'status'))}
-{export_link('/tariffs', q)}
-{column_settings('tariffs', [('geo', 'ГЕО'), ('provider', 'Провайдер'), ('prefix', 'Префикс'), ('provider_price', 'Цена провайдера'), ('eur_price', 'Цена EUR'), ('priority', 'Приоритет'), ('active', 'Активный'), ('info', 'Инфо'), ('actions', 'Действия')])}
 {form_card('+ Добавить тариф <span class="muted">Admin</span>', create_html) if can_write("tariffs") else ""}
-{pagination_html}
 {table_card(table_html)}
-{pagination_html}"""
+{table_footer(pagination_html, export_link('/tariffs', q) + column_settings('tariffs', [('geo', 'ГЕО'), ('provider', 'Провайдер'), ('prefix', 'Префикс'), ('provider_price', 'Цена провайдера'), ('eur_price', 'Цена EUR'), ('priority', 'Приоритет'), ('active', 'Активный'), ('info', 'Инфо'), ('actions', 'Действия')]))}"""
     return page("Тарифы", body)
 
 
@@ -1455,12 +1454,9 @@ def phones_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
     body = f"""
 <h1>Купленные номера</h1>
 {filter_card(filters_html, q, ('country_id', 'provider_id', 'project', 'assignment_type', 'status', 'number'))}
-{export_link('/phones', q)}
-{column_settings('phones', [('number', 'Номер'), ('geo', 'ГЕО'), ('provider', 'Провайдер'), ('project', 'Проект'), ('assignment', 'Назначение'), ('status', 'Статус'), ('active', 'Активен'), ('routes', 'Маршрутов'), ('connection', 'Подключение'), ('monthly', 'Абонплата'), ('currency', 'Валюта'), ('phone_type', 'Тип номера'), ('tariff', 'Тариф'), ('created', 'Дата создания'), ('updated', 'Дата изменения'), ('deactivated', 'Дата отключения'), ('comment', 'Комментарий'), ('actions', 'Действия')])}
 {form_card('+ Добавить номер <span class="muted">Admin</span>', create_html) if can_write("phones") else ""}
-{pagination_html}
 {table_card(table_html)}
-{pagination_html}"""
+{table_footer(pagination_html, export_link('/phones', q) + column_settings('phones', [('number', 'Номер'), ('geo', 'ГЕО'), ('provider', 'Провайдер'), ('project', 'Проект'), ('assignment', 'Назначение'), ('status', 'Статус'), ('active', 'Активен'), ('routes', 'Маршрутов'), ('connection', 'Подключение'), ('monthly', 'Абонплата'), ('currency', 'Валюта'), ('phone_type', 'Тип номера'), ('tariff', 'Тариф'), ('created', 'Дата создания'), ('updated', 'Дата изменения'), ('deactivated', 'Дата отключения'), ('comment', 'Комментарий'), ('actions', 'Действия')]))}"""
     return page("Купленные номера", body)
 
 
@@ -1482,12 +1478,9 @@ def companies_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
     body = f"""
 <h1>Кампании прозвона</h1>
 {filter_card(filters_html, q, ('server_id', 'country_id', 'company', 'external_id', 'has_autorotation', 'is_active'))}
-{export_link('/companies', q)}
-{column_settings('companies', [('server', 'Сервер'), ('geo', 'ГЕО'), ('company_name', 'Название кампании'), ('company_id', 'ID кампании'), ('lines', 'Количество линий'), ('dial_sets', 'Количество наборов'), ('autorotation', 'Авторотация'), ('retry_interval', 'Интервал дозвона'), ('active', 'Активна'), ('comment', 'Комментарий'), ('actions', 'Действия')])}
 {form_card('+ Добавить кампанию <span class="muted">Admin</span>', create_html) if can_write("companies") else ""}
-{pagination_html}
 {table_card(table_html)}
-{pagination_html}"""
+{table_footer(pagination_html, export_link('/companies', q) + column_settings('companies', [('server', 'Сервер'), ('geo', 'ГЕО'), ('company_name', 'Название кампании'), ('company_id', 'ID кампании'), ('lines', 'Количество линий'), ('dial_sets', 'Количество наборов'), ('autorotation', 'Авторотация'), ('retry_interval', 'Интервал дозвона'), ('active', 'Активна'), ('comment', 'Комментарий'), ('actions', 'Действия')]))}"""
     return page("Кампании прозвона", body)
 
 def routing_reason_options(selected: str | None = None) -> str:
@@ -1802,11 +1795,8 @@ def provider_changes_page(repo: Repository, q: dict[str, str] | None = None) -> 
 <h1>Смена провайдеров</h1>
 {routing_event_form(repo) if can_write("provider_changes") else ""}
 {filter_card(filters_html, q, ('country_id', 'apply_scope', 'server_id', 'campaign_id', 'provider_id', 'include_inactive'))}
-{export_link('/provider-changes', q)}
-{column_settings('provider_changes', [('event_at', 'Дата события'), ('scope', 'Область применения'), ('geo', 'GEO'), ('server', 'Сервер'), ('campaign', 'Кампания'), ('details', 'Детали'), ('reason', 'Причина'), ('comment', 'Комментарий'), ('active', 'Активна'), ('actions', 'Действия')])}
-{pagination_html}
 {table_card(journal_html, title='Журнал событий', extra_class='journal-card')}
-{pagination_html}"""
+{table_footer(pagination_html, export_link('/provider-changes', q) + column_settings('provider_changes', [('event_at', 'Дата события'), ('scope', 'Область применения'), ('geo', 'GEO'), ('server', 'Сервер'), ('campaign', 'Кампания'), ('details', 'Детали'), ('reason', 'Причина'), ('comment', 'Комментарий'), ('active', 'Активна'), ('actions', 'Действия')]))}"""
     return page("Смена провайдеров", body)
 
 
@@ -1956,11 +1946,8 @@ def server_priorities_page(repo: Repository, q: dict[str, str] | None = None) ->
     body = f"""
 <h1>Администрирование → Приоритет по серверам</h1>
 {filter_card(filters_html, q, ('country_id', 'server_id'))}
-{export_link('/admin/server-priorities', q)}
-{column_settings('server_priorities', [('geo', 'GEO'), ('current_priority', 'Текущий приоритет'), ('previous_priority', 'Предыдущий приоритет'), ('actions', 'Действия')])}
-{pagination_html}
 {''.join(blocks)}
-{pagination_html}"""
+{table_footer(pagination_html, export_link('/admin/server-priorities', q) + column_settings('server_priorities', [('geo', 'GEO'), ('current_priority', 'Текущий приоритет'), ('previous_priority', 'Предыдущий приоритет'), ('actions', 'Действия')]))}"""
     return page("Приоритет по серверам", body)
 
 
@@ -2037,10 +2024,7 @@ def company_routing_settings_page(repo: Repository, q: dict[str, str] | None = N
     body = f"""
 <h1>Администрирование → Схема маршрутизации кампаний</h1>
 {filter_card(filters_html, q, ('country_id', 'server_id', 'company_id_external', 'routing_mode', 'is_active', 'show_history'))}
-{export_link('/admin/company-routing-settings', q)}
-{column_settings('company_routing_settings', [('geo', 'GEO'), ('server', 'Сервер'), ('company_id', 'ID кампании'), ('company_name', 'Название кампании'), ('routing_mode', 'Режим маршрутизации'), ('autorotation', 'Авторотация'), ('route', 'Маршрут кампании'), ('active', 'Активна'), ('valid_from', 'Действует с'), ('valid_to', 'Действует до'), ('comment', 'Комментарий'), ('actions', 'Действия')])}
 {form_card('+ Добавить схему маршрутизации кампании', create_html)}
-{pagination_html}
 <script>
 document.querySelectorAll('form').forEach(form => {{
   const mode = form.querySelector('select[name="routing_mode"]');
@@ -2052,7 +2036,7 @@ document.querySelectorAll('form').forEach(form => {{
 }});
 </script>
 {table_card(table_html)}
-{pagination_html}
+{table_footer(pagination_html, export_link('/admin/company-routing-settings', q) + column_settings('company_routing_settings', [('geo', 'GEO'), ('server', 'Сервер'), ('company_id', 'ID кампании'), ('company_name', 'Название кампании'), ('routing_mode', 'Режим маршрутизации'), ('autorotation', 'Авторотация'), ('route', 'Маршрут кампании'), ('active', 'Активна'), ('valid_from', 'Действует с'), ('valid_to', 'Действует до'), ('comment', 'Комментарий'), ('actions', 'Действия')]))}
 """
     return page("Схема маршрутизации кампаний", body)
 

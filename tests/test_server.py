@@ -1124,7 +1124,7 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
     def test_export_link_preserves_filters_and_removes_page_limit(self):
         captured, content = self.request("/routes?provider_id=3&page=3&limit=50")
         self.assertEqual(captured["status"], "200 OK")
-        self.assertIn("Экспорт в Excel", content)
+        self.assertIn(">Экспорт</a>", content)
         self.assertIn("/routes?provider_id=3&amp;export=csv", content)
         self.assertNotIn("export=csv&amp;page", content)
         self.assertNotIn("limit=50&amp;export=csv", content)
