@@ -492,7 +492,10 @@ class Repository:
                     pn.outgoing_rate, pn.incoming_rate, pn.comment AS phone_comment, rpn.comment AS link_comment
                 FROM route_phone_numbers rpn
                 JOIN phone_numbers pn ON pn.id = rpn.phone_number_id
-                WHERE rpn.route_id = ? AND rpn.is_active = 1
+                WHERE rpn.route_id = ?
+                  AND rpn.is_active = 1
+                  AND pn.is_active = 1
+                  AND pn.status NOT IN ('disabled', 'blocked')
                 ORDER BY pn.number
                 """,
                 (route_id,),
@@ -550,6 +553,97 @@ class Repository:
             removed += 1
         self.conn.commit()
         return removed
+
+
+    def update_phone_number(
+        self,
+        phone_id: int,
+        *,
+        country_id: int,
+        provider_id: int | None,
+        number: str,
+        assignment_type: str,
+        status: str,
+        is_active: bool,
+        updated_by: int,
+        project_label: str | None = None,
+        connection_cost: str | None = None,
+        monthly_fee: str | None = None,
+        currency_id: int | None = None,
+        phone_type: str | None = None,
+        tariff_label: str | None = None,
+        comment: str | None = None,
+        review_required: bool = False,
+    ) -> None:
+        existing = self.conn.execute("SELECT * FROM phone_numbers WHERE id = ?", (phone_id,)).fetchone()
+        if existing is None:
+            raise BusinessRuleError("Phone number not found")
+        normalized = validate_phone_number(number)
+        old_values = dict(existing)
+        requested_active = 1 if is_active else 0
+        forced_review_required = 1 if (requested_active == 1 and existing["deactivated_at"] is not None) else 0
+        final_review_required = 1 if review_required or forced_review_required else 0
+        final_status = status
+        if requested_active == 0 and status not in BLOCKED_ROUTE_PHONE_STATUSES:
+            final_status = "disabled"
+        self.conn.execute(
+            """
+            UPDATE phone_numbers
+            SET number = ?, normalized_number = ?, country_id = ?, provider_id = ?, project_label = ?,
+                assignment_type = ?, status = ?, is_active = ?, connection_cost = ?, monthly_fee = ?,
+                currency_id = ?, phone_type = ?, tariff_label = ?, comment = ?, review_required = ?,
+                deactivated_at = CASE WHEN ? = 0 AND deactivated_at IS NULL THEN CURRENT_TIMESTAMP ELSE deactivated_at END,
+                updated_by = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            """,
+            (
+                normalized, normalized, country_id, provider_id, project_label, assignment_type, final_status,
+                requested_active, connection_cost, monthly_fee, currency_id, phone_type, tariff_label, comment,
+                final_review_required, requested_active, updated_by, phone_id,
+            ),
+        )
+        if requested_active == 0:
+            links = list(self.conn.execute(
+                "SELECT id, route_id, phone_number_id FROM route_phone_numbers WHERE phone_number_id = ? AND is_active = 1",
+                (phone_id,),
+            ))
+            for link in links:
+                self.conn.execute(
+                    "UPDATE route_phone_numbers SET is_active = 0, removed_at = CURRENT_TIMESTAMP, removed_by = ? WHERE id = ?",
+                    (updated_by, link["id"]),
+                )
+                self.conn.execute(
+                    """
+                    INSERT INTO route_phone_number_history(route_id, phone_number_id, action, changed_by, old_values, new_values, reason)
+                    VALUES (?, ?, 'removed', ?, ?, ?, ?)
+                    """,
+                    (link["route_id"], link["phone_number_id"], updated_by,
+                     json.dumps({"is_active": 1}, ensure_ascii=False),
+                     json.dumps({"is_active": 0, "removed_by": updated_by}, ensure_ascii=False),
+                     "phone_number.deactivated"),
+                )
+                self._change_log(
+                    "route_phone_number",
+                    int(link["id"]),
+                    "route_phone_number.removed_by_phone_deactivation",
+                    updated_by,
+                    old_values={"is_active": 1},
+                    new_values={"is_active": 0, "phone_number_id": phone_id},
+                    summary="Phone provider deactivation closed active route link",
+                )
+        self.conn.execute(
+            "INSERT INTO phone_number_history(phone_number_id, action, changed_by, field_name, old_value, new_value, comment) VALUES (?, 'updated', ?, 'phone', ?, ?, ?)",
+            (phone_id, updated_by, json.dumps(old_values, ensure_ascii=False), json.dumps({"number": normalized, "status": final_status, "is_active": requested_active, "review_required": final_review_required}, ensure_ascii=False), comment),
+        )
+        self._change_log(
+            "phone_number",
+            phone_id,
+            "phone_number.updated",
+            updated_by,
+            old_values={"number": existing["number"], "status": existing["status"], "is_active": existing["is_active"], "review_required": existing["review_required"]},
+            new_values={"number": normalized, "status": final_status, "is_active": requested_active, "review_required": final_review_required},
+        )
+        self.conn.commit()
 
     def create_tariff(
         self,
