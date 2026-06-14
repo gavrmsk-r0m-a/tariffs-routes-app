@@ -107,10 +107,10 @@ def esc(value: object) -> str:
 ROLE_PERMISSIONS = {
     "admin": {"read": {"*"}, "write": {"*"}},
     "operator": {
-        "read": {"routes", "tariffs", "phones", "companies", "provider_changes", "admin_server_priorities", "admin_company_routing_settings"},
+        "read": {"dashboard", "routes", "tariffs", "phones", "companies", "provider_changes", "admin_server_priorities", "admin_company_routing_settings"},
         "write": {"provider_changes"},
     },
-    "guest": {"read": {"routes", "tariffs"}, "write": set()},
+    "guest": {"read": {"dashboard", "routes", "tariffs"}, "write": set()},
 }
 
 EXPORT_FILENAMES = {
@@ -168,6 +168,7 @@ class ForbiddenError(Exception):
 
 
 NAV_ITEMS = [
+    ("dashboard", "/dashboard", "Главная", ("Главная",)),
     ("routes", "/routes", "Маршруты", ("Маршруты", "Номера маршрута", "Редактировать маршрут")),
     ("tariffs", "/tariffs", "Тарифы", ("Тарифы",)),
     ("phones", "/phones", "Купленные номера", ("Купленные номера", "Редактировать номер")),
@@ -197,6 +198,8 @@ def active_nav(title: str) -> tuple[str, str | None]:
             return "admin", href
     if title == "Администрирование":
         return "admin", None
+    if title == "Главная":
+        return "dashboard", None
     return "", None
 
 
@@ -264,21 +267,22 @@ def current_user_selector() -> str:
 
 def breadcrumbs(title: str) -> str:
     trails = {
-        "Маршруты": [("Главная", "/routes"), ("Маршруты", None)],
-        "Номера маршрута": [("Главная", "/routes"), ("Маршруты", "/routes"), ("Номера маршрута", None)],
-        "Тарифы": [("Главная", "/routes"), ("Тарифы", None)],
-        "Купленные номера": [("Главная", "/routes"), ("Купленные номера", None)],
-        "Кампании прозвона": [("Главная", "/routes"), ("Кампании прозвона", None)],
-        "Смена провайдеров": [("Главная", "/routes"), ("Смена провайдеров", None)],
-        "Приоритет по серверам": [("Главная", "/routes"), ("Администрирование", "/admin"), ("Приоритет по серверам", None)],
-        "Пользователи": [("Главная", "/routes"), ("Администрирование", "/admin"), ("Пользователи", None)],
-        "Справочные значения": [("Главная", "/routes"), ("Администрирование", "/admin"), ("Справочные значения", None)],
-        "Схема маршрутизации кампаний": [("Главная", "/routes"), ("Администрирование", "/admin"), ("Схема маршрутизации кампаний", None)],
-        "Правила нейминга": [("Главная", "/routes"), ("Администрирование", "/admin"), ("Правила нейминга", None)],
-        "Импорт": [("Главная", "/routes"), ("Администрирование", "/admin"), ("Импорт / экспорт", None)],
-        "Курсы валют": [("Главная", "/routes"), ("Администрирование", "/admin"), ("Курсы валют", None)],
-        "Причины смены провайдера": [("Главная", "/routes"), ("Администрирование", "/admin"), ("Причины смены провайдера", None)],
-        "Change log": [("Главная", "/routes"), ("Администрирование", "/admin"), ("Change log", None)],
+        "Главная": [("Главная", None)],
+        "Маршруты": [("Главная", "/dashboard"), ("Маршруты", None)],
+        "Номера маршрута": [("Главная", "/dashboard"), ("Маршруты", "/routes"), ("Номера маршрута", None)],
+        "Тарифы": [("Главная", "/dashboard"), ("Тарифы", None)],
+        "Купленные номера": [("Главная", "/dashboard"), ("Купленные номера", None)],
+        "Кампании прозвона": [("Главная", "/dashboard"), ("Кампании прозвона", None)],
+        "Смена провайдеров": [("Главная", "/dashboard"), ("Смена провайдеров", None)],
+        "Приоритет по серверам": [("Главная", "/dashboard"), ("Администрирование", "/admin"), ("Приоритет по серверам", None)],
+        "Пользователи": [("Главная", "/dashboard"), ("Администрирование", "/admin"), ("Пользователи", None)],
+        "Справочные значения": [("Главная", "/dashboard"), ("Администрирование", "/admin"), ("Справочные значения", None)],
+        "Схема маршрутизации кампаний": [("Главная", "/dashboard"), ("Администрирование", "/admin"), ("Схема маршрутизации кампаний", None)],
+        "Правила нейминга": [("Главная", "/dashboard"), ("Администрирование", "/admin"), ("Правила нейминга", None)],
+        "Импорт": [("Главная", "/dashboard"), ("Администрирование", "/admin"), ("Импорт / экспорт", None)],
+        "Курсы валют": [("Главная", "/dashboard"), ("Администрирование", "/admin"), ("Курсы валют", None)],
+        "Причины смены провайдера": [("Главная", "/dashboard"), ("Администрирование", "/admin"), ("Причины смены провайдера", None)],
+        "Change log": [("Главная", "/dashboard"), ("Администрирование", "/admin"), ("Change log", None)],
     }
     trail = trails.get(title)
     if not trail:
@@ -299,6 +303,7 @@ def page(title: str, body: str, notice: str | None = None) -> bytes:
 <head>
   <meta charset="utf-8">
   <title>{esc(title)}</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/core@1.0.0-beta20/dist/css/tabler.min.css">
   <style>
     :root {{
       --bg: #f6f8f5;
@@ -481,6 +486,37 @@ def page(title: str, body: str, notice: str | None = None) -> bytes:
     .dictionary-add input, .dictionary-add select {{ width: 100%; box-sizing: border-box; }}
     .inactive-row {{ color: var(--muted); background: #f0f4f1; }}
     .status-badge {{ display: inline-flex; align-items: center; min-height: 22px; padding: 2px 7px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface-muted); color: #4d5a54; font-size: 12px; font-weight: 720; white-space: nowrap; }}
+
+    .dashboard-hero {{ display: flex; align-items: center; justify-content: space-between; gap: 18px; border: 1px solid var(--border); border-radius: 18px; padding: 26px; margin: 0 0 18px; background: linear-gradient(135deg, #ffffff 0%, #eef6f1 100%); box-shadow: var(--shadow-card); }}
+    .dashboard-hero h1 {{ margin: 0 0 8px; padding: 0; border: 0; font-size: 34px; }}
+    .eyebrow {{ margin: 0 0 6px; color: var(--accent-strong); font-size: 12px; font-weight: 820; text-transform: uppercase; letter-spacing: .08em; }}
+    .hero-text {{ max-width: 760px; margin: 0; color: var(--muted); font-size: 16px; }}
+    .hero-action {{ background: var(--accent-strong); border-color: var(--accent-strong); color: #fff; white-space: nowrap; }}
+    .hero-action:hover {{ background: #355848; border-color: #355848; color: #fff; }}
+    .metrics-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; margin: 0 0 18px; }}
+    .metric-card {{ border: 1px solid var(--border); border-radius: var(--radius-card); padding: 15px; background: var(--surface); box-shadow: var(--shadow-soft); }}
+    .metric-label {{ display: block; min-height: 36px; color: var(--muted); font-size: 12px; font-weight: 760; text-transform: uppercase; letter-spacing: .04em; }}
+    .metric-value {{ display: block; margin: 6px 0 3px; color: var(--text-strong); font-size: 30px; line-height: 1; letter-spacing: -0.03em; }}
+    .metric-hint {{ color: var(--muted); font-size: 12px; }}
+    .dashboard-section {{ margin: 16px 0; }}
+    .dashboard-section h2 {{ margin-bottom: 10px; }}
+    .quick-links {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px; }}
+    .quick-link-card {{ display: grid; gap: 4px; min-height: 84px; border: 1px solid var(--border); border-radius: var(--radius-card); padding: 13px 14px; background: var(--surface); color: var(--text); text-decoration: none; box-shadow: var(--shadow-soft); }}
+    .quick-link-card:hover {{ border-color: var(--accent); background: var(--accent-soft); color: var(--text-strong); text-decoration: none; }}
+    .quick-link-card span {{ font-weight: 780; }}
+    .quick-link-card small {{ color: var(--muted); line-height: 1.35; }}
+    .table-scroll {{ max-height: calc(100vh - 270px); overflow: auto; position: relative; }}
+    th[data-col="actions"], td[data-col="actions"], th:last-child, td:last-child {{ position: sticky; right: 0; z-index: 2; box-shadow: -8px 0 14px rgba(34, 48, 42, 0.06); }}
+    th[data-col="actions"], th:last-child {{ z-index: 4; }}
+    td[data-col="actions"], td:last-child {{ background: inherit; }}
+    tbody tr:nth-child(even) td[data-col="actions"], tbody tr:nth-child(even) td:last-child {{ background: #fbfcfb; }}
+    tbody tr:hover td[data-col="actions"], tbody tr:hover td:last-child {{ background: var(--accent-soft); }}
+    .actions, .compact-actions, td[data-col="actions"] {{ white-space: nowrap; min-width: 96px; }}
+    .action-button, .actions .button, .actions button, .compact-actions .button, .compact-actions button, td[data-col="actions"] .button, td[data-col="actions"] button {{ min-width: 30px; min-height: 28px; padding: 4px 7px; border-radius: 7px; font-size: 12px; line-height: 1; }}
+    .edit-action {{ min-width: 30px; width: 30px; padding: 4px; font-size: 0; }}
+    .edit-action::before {{ content: "✏️"; font-size: 13px; line-height: 1; }}
+    .danger-action, form[action$="/deactivate"] button {{ min-height: 28px; padding: 4px 8px; color: var(--danger); border-color: #dfbbb6; background: var(--danger-soft); font-size: 12px; font-weight: 720; }}
+    .danger-action:hover, form[action$="/deactivate"] button:hover {{ background: #f2d9d5; border-color: #c9938b; color: var(--danger); }}
     @media (max-width: 900px) {{
       .app-shell {{ grid-template-columns: 1fr; }}
       .sidebar {{ position: static; height: auto; }}
@@ -607,6 +643,7 @@ def page(title: str, body: str, notice: str | None = None) -> bytes:
       }});
     }});
   </script>
+  <script src="https://cdn.jsdelivr.net/npm/@tabler/core@1.0.0-beta20/dist/js/tabler.min.js"></script>
 </body>
 </html>""".encode("utf-8")
 
@@ -659,7 +696,9 @@ def current_actor_id() -> int:
 
 
 def section_for_get_path(path: str) -> str | None:
-    if path in {"/", "/routes"} or (path.startswith("/routes/") and path.endswith("/numbers")):
+    if path in {"/", "/dashboard"}:
+        return "dashboard"
+    if path == "/routes" or (path.startswith("/routes/") and path.endswith("/numbers")):
         return "routes"
     if path == "/tariffs":
         return "tariffs"
@@ -1332,6 +1371,55 @@ def route_options_for_country(repo: Repository, country_id: object | None = None
     )
 
 
+
+def dashboard_metric(repo: Repository, sql: str, label: str, hint: str) -> str:
+    row = repo.conn.execute(sql).fetchone()
+    value = row[0] if row else 0
+    return f"<article class='metric-card'><span class='metric-label'>{esc(label)}</span><strong class='metric-value'>{esc(value)}</strong><span class='metric-hint'>{esc(hint)}</span></article>"
+
+
+def dashboard_link(href: str, label: str, description: str, section: str) -> str:
+    if not can_read(section):
+        return ""
+    return f"<a class='quick-link-card' href='{esc(href)}'><span>{esc(label)}</span><small>{esc(description)}</small></a>"
+
+
+def dashboard_page(repo: Repository) -> bytes:
+    metrics = "".join([
+        dashboard_metric(repo, "SELECT COUNT(*) FROM routes WHERE is_actual = 1", "Активные маршруты", "Готовы к использованию"),
+        dashboard_metric(repo, "SELECT COUNT(*) FROM phone_numbers WHERE is_active = 1", "Активные купленные номера", "Пул номеров в работе"),
+        dashboard_metric(repo, "SELECT COUNT(*) FROM calling_companies WHERE is_active = 1", "Активные кампании прозвона", "Доступные кампании"),
+        dashboard_metric(repo, "SELECT COUNT(*) FROM routing_events WHERE is_active = 1", "Активные события смены провайдеров", "Журнал актуальных событий"),
+        dashboard_metric(repo, "SELECT COUNT(*) FROM phone_numbers WHERE review_required = 1 AND is_active = 1", "Номера, требующие проверки", "Нужна валидация данных"),
+    ])
+    work_links = "".join([
+        dashboard_link("/routes", "Маршруты", "Управление маршрутами и номерами", "routes"),
+        dashboard_link("/tariffs", "Тарифы", "Актуальные цены и приоритеты", "tariffs"),
+        dashboard_link("/phones", "Купленные номера", "Пул номеров и статусы", "phones"),
+        dashboard_link("/companies", "Кампании прозвона", "Кампании, серверы и авторотация", "companies"),
+        dashboard_link("/provider-changes", "Смена провайдеров", "Операционный журнал изменений", "provider_changes"),
+    ])
+    admin_links = "".join([
+        dashboard_link("/admin/server-priorities", "Приоритет по серверам", "Текущий маршрут по GEO и серверу", "admin_server_priorities"),
+        dashboard_link("/admin/company-routing-settings", "Схема маршрутизации кампаний", "Правила кампаний и авторотации", "admin_company_routing_settings"),
+        dashboard_link("/admin/users", "Пользователи", "Роли и доступы", "admin_users"),
+        dashboard_link("/admin/dictionaries", "Справочные значения", "Страны, провайдеры, валюты и префиксы", "admin_dictionaries"),
+    ])
+    body = f"""
+<section class='dashboard-hero'>
+  <div>
+    <p class='eyebrow'>Главная</p>
+    <h1>Операционная панель</h1>
+    <p class='hero-text'>Единая панель для контроля маршрутов, тарифов, купленных номеров, кампаний прозвона и событий смены провайдеров.</p>
+  </div>
+  <a class='button hero-action' href='/routes'>Открыть маршруты</a>
+</section>
+<section class='metrics-grid'>{metrics}</section>
+<section class='dashboard-section'><h2>Рабочие разделы</h2><div class='quick-links'>{work_links or "<p class='muted'>Нет доступных рабочих разделов.</p>"}</div></section>
+<section class='dashboard-section'><h2>Администрирование</h2><div class='quick-links'>{admin_links or "<p class='muted'>Нет доступных административных разделов.</p>"}</div></section>
+"""
+    return page("Главная", body)
+
 def routes_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
     q = q or {}
     filters = {"country_id": q.get("country_id"), "provider_id": q.get("provider_id"), "prefix_id": q.get("prefix_id"), "is_actual": q.get("is_actual"), "search_like": q.get("search")}
@@ -1345,7 +1433,7 @@ def routes_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
         numbers = f'{route["phone_count"]} номеров <a class="button" href="/routes/{route["id"]}/numbers">Показать номера</a>'
         if route["cli_source_type"] == "rnd":
             numbers = f'RND провайдера <a class="button" href="/routes/{route["id"]}/numbers">Номера</a>'
-        edit = f"<a class='button' href='/routes/{route['id']}/edit'>✏️ Редактировать</a>" if can_write("routes") else ""
+        edit = f"<a class='button edit-action' href='/routes/{route['id']}/edit' title='Редактировать' aria-label='Редактировать'>Редактировать</a>" if can_write("routes") else ""
         rows.append(f"<tr><td data-col='geo'>{esc(route['country_name'])}</td><td data-col='route' data-copy-column='route-name'>{esc(route['name'])}</td><td data-col='provider'>{esc(route['provider_name'])}</td><td data-col='prefix'>{esc(prefix)}</td><td data-col='actual'>{'Да' if route['is_actual'] else 'Нет'}</td><td data-col='comment' class='comment-cell'>{esc(route['comment'])}</td><td data-col='numbers'>{numbers}</td><td data-col='actions' class='actions'>{edit}</td></tr>")
     filters_html = f"""<form class="filter-grid" method="get" action="/routes">
 <label>ГЕО <select name="country_id">{options(repo, 'countries', selected=q.get('country_id'), empty='Все')}</select></label>
@@ -1413,7 +1501,7 @@ def tariffs_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
     rows = []
     for t in records:
         prefix = t["prefix"] or "Без префикса"
-        actions = f"""<form method='post' action='/tariffs/{t['id']}/deactivate'><button onclick="return confirm('Деактивировать тариф?')">⛔ Деактивировать</button></form>""" if can_write("tariffs") else ""
+        actions = f"""<form method='post' action='/tariffs/{t['id']}/deactivate'><button class='danger-action' title='Деактивировать' onclick="return confirm('Деактивировать тариф?')">Деактивировать</button></form>""" if can_write("tariffs") else ""
         rows.append(f"""<tr><td data-col='geo'>{esc(t['country_name'])}</td><td data-col='provider'>{esc(t['provider_name'])}</td><td data-col='prefix'>{esc(prefix)}</td><td data-col='provider_price'>{esc(t['price_in_provider_currency'])} {esc(t['currency_code'])}</td><td data-col='eur_price'>{esc(t['eur_price'])} EUR</td><td data-col='priority'>{esc(t['priority_status'])}</td><td data-col='active'>{'Да' if t['is_current'] else 'Нет'}</td><td data-col='info' class='comment-cell'>{esc(t['comment'])}</td><td data-col='actions'>{actions}</td></tr>""")
     filters_html = f"""<form class="filter-grid" method="get" action="/tariffs">
 <label>ГЕО <select name="country_id">{options(repo, 'countries', selected=q.get('country_id'), empty='Все')}</select></label>
@@ -1449,7 +1537,7 @@ def phones_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
     rows = []
     for phone in records:
         assignment_label = phone["assignment_type_label"] or ASSIGNMENT_LABELS.get(phone["assignment_type"], phone["assignment_type"])
-        actions = f"<a class='button' href='/phones/{phone['id']}/edit'>✏️ Редактировать</a>" if can_write("phones") else ""
+        actions = f"<a class='button edit-action' href='/phones/{phone['id']}/edit' title='Редактировать' aria-label='Редактировать'>Редактировать</a>" if can_write("phones") else ""
         review_badge = "<span class='badge'>Требует проверки</span>" if phone["review_required"] else ""
         rows.append(f"""<tr><td data-col='number' data-copy-column='phone-number'>{esc(phone['number'])} {review_badge}</td><td data-col='geo'>{esc(phone['country_name'])}</td><td data-col='provider'>{esc(phone['provider_name'])}</td><td data-col='project'>{esc(phone['project_label'])}</td><td data-col='assignment'>{esc(assignment_label)}</td><td data-col='status'>{esc(STATUS_LABELS.get(phone['status'], phone['status']))}</td><td data-col='active'>{'Да' if phone['is_active'] else 'Нет'}</td><td data-col='routes'>{esc(phone['route_names'] or '—')}</td><td data-col='connection'>{esc(phone['connection_cost'])}</td><td data-col='monthly'>{esc(phone['monthly_fee'])}</td><td data-col='currency'>{esc(phone['currency_code'])}</td><td data-col='phone_type'>{esc(phone['phone_type'])}</td><td data-col='tariff'>{esc(phone['tariff_label'])}</td><td data-col='created'>{esc(phone['created_at'])}</td><td data-col='updated'>{esc(phone['updated_at'])}</td><td data-col='deactivated'>{esc(phone['deactivated_at'])}</td><td data-col='comment' class='comment-cell'>{esc(phone['comment'] or '—')}</td><td data-col='actions'>{actions}</td></tr>""")
     filters_html = f"""<form class="filter-grid" method="get" action="/phones">
@@ -1787,7 +1875,7 @@ def provider_changes_page(repo: Repository, q: dict[str, str] | None = None) -> 
     rows = []
     for ev in records:
         server_text, campaign_text, details_text = provider_event_details(ev)
-        actions = f"<a class='button' href='/provider-changes/{ev['id']}/edit'>Редактировать</a>" if can_write("provider_changes") else ""
+        actions = f"<a class='button edit-action' href='/provider-changes/{ev['id']}/edit' title='Редактировать' aria-label='Редактировать'>Редактировать</a>" if can_write("provider_changes") else ""
         if ev["is_active"] and can_write("provider_changes"):
             actions += f"<details><summary>Деактивировать</summary><form method='post' action='/provider-changes/{ev['id']}/deactivate'><label>Причина <span class='required'>*</span><input name='deactivation_reason' required></label><button>Деактивировать</button></form></details>"
         rows.append(f"<tr class='{'' if ev['is_active'] else 'inactive-row'}'><td data-col='event_at'>{esc(ev['event_at'])}</td><td data-col='scope'>{esc(ROUTING_SCOPE_LABELS.get(ev['apply_scope'], ev['apply_scope']))}</td><td data-col='geo'>{esc(ev['country_name'])}</td><td data-col='server'>{esc(server_text)}</td><td data-col='campaign'>{esc(campaign_text)}</td><td data-col='details'>{details_text}</td><td data-col='reason'>{esc(ev['reason'])}</td><td data-col='comment'>{esc(ev['comment'])}</td><td data-col='active'>{'Да' if ev['is_active'] else 'Нет'}</td><td data-col='actions' class='actions'>{actions}</td></tr>")
@@ -2789,7 +2877,8 @@ def app(environ, start_response):
             require_permission("write", section_for_write_path(path.replace("/edit", "/update")))
         if path.startswith("/provider-changes/") and path.endswith("/edit"):
             require_permission("write", "provider_changes")
-        if path in {"/", "/routes"}: response = routes_page(repo, q)
+        if path in {"/", "/dashboard"}: response = dashboard_page(repo)
+        elif path == "/routes": response = routes_page(repo, q)
         elif path == "/tariffs": response = tariffs_page(repo, q)
         elif path == "/phones": response = phones_page(repo, q)
         elif path == "/companies": response = companies_page(repo, q)
