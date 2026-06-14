@@ -41,26 +41,76 @@ def esc(value: object) -> str:
 
 
 
+ROLE_PERMISSIONS = {
+    "admin": {"read": {"*"}, "write": {"*"}},
+    "operator": {
+        "read": {"routes", "tariffs", "phones", "companies", "provider_changes"},
+        "write": {"provider_changes"},
+    },
+    "guest": {"read": {"routes", "tariffs"}, "write": set()},
+}
+ADMIN_SECTION_KEYS = {
+    "admin",
+    "admin_server_priorities",
+    "admin_company_routing_settings",
+    "admin_route_naming",
+    "admin_import_export",
+    "admin_currency_rates",
+    "admin_provider_reasons",
+    "admin_users",
+    "admin_dictionaries",
+    "admin_change_log",
+}
+
+
+def normalize_role(role_key: str | None) -> str:
+    return role_key if role_key in ROLE_PERMISSIONS else "guest"
+
+
+def current_role_key() -> str:
+    return normalize_role(_REQUEST_CONTEXT.get("current_role_key") if isinstance(_REQUEST_CONTEXT.get("current_role_key"), str) else None)
+
+
+def role_allows(role_key: str | None, action: str, section: str) -> bool:
+    allowed = ROLE_PERMISSIONS[normalize_role(role_key)][action]
+    return "*" in allowed or section in allowed
+
+
+def can_read(section: str) -> bool:
+    return role_allows(current_role_key(), "read", section)
+
+
+def can_write(section: str) -> bool:
+    return role_allows(current_role_key(), "write", section)
+
+
+
+def forbidden_page() -> bytes:
+    return page("Нет доступа", "<h1>Нет доступа</h1><p>У текущего пользователя нет прав для этого раздела или действия.</p>")
+
+
+class ForbiddenError(Exception):
+    pass
+
 
 NAV_ITEMS = [
     ("routes", "/routes", "Маршруты", ("Маршруты", "Номера маршрута", "Редактировать маршрут")),
     ("tariffs", "/tariffs", "Тарифы", ("Тарифы",)),
     ("phones", "/phones", "Купленные номера", ("Купленные номера", "Редактировать номер")),
     ("companies", "/companies", "Кампании прозвона", ("Кампании прозвона", "Редактировать кампанию")),
-    ("provider-changes", "/provider-changes", "Смена провайдеров", ("Смена провайдеров", "Редактировать событие")),
+    ("provider_changes", "/provider-changes", "Смена провайдеров", ("Смена провайдеров", "Редактировать событие")),
 ]
 
 ADMIN_NAV_ITEMS = [
-    ("/admin/server-priorities", "Приоритет по серверам", ("Приоритет по серверам",)),
-    ("/admin/company-routing-settings", "Схема маршрутизации кампаний", ("Схема маршрутизации кампаний",)),
-    ("/admin/naming-rules", "Правила нейминга маршрутов", ("Правила нейминга",)),
-    ("/admin/import", "Импорт / экспорт", ("Импорт",)),
-    ("/admin/currency-rates", "Курсы валют", ("Курсы валют",)),
-    ("/admin/change-reasons", "Причины смены провайдера", ("Причины смены провайдера",)),
-    ("/admin/users", "Пользователи", ("Пользователи",)),
-    ("/admin/dictionaries", "Справочные значения", ("Справочные значения",)),
-    ("/admin/change-log", "Change log", ("Change log",)),
-    ("/companies", "Кампании прозвона", ()),
+    ("admin_server_priorities", "/admin/server-priorities", "Приоритет по серверам", ("Приоритет по серверам",)),
+    ("admin_company_routing_settings", "/admin/company-routing-settings", "Схема маршрутизации кампаний", ("Схема маршрутизации кампаний",)),
+    ("admin_route_naming", "/admin/naming-rules", "Правила нейминга маршрутов", ("Правила нейминга",)),
+    ("admin_import_export", "/admin/import", "Импорт / экспорт", ("Импорт",)),
+    ("admin_currency_rates", "/admin/currency-rates", "Курсы валют", ("Курсы валют",)),
+    ("admin_provider_reasons", "/admin/change-reasons", "Причины смены провайдера", ("Причины смены провайдера",)),
+    ("admin_users", "/admin/users", "Пользователи", ("Пользователи",)),
+    ("admin_dictionaries", "/admin/dictionaries", "Справочные значения", ("Справочные значения",)),
+    ("admin_change_log", "/admin/change-log", "Change log", ("Change log",)),
 ]
 
 
@@ -68,7 +118,7 @@ def active_nav(title: str) -> tuple[str, str | None]:
     for key, _, _, titles in NAV_ITEMS:
         if title in titles:
             return key, None
-    for href, _, titles in ADMIN_NAV_ITEMS:
+    for _, href, _, titles in ADMIN_NAV_ITEMS:
         if title in titles:
             return "admin", href
     if title == "Администрирование":
@@ -82,17 +132,20 @@ def sidebar(title: str) -> str:
     main_links = "".join(
         f"<a class='side-link {'active' if active_key == key else ''}' href='{href}'>{label}</a>"
         for key, href, label, _ in NAV_ITEMS
+        if can_read(key)
     )
     admin_links = "".join(
         f"<a class='admin-link {'active' if active_admin_href == href else ''}' href='{href}'>{label}</a>"
-        for href, label, _ in ADMIN_NAV_ITEMS
+        for key, href, label, _ in ADMIN_NAV_ITEMS
+        if can_read(key)
     )
+    admin_toggle_html = f"""<button class="side-link admin-toggle {'active' if admin_open else ''}" type="button" aria-expanded="{'true' if admin_open else 'false'}" aria-controls="admin-nav">Администрирование</button>""" if admin_links else ""
     return f"""
   <aside class="sidebar">
     <div class="app-title">MVP маршрутов</div>
     <nav class="side-nav" aria-label="Основная навигация">
       {main_links}
-      <button class="side-link admin-toggle {'active' if admin_open else ''}" type="button" aria-expanded="{'true' if admin_open else 'false'}" aria-controls="admin-nav">Администрирование</button>
+      {admin_toggle_html}
       <div class="admin-tree {'open' if admin_open else ''}" id="admin-nav">
         {admin_links}
       </div>
@@ -366,6 +419,61 @@ def safe_redirect_target(value: str | None) -> str:
 def current_actor_id() -> int:
     return int(_REQUEST_CONTEXT.get("current_user_id") or ADMIN_ID)
 
+
+
+def section_for_get_path(path: str) -> str | None:
+    if path in {"/", "/routes"} or (path.startswith("/routes/") and path.endswith("/numbers")):
+        return "routes"
+    if path == "/tariffs":
+        return "tariffs"
+    if path == "/phones":
+        return "phones"
+    if path == "/companies":
+        return "companies"
+    if path == "/provider-changes":
+        return "provider_changes"
+    if path == "/admin":
+        return "admin"
+    admin_paths = {
+        "/admin/server-priorities": "admin_server_priorities",
+        "/admin/company-routing-settings": "admin_company_routing_settings",
+        "/admin/naming-rules": "admin_route_naming",
+        "/admin/import": "admin_import_export",
+        "/admin/currency-rates": "admin_currency_rates",
+        "/admin/change-reasons": "admin_provider_reasons",
+        "/admin/users": "admin_users",
+        "/admin/dictionaries": "admin_dictionaries",
+        "/admin/change-log": "admin_change_log",
+        "/admin/telegram": "admin",
+    }
+    if path in admin_paths:
+        return admin_paths[path]
+    if path.startswith("/admin"):
+        return "admin"
+    return None
+
+
+def section_for_write_path(path: str) -> str | None:
+    if path == "/users/select":
+        return None
+    if path.startswith("/provider-changes/") or path == "/provider-changes/create":
+        return "provider_changes"
+    if path.startswith("/routes/") or path == "/routes/create":
+        return "routes"
+    if path.startswith("/tariffs/") or path == "/tariffs/create" or path.startswith("/tariffs/"):
+        return "tariffs"
+    if path.startswith("/phones/") or path == "/phones/create":
+        return "phones"
+    if path.startswith("/companies/") or path == "/companies/create":
+        return "companies"
+    if path.startswith("/admin/"):
+        return "admin"
+    return None
+
+
+def require_permission(action: str, section: str | None) -> None:
+    if section and not role_allows(current_role_key(), action, section):
+        raise ForbiddenError()
 
 def request_query(environ) -> dict[str, str]:
     return {key: values[-1] for key, values in parse_qs(environ.get("QUERY_STRING", ""), keep_blank_values=True).items()}
@@ -964,7 +1072,7 @@ def routes_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
     for route in repo.list_routes(filters):
         prefix = route["prefix"] or "Без префикса"
         numbers = f'{route["phone_count"]} номеров <a class="button" href="/routes/{route["id"]}/numbers">Показать номера</a>' if route["cli_source_type"] in {"pool", "sim"} else ("RND провайдера" if route["cli_source_type"] == "rnd" else "—")
-        edit = f"<a class='button' href='/routes/{route['id']}/edit'>✏️ Редактировать</a>"
+        edit = f"<a class='button' href='/routes/{route['id']}/edit'>✏️ Редактировать</a>" if can_write("routes") else ""
         rows.append(f"<tr><td>{esc(route['country_name'])}</td><td>{esc(route['name'])}</td><td>{esc(route['provider_name'])}</td><td>{esc(prefix)}</td><td>{'Да' if route['is_actual'] else 'Нет'}</td><td>{esc(route['comment'])}</td><td>{numbers}</td><td class='actions'>{edit}</td></tr>")
     filters_html = f"""<form class="filter-grid" method="get" action="/routes">
 <label>ГЕО <select name="country_id">{options(repo, 'countries', selected=q.get('country_id'), empty='Все')}</select></label>
@@ -988,7 +1096,7 @@ def routes_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
     body = f"""
 <h1>Маршруты</h1>
 {filter_card(filters_html, q, ('country_id', 'provider_id', 'prefix_id', 'is_actual', 'search'))}
-{form_card('+ Добавить маршрут <span class="muted">Admin</span>', create_html)}
+{form_card('+ Добавить маршрут <span class="muted">Admin</span>', create_html) if can_write("routes") else ""}
 {table_card(table_html)}
 """
     return page("Маршруты", body)
@@ -1003,15 +1111,21 @@ def route_numbers_page(repo: Repository, route_id: int, q: dict[str, str] | None
     rows = []
     for phone in numbers:
         cost = f"Подкл: {phone['connection_cost'] or '—'} / Абон: {phone['monthly_fee'] or '—'} / Исх: {phone['outgoing_rate'] or '—'} / Вх: {phone['incoming_rate'] or '—'}"
-        rows.append(f"<tr><td><input type='checkbox' name='link_ids' value='{phone['link_id']}'></td><td>{esc(phone['number'])}</td><td>{esc(STATUS_LABELS.get(phone['status'], phone['status']))}</td><td>{esc(ASSIGNMENT_LABELS.get(phone['assignment_type'], phone['assignment_type']))}</td><td>{esc(cost)}</td><td>{esc(phone['link_comment'] or phone['phone_comment'])}</td></tr>")
+        select_cell = f"<input type='checkbox' name='link_ids' value='{phone['link_id']}'>" if can_write("routes") else ""
+        rows.append(f"<tr><td>{select_cell}</td><td>{esc(phone['number'])}</td><td>{esc(STATUS_LABELS.get(phone['status'], phone['status']))}</td><td>{esc(ASSIGNMENT_LABELS.get(phone['assignment_type'], phone['assignment_type']))}</td><td>{esc(cost)}</td><td>{esc(phone['link_comment'] or phone['phone_comment'])}</td></tr>")
     all_numbers = chr(10).join([p["number"] for p in numbers])
+    write_tools = ""
+    if can_write("routes"):
+        write_tools = f"""
+<div class="card"><h2>+ Добавить номер <span class="muted">Admin</span></h2><form method="post" action="/routes/{route_id}/numbers/add"><label>Номер телефона <span class="required">*</span><input name="phone_number"></label><label>Назначение <span class="required">*</span><input name="usage_type" value="pool_member"></label><label>Комментарий <input name="comment"></label><button>Добавить</button></form></div>
+<div class="card"><h2>Массовое добавление</h2><form method="post" action="/routes/{route_id}/numbers/bulk-add"><textarea name="phone_numbers" rows="7" cols="40" placeholder="по одному номеру в строке"></textarea><br><button>Добавить список</button></form></div>"""
+    table_html = f"<table><thead><tr><th>{'' if can_write('routes') else ''}</th><th>Номер</th><th>Статус</th><th>Назначение</th><th>Стоимость</th><th>Комментарий</th></tr></thead><tbody>{''.join(rows)}</tbody></table>"
+    if can_write("routes"):
+        table_html = f"""<form method="post" action="/routes/{route_id}/numbers/remove"><label>Причина <input name="reason"></label><button onclick="return confirm('Исключить выбранные номера из маршрута?')">Исключить из маршрута</button>{table_html}</form>"""
     body = f"""
 <h1>Номера в маршруте: {esc(route['name'])}</h1><p><a href="/routes">← Назад</a></p>
-<div class="grid"><div class="card"><h2>Скопировать все</h2><textarea rows="7" cols="40" readonly>{esc(all_numbers)}</textarea></div>
-<div class="card"><h2>+ Добавить номер <span class="muted">Admin</span></h2><form method="post" action="/routes/{route_id}/numbers/add"><label>Номер телефона <span class="required">*</span><input name="phone_number"></label><label>Назначение <span class="required">*</span><input name="usage_type" value="pool_member"></label><label>Комментарий <input name="comment"></label><button>Добавить</button></form></div>
-<div class="card"><h2>Массовое добавление</h2><form method="post" action="/routes/{route_id}/numbers/bulk-add"><textarea name="phone_numbers" rows="7" cols="40" placeholder="по одному номеру в строке"></textarea><br><button>Добавить список</button></form></div></div>
-<form method="post" action="/routes/{route_id}/numbers/remove"><label>Причина <input name="reason"></label><button onclick="return confirm('Исключить выбранные номера из маршрута?')">Исключить из маршрута</button>
-<table><thead><tr><th></th><th>Номер</th><th>Статус</th><th>Назначение</th><th>Стоимость</th><th>Комментарий</th></tr></thead><tbody>{''.join(rows)}</tbody></table></form>
+<div class="grid"><div class="card"><h2>Скопировать все</h2><textarea rows="7" cols="40" readonly>{esc(all_numbers)}</textarea></div>{write_tools}</div>
+{table_html}
 """
     return page("Номера маршрута", body, q.get("notice"))
 
@@ -1020,7 +1134,8 @@ def tariffs_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
     rows = []
     for t in repo.list_tariffs({"country_id": q.get("country_id"), "provider_id": q.get("provider_id"), "priority_status": q.get("priority_status"), "status": q.get("status", "active")}):
         prefix = t["prefix"] or "Без префикса"
-        rows.append(f"""<tr><td>{esc(t['country_name'])}</td><td>{esc(t['provider_name'])}</td><td>{esc(prefix)}</td><td>{esc(t['price_in_provider_currency'])} {esc(t['currency_code'])}</td><td>{esc(t['eur_price'])} EUR</td><td>{esc(t['priority_status'])}</td><td>{'Да' if t['is_current'] else 'Нет'}</td><td>{esc(t['comment'])}</td><td><form method='post' action='/tariffs/{t['id']}/deactivate'><button onclick="return confirm('Деактивировать тариф?')">⛔ Деактивировать</button></form></td></tr>""")
+        actions = f"""<form method='post' action='/tariffs/{t['id']}/deactivate'><button onclick="return confirm('Деактивировать тариф?')">⛔ Деактивировать</button></form>""" if can_write("tariffs") else ""
+        rows.append(f"""<tr><td>{esc(t['country_name'])}</td><td>{esc(t['provider_name'])}</td><td>{esc(prefix)}</td><td>{esc(t['price_in_provider_currency'])} {esc(t['currency_code'])}</td><td>{esc(t['eur_price'])} EUR</td><td>{esc(t['priority_status'])}</td><td>{'Да' if t['is_current'] else 'Нет'}</td><td>{esc(t['comment'])}</td><td>{actions}</td></tr>""")
     filters_html = f"""<form class="filter-grid" method="get" action="/tariffs">
 <label>ГЕО <select name="country_id">{options(repo, 'countries', selected=q.get('country_id'), empty='Все')}</select></label>
 <label>Провайдер <select name="provider_id">{options(repo, 'providers', selected=q.get('provider_id'), empty='Все')}</select></label>
@@ -1039,7 +1154,7 @@ def tariffs_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
     body = f"""
 <h1>Тарифы</h1>
 {filter_card(filters_html, q, ('country_id', 'provider_id', 'priority_status', 'status'))}
-{form_card('+ Добавить тариф <span class="muted">Admin</span>', create_html)}
+{form_card('+ Добавить тариф <span class="muted">Admin</span>', create_html) if can_write("tariffs") else ""}
 {table_card(table_html)}"""
     return page("Тарифы", body)
 
@@ -1049,7 +1164,8 @@ def phones_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
     rows = []
     for phone in repo.list_phone_numbers({"country_id": q.get("country_id"), "provider_id": q.get("provider_id"), "project": q.get("project"), "assignment_type": q.get("assignment_type"), "status": q.get("status"), "number_like": q.get("number")}):
         assignment_label = phone["assignment_type_label"] or ASSIGNMENT_LABELS.get(phone["assignment_type"], phone["assignment_type"])
-        rows.append(f"""<tr><td>{esc(phone['number'])}</td><td>{esc(phone['country_name'])}</td><td>{esc(phone['provider_name'])}</td><td>{esc(phone['project_label'])}</td><td>{esc(assignment_label)}</td><td>{esc(STATUS_LABELS.get(phone['status'], phone['status']))}</td><td>{'Да' if phone['is_active'] else 'Нет'}</td><td>{phone['route_count']}</td><td>{esc(phone['connection_cost'])}</td><td>{esc(phone['monthly_fee'])}</td><td>{esc(phone['currency_code'])}</td><td>{esc(phone['phone_type'])}</td><td>{esc(phone['tariff_label'])}</td><td>{esc(phone['created_at'])}</td><td>{esc(phone['updated_at'])}</td><td>{esc(phone['deactivated_at'])}</td><td>{esc(phone['comment'])}</td><td><a class='button' href='/phones/{phone['id']}/edit'>✏️ Редактировать</a></td></tr>""")
+        actions = f"<a class='button' href='/phones/{phone['id']}/edit'>✏️ Редактировать</a>" if can_write("phones") else ""
+        rows.append(f"""<tr><td>{esc(phone['number'])}</td><td>{esc(phone['country_name'])}</td><td>{esc(phone['provider_name'])}</td><td>{esc(phone['project_label'])}</td><td>{esc(assignment_label)}</td><td>{esc(STATUS_LABELS.get(phone['status'], phone['status']))}</td><td>{'Да' if phone['is_active'] else 'Нет'}</td><td>{phone['route_count']}</td><td>{esc(phone['connection_cost'])}</td><td>{esc(phone['monthly_fee'])}</td><td>{esc(phone['currency_code'])}</td><td>{esc(phone['phone_type'])}</td><td>{esc(phone['tariff_label'])}</td><td>{esc(phone['created_at'])}</td><td>{esc(phone['updated_at'])}</td><td>{esc(phone['deactivated_at'])}</td><td>{esc(phone['comment'])}</td><td>{actions}</td></tr>""")
     filters_html = f"""<form class="filter-grid" method="get" action="/phones">
 <label>ГЕО <select name="country_id">{options(repo, 'countries', selected=q.get('country_id'), empty='Все')}</select></label>
 <label>Провайдер <select name="provider_id">{options(repo, 'providers', selected=q.get('provider_id'), empty='Все')}</select></label>
@@ -1063,7 +1179,7 @@ def phones_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
     body = f"""
 <h1>Купленные номера</h1>
 {filter_card(filters_html, q, ('country_id', 'provider_id', 'project', 'assignment_type', 'status', 'number'))}
-{form_card('+ Добавить номер <span class="muted">Admin</span>', create_html)}
+{form_card('+ Добавить номер <span class="muted">Admin</span>', create_html) if can_write("phones") else ""}
 {table_card(table_html)}"""
     return page("Купленные номера", body)
 
@@ -1072,7 +1188,8 @@ def companies_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
     q = q or {}
     rows = []
     for cc in repo.list_calling_companies({"server_id": q.get("server_id"), "country_id": q.get("country_id"), "company_like": q.get("company"), "external_id_like": q.get("external_id"), "has_autorotation": q.get("has_autorotation"), "is_active": q.get("is_active")}):
-        rows.append(f"<tr><td>{esc(cc['server_name'])}</td><td>{esc(cc['country_name'])}</td><td>{esc(cc['company_name'])}</td><td>{esc(cc['company_id_external'])}</td><td>{esc(cc['line_count'])}</td><td>{esc(cc['dial_set_count'])}</td><td>{'Да' if cc['has_autorotation'] else 'Нет'}</td><td>{esc(cc['retry_interval_seconds'])}</td><td>{'Активна' if cc['is_active'] else 'Неактивна'}</td><td>{esc(cc['comment'])}</td><td><a class='button' href='/companies/{cc['id']}/edit'>✏️ Редактировать</a></td></tr>")
+        actions = f"<a class='button' href='/companies/{cc['id']}/edit'>✏️ Редактировать</a>" if can_write("companies") else ""
+        rows.append(f"<tr><td>{esc(cc['server_name'])}</td><td>{esc(cc['country_name'])}</td><td>{esc(cc['company_name'])}</td><td>{esc(cc['company_id_external'])}</td><td>{esc(cc['line_count'])}</td><td>{esc(cc['dial_set_count'])}</td><td>{'Да' if cc['has_autorotation'] else 'Нет'}</td><td>{esc(cc['retry_interval_seconds'])}</td><td>{'Активна' if cc['is_active'] else 'Неактивна'}</td><td>{esc(cc['comment'])}</td><td>{actions}</td></tr>")
     filters_html = f"""<form class="filter-grid" method="get" action="/companies">
 <label>Сервер <select name="server_id">{options(repo, 'servers', selected=q.get('server_id'), empty='Все')}</select></label><label>ГЕО <select name="country_id">{options(repo, 'countries', selected=q.get('country_id'), empty='Все')}</select></label><label>Название кампании <input name="company" value="{esc(q.get('company'))}"></label><label>ID кампании <input name="external_id" value="{esc(q.get('external_id'))}"></label><label>Авторотация <select name="has_autorotation"><option value="">Все</option><option value="1" {'selected' if q.get('has_autorotation')=='1' else ''}>Да</option><option value="0" {'selected' if q.get('has_autorotation')=='0' else ''}>Нет</option></select></label><label>Активность <select name="is_active"><option value="">Все</option><option value="1" {'selected' if q.get('is_active')=='1' else ''}>Активна</option><option value="0" {'selected' if q.get('is_active')=='0' else ''}>Неактивна</option></select></label><button>Поиск</button></form>"""
     create_html = f"""<form class="form-grid" method="post" action="/companies/create"><label>Сервер <span class="required">*</span><select name="server_id">{active_options(repo, 'servers')}</select></label><label>ГЕО <span class="required">*</span><select name="country_id">{active_options(repo, 'countries')}</select></label><label>ID кампании <span class="required">*</span><input name="company_id_external"></label><label>Название кампании <span class="required">*</span><input name="company_name"></label><label>Количество линий <span class="required">*</span><input name="line_count" value="0"></label><label>Количество наборов <span class="required">*</span><input name="dial_set_count" value="0"></label><label>Авторотация <span class="required">*</span><select name="has_autorotation"><option value="1">Да</option><option value="0">Нет</option></select></label><label>Интервал дозвона, сек. <span class="required">*</span><input name="retry_interval_seconds" value="0"></label><label>Активна <span class="required">*</span><select name="is_active"><option value="1">Да</option><option value="0">Нет</option></select></label><label>Комментарий <input name="comment"></label><button>Сохранить</button></form>"""
@@ -1080,7 +1197,7 @@ def companies_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
     body = f"""
 <h1>Кампании прозвона</h1>
 {filter_card(filters_html, q, ('server_id', 'country_id', 'company', 'external_id', 'has_autorotation', 'is_active'))}
-{form_card('+ Добавить кампанию <span class="muted">Admin</span>', create_html)}
+{form_card('+ Добавить кампанию <span class="muted">Admin</span>', create_html) if can_write("companies") else ""}
 {table_card(table_html)}"""
     return page("Кампании прозвона", body)
 
@@ -1367,8 +1484,8 @@ def provider_changes_page(repo: Repository, q: dict[str, str] | None = None) -> 
     rows = []
     for ev in repo.list_routing_events({"country_id": q.get("country_id"), "apply_scope": q.get("apply_scope"), "server_id": q.get("server_id"), "campaign_id": q.get("campaign_id"), "provider_id": q.get("provider_id"), "include_inactive": q.get("include_inactive") == "1"}):
         server_text, campaign_text, details_text = provider_event_details(ev)
-        actions = f"<a class='button' href='/provider-changes/{ev['id']}/edit'>Редактировать</a>"
-        if ev["is_active"]:
+        actions = f"<a class='button' href='/provider-changes/{ev['id']}/edit'>Редактировать</a>" if can_write("provider_changes") else ""
+        if ev["is_active"] and can_write("provider_changes"):
             actions += f"<details><summary>Деактивировать</summary><form method='post' action='/provider-changes/{ev['id']}/deactivate'><label>Причина <span class='required'>*</span><input name='deactivation_reason' required></label><button>Деактивировать</button></form></details>"
         rows.append(f"<tr class='{'' if ev['is_active'] else 'inactive-row'}'><td>{esc(ev['event_at'])}</td><td>{esc(ROUTING_SCOPE_LABELS.get(ev['apply_scope'], ev['apply_scope']))}</td><td>{esc(ev['country_name'])}</td><td>{esc(server_text)}</td><td>{esc(campaign_text)}</td><td>{details_text}</td><td>{esc(ev['reason'])}</td><td>{esc(ev['comment'])}</td><td>{'Да' if ev['is_active'] else 'Нет'}</td><td class='actions'>{actions}</td></tr>")
     if not rows:
@@ -1384,7 +1501,7 @@ def provider_changes_page(repo: Repository, q: dict[str, str] | None = None) -> 
     journal_html = f"<table><thead><tr><th>Дата события</th><th>Область применения</th><th>GEO</th><th>Сервер</th><th>Кампания</th><th>Детали</th><th>Причина</th><th>Комментарий</th><th>Активна</th><th>Действия</th></tr></thead><tbody>{''.join(rows)}</tbody></table>"
     body = f"""
 <h1>Смена провайдеров</h1>
-{routing_event_form(repo)}
+{routing_event_form(repo) if can_write("provider_changes") else ""}
 {filter_card(filters_html, q, ('country_id', 'apply_scope', 'server_id', 'campaign_id', 'provider_id', 'include_inactive'))}
 {table_card(journal_html, title='Журнал событий', extra_class='journal-card')}"""
     return page("Смена провайдеров", body)
@@ -1442,12 +1559,12 @@ def users_page(repo: Repository) -> bytes:
 <label>Код пользователя <span class='required'>*</span><input name='username' placeholder='operator2' required></label>
 <label>Отображаемое имя <span class='required'>*</span><input name='display_name' placeholder='Оператор' required></label>
 <label>Роль-метка <select name='role_key'>{role_options('operator')}</select></label>
-<p class='muted wide'>Пароли и права доступа пока не используются: все пользователи имеют полный admin-level доступ.</p>
+<p class='muted wide'>Пароли не используются. Доступ определяется ролью: admin, operator или guest.</p>
 <button>Создать</button></form>"""
     table_html = f"<table><thead><tr><th>ID</th><th>Код</th><th>Имя</th><th>Роль-метка</th><th>Активен</th><th>Создан</th><th>Обновлён</th><th>Действия</th></tr></thead><tbody>{''.join(rows)}</tbody></table>"
     body = f"""
 <h1>Пользователи</h1>
-<p class='muted'>Это лёгкий выбор текущего пользователя для MVP, без паролей и без ограничений доступа.</p>
+<p class='muted'>Это лёгкий выбор текущего пользователя для MVP, без паролей. Права доступа зависят от роли.</p>
 {form_card('+ Создать пользователя', create_html)}
 {table_card(table_html)}"""
     return page("Пользователи", body)
@@ -2246,10 +2363,12 @@ def app(environ, start_response):
     path = environ.get("PATH_INFO", "/")
     q = request_query(environ)
     current_user_id = resolve_current_user_id(repo, cookie_user_id(environ))
+    current_user = repo.get_user(current_user_id)
     _REQUEST_CONTEXT.clear()
     _REQUEST_CONTEXT.update({
         "repo": repo,
         "current_user_id": current_user_id,
+        "current_role_key": normalize_role(current_user["role_key"] if current_user else None),
         "redirect_to": current_request_path(environ),
     })
     try:
@@ -2258,6 +2377,8 @@ def app(environ, start_response):
             raw_body = environ["wsgi.input"].read(raw_size).decode("utf-8")
             parsed = {key: values[-1] for key, values in parse_qs(raw_body, keep_blank_values=True).items()}
             parsed["_raw"] = raw_body
+            if path != "/users/select":
+                require_permission("write", section_for_write_path(path))
             if path == "/admin/import/preview":
                 if parsed["entity_type"] == "tariffs" and parsed.get("mode") == "replace_section":
                     raise BusinessRuleError("Для тарифов доступен только режим Дополнить / обновить")
@@ -2281,6 +2402,11 @@ def app(environ, start_response):
                 )
             location = handle_post(repo, path, parsed)
             return redirect(start_response, location)
+        require_permission("read", section_for_get_path(path))
+        if path.startswith(("/routes/", "/phones/", "/companies/")) and path.endswith("/edit"):
+            require_permission("write", section_for_write_path(path.replace("/edit", "/update")))
+        if path.startswith("/provider-changes/") and path.endswith("/edit"):
+            require_permission("write", "provider_changes")
         if path in {"/", "/routes"}: response = routes_page(repo, q)
         elif path == "/tariffs": response = tariffs_page(repo, q)
         elif path == "/phones": response = phones_page(repo, q)
@@ -2305,6 +2431,9 @@ def app(environ, start_response):
         else:
             start_response("404 Not Found", [("Content-Type", "text/html; charset=utf-8")]); return [page("404", "<h1>404</h1>")]
         start_response("200 OK", [("Content-Type", "text/html; charset=utf-8")]); return [response]
+    except ForbiddenError:
+        start_response("403 Forbidden", [("Content-Type", "text/html; charset=utf-8")])
+        return [forbidden_page()]
     except (BusinessRuleError, ValueError, sqlite3.IntegrityError) as exc:
         start_response("400 Bad Request", [("Content-Type", "text/html; charset=utf-8")])
         return [page("Ошибка", f"<div class='error'>{esc(user_error(exc))}</div><p><a href='/'>На главную</a></p>")]
