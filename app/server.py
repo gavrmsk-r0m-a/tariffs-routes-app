@@ -1449,17 +1449,17 @@ def phones_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
 <label>Провайдер <select name="provider_id">{options(repo, 'providers', selected=q.get('provider_id'), empty='Все')}</select></label>
     <label>Проект <select name="project">{project_options(repo, selected=q.get('project'), empty='Все')}</select></label>
     <label>Назначение <select name="assignment_type">{assignment_options(repo, selected=q.get('assignment_type'), empty='Все')}</select></label>
-<label>Статус <select name="status"><option value="">Все</option><option value="used">Используется</option><option value="free">Свободен</option><option value="disabled">Отключён</option><option value="blocked">Заблокирован</option></select></label>
+<label>Рабочий статус <select name="status"><option value="">Все</option><option value="used">Используется</option><option value="free">Свободен</option><option value="disabled">Отключён</option><option value="blocked">Заблокирован</option></select></label>
 <label>Поиск по номеру <input name="number" value="{esc(q.get('number'))}"></label><button>Найти</button></form>"""
     create_html = f"""<form class="form-grid" method="post" action="/phones/create">
-<label>Номер <span class="required">*</span><input name="number" placeholder="393331234567"></label><label>ГЕО <span class="required">*</span><select name="country_id">{active_options(repo, 'countries')}</select></label><label>Провайдер <span class="required">*</span><select name="provider_id"><option value="">—</option>{active_options(repo, 'providers')}</select></label><label>Проект <select name="project_label">{project_options(repo, empty='—')}</select></label><label>Назначение <span class="required">*</span><select name="assignment_type">{assignment_options(repo)}</select></label><label>Статус <span class="required">*</span><select name="status"><option value="used">Используется</option><option value="free">Свободен</option><option value="disabled">Отключён</option><option value="blocked">Заблокирован</option></select></label><label>Стоимость подключения <input name="connection_cost"></label><label>Абонентская плата <input name="monthly_fee"></label><label>Валюта <select name="currency_id"><option value="">—</option>{active_options(repo, 'currencies', 'code')}</select></label><label>Тип номера <select name="phone_type">{phone_type_options(repo, empty='—')}</select></label><label>Тариф <input name="tariff_label"></label><label>Комментарий <input name="comment"></label><button>Сохранить</button></form>"""
-    table_html = f"{data_table('phones', [('number', f"<span class='copyable-header'>Номер {copy_column_button('phone-number')}</span>"), ('geo', 'ГЕО'), ('provider', 'Провайдер'), ('project', 'Проект'), ('assignment', 'Назначение'), ('status', 'Статус'), ('active', 'Активен'), ('routes', 'Маршрутов'), ('connection', 'Подключение'), ('monthly', 'Абонплата'), ('currency', 'Валюта'), ('phone_type', 'Тип номера'), ('tariff', 'Тариф'), ('created', 'Дата создания'), ('updated', 'Дата изменения'), ('deactivated', 'Дата отключения'), ('comment', 'Комментарий'), ('actions', 'Действия')], ''.join(rows))}"
+<label>Номер <span class="required">*</span><input name="number" placeholder="393331234567"></label><label>ГЕО <span class="required">*</span><select name="country_id">{active_options(repo, 'countries')}</select></label><label>Провайдер <span class="required">*</span><select name="provider_id"><option value="">—</option>{active_options(repo, 'providers')}</select></label><label>Проект <select name="project_label">{project_options(repo, empty='—')}</select></label><label>Назначение <span class="required">*</span><select name="assignment_type">{assignment_options(repo)}</select></label><label>Рабочий статус <span class="required">*</span><select name="status"><option value="used">Используется</option><option value="free">Свободен</option><option value="disabled">Отключён</option><option value="blocked">Заблокирован</option></select></label><label>Стоимость подключения <input name="connection_cost"></label><label>Абонентская плата <input name="monthly_fee"></label><label>Валюта <select name="currency_id"><option value="">—</option>{active_options(repo, 'currencies', 'code')}</select></label><label>Тип номера <select name="phone_type">{phone_type_options(repo, empty='—')}</select></label><label>Тариф <input name="tariff_label"></label><label>Комментарий <input name="comment"></label><button>Сохранить</button></form>"""
+    table_html = f"{data_table('phones', [('number', f"<span class='copyable-header'>Номер {copy_column_button('phone-number')}</span>"), ('geo', 'ГЕО'), ('provider', 'Провайдер'), ('project', 'Проект'), ('assignment', 'Назначение'), ('status', 'Рабочий статус'), ('active', 'Активен у провайдера'), ('routes', 'Маршрутов'), ('connection', 'Подключение'), ('monthly', 'Абонплата'), ('currency', 'Валюта'), ('phone_type', 'Тип номера'), ('tariff', 'Тариф'), ('created', 'Дата создания'), ('updated', 'Дата изменения'), ('deactivated', 'Дата отключения'), ('comment', 'Комментарий'), ('actions', 'Действия')], ''.join(rows))}"
     body = f"""
 <h1>Купленные номера</h1>
 {filter_card(filters_html, q, ('country_id', 'provider_id', 'project', 'assignment_type', 'status', 'number'))}
 {form_card('+ Добавить номер <span class="muted">Admin</span>', create_html) if can_write("phones") else ""}
 {table_card(table_html)}
-{table_footer(pagination_html, export_link('/phones', q) + column_settings('phones', [('number', 'Номер'), ('geo', 'ГЕО'), ('provider', 'Провайдер'), ('project', 'Проект'), ('assignment', 'Назначение'), ('status', 'Статус'), ('active', 'Активен'), ('routes', 'Маршрутов'), ('connection', 'Подключение'), ('monthly', 'Абонплата'), ('currency', 'Валюта'), ('phone_type', 'Тип номера'), ('tariff', 'Тариф'), ('created', 'Дата создания'), ('updated', 'Дата изменения'), ('deactivated', 'Дата отключения'), ('comment', 'Комментарий'), ('actions', 'Действия')]))}"""
+{table_footer(pagination_html, export_link('/phones', q) + column_settings('phones', [('number', 'Номер'), ('geo', 'ГЕО'), ('provider', 'Провайдер'), ('project', 'Проект'), ('assignment', 'Назначение'), ('status', 'Рабочий статус'), ('active', 'Активен у провайдера'), ('routes', 'Маршрутов'), ('connection', 'Подключение'), ('monthly', 'Абонплата'), ('currency', 'Валюта'), ('phone_type', 'Тип номера'), ('tariff', 'Тариф'), ('created', 'Дата создания'), ('updated', 'Дата изменения'), ('deactivated', 'Дата отключения'), ('comment', 'Комментарий'), ('actions', 'Действия')]))}"""
     return page("Купленные номера", body)
 
 
@@ -2279,8 +2279,8 @@ def phone_edit_page(repo: Repository, phone_id: int) -> bytes:
 <label>Провайдер <select name='provider_id'><option value=''>—</option>{active_options(repo, 'providers', selected=phone['provider_id'])}</select></label>
 <label>Проект <select name='project_label'>{project_options(repo, selected=phone['project_label'], empty='—')}</select></label>
 <label>Назначение <select name='assignment_type'>{assignment_options(repo, selected=phone['assignment_type'])}</select></label>
-<label>Статус <select name='status'><option value='used'>Используется</option><option value='free'>Свободен</option><option value='disabled'>Отключён</option><option value='reserved'>Резерв</option><option value='blocked'>Заблокирован</option><option value='unknown'>Неизвестно</option></select></label>
-<label>Активен <select name='is_active'><option value='1' {'selected' if phone['is_active'] else ''}>Да</option><option value='0' {'selected' if not phone['is_active'] else ''}>Нет</option></select></label>
+<label>Рабочий статус <select name='status'><option value='used'>Используется</option><option value='free'>Свободен</option><option value='disabled'>Отключён</option><option value='reserved'>Резерв</option><option value='blocked'>Заблокирован</option><option value='unknown'>Неизвестно</option></select></label>
+<label>Активен у провайдера <select name='is_active'><option value='1' {'selected' if phone['is_active'] else ''}>Да</option><option value='0' {'selected' if not phone['is_active'] else ''}>Нет</option></select></label>
 <label>Стоимость подключения <input name='connection_cost' value='{esc(phone['connection_cost'])}'></label>
 <label>Абонентская плата <input name='monthly_fee' value='{esc(phone['monthly_fee'])}'></label>
 <label>Валюта <select name='currency_id'><option value=''>—</option>{active_options(repo, 'currencies', 'code', selected=phone['currency_id'])}</select></label>
@@ -2411,21 +2411,30 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
         provider_id = parse_int(data.get("provider_id"))
         review_required = 1 if data.get("review_required") == "1" else 0
         if provider_id is None and review_required == 0:
-            raise BusinessRuleError("Нельзя снять флаг проверки, пока не выбран провайдер")
-        repo.conn.execute("""
-            UPDATE phone_numbers
-            SET number = ?, normalized_number = ?, country_id = ?, provider_id = ?, project_label = ?,
-                assignment_type = ?, status = ?, is_active = ?, connection_cost = ?, monthly_fee = ?,
-                currency_id = ?, phone_type = ?, tariff_label = ?, comment = ?, review_required = ?,
-                deactivated_at = CASE WHEN ? = 0 AND deactivated_at IS NULL THEN CURRENT_TIMESTAMP WHEN ? = 1 THEN NULL ELSE deactivated_at END,
-                updated_by = ?, updated_at = CURRENT_TIMESTAMP
-            WHERE id = ?
-        """, (normalized, normalized, int(data["country_id"]), provider_id, data.get("project_label") or None,
-              data.get("assignment_type"), data.get("status"), is_active, data.get("connection_cost") or None,
-              data.get("monthly_fee") or None, parse_int(data.get("currency_id")), data.get("phone_type") or None, data.get("tariff_label") or None,
-              data.get("comment"), review_required, is_active, is_active, actor_id, phone_id))
-        repo.conn.execute("INSERT INTO phone_number_history(phone_number_id, action, changed_by, field_name, new_value, comment) VALUES (?, 'updated', ?, 'phone', ?, ?)", (phone_id, actor_id, str({"number": normalized, "status": data.get("status"), "is_active": data.get("is_active")}), data.get("comment")))
-        repo.conn.commit(); return "/phones"
+            existing_phone = repo.conn.execute("SELECT deactivated_at FROM phone_numbers WHERE id = ?", (phone_id,)).fetchone()
+            if is_active == 1 and existing_phone and existing_phone["deactivated_at"] is not None:
+                review_required = 1
+            else:
+                raise BusinessRuleError("Нельзя снять флаг проверки, пока не выбран провайдер")
+        repo.update_phone_number(
+            phone_id,
+            country_id=int(data["country_id"]),
+            provider_id=provider_id,
+            number=normalized,
+            assignment_type=data.get("assignment_type"),
+            status=data.get("status"),
+            is_active=is_active == 1,
+            updated_by=actor_id,
+            project_label=data.get("project_label") or None,
+            connection_cost=data.get("connection_cost") or None,
+            monthly_fee=data.get("monthly_fee") or None,
+            currency_id=parse_int(data.get("currency_id")),
+            phone_type=data.get("phone_type") or None,
+            tariff_label=data.get("tariff_label") or None,
+            comment=data.get("comment"),
+            review_required=review_required == 1,
+        )
+        return "/phones"
     if path == "/tariffs/create":
         currency_id = int(data["currency_id"])
         rate = repo.latest_currency_rate(currency_id)

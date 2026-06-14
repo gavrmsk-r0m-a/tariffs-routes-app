@@ -81,6 +81,84 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
                 added_by=self.admin_id,
             )
 
+    def test_route_numbers_only_lists_currently_usable_provider_active_numbers(self):
+        visible_statuses = ["used", "free", "reserved", "unknown"]
+        for index, status in enumerate(visible_statuses):
+            phone_id = self.create_phone(status=status, number=f"39333123456{index}")
+            self.repo.add_phone_to_route(route_id=self.route_id, phone_number_id=phone_id, usage_type="pool_member", added_by=self.admin_id)
+        inactive_id = self.create_phone(status="used", number="393331234580")
+        disabled_id = self.create_phone(status="disabled", number="393331234581")
+        blocked_id = self.create_phone(status="blocked", number="393331234582")
+        for phone_id in (inactive_id, disabled_id, blocked_id):
+            self.conn.execute(
+                "INSERT INTO route_phone_numbers(route_id, phone_number_id, usage_type, is_active, added_by) VALUES (?, ?, 'pool_member', 1, ?)",
+                (self.route_id, phone_id, self.admin_id),
+            )
+        self.conn.execute("UPDATE phone_numbers SET is_active = 0 WHERE id = ?", (inactive_id,))
+        self.conn.commit()
+
+        numbers = {row["number"] for row in self.repo.route_numbers(self.route_id)}
+
+        self.assertEqual(numbers, {f"39333123456{index}" for index in range(len(visible_statuses))})
+
+    def test_deactivating_phone_closes_route_links_and_logs_history_and_change_log(self):
+        phone_id = self.create_phone(number="393331234590")
+        link_id = self.repo.add_phone_to_route(
+            route_id=self.route_id,
+            phone_number_id=phone_id,
+            usage_type="pool_member",
+            added_by=self.admin_id,
+        ).route_phone_number_id
+
+        self.repo.update_phone_number(
+            phone_id,
+            country_id=self.country_id,
+            provider_id=self.provider_id,
+            number="393331234590",
+            assignment_type="pool_number",
+            status="used",
+            is_active=False,
+            updated_by=self.admin_id,
+            currency_id=self.currency_id,
+        )
+
+        link = self.conn.execute("SELECT is_active, removed_at, removed_by FROM route_phone_numbers WHERE id = ?", (link_id,)).fetchone()
+        self.assertEqual(link["is_active"], 0)
+        self.assertIsNotNone(link["removed_at"])
+        self.assertEqual(link["removed_by"], self.admin_id)
+        self.assertEqual(self.repo.route_numbers(self.route_id), [])
+        history = self.conn.execute(
+            "SELECT * FROM route_phone_number_history WHERE route_id = ? AND phone_number_id = ? AND action = 'removed'",
+            (self.route_id, phone_id),
+        ).fetchone()
+        self.assertIsNotNone(history)
+        log = self.conn.execute(
+            "SELECT * FROM change_log WHERE entity_type = 'route_phone_number' AND entity_id = ? AND change_type = 'route_phone_number.removed_by_phone_deactivation'",
+            (link_id,),
+        ).fetchone()
+        self.assertIsNotNone(log)
+
+    def test_reactivating_previously_deactivated_phone_sets_review_required(self):
+        phone_id = self.create_phone(status="disabled", is_active=False, number="393331234591")
+        self.repo.update_phone_number(
+            phone_id,
+            country_id=self.country_id,
+            provider_id=self.provider_id,
+            number="393331234591",
+            assignment_type="pool_number",
+            status="free",
+            is_active=True,
+            updated_by=self.admin_id,
+            currency_id=self.currency_id,
+            review_required=False,
+        )
+
+        row = self.conn.execute("SELECT is_active, status, review_required, deactivated_at FROM phone_numbers WHERE id = ?", (phone_id,)).fetchone()
+        self.assertEqual(row["is_active"], 1)
+        self.assertEqual(row["status"], "free")
+        self.assertEqual(row["review_required"], 1)
+        self.assertIsNotNone(row["deactivated_at"])
+
     def test_phone_number_must_use_strict_international_format(self):
         invalid_numbers = ["+393331234567", "00393331234567", "393 331 234567", "(393)331234567"]
         for invalid in invalid_numbers:
