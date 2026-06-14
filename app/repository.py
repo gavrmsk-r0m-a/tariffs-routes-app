@@ -345,6 +345,8 @@ class Repository:
             raise BusinessRuleError("Phone number not found")
         if int(phone["is_active"]) != 1:
             raise BusinessRuleError("Нельзя добавить номер в маршрут: номер не активен у провайдера")
+        if phone["status"] != "used":
+            raise BusinessRuleError("Нельзя добавить номер в маршрут: рабочий статус номера должен быть ‘Используется’")
 
         cur = self.conn.execute(
             """
@@ -477,7 +479,13 @@ class Repository:
                 f"""
                 SELECT pn.*, c.name AS country_name, p.name AS provider_name, cur.code AS currency_code,
                     pat.name AS assignment_type_label,
-                    (SELECT COUNT(*) FROM route_phone_numbers rpn WHERE rpn.phone_number_id = pn.id AND rpn.is_active = 1) AS route_count
+                    COALESCE((
+                        SELECT GROUP_CONCAT(r.name, ', ')
+                        FROM route_phone_numbers rpn
+                        JOIN routes r ON r.id = rpn.route_id
+                        WHERE rpn.phone_number_id = pn.id AND rpn.is_active = 1
+                        ORDER BY r.name
+                    ), '') AS route_names
                 FROM phone_numbers pn
                 JOIN countries c ON c.id = pn.country_id
                 LEFT JOIN providers p ON p.id = pn.provider_id
