@@ -1010,3 +1010,98 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class RolePermissionTest(ServerSmokeTest):
+    def user_cookie(self, username):
+        self.request("/routes")
+        conn = server.connect(server.DB_PATH)
+        try:
+            user_id = conn.execute("SELECT id FROM users WHERE username = ?", (username,)).fetchone()["id"]
+        finally:
+            conn.close()
+        return f"mvp_current_user_id={user_id}"
+
+    def test_admin_sees_all_main_navigation_and_admin_navigation(self):
+        captured, content = self.request("/routes")
+        self.assertEqual(captured["status"], "200 OK")
+        for label in ["Маршруты", "Тарифы", "Купленные номера", "Кампании прозвона", "Смена провайдеров", "Администрирование"]:
+            self.assertIn(label, content)
+        self.assertIn("href='/admin/users'", content)
+
+    def test_operator_sees_working_sections_but_no_admin_navigation(self):
+        captured, content = self.request("/routes", cookie=self.user_cookie("duty"))
+        self.assertEqual(captured["status"], "200 OK")
+        for label in ["Маршруты", "Тарифы", "Купленные номера", "Кампании прозвона", "Смена провайдеров"]:
+            self.assertIn(label, content)
+        self.assertNotIn("Администрирование</button>", content)
+        self.assertNotIn("href='/admin/users'", content)
+
+    def test_guest_sees_only_routes_and_tariffs(self):
+        captured, content = self.request("/routes", cookie=self.user_cookie("guest"))
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("href='/routes'", content)
+        self.assertIn("href='/tariffs'", content)
+        self.assertNotIn("href='/phones'", content)
+        self.assertNotIn("href='/companies'", content)
+        self.assertNotIn("href='/provider-changes'", content)
+        self.assertNotIn("Администрирование</button>", content)
+
+    def test_operator_can_open_provider_changes(self):
+        captured, content = self.request("/provider-changes", cookie=self.user_cookie("duty"))
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("Смена провайдеров", content)
+
+    def test_guest_cannot_open_provider_changes(self):
+        captured, content = self.request("/provider-changes", cookie=self.user_cookie("guest"))
+        self.assertEqual(captured["status"], "403 Forbidden")
+        self.assertIn("Нет доступа", content)
+
+    def test_operator_and_guest_cannot_open_admin_users(self):
+        for username in ("duty", "guest"):
+            with self.subTest(username=username):
+                captured, content = self.request("/admin/users", cookie=self.user_cookie(username))
+                self.assertEqual(captured["status"], "403 Forbidden")
+                self.assertIn("Нет доступа", content)
+
+    def test_guest_cannot_post_create_or_edit_actions(self):
+        cookie = self.user_cookie("guest")
+        captured, content = self.request("/tariffs/create", method="POST", body=urlencode({}), cookie=cookie)
+        self.assertEqual(captured["status"], "403 Forbidden")
+        self.assertIn("Нет доступа", content)
+        captured, content = self.request("/routes/1/update", method="POST", body=urlencode({"name": "Blocked"}), cookie=cookie)
+        self.assertEqual(captured["status"], "403 Forbidden")
+
+    def test_operator_can_post_provider_change_create(self):
+        body = urlencode({
+            "event_at": "2026-06-14T10:00",
+            "apply_scope": "none",
+            "provider_id": "1",
+            "reason": "Плановая смена",
+            "comment": "operator allowed",
+        })
+        captured, content = self.request("/provider-changes/create", method="POST", body=body, cookie=self.user_cookie("duty"))
+        self.assertEqual(captured["status"], "303 See Other")
+        self.assertIn(("Location", "/provider-changes"), captured["headers"])
+
+    def test_operator_cannot_post_admin_dictionary_import_or_user_actions(self):
+        cookie = self.user_cookie("duty")
+        for path, body in [
+            ("/admin/dictionaries/countries/create", urlencode({"name": "Blocked"})),
+            ("/admin/import/preview", urlencode({"entity_type": "routes", "csv_data": ""})),
+            ("/admin/users/create", urlencode({"username": "blocked", "display_name": "Blocked"})),
+        ]:
+            with self.subTest(path=path):
+                captured, content = self.request(path, method="POST", body=body, cookie=cookie)
+                self.assertEqual(captured["status"], "403 Forbidden")
+                self.assertIn("Нет доступа", content)
+
+    def test_edit_create_buttons_hidden_for_read_only_sections(self):
+        cookie = self.user_cookie("guest")
+        captured, content = self.request("/routes", cookie=cookie)
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertNotIn("+ Добавить маршрут", content)
+        self.assertNotIn("✏️ Редактировать", content)
+        captured, content = self.request("/tariffs", cookie=cookie)
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertNotIn("+ Добавить тариф", content)
+        self.assertNotIn("Деактивировать", content)
