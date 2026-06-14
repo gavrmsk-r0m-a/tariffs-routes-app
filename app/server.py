@@ -429,6 +429,15 @@ def page(title: str, body: str, notice: str | None = None) -> bytes:
     .form-grid button[onclick*="Деактив"]:hover, .form-grid button[onclick*="Удал"]:hover, .form-grid button[onclick*="Отключ"]:hover, .filter-grid button[onclick*="Деактив"]:hover, .filter-grid button[onclick*="Удал"]:hover, .filter-grid button[onclick*="Отключ"]:hover {{ background: #f2d9d5; border-color: #c9938b; color: var(--danger); }}
     .reset-filters {{ background: var(--surface-muted); color: var(--accent-strong); }}
     .export-actions {{ margin: 8px 0 10px; display: flex; justify-content: flex-end; }}
+    .table-toolbar {{ display: flex; justify-content: flex-end; gap: 8px; margin: 8px 0 10px; }}
+    .column-settings {{ position: relative; display: inline-block; }}
+    .column-settings summary {{ min-height: 28px; padding: 4px 9px; border: 1px solid var(--border-strong); border-radius: var(--radius-control); background: var(--surface); color: var(--accent-strong); font-size: 12px; font-weight: 720; list-style: none; box-shadow: 0 1px 0 rgba(34, 48, 42, 0.03); }}
+    .column-settings summary::-webkit-details-marker {{ display: none; }}
+    .column-settings[open] summary, .column-settings summary:hover {{ background: var(--surface-muted); border-color: var(--accent); }}
+    .column-settings-panel {{ position: absolute; right: 0; top: calc(100% + 6px); z-index: 5; display: grid; gap: 4px; min-width: 210px; max-height: 320px; overflow: auto; padding: 10px; border: 1px solid var(--border-strong); border-radius: var(--radius-control); background: var(--surface); box-shadow: var(--shadow-card); }}
+    .column-settings-panel label {{ display: flex; align-items: center; gap: 6px; margin: 0; font-size: 13px; font-weight: 560; white-space: nowrap; }}
+    .column-reset {{ justify-content: flex-start; margin-top: 5px; padding: 4px 0; min-height: 24px; border: 0; background: transparent; box-shadow: none; color: var(--accent-strong); font-size: 12px; }}
+    [data-column-hidden="true"] {{ display: none !important; }}
     .table-card, .journal-card {{ border: 1px solid var(--border); border-radius: var(--radius-card); background: var(--surface); margin: 12px 0; overflow: hidden; box-shadow: var(--shadow-card); }}
     .table-card h2, .journal-card h2 {{ margin: 0; padding: 12px 14px; border-bottom: 1px solid #e6ece7; background: var(--surface-muted); color: var(--text-strong); }}
     .journal-card h2 {{ font-size: 19px; }}
@@ -536,6 +545,57 @@ def page(title: str, body: str, notice: str | None = None) -> bytes:
         window.setTimeout(() => {{
           status.textContent = "";
         }}, 1800);
+      }});
+    }});
+    document.querySelectorAll("[data-column-settings]").forEach((settings) => {{
+      const tableKey = settings.dataset.columnSettings;
+      const tables = Array.from(document.querySelectorAll(`[data-table-key="${{tableKey}}"]`));
+      if (!tables.length) return;
+      const storageKey = `tableColumns:${{tableKey}}`;
+      const checkboxes = Array.from(settings.querySelectorAll("input[type='checkbox'][data-col-toggle]"));
+      const columns = checkboxes.map((box) => box.dataset.colToggle);
+      function loadPrefs() {{
+        try {{
+          const raw = window.localStorage && window.localStorage.getItem(storageKey);
+          if (!raw) return null;
+          const parsed = JSON.parse(raw);
+          return parsed && typeof parsed === "object" ? parsed : null;
+        }} catch (error) {{
+          return null;
+        }}
+      }}
+      function savePrefs(visible) {{
+        try {{
+          if (window.localStorage) window.localStorage.setItem(storageKey, JSON.stringify(visible));
+        }} catch (error) {{}}
+      }}
+      function clearPrefs() {{
+        try {{
+          if (window.localStorage) window.localStorage.removeItem(storageKey);
+        }} catch (error) {{}}
+      }}
+      function apply(visible, persist) {{
+        columns.forEach((column) => {{
+          const isVisible = visible[column] !== false;
+          tables.forEach((table) => table.querySelectorAll(`[data-col="${{column}}"]`).forEach((cell) => {{
+            cell.dataset.columnHidden = isVisible ? "false" : "true";
+          }}));
+          checkboxes.filter((box) => box.dataset.colToggle === column).forEach((box) => {{ box.checked = isVisible; }});
+        }});
+        if (persist) savePrefs(visible);
+      }}
+      const defaults = Object.fromEntries(columns.map((column) => [column, true]));
+      apply(Object.assign(defaults, loadPrefs() || {{}}), false);
+      checkboxes.forEach((box) => {{
+        box.addEventListener("change", () => {{
+          const visible = Object.fromEntries(checkboxes.map((item) => [item.dataset.colToggle, item.checked]));
+          apply(visible, true);
+        }});
+      }});
+      const reset = settings.querySelector("[data-column-reset]");
+      if (reset) reset.addEventListener("click", () => {{
+        clearPrefs();
+        apply(Object.fromEntries(columns.map((column) => [column, true])), false);
       }});
     }});
   </script>
@@ -675,6 +735,22 @@ def table_card(table_html: str, *, title: str | None = None, extra_class: str = 
     title_html = f"<h2>{esc(title)}</h2>" if title else ""
     classes = f"table-card {extra_class}".strip()
     return f"<section class='{classes}'>{title_html}<div class='table-scroll'>{table_html}</div></section>"
+
+
+def column_settings(table_key: str, columns: list[tuple[str, str]]) -> str:
+    checks = "".join(
+        f"<label><input type='checkbox' data-col-toggle='{esc(key)}' checked> {esc(label)}</label>"
+        for key, label in columns
+    )
+    return f"""<div class='table-toolbar'><details class='column-settings' data-column-settings='{esc(table_key)}'>
+<summary>Колонки</summary>
+<div class='column-settings-panel'>{checks}<button type='button' class='column-reset' data-column-reset>Сбросить колонки</button></div>
+</details></div>"""
+
+
+def data_table(table_key: str, columns: list[tuple[str, str]], rows_html: str) -> str:
+    header = "".join(f"<th data-col='{esc(key)}'>{label}</th>" for key, label in columns)
+    return f"<table data-table-key='{esc(table_key)}'><thead><tr>{header}</tr></thead><tbody>{rows_html}</tbody></table>"
 
 
 def select_options(repo: Repository, sql: str, params: tuple = (), selected: object | None = None, empty: str | None = None) -> str:
@@ -1255,7 +1331,7 @@ def routes_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
         prefix = route["prefix"] or "Без префикса"
         numbers = f'{route["phone_count"]} номеров <a class="button" href="/routes/{route["id"]}/numbers">Показать номера</a>' if route["cli_source_type"] in {"pool", "sim"} else ("RND провайдера" if route["cli_source_type"] == "rnd" else "—")
         edit = f"<a class='button' href='/routes/{route['id']}/edit'>✏️ Редактировать</a>" if can_write("routes") else ""
-        rows.append(f"<tr><td>{esc(route['country_name'])}</td><td data-copy-column='route-name'>{esc(route['name'])}</td><td>{esc(route['provider_name'])}</td><td>{esc(prefix)}</td><td>{'Да' if route['is_actual'] else 'Нет'}</td><td class='comment-cell'>{esc(route['comment'])}</td><td>{numbers}</td><td class='actions'>{edit}</td></tr>")
+        rows.append(f"<tr><td data-col='geo'>{esc(route['country_name'])}</td><td data-col='route' data-copy-column='route-name'>{esc(route['name'])}</td><td data-col='provider'>{esc(route['provider_name'])}</td><td data-col='prefix'>{esc(prefix)}</td><td data-col='actual'>{'Да' if route['is_actual'] else 'Нет'}</td><td data-col='comment' class='comment-cell'>{esc(route['comment'])}</td><td data-col='numbers'>{numbers}</td><td data-col='actions' class='actions'>{edit}</td></tr>")
     filters_html = f"""<form class="filter-grid" method="get" action="/routes">
 <label>ГЕО <select name="country_id">{options(repo, 'countries', selected=q.get('country_id'), empty='Все')}</select></label>
 <label>Провайдер <select name="provider_id">{options(repo, 'providers', selected=q.get('provider_id'), empty='Все')}</select></label>
@@ -1274,11 +1350,12 @@ def routes_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
   <p class="muted wide">Название будет сформировано автоматически по выбранным полям. Свободный ввод названия отключён.</p>
   <button>Сохранить</button>
 </form>"""
-    table_html = f"<table><thead><tr><th>ГЕО</th><th><span class='copyable-header'>Название маршрута {copy_column_button('route-name')}</span></th><th>Провайдер</th><th>Префикс</th><th>Актуальный</th><th>Комментарий</th><th>Номера</th><th>Действия</th></tr></thead><tbody>{''.join(rows)}</tbody></table>"
+    table_html = f"{data_table('routes', [('geo', 'ГЕО'), ('route', f"<span class='copyable-header'>Название маршрута {copy_column_button('route-name')}</span>"), ('provider', 'Провайдер'), ('prefix', 'Префикс'), ('actual', 'Актуальный'), ('comment', 'Комментарий'), ('numbers', 'Номера'), ('actions', 'Действия')], ''.join(rows))}"
     body = f"""
 <h1>Маршруты</h1>
 {filter_card(filters_html, q, ('country_id', 'provider_id', 'prefix_id', 'is_actual', 'search'))}
 {export_link('/routes', q)}
+{column_settings('routes', [('geo', 'ГЕО'), ('route', 'Название маршрута'), ('provider', 'Провайдер'), ('prefix', 'Префикс'), ('actual', 'Актуальный'), ('comment', 'Комментарий'), ('numbers', 'Номера'), ('actions', 'Действия')])}
 {form_card('+ Добавить маршрут <span class="muted">Admin</span>', create_html) if can_write("routes") else ""}
 {pagination_html}
 {table_card(table_html)}
@@ -1325,7 +1402,7 @@ def tariffs_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
     for t in records:
         prefix = t["prefix"] or "Без префикса"
         actions = f"""<form method='post' action='/tariffs/{t['id']}/deactivate'><button onclick="return confirm('Деактивировать тариф?')">⛔ Деактивировать</button></form>""" if can_write("tariffs") else ""
-        rows.append(f"""<tr><td>{esc(t['country_name'])}</td><td>{esc(t['provider_name'])}</td><td>{esc(prefix)}</td><td>{esc(t['price_in_provider_currency'])} {esc(t['currency_code'])}</td><td>{esc(t['eur_price'])} EUR</td><td>{esc(t['priority_status'])}</td><td>{'Да' if t['is_current'] else 'Нет'}</td><td class='comment-cell'>{esc(t['comment'])}</td><td>{actions}</td></tr>""")
+        rows.append(f"""<tr><td data-col='geo'>{esc(t['country_name'])}</td><td data-col='provider'>{esc(t['provider_name'])}</td><td data-col='prefix'>{esc(prefix)}</td><td data-col='provider_price'>{esc(t['price_in_provider_currency'])} {esc(t['currency_code'])}</td><td data-col='eur_price'>{esc(t['eur_price'])} EUR</td><td data-col='priority'>{esc(t['priority_status'])}</td><td data-col='active'>{'Да' if t['is_current'] else 'Нет'}</td><td data-col='info' class='comment-cell'>{esc(t['comment'])}</td><td data-col='actions'>{actions}</td></tr>""")
     filters_html = f"""<form class="filter-grid" method="get" action="/tariffs">
 <label>ГЕО <select name="country_id">{options(repo, 'countries', selected=q.get('country_id'), empty='Все')}</select></label>
 <label>Провайдер <select name="provider_id">{options(repo, 'providers', selected=q.get('provider_id'), empty='Все')}</select></label>
@@ -1340,11 +1417,12 @@ def tariffs_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
 <label>Приоритет <span class="required">*</span><select name="priority_status"><option value="priority">priority</option><option value="alternative">alternative</option><option value="unknown">unknown</option></select></label>
 <label>Активный <span class="required">*</span><select name="is_current"><option value="1">Да</option><option value="0">Нет</option></select></label>
 <label>Комментарий <input name="comment"></label><p class="muted wide">Курс к EUR и дата курса берутся из Администрирование → Курсы валют.</p><button>Сохранить</button></form>"""
-    table_html = f"<table><thead><tr><th>ГЕО</th><th>Провайдер</th><th>Префикс</th><th>Цена провайдера</th><th>Цена EUR</th><th>Приоритет</th><th>Активный</th><th>Инфо</th><th>Действия</th></tr></thead><tbody>{''.join(rows)}</tbody></table>"
+    table_html = f"{data_table('tariffs', [('geo', 'ГЕО'), ('provider', 'Провайдер'), ('prefix', 'Префикс'), ('provider_price', 'Цена провайдера'), ('eur_price', 'Цена EUR'), ('priority', 'Приоритет'), ('active', 'Активный'), ('info', 'Инфо'), ('actions', 'Действия')], ''.join(rows))}"
     body = f"""
 <h1>Тарифы</h1>
 {filter_card(filters_html, q, ('country_id', 'provider_id', 'priority_status', 'status'))}
 {export_link('/tariffs', q)}
+{column_settings('tariffs', [('geo', 'ГЕО'), ('provider', 'Провайдер'), ('prefix', 'Префикс'), ('provider_price', 'Цена провайдера'), ('eur_price', 'Цена EUR'), ('priority', 'Приоритет'), ('active', 'Активный'), ('info', 'Инфо'), ('actions', 'Действия')])}
 {form_card('+ Добавить тариф <span class="muted">Admin</span>', create_html) if can_write("tariffs") else ""}
 {pagination_html}
 {table_card(table_html)}
@@ -1363,7 +1441,7 @@ def phones_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
     for phone in records:
         assignment_label = phone["assignment_type_label"] or ASSIGNMENT_LABELS.get(phone["assignment_type"], phone["assignment_type"])
         actions = f"<a class='button' href='/phones/{phone['id']}/edit'>✏️ Редактировать</a>" if can_write("phones") else ""
-        rows.append(f"""<tr><td data-copy-column='phone-number'>{esc(phone['number'])}</td><td>{esc(phone['country_name'])}</td><td>{esc(phone['provider_name'])}</td><td>{esc(phone['project_label'])}</td><td>{esc(assignment_label)}</td><td>{esc(STATUS_LABELS.get(phone['status'], phone['status']))}</td><td>{'Да' if phone['is_active'] else 'Нет'}</td><td>{phone['route_count']}</td><td>{esc(phone['connection_cost'])}</td><td>{esc(phone['monthly_fee'])}</td><td>{esc(phone['currency_code'])}</td><td>{esc(phone['phone_type'])}</td><td>{esc(phone['tariff_label'])}</td><td>{esc(phone['created_at'])}</td><td>{esc(phone['updated_at'])}</td><td>{esc(phone['deactivated_at'])}</td><td class='comment-cell'>{esc(phone['comment'] or '—')}</td><td>{actions}</td></tr>""")
+        rows.append(f"""<tr><td data-col='number' data-copy-column='phone-number'>{esc(phone['number'])}</td><td data-col='geo'>{esc(phone['country_name'])}</td><td data-col='provider'>{esc(phone['provider_name'])}</td><td data-col='project'>{esc(phone['project_label'])}</td><td data-col='assignment'>{esc(assignment_label)}</td><td data-col='status'>{esc(STATUS_LABELS.get(phone['status'], phone['status']))}</td><td data-col='active'>{'Да' if phone['is_active'] else 'Нет'}</td><td data-col='routes'>{phone['route_count']}</td><td data-col='connection'>{esc(phone['connection_cost'])}</td><td data-col='monthly'>{esc(phone['monthly_fee'])}</td><td data-col='currency'>{esc(phone['currency_code'])}</td><td data-col='phone_type'>{esc(phone['phone_type'])}</td><td data-col='tariff'>{esc(phone['tariff_label'])}</td><td data-col='created'>{esc(phone['created_at'])}</td><td data-col='updated'>{esc(phone['updated_at'])}</td><td data-col='deactivated'>{esc(phone['deactivated_at'])}</td><td data-col='comment' class='comment-cell'>{esc(phone['comment'] or '—')}</td><td data-col='actions'>{actions}</td></tr>""")
     filters_html = f"""<form class="filter-grid" method="get" action="/phones">
 <label>ГЕО <select name="country_id">{options(repo, 'countries', selected=q.get('country_id'), empty='Все')}</select></label>
 <label>Провайдер <select name="provider_id">{options(repo, 'providers', selected=q.get('provider_id'), empty='Все')}</select></label>
@@ -1373,11 +1451,12 @@ def phones_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
 <label>Поиск по номеру <input name="number" value="{esc(q.get('number'))}"></label><button>Найти</button></form>"""
     create_html = f"""<form class="form-grid" method="post" action="/phones/create">
 <label>Номер <span class="required">*</span><input name="number" placeholder="393331234567"></label><label>ГЕО <span class="required">*</span><select name="country_id">{active_options(repo, 'countries')}</select></label><label>Провайдер <select name="provider_id"><option value="">—</option>{active_options(repo, 'providers')}</select></label><label>Проект <select name="project_label">{project_options(repo, empty='—')}</select></label><label>Назначение <span class="required">*</span><select name="assignment_type">{assignment_options(repo)}</select></label><label>Статус <span class="required">*</span><select name="status"><option value="used">Используется</option><option value="free">Свободен</option><option value="disabled">Отключён</option><option value="blocked">Заблокирован</option></select></label><label>Стоимость подключения <input name="connection_cost"></label><label>Абонентская плата <input name="monthly_fee"></label><label>Валюта <select name="currency_id"><option value="">—</option>{active_options(repo, 'currencies', 'code')}</select></label><label>Тип номера <select name="phone_type">{phone_type_options(repo, empty='—')}</select></label><label>Тариф <input name="tariff_label"></label><label>Комментарий <input name="comment"></label><button>Сохранить</button></form>"""
-    table_html = f"<table><thead><tr><th><span class='copyable-header'>Номер {copy_column_button('phone-number')}</span></th><th>ГЕО</th><th>Провайдер</th><th>Проект</th><th>Назначение</th><th>Статус</th><th>Активен</th><th>Маршрутов</th><th>Подключение</th><th>Абонплата</th><th>Валюта</th><th>Тип номера</th><th>Тариф</th><th>Дата создания</th><th>Дата изменения</th><th>Дата отключения</th><th>Комментарий</th><th>Действия</th></tr></thead><tbody>{''.join(rows)}</tbody></table>"
+    table_html = f"{data_table('phones', [('number', f"<span class='copyable-header'>Номер {copy_column_button('phone-number')}</span>"), ('geo', 'ГЕО'), ('provider', 'Провайдер'), ('project', 'Проект'), ('assignment', 'Назначение'), ('status', 'Статус'), ('active', 'Активен'), ('routes', 'Маршрутов'), ('connection', 'Подключение'), ('monthly', 'Абонплата'), ('currency', 'Валюта'), ('phone_type', 'Тип номера'), ('tariff', 'Тариф'), ('created', 'Дата создания'), ('updated', 'Дата изменения'), ('deactivated', 'Дата отключения'), ('comment', 'Комментарий'), ('actions', 'Действия')], ''.join(rows))}"
     body = f"""
 <h1>Купленные номера</h1>
 {filter_card(filters_html, q, ('country_id', 'provider_id', 'project', 'assignment_type', 'status', 'number'))}
 {export_link('/phones', q)}
+{column_settings('phones', [('number', 'Номер'), ('geo', 'ГЕО'), ('provider', 'Провайдер'), ('project', 'Проект'), ('assignment', 'Назначение'), ('status', 'Статус'), ('active', 'Активен'), ('routes', 'Маршрутов'), ('connection', 'Подключение'), ('monthly', 'Абонплата'), ('currency', 'Валюта'), ('phone_type', 'Тип номера'), ('tariff', 'Тариф'), ('created', 'Дата создания'), ('updated', 'Дата изменения'), ('deactivated', 'Дата отключения'), ('comment', 'Комментарий'), ('actions', 'Действия')])}
 {form_card('+ Добавить номер <span class="muted">Admin</span>', create_html) if can_write("phones") else ""}
 {pagination_html}
 {table_card(table_html)}
@@ -1395,15 +1474,16 @@ def companies_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
     rows = []
     for cc in records:
         actions = f"<a class='button' href='/companies/{cc['id']}/edit'>✏️ Редактировать</a>" if can_write("companies") else ""
-        rows.append(f"<tr><td>{esc(cc['server_name'])}</td><td>{esc(cc['country_name'])}</td><td>{esc(cc['company_name'])}</td><td>{esc(cc['company_id_external'])}</td><td>{esc(cc['line_count'])}</td><td>{esc(cc['dial_set_count'])}</td><td>{'Да' if cc['has_autorotation'] else 'Нет'}</td><td>{esc(cc['retry_interval_seconds'])}</td><td>{'Активна' if cc['is_active'] else 'Неактивна'}</td><td class='comment-cell'>{esc(cc['comment'])}</td><td>{actions}</td></tr>")
+        rows.append(f"<tr><td data-col='server'>{esc(cc['server_name'])}</td><td data-col='geo'>{esc(cc['country_name'])}</td><td data-col='company_name'>{esc(cc['company_name'])}</td><td data-col='company_id'>{esc(cc['company_id_external'])}</td><td data-col='lines'>{esc(cc['line_count'])}</td><td data-col='dial_sets'>{esc(cc['dial_set_count'])}</td><td data-col='autorotation'>{'Да' if cc['has_autorotation'] else 'Нет'}</td><td data-col='retry_interval'>{esc(cc['retry_interval_seconds'])}</td><td data-col='active'>{'Активна' if cc['is_active'] else 'Неактивна'}</td><td data-col='comment' class='comment-cell'>{esc(cc['comment'])}</td><td data-col='actions'>{actions}</td></tr>")
     filters_html = f"""<form class="filter-grid" method="get" action="/companies">
 <label>Сервер <select name="server_id">{options(repo, 'servers', selected=q.get('server_id'), empty='Все')}</select></label><label>ГЕО <select name="country_id">{options(repo, 'countries', selected=q.get('country_id'), empty='Все')}</select></label><label>Название кампании <input name="company" value="{esc(q.get('company'))}"></label><label>ID кампании <input name="external_id" value="{esc(q.get('external_id'))}"></label><label>Авторотация <select name="has_autorotation"><option value="">Все</option><option value="1" {'selected' if q.get('has_autorotation')=='1' else ''}>Да</option><option value="0" {'selected' if q.get('has_autorotation')=='0' else ''}>Нет</option></select></label><label>Активность <select name="is_active"><option value="">Все</option><option value="1" {'selected' if q.get('is_active')=='1' else ''}>Активна</option><option value="0" {'selected' if q.get('is_active')=='0' else ''}>Неактивна</option></select></label><button>Найти</button></form>"""
     create_html = f"""<form class="form-grid" method="post" action="/companies/create"><label>Сервер <span class="required">*</span><select name="server_id">{active_options(repo, 'servers')}</select></label><label>ГЕО <span class="required">*</span><select name="country_id">{active_options(repo, 'countries')}</select></label><label>ID кампании <span class="required">*</span><input name="company_id_external"></label><label>Название кампании <span class="required">*</span><input name="company_name"></label><label>Количество линий <span class="required">*</span><input name="line_count" value="0"></label><label>Количество наборов <span class="required">*</span><input name="dial_set_count" value="0"></label><label>Авторотация <span class="required">*</span><select name="has_autorotation"><option value="1">Да</option><option value="0">Нет</option></select></label><label>Интервал дозвона, сек. <span class="required">*</span><input name="retry_interval_seconds" value="0"></label><label>Активна <span class="required">*</span><select name="is_active"><option value="1">Да</option><option value="0">Нет</option></select></label><label>Комментарий <input name="comment"></label><button>Сохранить</button></form>"""
-    table_html = f"<table><thead><tr><th>Сервер</th><th>ГЕО</th><th>Название кампании</th><th>ID кампании</th><th>Количество линий</th><th>Количество наборов</th><th>Авторотация</th><th>Интервал между попытками дозвона (сек.)</th><th>Активна</th><th>Комментарий</th><th>Действия</th></tr></thead><tbody>{''.join(rows)}</tbody></table>"
+    table_html = f"{data_table('companies', [('server', 'Сервер'), ('geo', 'ГЕО'), ('company_name', 'Название кампании'), ('company_id', 'ID кампании'), ('lines', 'Количество линий'), ('dial_sets', 'Количество наборов'), ('autorotation', 'Авторотация'), ('retry_interval', 'Интервал между попытками дозвона (сек.)'), ('active', 'Активна'), ('comment', 'Комментарий'), ('actions', 'Действия')], ''.join(rows))}"
     body = f"""
 <h1>Кампании прозвона</h1>
 {filter_card(filters_html, q, ('server_id', 'country_id', 'company', 'external_id', 'has_autorotation', 'is_active'))}
 {export_link('/companies', q)}
+{column_settings('companies', [('server', 'Сервер'), ('geo', 'ГЕО'), ('company_name', 'Название кампании'), ('company_id', 'ID кампании'), ('lines', 'Количество линий'), ('dial_sets', 'Количество наборов'), ('autorotation', 'Авторотация'), ('retry_interval', 'Интервал дозвона'), ('active', 'Активна'), ('comment', 'Комментарий'), ('actions', 'Действия')])}
 {form_card('+ Добавить кампанию <span class="muted">Admin</span>', create_html) if can_write("companies") else ""}
 {pagination_html}
 {table_card(table_html)}
@@ -1706,7 +1786,7 @@ def provider_changes_page(repo: Repository, q: dict[str, str] | None = None) -> 
         actions = f"<a class='button' href='/provider-changes/{ev['id']}/edit'>Редактировать</a>" if can_write("provider_changes") else ""
         if ev["is_active"] and can_write("provider_changes"):
             actions += f"<details><summary>Деактивировать</summary><form method='post' action='/provider-changes/{ev['id']}/deactivate'><label>Причина <span class='required'>*</span><input name='deactivation_reason' required></label><button>Деактивировать</button></form></details>"
-        rows.append(f"<tr class='{'' if ev['is_active'] else 'inactive-row'}'><td>{esc(ev['event_at'])}</td><td>{esc(ROUTING_SCOPE_LABELS.get(ev['apply_scope'], ev['apply_scope']))}</td><td>{esc(ev['country_name'])}</td><td>{esc(server_text)}</td><td>{esc(campaign_text)}</td><td>{details_text}</td><td>{esc(ev['reason'])}</td><td>{esc(ev['comment'])}</td><td>{'Да' if ev['is_active'] else 'Нет'}</td><td class='actions'>{actions}</td></tr>")
+        rows.append(f"<tr class='{'' if ev['is_active'] else 'inactive-row'}'><td data-col='event_at'>{esc(ev['event_at'])}</td><td data-col='scope'>{esc(ROUTING_SCOPE_LABELS.get(ev['apply_scope'], ev['apply_scope']))}</td><td data-col='geo'>{esc(ev['country_name'])}</td><td data-col='server'>{esc(server_text)}</td><td data-col='campaign'>{esc(campaign_text)}</td><td data-col='details'>{details_text}</td><td data-col='reason'>{esc(ev['reason'])}</td><td data-col='comment'>{esc(ev['comment'])}</td><td data-col='active'>{'Да' if ev['is_active'] else 'Нет'}</td><td data-col='actions' class='actions'>{actions}</td></tr>")
     if not rows:
         rows.append("<tr><td colspan='10'><div class='empty-state'>Событий пока нет</div></td></tr>")
     filters_html = f"""<form class='filter-grid' method='get' action='/provider-changes'>
@@ -1717,12 +1797,13 @@ def provider_changes_page(repo: Repository, q: dict[str, str] | None = None) -> 
 <label>Провайдер <select name='provider_id'>{options(repo, 'providers', selected=q.get('provider_id'), empty='Все')}</select></label>
 <label class='checkbox-inline'><input type='checkbox' name='include_inactive' value='1' {'checked' if q.get('include_inactive') == '1' else ''}> Показывать архив/неактивные</label>
 <button>Найти</button></form>"""
-    journal_html = f"<table><thead><tr><th>Дата события</th><th>Область применения</th><th>GEO</th><th>Сервер</th><th>Кампания</th><th>Детали</th><th>Причина</th><th>Комментарий</th><th>Активна</th><th>Действия</th></tr></thead><tbody>{''.join(rows)}</tbody></table>"
+    journal_html = f"{data_table('provider_changes', [('event_at', 'Дата события'), ('scope', 'Область применения'), ('geo', 'GEO'), ('server', 'Сервер'), ('campaign', 'Кампания'), ('details', 'Детали'), ('reason', 'Причина'), ('comment', 'Комментарий'), ('active', 'Активна'), ('actions', 'Действия')], ''.join(rows))}"
     body = f"""
 <h1>Смена провайдеров</h1>
 {routing_event_form(repo) if can_write("provider_changes") else ""}
 {filter_card(filters_html, q, ('country_id', 'apply_scope', 'server_id', 'campaign_id', 'provider_id', 'include_inactive'))}
 {export_link('/provider-changes', q)}
+{column_settings('provider_changes', [('event_at', 'Дата события'), ('scope', 'Область применения'), ('geo', 'GEO'), ('server', 'Сервер'), ('campaign', 'Кампания'), ('details', 'Детали'), ('reason', 'Причина'), ('comment', 'Комментарий'), ('active', 'Активна'), ('actions', 'Действия')])}
 {pagination_html}
 {table_card(journal_html, title='Журнал событий', extra_class='journal-card')}
 {pagination_html}"""
@@ -1860,12 +1941,12 @@ def server_priorities_page(repo: Repository, q: dict[str, str] | None = None) ->
         </details>"""
         if row["server_id"] in server_rows:
             server_rows[row["server_id"]].append(
-                f"<tr><td>{esc(row['country_name'])}</td><td>{current_priority}</td><td>{previous_priority}</td><td class='actions'>{actions}</td></tr>"
+                f"<tr><td data-col='geo'>{esc(row['country_name'])}</td><td data-col='current_priority'>{current_priority}</td><td data-col='previous_priority'>{previous_priority}</td><td data-col='actions' class='actions'>{actions}</td></tr>"
             )
     blocks = []
     for server_id in server_names:
         rows = server_rows[server_id] or ["<tr><td colspan='4' class='muted'>Нет настроенных приоритетов</td></tr>"]
-        table_html = f"<table><thead><tr><th>GEO</th><th>Текущий приоритет</th><th>Предыдущий приоритет</th><th>Действия</th></tr></thead><tbody>{''.join(rows)}</tbody></table>"
+        table_html = f"{data_table('server_priorities', [('geo', 'GEO'), ('current_priority', 'Текущий приоритет'), ('previous_priority', 'Предыдущий приоритет'), ('actions', 'Действия')], ''.join(rows))}"
         blocks.append(f"""
 <section class='server-priority-block'>
   <h2>Сервер: {esc(server_names[server_id])}</h2>
@@ -1876,6 +1957,7 @@ def server_priorities_page(repo: Repository, q: dict[str, str] | None = None) ->
 <h1>Администрирование → Приоритет по серверам</h1>
 {filter_card(filters_html, q, ('country_id', 'server_id'))}
 {export_link('/admin/server-priorities', q)}
+{column_settings('server_priorities', [('geo', 'GEO'), ('current_priority', 'Текущий приоритет'), ('previous_priority', 'Предыдущий приоритет'), ('actions', 'Действия')])}
 {pagination_html}
 {''.join(blocks)}
 {pagination_html}"""
@@ -1925,12 +2007,12 @@ def company_routing_settings_page(repo: Repository, q: dict[str, str] | None = N
             </details>
             """
         rows.append(
-            f"<tr><td>{esc(setting['country_name'])}</td><td>{esc(setting['server_name'])}</td>"
-            f"<td>{esc(setting['company_id_external'])}</td><td>{esc(setting['company_name'])}</td>"
-            f"<td>{esc(setting['routing_mode'])}</td><td>{'Да' if setting['has_autorotation'] else 'Нет'}</td>"
-            f"<td>{esc(route_label)}{provider_label}</td><td>{active_badge}</td>"
-            f"<td>{esc(setting['valid_from'])}</td><td>{esc(setting['valid_to'])}</td>"
-            f"<td>{esc(setting['comment'])}</td><td>{actions}</td></tr>"
+            f"<tr><td data-col='geo'>{esc(setting['country_name'])}</td><td data-col='server'>{esc(setting['server_name'])}</td>"
+            f"<td data-col='company_id'>{esc(setting['company_id_external'])}</td><td data-col='company_name'>{esc(setting['company_name'])}</td>"
+            f"<td data-col='routing_mode'>{esc(setting['routing_mode'])}</td><td data-col='autorotation'>{'Да' if setting['has_autorotation'] else 'Нет'}</td>"
+            f"<td data-col='route'>{esc(route_label)}{provider_label}</td><td data-col='active'>{active_badge}</td>"
+            f"<td data-col='valid_from'>{esc(setting['valid_from'])}</td><td data-col='valid_to'>{esc(setting['valid_to'])}</td>"
+            f"<td data-col='comment'>{esc(setting['comment'])}</td><td data-col='actions'>{actions}</td></tr>"
         )
     filters_html = f"""<form class="filter-grid" method="get" action="/admin/company-routing-settings">
 <label>GEO <select name="country_id">{options(repo, 'countries', selected=q.get('country_id'), empty='Все')}</select></label>
@@ -1951,11 +2033,12 @@ def company_routing_settings_page(repo: Repository, q: dict[str, str] | None = N
   <label>Комментарий <input name="comment"></label>
   <button>Создать</button>
 </form>"""
-    table_html = f"""<table><thead><tr><th>GEO</th><th>Сервер</th><th>ID кампании</th><th>Название кампании</th><th>Режим маршрутизации</th><th>Авторотация</th><th>Маршрут кампании</th><th>Активна</th><th>Действует с</th><th>Действует до</th><th>Комментарий</th><th>Действия</th></tr></thead><tbody>{''.join(rows)}</tbody></table>"""
+    table_html = f"""{data_table('company_routing_settings', [('geo', 'GEO'), ('server', 'Сервер'), ('company_id', 'ID кампании'), ('company_name', 'Название кампании'), ('routing_mode', 'Режим маршрутизации'), ('autorotation', 'Авторотация'), ('route', 'Маршрут кампании'), ('active', 'Активна'), ('valid_from', 'Действует с'), ('valid_to', 'Действует до'), ('comment', 'Комментарий'), ('actions', 'Действия')], ''.join(rows))}"""
     body = f"""
 <h1>Администрирование → Схема маршрутизации кампаний</h1>
 {filter_card(filters_html, q, ('country_id', 'server_id', 'company_id_external', 'routing_mode', 'is_active', 'show_history'))}
 {export_link('/admin/company-routing-settings', q)}
+{column_settings('company_routing_settings', [('geo', 'GEO'), ('server', 'Сервер'), ('company_id', 'ID кампании'), ('company_name', 'Название кампании'), ('routing_mode', 'Режим маршрутизации'), ('autorotation', 'Авторотация'), ('route', 'Маршрут кампании'), ('active', 'Активна'), ('valid_from', 'Действует с'), ('valid_to', 'Действует до'), ('comment', 'Комментарий'), ('actions', 'Действия')])}
 {form_card('+ Добавить схему маршрутизации кампании', create_html)}
 {pagination_html}
 <script>
