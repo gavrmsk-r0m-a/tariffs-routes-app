@@ -318,32 +318,37 @@ def page(title: str, body: str, notice: str | None = None) -> bytes:
   <style>
     :root,
     html[data-theme="cyber-sketch"] {{
-      --bg: #f7f7f2;
+      --bg: #f7f5ff;
       --surface: #ffffff;
-      --surface-muted: #fafaf5;
-      --surface-strong: #f0f0ea;
-      --sidebar-bg: #f0f0ea;
-      --text-strong: #18181b;
-      --text: #3f3f46;
-      --muted: #71717a;
-      --border: #e4e4dc;
-      --border-strong: #cfcfc3;
+      --surface-muted: #fbfaff;
+      --surface-strong: #f0edff;
+      --sidebar-bg: #f3f0ff;
+      --text-strong: #14111f;
+      --text: #312f44;
+      --muted: #68657d;
+      --border: #dfdaf4;
+      --border-strong: #c8bff0;
       --accent: #6d5dfc;
       --accent-strong: #4f46e5;
-      --accent-soft: #eeedff;
-      --cyber: #00c2a8;
-      --cyber-soft: #dcfff8;
+      --accent-soft: #efedff;
+      --cyber: #00bfa6;
+      --cyber-strong: #009e8a;
+      --cyber-soft: #ddfff8;
+      --pink: #ff4fd8;
+      --pink-soft: #ffe8fa;
       --warning: #f59e0b;
-      --warning-soft: #fff7d6;
+      --warning-soft: #fff3d6;
       --danger: #ef4444;
-      --danger-soft: #fee2e2;
+      --danger-strong: #dc2626;
+      --danger-soft: #ffe3e3;
       --success: var(--cyber);
       --success-soft: var(--cyber-soft);
       --focus: var(--accent);
-      --shadow-soft: 0 1px 2px rgba(24, 24, 27, 0.06);
-      --shadow-card: 0 8px 24px rgba(24, 24, 27, 0.07);
-      --radius-control: 6px;
-      --radius-card: 9px;
+      --shadow-soft: 0 1px 2px rgba(20, 17, 31, 0.07);
+      --shadow-card: 0 16px 38px rgba(62, 51, 140, 0.12);
+      --shadow-glow: 0 0 0 1px rgba(109, 93, 252, 0.16), 0 14px 34px rgba(109, 93, 252, 0.12);
+      --radius-control: 8px;
+      --radius-card: 12px;
     }}
     html[data-theme="calm-blue"] {{
       --bg: #f5f7fb;
@@ -395,6 +400,12 @@ def page(title: str, body: str, notice: str | None = None) -> bytes:
     }}
     * {{ box-sizing: border-box; }}
     body {{ font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 0; color: var(--text); background: var(--bg); font-size: 14px; line-height: 1.45; }}
+    html[data-theme="cyber-sketch"] body {{ background:
+      radial-gradient(circle at 16% 10%, rgba(0, 191, 166, 0.12), transparent 24rem),
+      radial-gradient(circle at 88% 2%, rgba(255, 79, 216, 0.08), transparent 20rem),
+      linear-gradient(rgba(109, 93, 252, 0.035) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(109, 93, 252, 0.035) 1px, transparent 1px),
+      var(--bg); background-size: auto, auto, 28px 28px, 28px 28px, auto; }}
     .breadcrumbs {{ display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 10px; color: var(--muted); font-size: 12px; font-weight: 650; }}
     .breadcrumbs a {{ color: var(--accent-strong); text-decoration: none; }}
     .breadcrumbs a:hover {{ text-decoration: underline; }}
@@ -409,17 +420,16 @@ def page(title: str, body: str, notice: str | None = None) -> bytes:
     .side-nav {{ display: grid; gap: 5px; }}
     .side-link, .admin-link, .button, button {{ border: 1px solid transparent; border-radius: var(--radius-control); color: var(--text); padding: 7px 10px; text-decoration: none; background: transparent; cursor: pointer; font: inherit; transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease, box-shadow 120ms ease; }}
     .side-link {{ display: flex; width: 100%; align-items: center; justify-content: space-between; text-align: left; font-weight: 650; min-height: 36px; }}
-    .side-link:hover, .admin-link:hover {{ background: color-mix(in srgb, var(--surface) 78%, transparent); border-color: var(--border); color: var(--text-strong); }}
-    .side-link.active {{ background: var(--surface); border-color: var(--border-strong); color: var(--accent-strong); box-shadow: var(--shadow-soft); font-weight: 780; }}
+    .side-link:hover, .admin-link:hover {{ background: color-mix(in srgb, var(--accent-soft) 62%, var(--cyber-soft)); border-color: var(--border-strong); color: var(--text-strong); }}
+    .side-link.active {{ position: relative; background: linear-gradient(135deg, var(--accent-strong) 0%, var(--accent) 100%); border-color: var(--accent); color: #fff; box-shadow: var(--shadow-glow, var(--shadow-soft)); font-weight: 780; }}
+    .side-link.active::before {{ content: ""; position: absolute; left: -1px; top: 8px; bottom: 8px; width: 3px; border-radius: 999px; background: var(--cyber); }}
     .admin-toggle::after {{ content: "›"; color: var(--muted); font-size: 14px; line-height: 1; }}
     .admin-toggle[aria-expanded="true"]::after {{ content: "⌄"; }}
     .admin-tree {{ display: none; margin: 4px 0 8px; padding: 6px; border: 1px solid var(--border); border-radius: 10px; background: color-mix(in srgb, var(--surface) 55%, transparent); }}
     .admin-tree.open {{ display: grid; gap: 2px; }}
     .admin-link {{ display: block; padding: 6px 8px; font-size: 13px; line-height: 1.25; color: var(--text); }}
-    .admin-link.active {{ background: var(--surface); border-color: var(--border-strong); color: var(--accent-strong); font-weight: 730; box-shadow: var(--shadow-soft); }}
-    .workspace {{ min-width: 0; padding: 20px 28px 42px; background:
-      radial-gradient(circle at top left, color-mix(in srgb, var(--accent) 8%, transparent), transparent 32rem),
-      var(--bg); }}
+    .admin-link.active {{ background: linear-gradient(135deg, var(--accent-soft), var(--cyber-soft)); border-color: var(--accent); color: var(--accent-strong); font-weight: 730; box-shadow: var(--shadow-soft); }}
+    .workspace {{ min-width: 0; padding: 20px 28px 42px; background: transparent; }}
     .topbar {{ display: flex; justify-content: flex-end; align-items: center; gap: 10px; min-height: 40px; margin: 0 0 10px; flex-wrap: wrap; }}
     .current-user-selector label, .theme-selector {{ display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; font-weight: 700; }}
     .current-user-selector select {{ min-width: 190px; }}
@@ -428,9 +438,9 @@ def page(title: str, body: str, notice: str | None = None) -> bytes:
     .content > h1:first-of-type {{ margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid var(--border); }}
     a {{ color: var(--accent-strong); text-underline-offset: 2px; }}
     a:hover {{ color: var(--accent-strong); }}
-    .button, button {{ background: var(--surface); border-color: var(--border-strong); color: var(--text-strong); min-height: 32px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; font-weight: 650; box-shadow: 0 1px 0 rgba(34, 48, 42, 0.03); }}
+    .button, button {{ background: var(--surface); border-color: var(--border-strong); color: var(--text-strong); min-height: 32px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; font-weight: 650; box-shadow: var(--shadow-soft); }}
     .admin-toggle {{ background: transparent; border-color: transparent; box-shadow: none; }}
-    .button:hover, button:hover {{ background: var(--surface-muted); border-color: var(--accent); }}
+    .button:hover, button:hover {{ background: var(--accent-soft); border-color: var(--accent); color: var(--accent-strong); }}
     .button:active, button:active {{ background: var(--surface-strong); }}
     .button:disabled, button:disabled, input:disabled, select:disabled, textarea:disabled {{ opacity: 0.62; cursor: not-allowed; }}
     button[onclick*="Деактив"], button[onclick*="Удал"], button[onclick*="Отключ"], form[action$="/deactivate"] button {{ color: var(--danger); border-color: var(--danger); background: var(--danger-soft); }}
@@ -480,7 +490,8 @@ def page(title: str, body: str, notice: str | None = None) -> bytes:
     .message-card h1 {{ border: 0; padding: 0; margin-bottom: 8px; }}
     .ok {{ border: 1px solid var(--cyber); background: var(--success-soft); color: var(--text-strong); padding: 12px 14px; border-radius: var(--radius-card); margin: 10px 0 14px; box-shadow: var(--shadow-soft); }}
     .grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }}
-    .card {{ border: 1px solid var(--border); border-radius: var(--radius-card); padding: 14px; background: var(--surface); box-shadow: var(--shadow-soft); }}
+    .card {{ border: 1px solid var(--border); border-radius: var(--radius-card); padding: 14px; background: var(--surface); box-shadow: var(--shadow-soft); transition: transform 140ms ease, border-color 140ms ease, box-shadow 140ms ease; }}
+    .card:hover {{ transform: translateY(-1px); border-color: var(--accent); box-shadow: var(--shadow-glow, var(--shadow-card)); }}
     details {{ border: 1px solid var(--border); border-radius: var(--radius-card); padding: 0; margin: 12px 0; background: var(--surface); box-shadow: var(--shadow-soft); }}
     summary {{ cursor: pointer; padding: 8px 12px; font-weight: 750; color: var(--text-strong); }}
     details[open] > summary {{ border-bottom: 1px solid var(--border); background: var(--surface-muted); border-radius: var(--radius-card) var(--radius-card) 0 0; }}
@@ -498,7 +509,7 @@ def page(title: str, body: str, notice: str | None = None) -> bytes:
     .form-grid .wide, .filter-grid .wide {{ grid-column: 1 / -1; }}
     .form-grid fieldset, .filter-grid fieldset {{ grid-column: 1 / -1; margin: 0; }}
     .form-grid textarea {{ min-width: min(620px, 100%); }}
-    .filter-grid button[type="submit"], .filter-grid > button, .form-grid button[type="submit"], .form-grid > button {{ background: var(--accent-strong); border-color: var(--accent-strong); color: #fff; }}
+    .filter-grid button[type="submit"], .filter-grid > button, .form-grid button[type="submit"], .form-grid > button {{ background: linear-gradient(135deg, var(--accent-strong), var(--accent)); border-color: var(--accent-strong); color: #fff; }}
     .filter-grid button[type="submit"]:hover, .filter-grid > button:hover, .form-grid button[type="submit"]:hover, .form-grid > button:hover {{ background: var(--accent); border-color: var(--accent); color: #fff; }}
     .form-grid button[onclick*="Деактив"], .form-grid button[onclick*="Удал"], .form-grid button[onclick*="Отключ"], .filter-grid button[onclick*="Деактив"], .filter-grid button[onclick*="Удал"], .filter-grid button[onclick*="Отключ"] {{ color: var(--danger); border-color: var(--danger); background: var(--danger-soft); }}
     .form-grid button[onclick*="Деактив"]:hover, .form-grid button[onclick*="Удал"]:hover, .form-grid button[onclick*="Отключ"]:hover, .filter-grid button[onclick*="Деактив"]:hover, .filter-grid button[onclick*="Удал"]:hover, .filter-grid button[onclick*="Отключ"]:hover {{ background: var(--danger-soft); border-color: var(--danger); color: var(--danger); }}
@@ -515,7 +526,7 @@ def page(title: str, body: str, notice: str | None = None) -> bytes:
     .column-settings-panel label {{ display: flex; align-items: center; gap: 6px; margin: 0; font-size: 13px; font-weight: 560; white-space: nowrap; }}
     .column-reset {{ justify-content: flex-start; margin-top: 5px; padding: 4px 0; min-height: 24px; border: 0; background: transparent; box-shadow: none; color: var(--accent-strong); font-size: 12px; }}
     [data-column-hidden="true"] {{ display: none !important; }}
-    .table-card, .journal-card {{ border: 1px solid var(--border); border-radius: var(--radius-card); background: var(--surface); margin: 12px 0; overflow: hidden; box-shadow: var(--shadow-card); }}
+    .table-card, .journal-card {{ border: 1px solid var(--border-strong); border-radius: var(--radius-card); background: var(--surface); margin: 12px 0; overflow: hidden; box-shadow: var(--shadow-card); }}
     .table-card h2, .journal-card h2 {{ margin: 0; padding: 12px 14px; border-bottom: 1px solid var(--border); background: var(--surface-muted); color: var(--text-strong); }}
     .journal-card h2 {{ font-size: 19px; }}
     .table-scroll {{ overflow-x: auto; overscroll-behavior-x: contain; }}
@@ -549,16 +560,20 @@ def page(title: str, body: str, notice: str | None = None) -> bytes:
     .dictionary-add .form-grid {{ grid-template-columns: repeat(auto-fit, minmax(170px, 260px)); }}
     .dictionary-add input, .dictionary-add select {{ width: 100%; box-sizing: border-box; }}
     .inactive-row {{ color: var(--muted); background: var(--surface-strong); }}
-    .status-badge {{ display: inline-flex; align-items: center; min-height: 22px; padding: 2px 7px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface-muted); color: var(--text); font-size: 12px; font-weight: 720; white-space: nowrap; }}
+    .status-badge {{ display: inline-flex; align-items: center; min-height: 22px; padding: 2px 7px; border: 1px solid var(--cyber); border-radius: 999px; background: var(--cyber-soft); color: var(--text-strong); font-size: 12px; font-weight: 720; white-space: nowrap; }}
 
-    .dashboard-hero {{ display: flex; align-items: center; justify-content: space-between; gap: 18px; border: 1px solid var(--border); border-radius: 18px; padding: 26px; margin: 0 0 18px; background: linear-gradient(135deg, var(--surface) 0%, var(--accent-soft) 100%); box-shadow: var(--shadow-card); }}
+    .dashboard-hero {{ position: relative; overflow: hidden; display: flex; align-items: center; justify-content: space-between; gap: 18px; border: 1px solid var(--border-strong); border-radius: 18px; padding: 26px; margin: 0 0 18px; background:
+      radial-gradient(circle at 82% 20%, rgba(0, 191, 166, 0.20), transparent 16rem),
+      linear-gradient(135deg, var(--surface) 0%, var(--surface-strong) 58%, var(--cyber-soft) 100%); box-shadow: var(--shadow-glow, var(--shadow-card)); }}
+    .dashboard-hero::after {{ content: ""; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(rgba(79, 70, 229, 0.045) 1px, transparent 1px), linear-gradient(90deg, rgba(79, 70, 229, 0.045) 1px, transparent 1px); background-size: 22px 22px; mask-image: linear-gradient(120deg, transparent, #000 18%, #000 70%, transparent); }}
+    .dashboard-hero > * {{ position: relative; z-index: 1; }}
     .dashboard-hero h1 {{ margin: 0 0 8px; padding: 0; border: 0; font-size: 34px; }}
     .eyebrow {{ margin: 0 0 6px; color: var(--accent-strong); font-size: 12px; font-weight: 820; text-transform: uppercase; letter-spacing: .08em; }}
     .hero-text {{ max-width: 760px; margin: 0; color: var(--muted); font-size: 16px; }}
     .hero-action {{ background: var(--accent-strong); border-color: var(--accent-strong); color: #fff; white-space: nowrap; }}
     .hero-action:hover {{ background: var(--accent); border-color: var(--accent); color: #fff; }}
     .metrics-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; margin: 0 0 18px; }}
-    .metric-card {{ border: 1px solid var(--border); border-radius: var(--radius-card); padding: 15px; background: var(--surface); box-shadow: var(--shadow-soft); }}
+    .metric-card {{ border: 1px solid var(--border-strong); border-left: 4px solid var(--cyber); border-radius: var(--radius-card); padding: 15px; background: linear-gradient(180deg, var(--surface), var(--surface-muted)); box-shadow: var(--shadow-soft); }}
     .metric-label {{ display: block; min-height: 36px; color: var(--muted); font-size: 12px; font-weight: 760; text-transform: uppercase; letter-spacing: .04em; }}
     .metric-value {{ display: block; margin: 6px 0 3px; color: var(--text-strong); font-size: 30px; line-height: 1; letter-spacing: -0.03em; }}
     .metric-hint {{ color: var(--muted); font-size: 12px; }}
@@ -566,7 +581,7 @@ def page(title: str, body: str, notice: str | None = None) -> bytes:
     .dashboard-section h2 {{ margin-bottom: 10px; }}
     .quick-links {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px; }}
     .quick-link-card {{ display: grid; gap: 4px; min-height: 84px; border: 1px solid var(--border); border-radius: var(--radius-card); padding: 13px 14px; background: var(--surface); color: var(--text); text-decoration: none; box-shadow: var(--shadow-soft); }}
-    .quick-link-card:hover {{ border-color: var(--accent); background: var(--accent-soft); color: var(--text-strong); text-decoration: none; }}
+    .quick-link-card:hover {{ transform: translateY(-1px); border-color: var(--accent); background: linear-gradient(135deg, var(--accent-soft), var(--cyber-soft)); color: var(--text-strong); text-decoration: none; box-shadow: var(--shadow-glow, var(--shadow-card)); }}
     .quick-link-card span {{ font-weight: 780; }}
     .quick-link-card small {{ color: var(--muted); line-height: 1.35; }}
     .table-scroll {{ max-height: calc(100vh - 270px); overflow: auto; position: relative; }}
@@ -579,8 +594,24 @@ def page(title: str, body: str, notice: str | None = None) -> bytes:
     .action-button, .actions .button, .actions button, .compact-actions .button, .compact-actions button, td[data-col="actions"] .button, td[data-col="actions"] button {{ min-width: 30px; min-height: 28px; padding: 4px 7px; border-radius: 7px; font-size: 12px; line-height: 1; }}
     .edit-action {{ min-width: 30px; width: 30px; padding: 4px; font-size: 0; }}
     .edit-action::before {{ content: "✏️"; font-size: 13px; line-height: 1; }}
-    .danger-action, form[action$="/deactivate"] button {{ min-height: 28px; padding: 4px 8px; color: var(--danger); border-color: var(--danger); background: var(--danger-soft); font-size: 12px; font-weight: 720; }}
+    .danger-action, form[action$="/deactivate"] button {{ min-height: 26px; padding: 3px 7px; color: var(--danger-strong, var(--danger)); border-color: var(--danger); background: var(--danger-soft); font-size: 12px; font-weight: 720; box-shadow: none; }}
     .danger-action:hover, form[action$="/deactivate"] button:hover {{ background: var(--danger-soft); border-color: var(--danger); color: var(--danger); }}
+    html[data-theme="calm-blue"] .side-link:hover, html[data-theme="calm-blue"] .admin-link:hover, html[data-theme="terminal-paper"] .side-link:hover, html[data-theme="terminal-paper"] .admin-link:hover {{ background: color-mix(in srgb, var(--surface) 78%, transparent); border-color: var(--border); color: var(--text-strong); }}
+    html[data-theme="calm-blue"] .side-link.active, html[data-theme="terminal-paper"] .side-link.active {{ background: var(--surface); border-color: var(--border-strong); color: var(--accent-strong); box-shadow: var(--shadow-soft); font-weight: 780; }}
+    html[data-theme="calm-blue"] .side-link.active::before, html[data-theme="terminal-paper"] .side-link.active::before {{ content: none; }}
+    html[data-theme="calm-blue"] .admin-link.active, html[data-theme="terminal-paper"] .admin-link.active {{ background: var(--surface); border-color: var(--border-strong); color: var(--accent-strong); font-weight: 730; box-shadow: var(--shadow-soft); }}
+    html[data-theme="calm-blue"] .dashboard-hero, html[data-theme="terminal-paper"] .dashboard-hero {{ background: linear-gradient(135deg, var(--surface) 0%, var(--accent-soft) 100%); box-shadow: var(--shadow-card); }}
+    html[data-theme="calm-blue"] .dashboard-hero::after, html[data-theme="terminal-paper"] .dashboard-hero::after {{ content: none; }}
+    html[data-theme="calm-blue"] .metric-card, html[data-theme="terminal-paper"] .metric-card {{ border: 1px solid var(--border); background: var(--surface); box-shadow: var(--shadow-soft); }}
+    html[data-theme="calm-blue"] .status-badge, html[data-theme="terminal-paper"] .status-badge {{ border-color: var(--border); background: var(--surface-muted); color: var(--text); }}
+    html[data-theme="cyber-sketch"] .theme-selector select:focus, html[data-theme="cyber-sketch"] .theme-selector select:focus-visible {{ border-color: var(--accent); outline-color: var(--accent); box-shadow: 0 0 0 3px rgba(109, 93, 252, 0.14); }}
+    html[data-theme="cyber-sketch"] th {{ background: var(--surface-strong); color: var(--text-strong); }}
+    html[data-theme="cyber-sketch"] tbody tr:hover {{ background: rgba(109, 93, 252, 0.08); }}
+    html[data-theme="cyber-sketch"] .table-card td[data-copy-column="phone-number"], html[data-theme="cyber-sketch"] code {{ font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }}
+    html[data-theme="cyber-sketch"] .hero-action {{ background: linear-gradient(135deg, var(--accent-strong), var(--accent)); box-shadow: var(--shadow-glow); }}
+    html[data-theme="cyber-sketch"] .eyebrow {{ display: inline-flex; align-items: center; gap: 6px; color: var(--cyber-strong); background: var(--cyber-soft); border: 1px solid rgba(0, 191, 166, 0.28); border-radius: 999px; padding: 3px 8px; }}
+    html[data-theme="cyber-sketch"] .eyebrow::before {{ content: "◈"; color: var(--cyber); }}
+    html[data-theme="cyber-sketch"] .quick-link-card {{ transition: transform 140ms ease, border-color 140ms ease, box-shadow 140ms ease, background 140ms ease; }}
     @media (max-width: 900px) {{
       .app-shell {{ grid-template-columns: 1fr; }}
       .sidebar {{ position: static; height: auto; }}
