@@ -127,7 +127,11 @@ def _business_key(conn: sqlite3.Connection, entity_type: str, row: dict[str, str
             raise BusinessRuleError("country and route name are required")
         return (country, name)
     if entity_type == "phone_numbers":
+        country = _first(row, "country", "страна", "гео", "GEO")
+        project = _first(row, "project", "project_label", "проект")
         number = _first(row, "number", "номер")
+        if not country or not project or not number:
+            raise BusinessRuleError("country, project, and number are required")
         validate_phone_number(number)
         return (number,)
     if entity_type == "calling_companies":
@@ -181,6 +185,8 @@ def _resolve_assignment_code(conn: sqlite3.Connection, value: str) -> str:
 
 def _phone_import_values(conn: sqlite3.Connection, row: dict[str, str]) -> dict[str, str | None | bool]:
     project = _first(row, "project", "project_label", "проект") or None
+    if not project:
+        raise BusinessRuleError("Проект обязателен для импорта номеров")
     if project and not _active_name_exists(conn, "projects", project):
         raise BusinessRuleError(f"Проект отсутствует в активном справочнике: {project}")
     phone_type = _first(row, "phone_type", "тип номера") or None
@@ -198,6 +204,8 @@ def _phone_import_values(conn: sqlite3.Connection, row: dict[str, str]) -> dict[
         "tariff_label": _first(row, "tariff_label", "тариф") or None,
         "comment": _first(row, "comment", "комментарий") or None,
         "created_at": _first(row, "created_at", "дата создания") or None,
+        "outgoing_rate": _first(row, "outgoing_rate") or None,
+        "incoming_rate": _first(row, "incoming_rate") or None,
     }
 
 
@@ -273,9 +281,13 @@ def _apply_route(repo: Repository, row: dict[str, str], user_id: int, *, exists:
 def _apply_phone(repo: Repository, row: dict[str, str], user_id: int, *, exists: bool) -> None:
     number = _first(row, "number", "номер")
     validate_phone_number(number)
-    country_id = repo.get_or_create_country(_first(row, "country", "страна", "гео") or "Unknown")
+    country_name = _first(row, "country", "страна", "гео", "GEO")
+    if not country_name:
+        raise BusinessRuleError("ГЕО обязателен для импорта номеров")
+    country_id = repo.get_or_create_country(country_name)
     provider_name = _first(row, "provider", "провайдер")
     provider_id = repo.get_or_create_provider(provider_name) if provider_name else None
+    review_required = provider_id is None
     currency_code = _first(row, "currency", "валюта") or "EUR"
     currency_id = repo.get_or_create_currency(currency_code)
     imported = _phone_import_values(repo.conn, row)
@@ -295,20 +307,23 @@ def _apply_phone(repo: Repository, row: dict[str, str], user_id: int, *, exists:
         "comment": imported["comment"],
         "currency_id": currency_id,
         "created_at": imported["created_at"],
+        "outgoing_rate": imported["outgoing_rate"],
+        "incoming_rate": imported["incoming_rate"],
+        "review_required": review_required,
     }
     if exists:
         repo.conn.execute(
             f"""
             UPDATE phone_numbers SET country_id = ?, provider_id = ?, project_label = ?, assignment_type = ?,
-                status = ?, is_active = ?, connection_cost = ?, monthly_fee = ?, currency_id = ?, phone_type = ?, tariff_label = ?,
-                comment = ?, deactivated_at = CASE WHEN ? = 0 AND deactivated_at IS NULL THEN {deactivated_at_expr} WHEN ? = 1 THEN NULL ELSE deactivated_at END,
+                status = ?, is_active = ?, connection_cost = ?, monthly_fee = ?, outgoing_rate = ?, incoming_rate = ?, currency_id = ?, phone_type = ?, tariff_label = ?,
+                comment = ?, review_required = CASE WHEN ? = 1 THEN 1 ELSE review_required END, deactivated_at = CASE WHEN ? = 0 AND deactivated_at IS NULL THEN {deactivated_at_expr} WHEN ? = 1 THEN NULL ELSE deactivated_at END,
                 updated_by = ?, updated_at = CURRENT_TIMESTAMP
             WHERE normalized_number = ?
             """,
             (
                 data["country_id"], data["provider_id"], data["project_label"], data["assignment_type"],
-                data["status"], data["is_active"], data["connection_cost"], data["monthly_fee"], data["currency_id"], data["phone_type"], data["tariff_label"],
-                data["comment"], data["is_active"], data["is_active"], user_id, number,
+                data["status"], data["is_active"], data["connection_cost"], data["monthly_fee"], data["outgoing_rate"], data["incoming_rate"], data["currency_id"], data["phone_type"], data["tariff_label"],
+                data["comment"], data["review_required"], data["is_active"], data["is_active"], user_id, number,
             ),
         )
         repo.conn.commit()

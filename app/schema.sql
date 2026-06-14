@@ -170,6 +170,7 @@ CREATE TABLE IF NOT EXISTS phone_numbers (
     currency_id INTEGER REFERENCES currencies(id) ON DELETE RESTRICT,
     comment TEXT,
     is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
+    review_required INTEGER NOT NULL DEFAULT 0 CHECK (review_required IN (0, 1)),
     created_by INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_by INTEGER REFERENCES users(id) ON DELETE RESTRICT,

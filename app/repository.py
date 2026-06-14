@@ -269,6 +269,7 @@ class Repository:
         currency_id: int | None = None,
         comment: str | None = None,
         is_active: bool = True,
+        review_required: bool = False,
         created_at: str | None = None,
         deactivated_at: str | None = None,
     ) -> int:
@@ -280,9 +281,9 @@ class Repository:
             INSERT INTO phone_numbers(
                 country_id, provider_id, number, normalized_number, project_label,
                 assignment_type, phone_type, tariff_label, status, connection_cost, monthly_fee, outgoing_rate,
-                incoming_rate, currency_id, comment, is_active, created_by, created_at, deactivated_at
+                incoming_rate, currency_id, comment, is_active, review_required, created_by, created_at, deactivated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP), ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP), ?)
             """,
             (
                 country_id,
@@ -301,6 +302,7 @@ class Repository:
                 currency_id,
                 comment,
                 1 if is_active else 0,
+                1 if review_required else 0,
                 created_by,
                 created_at,
                 deactivated_at,

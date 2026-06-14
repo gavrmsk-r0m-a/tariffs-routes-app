@@ -495,6 +495,68 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertEqual(captured["status"], "200 OK")
         self.assertNotIn("Мексика/Miatel/Demo_A@", content)
 
+
+    def test_manual_phone_creation_without_provider_is_rejected(self):
+        self.request("/routes")
+        body = urlencode({"number": "525550009901", "country_id": "1", "provider_id": "", "assignment_type": "pool_number", "status": "used"})
+        captured, content = self.request("/phones/create", method="POST", body=body)
+        self.assertEqual(captured["status"], "400 Bad Request")
+        self.assertIn("Провайдер обязателен", content)
+
+    def test_review_required_badge_and_edit_rules(self):
+        self.request("/routes")
+        conn = server.connect(server.DB_PATH)
+        try:
+            conn.execute("""
+                INSERT INTO phone_numbers(country_id, provider_id, number, normalized_number, project_label, assignment_type, status, comment, is_active, review_required, created_by)
+                VALUES (1, NULL, '525550009902', '525550009902', 'Demo', 'other', 'unknown', 'Needs review', 1, 1, 1)
+            """)
+            conn.commit()
+            phone_id = conn.execute("SELECT id FROM phone_numbers WHERE number = '525550009902'").fetchone()["id"]
+        finally:
+            conn.close()
+        captured, content = self.request("/phones")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("Требует проверки", content)
+        body = urlencode({"number": "525550009902", "country_id": "1", "provider_id": "", "assignment_type": "other", "status": "unknown", "is_active": "1"})
+        captured, content = self.request(f"/phones/{phone_id}/update", method="POST", body=body)
+        self.assertEqual(captured["status"], "400 Bad Request")
+        self.assertIn("Нельзя снять флаг проверки, пока не выбран провайдер", content)
+        body = urlencode({"number": "525550009902", "country_id": "1", "provider_id": "", "assignment_type": "other", "status": "unknown", "is_active": "1", "review_required": "1", "comment": "Edited"})
+        captured, _ = self.request(f"/phones/{phone_id}/update", method="POST", body=body)
+        self.assertEqual(captured["status"], "303 See Other")
+        conn = server.connect(server.DB_PATH)
+        try:
+            row = conn.execute("SELECT review_required, provider_id, comment FROM phone_numbers WHERE id = ?", (phone_id,)).fetchone()
+            self.assertEqual(row["review_required"], 1)
+            self.assertIsNone(row["provider_id"])
+            self.assertEqual(row["comment"], "Edited")
+        finally:
+            conn.close()
+        body = urlencode({"number": "525550009902", "country_id": "1", "provider_id": "1", "assignment_type": "other", "status": "unknown", "is_active": "1"})
+        captured, _ = self.request(f"/phones/{phone_id}/update", method="POST", body=body)
+        self.assertEqual(captured["status"], "303 See Other")
+        conn = server.connect(server.DB_PATH)
+        try:
+            row = conn.execute("SELECT review_required, provider_id FROM phone_numbers WHERE id = ?", (phone_id,)).fetchone()
+            self.assertEqual(row["review_required"], 0)
+            self.assertEqual(row["provider_id"], 1)
+        finally:
+            conn.close()
+
+    def test_phone_csv_export_includes_review_required(self):
+        self.request("/routes")
+        conn = server.connect(server.DB_PATH)
+        try:
+            conn.execute("UPDATE phone_numbers SET review_required = 1 WHERE number = '525550000001'")
+            conn.commit()
+        finally:
+            conn.close()
+        captured, content = self.request("/phones?export=csv")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("Требует проверки", content)
+        self.assertIn("Да", content)
+
     def test_duplicate_phone_returns_user_message(self):
         self.request("/routes")
         body = urlencode({"number": "525550000001", "country_id": "1", "provider_id": "2", "assignment_type": "pool_number", "status": "used"})
