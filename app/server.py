@@ -101,7 +101,7 @@ def esc(value: object) -> str:
 ROLE_PERMISSIONS = {
     "admin": {"read": {"*"}, "write": {"*"}},
     "operator": {
-        "read": {"routes", "tariffs", "phones", "companies", "provider_changes", "admin_server_priorities"},
+        "read": {"routes", "tariffs", "phones", "companies", "provider_changes", "admin_server_priorities", "admin_company_routing_settings"},
         "write": {"provider_changes"},
     },
     "guest": {"read": {"routes", "tariffs"}, "write": set()},
@@ -699,6 +699,8 @@ def section_for_write_path(path: str) -> str | None:
         return "companies"
     if path.startswith("/admin/server-priorities/"):
         return "admin_server_priorities"
+    if path.startswith("/admin/company-routing-settings/") or path == "/admin/company-routing-settings/create":
+        return "admin_company_routing_settings"
     if path.startswith("/admin/"):
         return "admin"
     return None
@@ -1974,7 +1976,7 @@ def company_routing_settings_page(repo: Repository, q: dict[str, str] | None = N
         provider_label = f"<br><span class='muted'>Провайдер: {esc(setting['provider_name'])}</span>" if setting["provider_name"] else ""
         active_badge = "Да" if setting["is_active"] else "Нет"
         actions = ""
-        if setting["is_active"] and setting["valid_to"] is None:
+        if can_write("admin_company_routing_settings") and setting["is_active"] and setting["valid_to"] is None:
             actions = f"""
             <details><summary>Редактировать</summary>
               <form method='post' action='/admin/company-routing-settings/{setting['id']}/update'>
@@ -2024,7 +2026,7 @@ def company_routing_settings_page(repo: Repository, q: dict[str, str] | None = N
     body = f"""
 <h1>Администрирование → Схема маршрутизации кампаний</h1>
 {filter_card(filters_html, q, ('country_id', 'server_id', 'company_id_external', 'routing_mode', 'is_active', 'show_history'))}
-{form_card('+ Добавить схему маршрутизации кампании', create_html)}
+{form_card('+ Добавить схему маршрутизации кампании', create_html) if can_write("admin_company_routing_settings") else ""}
 <script>
 document.querySelectorAll('form').forEach(form => {{
   const mode = form.querySelector('select[name="routing_mode"]');
