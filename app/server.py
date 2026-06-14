@@ -336,11 +336,10 @@ def page(title: str, body: str, notice: str | None = None) -> bytes:
     .side-link, .admin-link, .button, button {{ border: 1px solid transparent; border-radius: var(--radius-control); color: var(--text); padding: 7px 10px; text-decoration: none; background: transparent; cursor: pointer; font: inherit; transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease, box-shadow 120ms ease; }}
     .side-link {{ display: flex; width: 100%; align-items: center; justify-content: space-between; text-align: left; font-weight: 650; min-height: 36px; }}
     .side-link:hover, .admin-link:hover {{ background: rgba(255, 255, 255, 0.7); border-color: var(--border); color: var(--text-strong); }}
-    .side-link.active {{ background: var(--surface); border-color: var(--border-strong); color: var(--accent-strong); box-shadow: var(--shadow-soft); }}
-    .side-link.active::before {{ content: ""; width: 3px; align-self: stretch; border-radius: 999px; background: var(--accent); margin: 1px 7px 1px -4px; }}
+    .side-link.active {{ background: var(--surface); border-color: var(--border-strong); color: var(--accent-strong); box-shadow: var(--shadow-soft); font-weight: 780; }}
     .admin-toggle::after {{ content: "›"; color: var(--muted); font-size: 14px; line-height: 1; }}
     .admin-toggle[aria-expanded="true"]::after {{ content: "⌄"; }}
-    .admin-tree {{ display: none; margin: 3px 0 7px 13px; padding: 4px 0 4px 12px; border-left: 1px solid var(--border-strong); }}
+    .admin-tree {{ display: none; margin: 4px 0 8px; padding: 6px; border: 1px solid var(--border); border-radius: 10px; background: rgba(255, 255, 255, 0.42); }}
     .admin-tree.open {{ display: grid; gap: 2px; }}
     .admin-link {{ display: block; padding: 6px 8px; font-size: 13px; line-height: 1.25; color: #44504a; }}
     .admin-link.active {{ background: var(--surface); border-color: var(--border-strong); color: var(--accent-strong); font-weight: 730; box-shadow: var(--shadow-soft); }}
@@ -362,10 +361,10 @@ def page(title: str, body: str, notice: str | None = None) -> bytes:
     button[onclick*="Деактив"], button[onclick*="Удал"], button[onclick*="Отключ"], form[action$="/deactivate"] button {{ color: var(--danger); border-color: #dfbbb6; background: var(--danger-soft); }}
     button[onclick*="Деактив"]:hover, button[onclick*="Удал"]:hover, button[onclick*="Отключ"]:hover, form[action$="/deactivate"] button:hover {{ background: #f2d9d5; border-color: #c9938b; }}
     .button:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, summary:focus-visible, a:focus-visible {{ outline: 2px solid var(--focus); outline-offset: 2px; }}
-    table {{ border-collapse: separate; border-spacing: 0; width: 100%; background: var(--surface); min-width: 760px; }}
-    th, td {{ border: 0; border-bottom: 1px solid #e5ebe6; padding: 8px 10px; vertical-align: top; }}
+    table {{ border-collapse: separate; border-spacing: 0; width: max-content; min-width: 100%; background: var(--surface); }}
+    th, td {{ border: 0; border-bottom: 1px solid #e5ebe6; padding: 9px 12px; vertical-align: top; }}
     tr:last-child td {{ border-bottom: 0; }}
-    th {{ background: linear-gradient(180deg, #f2f6f2 0%, var(--surface-strong) 100%); text-align: left; font-weight: 760; color: #44504a; position: sticky; top: 0; z-index: 1; font-size: 12px; letter-spacing: .015em; }}
+    th {{ background: linear-gradient(180deg, #f2f6f2 0%, var(--surface-strong) 100%); text-align: left; font-weight: 760; color: #44504a; position: sticky; top: 0; z-index: 1; font-size: 12px; letter-spacing: .015em; white-space: nowrap; }}
     .copyable-header {{ display: inline-flex; align-items: center; gap: 6px; }}
     .copy-column-button {{ min-height: 24px; padding: 2px 6px; font-size: 12px; color: var(--accent-strong); border-color: var(--border-strong); background: var(--accent-soft); box-shadow: none; }}
     .copy-column-button:hover {{ background: #dfece3; border-color: var(--accent); }}
@@ -373,7 +372,10 @@ def page(title: str, body: str, notice: str | None = None) -> bytes:
     tbody tr:nth-child(even) {{ background: #fbfcfb; }}
     tbody tr:hover {{ background: var(--accent-soft); }}
     tbody tr:hover td {{ border-bottom-color: #d6e4da; }}
-    td {{ max-width: 360px; overflow-wrap: anywhere; }}
+    td {{ max-width: 360px; overflow-wrap: normal; }}
+    .table-card td, .journal-card td {{ white-space: nowrap; }}
+    .table-card td:nth-last-child(2), .journal-card td:nth-last-child(2), .table-card td.comment-cell, .journal-card td.comment-cell {{ white-space: normal; min-width: 180px; max-width: 360px; overflow-wrap: anywhere; }}
+    .table-card td[data-copy-column="phone-number"], .table-card td[data-copy-column="route-name"], .table-card td:nth-child(1), .table-card td:nth-child(2), .status-badge {{ white-space: nowrap; }}
     input, select, textarea {{ border: 1px solid var(--border-strong); border-radius: var(--radius-control); padding: 6px 8px; margin: 0; max-width: 100%; background: var(--surface); color: var(--text-strong); font: inherit; min-height: 32px; box-shadow: inset 0 1px 1px rgba(34, 48, 42, 0.03); }}
     input:hover, select:hover, textarea:hover {{ border-color: var(--accent); }}
     input:focus, select:focus, textarea:focus {{ border-color: var(--focus); background: #ffffff; }}
@@ -409,11 +411,12 @@ def page(title: str, body: str, notice: str | None = None) -> bytes:
     details[open] > summary {{ border-bottom: 1px solid #e6ece7; background: var(--surface-muted); border-radius: var(--radius-card) var(--radius-card) 0 0; }}
     details > form, details > .card, details > textarea, details > p, details > table {{ margin: 12px; }}
     .filter-card, .form-card {{ border-color: var(--border); box-shadow: var(--shadow-soft); }}
-    .filter-card {{ margin: 8px 0 12px; }}
+    .filter-card {{ margin: 8px 0 12px; background: rgba(255, 255, 255, 0.82); }}
     .filter-summary, .form-summary {{ min-height: 38px; display: flex; align-items: center; justify-content: space-between; }}
     .filter-summary::after, .form-summary::after {{ content: "Настроить"; color: var(--muted); font-size: 12px; font-weight: 650; }}
     details[open] > .filter-summary::after, details[open] > .form-summary::after {{ content: "Свернуть"; }}
     .filter-grid, .form-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, max-content)); gap: 10px 12px; align-items: end; padding: 14px; }}
+    .filter-grid {{ display: flex; flex-wrap: wrap; gap: 10px; align-items: end; }}
     .filter-grid label, .form-grid label {{ min-width: 150px; }}
     .filter-grid input, .filter-grid select, .form-grid input, .form-grid select {{ width: 100%; }}
     .filter-grid .checkbox-inline, .form-grid .checkbox-inline {{ min-width: auto; display: flex; align-items: center; gap: 5px; align-self: center; font-weight: 560; }}
@@ -429,7 +432,7 @@ def page(title: str, body: str, notice: str | None = None) -> bytes:
     .table-card, .journal-card {{ border: 1px solid var(--border); border-radius: var(--radius-card); background: var(--surface); margin: 12px 0; overflow: hidden; box-shadow: var(--shadow-card); }}
     .table-card h2, .journal-card h2 {{ margin: 0; padding: 12px 14px; border-bottom: 1px solid #e6ece7; background: var(--surface-muted); color: var(--text-strong); }}
     .journal-card h2 {{ font-size: 19px; }}
-    .table-scroll {{ overflow-x: auto; }}
+    .table-scroll {{ overflow-x: auto; overscroll-behavior-x: contain; }}
     .table-card table, .journal-card table {{ margin: 0; border: 0; border-radius: 0; }}
     .journal-card {{ min-height: 420px; border-color: var(--border-strong); }}
     .journal-card .table-scroll {{ min-height: 360px; }}
@@ -1252,13 +1255,13 @@ def routes_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
         prefix = route["prefix"] or "Без префикса"
         numbers = f'{route["phone_count"]} номеров <a class="button" href="/routes/{route["id"]}/numbers">Показать номера</a>' if route["cli_source_type"] in {"pool", "sim"} else ("RND провайдера" if route["cli_source_type"] == "rnd" else "—")
         edit = f"<a class='button' href='/routes/{route['id']}/edit'>✏️ Редактировать</a>" if can_write("routes") else ""
-        rows.append(f"<tr><td>{esc(route['country_name'])}</td><td data-copy-column='route-name'>{esc(route['name'])}</td><td>{esc(route['provider_name'])}</td><td>{esc(prefix)}</td><td>{'Да' if route['is_actual'] else 'Нет'}</td><td>{esc(route['comment'])}</td><td>{numbers}</td><td class='actions'>{edit}</td></tr>")
+        rows.append(f"<tr><td>{esc(route['country_name'])}</td><td data-copy-column='route-name'>{esc(route['name'])}</td><td>{esc(route['provider_name'])}</td><td>{esc(prefix)}</td><td>{'Да' if route['is_actual'] else 'Нет'}</td><td class='comment-cell'>{esc(route['comment'])}</td><td>{numbers}</td><td class='actions'>{edit}</td></tr>")
     filters_html = f"""<form class="filter-grid" method="get" action="/routes">
 <label>ГЕО <select name="country_id">{options(repo, 'countries', selected=q.get('country_id'), empty='Все')}</select></label>
 <label>Провайдер <select name="provider_id">{options(repo, 'providers', selected=q.get('provider_id'), empty='Все')}</select></label>
 <label>Префикс <select name="prefix_id">{prefix_options(repo, selected=q.get('prefix_id'), empty='Все')}</select></label>
 <label>Актуальный <select name="is_actual"><option value="">Все</option><option value="1" {'selected' if q.get('is_actual')=='1' else ''}>Да</option><option value="0" {'selected' if q.get('is_actual')=='0' else ''}>Нет</option></select></label>
-<label>Поиск <input name="search" value="{esc(q.get('search'))}"></label><button>Поиск</button></form>"""
+<label>Поиск <input name="search" value="{esc(q.get('search'))}"></label><button>Найти</button></form>"""
     create_html = f"""<form class="form-grid" method="post" action="/routes/create">
   <label>ГЕО <span class="required">*</span><select name="country_id">{active_options(repo, 'countries')}</select></label>
   <label>Провайдер <span class="required">*</span><select name="provider_id">{active_options(repo, 'providers')}</select></label>
@@ -1294,7 +1297,7 @@ def route_numbers_page(repo: Repository, route_id: int, q: dict[str, str] | None
     for phone in numbers:
         cost = f"Подкл: {phone['connection_cost'] or '—'} / Абон: {phone['monthly_fee'] or '—'} / Исх: {phone['outgoing_rate'] or '—'} / Вх: {phone['incoming_rate'] or '—'}"
         select_cell = f"<input type='checkbox' name='link_ids' value='{phone['link_id']}'>" if can_write("routes") else ""
-        rows.append(f"<tr><td>{select_cell}</td><td>{esc(phone['number'])}</td><td>{esc(STATUS_LABELS.get(phone['status'], phone['status']))}</td><td>{esc(ASSIGNMENT_LABELS.get(phone['assignment_type'], phone['assignment_type']))}</td><td>{esc(cost)}</td><td>{esc(phone['link_comment'] or phone['phone_comment'])}</td></tr>")
+        rows.append(f"<tr><td>{select_cell}</td><td>{esc(phone['number'])}</td><td>{esc(STATUS_LABELS.get(phone['status'], phone['status']))}</td><td>{esc(ASSIGNMENT_LABELS.get(phone['assignment_type'], phone['assignment_type']))}</td><td>{esc(cost)}</td><td class='comment-cell'>{esc(phone['link_comment'] or phone['phone_comment'])}</td></tr>")
     all_numbers = chr(10).join([p["number"] for p in numbers])
     write_tools = ""
     if can_write("routes"):
@@ -1322,12 +1325,12 @@ def tariffs_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
     for t in records:
         prefix = t["prefix"] or "Без префикса"
         actions = f"""<form method='post' action='/tariffs/{t['id']}/deactivate'><button onclick="return confirm('Деактивировать тариф?')">⛔ Деактивировать</button></form>""" if can_write("tariffs") else ""
-        rows.append(f"""<tr><td>{esc(t['country_name'])}</td><td>{esc(t['provider_name'])}</td><td>{esc(prefix)}</td><td>{esc(t['price_in_provider_currency'])} {esc(t['currency_code'])}</td><td>{esc(t['eur_price'])} EUR</td><td>{esc(t['priority_status'])}</td><td>{'Да' if t['is_current'] else 'Нет'}</td><td>{esc(t['comment'])}</td><td>{actions}</td></tr>""")
+        rows.append(f"""<tr><td>{esc(t['country_name'])}</td><td>{esc(t['provider_name'])}</td><td>{esc(prefix)}</td><td>{esc(t['price_in_provider_currency'])} {esc(t['currency_code'])}</td><td>{esc(t['eur_price'])} EUR</td><td>{esc(t['priority_status'])}</td><td>{'Да' if t['is_current'] else 'Нет'}</td><td class='comment-cell'>{esc(t['comment'])}</td><td>{actions}</td></tr>""")
     filters_html = f"""<form class="filter-grid" method="get" action="/tariffs">
 <label>ГЕО <select name="country_id">{options(repo, 'countries', selected=q.get('country_id'), empty='Все')}</select></label>
 <label>Провайдер <select name="provider_id">{options(repo, 'providers', selected=q.get('provider_id'), empty='Все')}</select></label>
 <label>Приоритет <select name="priority_status"><option value="">Все</option><option value="priority" {'selected' if q.get('priority_status')=='priority' else ''}>priority</option><option value="alternative" {'selected' if q.get('priority_status')=='alternative' else ''}>alternative</option><option value="unknown" {'selected' if q.get('priority_status')=='unknown' else ''}>unknown</option></select></label>
-<label>Статус <select name="status"><option value="all" {'selected' if q.get('status')=='all' else ''}>Все</option><option value="active" {'selected' if q.get('status','active')=='active' else ''}>Активные</option><option value="inactive" {'selected' if q.get('status')=='inactive' else ''}>Неактивные</option></select></label><button>Поиск</button></form>"""
+<label>Статус <select name="status"><option value="all" {'selected' if q.get('status')=='all' else ''}>Все</option><option value="active" {'selected' if q.get('status','active')=='active' else ''}>Активные</option><option value="inactive" {'selected' if q.get('status')=='inactive' else ''}>Неактивные</option></select></label><button>Найти</button></form>"""
     create_html = f"""<form class="form-grid" method="post" action="/tariffs/create">
 <label>ГЕО <span class="required">*</span><select name="country_id">{active_options(repo, 'countries')}</select></label>
 <label>Провайдер <span class="required">*</span><select name="provider_id">{active_options(repo, 'providers')}</select></label>
@@ -1360,14 +1363,14 @@ def phones_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
     for phone in records:
         assignment_label = phone["assignment_type_label"] or ASSIGNMENT_LABELS.get(phone["assignment_type"], phone["assignment_type"])
         actions = f"<a class='button' href='/phones/{phone['id']}/edit'>✏️ Редактировать</a>" if can_write("phones") else ""
-        rows.append(f"""<tr><td data-copy-column='phone-number'>{esc(phone['number'])}</td><td>{esc(phone['country_name'])}</td><td>{esc(phone['provider_name'])}</td><td>{esc(phone['project_label'])}</td><td>{esc(assignment_label)}</td><td>{esc(STATUS_LABELS.get(phone['status'], phone['status']))}</td><td>{'Да' if phone['is_active'] else 'Нет'}</td><td>{phone['route_count']}</td><td>{esc(phone['connection_cost'])}</td><td>{esc(phone['monthly_fee'])}</td><td>{esc(phone['currency_code'])}</td><td>{esc(phone['phone_type'])}</td><td>{esc(phone['tariff_label'])}</td><td>{esc(phone['created_at'])}</td><td>{esc(phone['updated_at'])}</td><td>{esc(phone['deactivated_at'])}</td><td>{esc(phone['comment'])}</td><td>{actions}</td></tr>""")
+        rows.append(f"""<tr><td data-copy-column='phone-number'>{esc(phone['number'])}</td><td>{esc(phone['country_name'])}</td><td>{esc(phone['provider_name'])}</td><td>{esc(phone['project_label'])}</td><td>{esc(assignment_label)}</td><td>{esc(STATUS_LABELS.get(phone['status'], phone['status']))}</td><td>{'Да' if phone['is_active'] else 'Нет'}</td><td>{phone['route_count']}</td><td>{esc(phone['connection_cost'])}</td><td>{esc(phone['monthly_fee'])}</td><td>{esc(phone['currency_code'])}</td><td>{esc(phone['phone_type'])}</td><td>{esc(phone['tariff_label'])}</td><td>{esc(phone['created_at'])}</td><td>{esc(phone['updated_at'])}</td><td>{esc(phone['deactivated_at'])}</td><td class='comment-cell'>{esc(phone['comment'] or '—')}</td><td>{actions}</td></tr>""")
     filters_html = f"""<form class="filter-grid" method="get" action="/phones">
 <label>ГЕО <select name="country_id">{options(repo, 'countries', selected=q.get('country_id'), empty='Все')}</select></label>
 <label>Провайдер <select name="provider_id">{options(repo, 'providers', selected=q.get('provider_id'), empty='Все')}</select></label>
     <label>Проект <select name="project">{project_options(repo, selected=q.get('project'), empty='Все')}</select></label>
     <label>Назначение <select name="assignment_type">{assignment_options(repo, selected=q.get('assignment_type'), empty='Все')}</select></label>
 <label>Статус <select name="status"><option value="">Все</option><option value="used">Используется</option><option value="free">Свободен</option><option value="disabled">Отключён</option><option value="blocked">Заблокирован</option></select></label>
-<label>Поиск по номеру <input name="number" value="{esc(q.get('number'))}"></label><button>Поиск</button></form>"""
+<label>Поиск по номеру <input name="number" value="{esc(q.get('number'))}"></label><button>Найти</button></form>"""
     create_html = f"""<form class="form-grid" method="post" action="/phones/create">
 <label>Номер <span class="required">*</span><input name="number" placeholder="393331234567"></label><label>ГЕО <span class="required">*</span><select name="country_id">{active_options(repo, 'countries')}</select></label><label>Провайдер <select name="provider_id"><option value="">—</option>{active_options(repo, 'providers')}</select></label><label>Проект <select name="project_label">{project_options(repo, empty='—')}</select></label><label>Назначение <span class="required">*</span><select name="assignment_type">{assignment_options(repo)}</select></label><label>Статус <span class="required">*</span><select name="status"><option value="used">Используется</option><option value="free">Свободен</option><option value="disabled">Отключён</option><option value="blocked">Заблокирован</option></select></label><label>Стоимость подключения <input name="connection_cost"></label><label>Абонентская плата <input name="monthly_fee"></label><label>Валюта <select name="currency_id"><option value="">—</option>{active_options(repo, 'currencies', 'code')}</select></label><label>Тип номера <select name="phone_type">{phone_type_options(repo, empty='—')}</select></label><label>Тариф <input name="tariff_label"></label><label>Комментарий <input name="comment"></label><button>Сохранить</button></form>"""
     table_html = f"<table><thead><tr><th><span class='copyable-header'>Номер {copy_column_button('phone-number')}</span></th><th>ГЕО</th><th>Провайдер</th><th>Проект</th><th>Назначение</th><th>Статус</th><th>Активен</th><th>Маршрутов</th><th>Подключение</th><th>Абонплата</th><th>Валюта</th><th>Тип номера</th><th>Тариф</th><th>Дата создания</th><th>Дата изменения</th><th>Дата отключения</th><th>Комментарий</th><th>Действия</th></tr></thead><tbody>{''.join(rows)}</tbody></table>"
@@ -1392,9 +1395,9 @@ def companies_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
     rows = []
     for cc in records:
         actions = f"<a class='button' href='/companies/{cc['id']}/edit'>✏️ Редактировать</a>" if can_write("companies") else ""
-        rows.append(f"<tr><td>{esc(cc['server_name'])}</td><td>{esc(cc['country_name'])}</td><td>{esc(cc['company_name'])}</td><td>{esc(cc['company_id_external'])}</td><td>{esc(cc['line_count'])}</td><td>{esc(cc['dial_set_count'])}</td><td>{'Да' if cc['has_autorotation'] else 'Нет'}</td><td>{esc(cc['retry_interval_seconds'])}</td><td>{'Активна' if cc['is_active'] else 'Неактивна'}</td><td>{esc(cc['comment'])}</td><td>{actions}</td></tr>")
+        rows.append(f"<tr><td>{esc(cc['server_name'])}</td><td>{esc(cc['country_name'])}</td><td>{esc(cc['company_name'])}</td><td>{esc(cc['company_id_external'])}</td><td>{esc(cc['line_count'])}</td><td>{esc(cc['dial_set_count'])}</td><td>{'Да' if cc['has_autorotation'] else 'Нет'}</td><td>{esc(cc['retry_interval_seconds'])}</td><td>{'Активна' if cc['is_active'] else 'Неактивна'}</td><td class='comment-cell'>{esc(cc['comment'])}</td><td>{actions}</td></tr>")
     filters_html = f"""<form class="filter-grid" method="get" action="/companies">
-<label>Сервер <select name="server_id">{options(repo, 'servers', selected=q.get('server_id'), empty='Все')}</select></label><label>ГЕО <select name="country_id">{options(repo, 'countries', selected=q.get('country_id'), empty='Все')}</select></label><label>Название кампании <input name="company" value="{esc(q.get('company'))}"></label><label>ID кампании <input name="external_id" value="{esc(q.get('external_id'))}"></label><label>Авторотация <select name="has_autorotation"><option value="">Все</option><option value="1" {'selected' if q.get('has_autorotation')=='1' else ''}>Да</option><option value="0" {'selected' if q.get('has_autorotation')=='0' else ''}>Нет</option></select></label><label>Активность <select name="is_active"><option value="">Все</option><option value="1" {'selected' if q.get('is_active')=='1' else ''}>Активна</option><option value="0" {'selected' if q.get('is_active')=='0' else ''}>Неактивна</option></select></label><button>Поиск</button></form>"""
+<label>Сервер <select name="server_id">{options(repo, 'servers', selected=q.get('server_id'), empty='Все')}</select></label><label>ГЕО <select name="country_id">{options(repo, 'countries', selected=q.get('country_id'), empty='Все')}</select></label><label>Название кампании <input name="company" value="{esc(q.get('company'))}"></label><label>ID кампании <input name="external_id" value="{esc(q.get('external_id'))}"></label><label>Авторотация <select name="has_autorotation"><option value="">Все</option><option value="1" {'selected' if q.get('has_autorotation')=='1' else ''}>Да</option><option value="0" {'selected' if q.get('has_autorotation')=='0' else ''}>Нет</option></select></label><label>Активность <select name="is_active"><option value="">Все</option><option value="1" {'selected' if q.get('is_active')=='1' else ''}>Активна</option><option value="0" {'selected' if q.get('is_active')=='0' else ''}>Неактивна</option></select></label><button>Найти</button></form>"""
     create_html = f"""<form class="form-grid" method="post" action="/companies/create"><label>Сервер <span class="required">*</span><select name="server_id">{active_options(repo, 'servers')}</select></label><label>ГЕО <span class="required">*</span><select name="country_id">{active_options(repo, 'countries')}</select></label><label>ID кампании <span class="required">*</span><input name="company_id_external"></label><label>Название кампании <span class="required">*</span><input name="company_name"></label><label>Количество линий <span class="required">*</span><input name="line_count" value="0"></label><label>Количество наборов <span class="required">*</span><input name="dial_set_count" value="0"></label><label>Авторотация <span class="required">*</span><select name="has_autorotation"><option value="1">Да</option><option value="0">Нет</option></select></label><label>Интервал дозвона, сек. <span class="required">*</span><input name="retry_interval_seconds" value="0"></label><label>Активна <span class="required">*</span><select name="is_active"><option value="1">Да</option><option value="0">Нет</option></select></label><label>Комментарий <input name="comment"></label><button>Сохранить</button></form>"""
     table_html = f"<table><thead><tr><th>Сервер</th><th>ГЕО</th><th>Название кампании</th><th>ID кампании</th><th>Количество линий</th><th>Количество наборов</th><th>Авторотация</th><th>Интервал между попытками дозвона (сек.)</th><th>Активна</th><th>Комментарий</th><th>Действия</th></tr></thead><tbody>{''.join(rows)}</tbody></table>"
     body = f"""
@@ -1713,7 +1716,7 @@ def provider_changes_page(repo: Repository, q: dict[str, str] | None = None) -> 
 <label>Кампания ID <input name='campaign_id' value='{esc(q.get('campaign_id'))}'></label>
 <label>Провайдер <select name='provider_id'>{options(repo, 'providers', selected=q.get('provider_id'), empty='Все')}</select></label>
 <label class='checkbox-inline'><input type='checkbox' name='include_inactive' value='1' {'checked' if q.get('include_inactive') == '1' else ''}> Показывать архив/неактивные</label>
-<button>Поиск</button></form>"""
+<button>Найти</button></form>"""
     journal_html = f"<table><thead><tr><th>Дата события</th><th>Область применения</th><th>GEO</th><th>Сервер</th><th>Кампания</th><th>Детали</th><th>Причина</th><th>Комментарий</th><th>Активна</th><th>Действия</th></tr></thead><tbody>{''.join(rows)}</tbody></table>"
     body = f"""
 <h1>Смена провайдеров</h1>
@@ -1868,7 +1871,7 @@ def server_priorities_page(repo: Repository, q: dict[str, str] | None = None) ->
   <h2>Сервер: {esc(server_names[server_id])}</h2>
   {table_card(table_html)}
 </section>""")
-    filters_html = f"""<form class="filter-grid" method="get" action="/admin/server-priorities"><label>ГЕО <select name="country_id">{options(repo, 'countries', selected=q.get('country_id'), empty='Все')}</select></label><label>Сервер <select name="server_id">{active_options(repo, 'servers', selected=q.get('server_id'), empty='Все')}</select></label><button>Поиск</button></form>"""
+    filters_html = f"""<form class="filter-grid" method="get" action="/admin/server-priorities"><label>ГЕО <select name="country_id">{options(repo, 'countries', selected=q.get('country_id'), empty='Все')}</select></label><label>Сервер <select name="server_id">{active_options(repo, 'servers', selected=q.get('server_id'), empty='Все')}</select></label><button>Найти</button></form>"""
     body = f"""
 <h1>Администрирование → Приоритет по серверам</h1>
 {filter_card(filters_html, q, ('country_id', 'server_id'))}
@@ -1936,7 +1939,7 @@ def company_routing_settings_page(repo: Repository, q: dict[str, str] | None = N
 <label>Режим маршрутизации <select name="routing_mode">{routing_mode_options(q.get('routing_mode'), empty='Все')}</select></label>
 <label>Активность <select name="is_active"><option value="" {'selected' if not q.get('is_active') else ''}>Все</option><option value="1" {'selected' if q.get('is_active')=='1' else ''}>Активна</option><option value="0" {'selected' if q.get('is_active')=='0' else ''}>Неактивна</option></select></label>
 <label class="checkbox-inline"><input type="checkbox" name="show_history" value="1" {'checked' if show_history else ''}> Показывать историю</label>
-<button>Поиск</button></form>"""
+<button>Найти</button></form>"""
     create_html = f"""<form class="form-grid" method="post" action="/admin/company-routing-settings/create">
   <label>Кампания <span class="required">*</span><select name="calling_company_id">{company_options(repo)}</select></label>
   <label>GEO <span class="required">*</span><select name="country_id">{options(repo, 'countries', selected=create_country_id)}</select></label>
