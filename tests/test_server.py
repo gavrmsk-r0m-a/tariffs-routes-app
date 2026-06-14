@@ -171,6 +171,22 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertIn("<details class='filter-card' open>", content)
         self.assertIn('name="search" value="Demo"', content)
 
+    def test_routes_table_renders_route_name_quick_copy(self):
+        captured, content = self.request("/routes")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("Название маршрута", content)
+        self.assertIn("data-copy-action='route-name'", content)
+        self.assertIn("title='Скопировать колонку'", content)
+        self.assertIn("data-copy-column='route-name'", content)
+
+    def test_purchased_numbers_table_renders_number_quick_copy(self):
+        captured, content = self.request("/phones")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("Купленные номера", content)
+        self.assertIn("data-copy-action='phone-number'", content)
+        self.assertIn("title='Скопировать колонку'", content)
+        self.assertIn("data-copy-column='phone-number'", content)
+
     def test_provider_changes_journal_workspace_and_create_form_survive(self):
         self.request("/routes")
         captured, content = self.request("/provider-changes")
