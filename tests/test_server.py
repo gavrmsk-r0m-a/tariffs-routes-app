@@ -187,6 +187,31 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertIn("title='Скопировать колонку'", content)
         self.assertIn("data-copy-column='phone-number'", content)
 
+
+    def test_table_pages_render_column_visibility_controls(self):
+        for path, table_key, sample_col in (
+            ("/routes", "routes", "route"),
+            ("/phones", "phones", "number"),
+            ("/tariffs", "tariffs", "provider_price"),
+            ("/companies", "companies", "company_name"),
+            ("/provider-changes", "provider_changes", "event_at"),
+            ("/admin/server-priorities", "server_priorities", "current_priority"),
+            ("/admin/company-routing-settings", "company_routing_settings", "company_id"),
+        ):
+            captured, content = self.request(path)
+            self.assertEqual(captured["status"], "200 OK")
+            self.assertIn("<summary>Колонки</summary>", content)
+            self.assertIn(f"data-column-settings='{table_key}'", content)
+            self.assertIn(f"data-table-key='{table_key}'", content)
+            self.assertIn(f"data-col='{sample_col}'", content)
+            self.assertIn("Сбросить колонки", content)
+
+    def test_change_log_has_no_column_visibility_control(self):
+        captured, content = self.request("/admin/change-log")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertNotIn("<summary>Колонки</summary>", content)
+        self.assertNotIn("data-column-settings=", content)
+
     def test_provider_changes_journal_workspace_and_create_form_survive(self):
         self.request("/routes")
         captured, content = self.request("/provider-changes")
@@ -636,12 +661,12 @@ class ServerSmokeTest(unittest.TestCase):
             self.assertIn(f"Сервер: {server_name}", content)
         self.assertLess(content.index("Сервер: EU1"), content.index("Сервер: EU2"))
         self.assertLess(content.index("Сервер: EU2"), content.index("Сервер: EU3"))
-        self.assertIn("<th>GEO</th><th>Текущий приоритет</th><th>Предыдущий приоритет</th><th>Действия</th>", content)
+        self.assertIn("<th data-col='geo'>GEO</th><th data-col='current_priority'>Текущий приоритет</th><th data-col='previous_priority'>Предыдущий приоритет</th><th data-col='actions'>Действия</th>", content)
         self.assertIn("Нет настроенных приоритетов", content)
         eu3_block = content.split("Сервер: EU3", 1)[1].split("</section>", 1)[0]
         self.assertIn("Нет настроенных приоритетов", eu3_block)
         eu1_block = content.split("Сервер: EU1", 1)[1].split("</section>", 1)[0]
-        self.assertIn("<td>Мексика</td><td>Miatel / Мексика/Miatel/Demo_A@</td><td>—</td>", eu1_block)
+        self.assertIn("<td data-col='geo'>Мексика</td><td data-col='current_priority'>Miatel / Мексика/Miatel/Demo_A@</td><td data-col='previous_priority'>—</td>", eu1_block)
         self.assertIn("<summary>Редактировать</summary>", eu1_block)
         self.assertIn("Текущий провайдер: Miatel", eu1_block)
         self.assertIn("Текущий маршрут: Мексика/Miatel/Demo_A@", eu1_block)
@@ -674,7 +699,7 @@ class ServerSmokeTest(unittest.TestCase):
         eu3_block = content.split("Сервер: EU3", 1)[1].split("</section>", 1)[0]
         eu1_block = content.split("Сервер: EU1", 1)[1].split("</section>", 1)[0]
         self.assertIn("Нет настроенных приоритетов", eu3_block)
-        self.assertIn("<td>Мексика</td><td>Miatel / Мексика/Miatel/Demo_A@</td>", eu1_block)
+        self.assertIn("<td data-col='geo'>Мексика</td><td data-col='current_priority'>Miatel / Мексика/Miatel/Demo_A@</td>", eu1_block)
 
     def test_server_priority_manual_route_update_changes_current_previous_and_logs_event(self):
         self.request("/routes")
@@ -699,7 +724,7 @@ class ServerSmokeTest(unittest.TestCase):
             conn.close()
         captured, content = self.request("/admin/server-priorities")
         self.assertEqual(captured["status"], "200 OK")
-        self.assertIn("<td>Мексика</td><td>Sancom / Мексика/Sancom/Demo_0827@</td><td>Miatel / Мексика/Miatel/Demo_A@</td>", content)
+        self.assertIn("<td data-col='geo'>Мексика</td><td data-col='current_priority'>Sancom / Мексика/Sancom/Demo_0827@</td><td data-col='previous_priority'>Miatel / Мексика/Miatel/Demo_A@</td>", content)
 
 
 
