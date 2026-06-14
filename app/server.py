@@ -15,7 +15,7 @@ from wsgiref.simple_server import make_server
 
 from app.db import DEFAULT_DB_PATH, connect, init_db
 from app.importer import apply_import, preview_import
-from app.repository import BusinessRuleError, COMPANY_CHANGE_LABELS, ROUTING_SCOPE_LABELS, Repository, normalize_provider_name, validate_phone_number
+from app.repository import BusinessRuleError, COMPANY_CHANGE_LABELS, ROUTING_SCOPE_LABELS, Repository, normalize_phone_status, normalize_provider_name, validate_phone_number
 
 DB_PATH = Path(os.environ.get("MVP_DB_PATH", DEFAULT_DB_PATH))
 ADMIN_ID = 1
@@ -24,11 +24,17 @@ _REQUEST_CONTEXT: dict[str, object] = {}
 STATUS_LABELS = {
     "used": "Используется",
     "free": "Свободен",
-    "disabled": "Отключён",
-    "reserved": "Резерв",
-    "blocked": "Заблокирован",
+    "problem": "Проблемный",
     "unknown": "Неизвестно",
 }
+
+
+def phone_status_options(selected: str | None = None, *, empty: str | None = None) -> str:
+    selected = normalize_phone_status(selected) if selected else selected
+    html_options = [f"<option value=''>{esc(empty)}</option>"] if empty is not None else []
+    for value, label in STATUS_LABELS.items():
+        html_options.append(f"<option value='{value}' {'selected' if selected == value else ''}>{label}</option>")
+    return "".join(html_options)
 
 PAGE_SIZE = 50
 
@@ -1436,7 +1442,7 @@ def phones_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
     filters = {"country_id": q.get("country_id"), "provider_id": q.get("provider_id"), "project": q.get("project"), "assignment_type": q.get("assignment_type"), "status": q.get("status"), "number_like": q.get("number")}
     records = list(repo.list_phone_numbers(filters))
     if q.get("export") == "csv":
-        return csv_response("phones_export.csv", ["Номер", "GEO", "Провайдер", "Тип номера", "Кампания", "Активен", "Требует проверки", "Комментарий"], [[p["number"], p["country_name"], p["provider_name"], p["phone_type"], p["project_label"], "Да" if p["is_active"] else "Нет", "Да" if p["review_required"] else "Нет", p["comment"]] for p in records])
+        return csv_response("phones_export.csv", ["Номер", "GEO", "Провайдер", "Тип номера", "Кампания", "Рабочий статус", "Активен у провайдера", "Требует проверки", "Комментарий"], [[p["number"], p["country_name"], p["provider_name"], p["phone_type"], p["project_label"], STATUS_LABELS.get(p["status"], p["status"]), "Да" if p["is_active"] else "Нет", "Да" if p["review_required"] else "Нет", p["comment"]] for p in records])
     records, pagination_html = paginate_rows(records, q, "/phones")
     rows = []
     for phone in records:
@@ -1449,10 +1455,10 @@ def phones_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
 <label>Провайдер <select name="provider_id">{options(repo, 'providers', selected=q.get('provider_id'), empty='Все')}</select></label>
     <label>Проект <select name="project">{project_options(repo, selected=q.get('project'), empty='Все')}</select></label>
     <label>Назначение <select name="assignment_type">{assignment_options(repo, selected=q.get('assignment_type'), empty='Все')}</select></label>
-<label>Рабочий статус <select name="status"><option value="">Все</option><option value="used">Используется</option><option value="free">Свободен</option><option value="disabled">Отключён</option><option value="blocked">Заблокирован</option></select></label>
+<label>Рабочий статус <select name="status">{phone_status_options(q.get('status'), empty='Все')}</select></label>
 <label>Поиск по номеру <input name="number" value="{esc(q.get('number'))}"></label><button>Найти</button></form>"""
     create_html = f"""<form class="form-grid" method="post" action="/phones/create">
-<label>Номер <span class="required">*</span><input name="number" placeholder="393331234567"></label><label>ГЕО <span class="required">*</span><select name="country_id">{active_options(repo, 'countries')}</select></label><label>Провайдер <span class="required">*</span><select name="provider_id"><option value="">—</option>{active_options(repo, 'providers')}</select></label><label>Проект <select name="project_label">{project_options(repo, empty='—')}</select></label><label>Назначение <span class="required">*</span><select name="assignment_type">{assignment_options(repo)}</select></label><label>Рабочий статус <span class="required">*</span><select name="status"><option value="used">Используется</option><option value="free">Свободен</option><option value="disabled">Отключён</option><option value="blocked">Заблокирован</option></select></label><label>Стоимость подключения <input name="connection_cost"></label><label>Абонентская плата <input name="monthly_fee"></label><label>Валюта <select name="currency_id"><option value="">—</option>{active_options(repo, 'currencies', 'code')}</select></label><label>Тип номера <select name="phone_type">{phone_type_options(repo, empty='—')}</select></label><label>Тариф <input name="tariff_label"></label><label>Комментарий <input name="comment"></label><button>Сохранить</button></form>"""
+<label>Номер <span class="required">*</span><input name="number" placeholder="393331234567"></label><label>ГЕО <span class="required">*</span><select name="country_id">{active_options(repo, 'countries')}</select></label><label>Провайдер <span class="required">*</span><select name="provider_id"><option value="">—</option>{active_options(repo, 'providers')}</select></label><label>Проект <select name="project_label">{project_options(repo, empty='—')}</select></label><label>Назначение <span class="required">*</span><select name="assignment_type">{assignment_options(repo)}</select></label><label>Рабочий статус <span class="required">*</span><select name="status">{phone_status_options('unknown')}</select></label><label>Стоимость подключения <input name="connection_cost"></label><label>Абонентская плата <input name="monthly_fee"></label><label>Валюта <select name="currency_id"><option value="">—</option>{active_options(repo, 'currencies', 'code')}</select></label><label>Тип номера <select name="phone_type">{phone_type_options(repo, empty='—')}</select></label><label>Тариф <input name="tariff_label"></label><label>Комментарий <input name="comment"></label><button>Сохранить</button></form>"""
     table_html = f"{data_table('phones', [('number', f"<span class='copyable-header'>Номер {copy_column_button('phone-number')}</span>"), ('geo', 'ГЕО'), ('provider', 'Провайдер'), ('project', 'Проект'), ('assignment', 'Назначение'), ('status', 'Рабочий статус'), ('active', 'Активен у провайдера'), ('routes', 'Маршрутов'), ('connection', 'Подключение'), ('monthly', 'Абонплата'), ('currency', 'Валюта'), ('phone_type', 'Тип номера'), ('tariff', 'Тариф'), ('created', 'Дата создания'), ('updated', 'Дата изменения'), ('deactivated', 'Дата отключения'), ('comment', 'Комментарий'), ('actions', 'Действия')], ''.join(rows))}"
     body = f"""
 <h1>Купленные номера</h1>
@@ -2279,7 +2285,7 @@ def phone_edit_page(repo: Repository, phone_id: int) -> bytes:
 <label>Провайдер <select name='provider_id'><option value=''>—</option>{active_options(repo, 'providers', selected=phone['provider_id'])}</select></label>
 <label>Проект <select name='project_label'>{project_options(repo, selected=phone['project_label'], empty='—')}</select></label>
 <label>Назначение <select name='assignment_type'>{assignment_options(repo, selected=phone['assignment_type'])}</select></label>
-<label>Рабочий статус <select name='status'><option value='used'>Используется</option><option value='free'>Свободен</option><option value='disabled'>Отключён</option><option value='reserved'>Резерв</option><option value='blocked'>Заблокирован</option><option value='unknown'>Неизвестно</option></select></label>
+<label>Рабочий статус <select name='status'>{phone_status_options(phone['status'])}</select></label>
 <label>Активен у провайдера <select name='is_active'><option value='1' {'selected' if phone['is_active'] else ''}>Да</option><option value='0' {'selected' if not phone['is_active'] else ''}>Нет</option></select></label>
 <label>Стоимость подключения <input name='connection_cost' value='{esc(phone['connection_cost'])}'></label>
 <label>Абонентская плата <input name='monthly_fee' value='{esc(phone['monthly_fee'])}'></label>

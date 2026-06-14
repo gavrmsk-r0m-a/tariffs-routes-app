@@ -14,6 +14,19 @@ DEFAULT_USERS = (
     ("guest", "Гость", "guest"),
 )
 
+PHONE_STATUS_SQL = "status TEXT NOT NULL DEFAULT 'unknown' CHECK (status IN ('used', 'free', 'problem', 'unknown'))"
+
+
+def _phone_status_expr(column: str = "status") -> str:
+    return (
+        f"CASE "
+        f"WHEN {column} = 'used' THEN 'used' "
+        f"WHEN {column} IN ('free', 'reserved') THEN 'free' "
+        f"WHEN {column} IN ('blocked', 'disabled') THEN 'problem' "
+        f"WHEN {column} = 'unknown' THEN 'unknown' "
+        f"ELSE 'unknown' END"
+    )
+
 
 def connect(path: str | Path = DEFAULT_DB_PATH) -> sqlite3.Connection:
     conn = sqlite3.connect(path)
@@ -31,12 +44,26 @@ def _add_column_if_missing(conn: sqlite3.Connection, table: str, column: str, de
         conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
 
 
-def _rebuild_phone_numbers_if_assignment_check(conn: sqlite3.Connection) -> None:
+def _rebuild_phone_numbers_if_needed(conn: sqlite3.Connection) -> None:
     row = conn.execute("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'phone_numbers'").fetchone()
-    if not row or "assignment_type TEXT NOT NULL CHECK" not in (row[0] or ""):
+    table_sql = row[0] or "" if row else ""
+    if not row:
         return
+    needs_assignment_rebuild = "assignment_type TEXT NOT NULL CHECK" in table_sql
+    needs_status_rebuild = (
+        "'disabled'" in table_sql
+        or "'reserved'" in table_sql
+        or "'blocked'" in table_sql
+        or "'problem'" not in table_sql
+    )
+    invalid_status = conn.execute(
+        "SELECT 1 FROM phone_numbers WHERE COALESCE(status, '') NOT IN ('used', 'free', 'problem', 'unknown') LIMIT 1"
+    ).fetchone()
+    if not (needs_assignment_rebuild or needs_status_rebuild or invalid_status):
+        return
+    conn.commit()
     conn.execute("PRAGMA foreign_keys = OFF")
-    conn.execute("""
+    conn.execute(f"""
         CREATE TABLE phone_numbers_new (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             country_id INTEGER NOT NULL REFERENCES countries(id) ON DELETE RESTRICT,
@@ -47,7 +74,7 @@ def _rebuild_phone_numbers_if_assignment_check(conn: sqlite3.Connection) -> None
             assignment_type TEXT NOT NULL,
             phone_type TEXT,
             tariff_label TEXT,
-            status TEXT NOT NULL CHECK (status IN ('used', 'free', 'disabled', 'reserved', 'blocked', 'unknown')),
+            {PHONE_STATUS_SQL},
             connection_cost NUMERIC CHECK (connection_cost IS NULL OR connection_cost >= 0),
             monthly_fee NUMERIC CHECK (monthly_fee IS NULL OR monthly_fee >= 0),
             outgoing_rate NUMERIC CHECK (outgoing_rate IS NULL OR outgoing_rate >= 0),
@@ -65,7 +92,7 @@ def _rebuild_phone_numbers_if_assignment_check(conn: sqlite3.Connection) -> None
             CHECK (normalized_number = number)
         )
     """)
-    conn.execute("""
+    conn.execute(f"""
         INSERT INTO phone_numbers_new(
             id, country_id, provider_id, number, normalized_number, project_label,
             assignment_type, phone_type, tariff_label, status, connection_cost, monthly_fee,
@@ -73,7 +100,7 @@ def _rebuild_phone_numbers_if_assignment_check(conn: sqlite3.Connection) -> None
             created_at, updated_by, updated_at, deactivated_at
         )
         SELECT id, country_id, provider_id, number, normalized_number, project_label,
-            assignment_type, phone_type, tariff_label, status, connection_cost, monthly_fee,
+            assignment_type, phone_type, tariff_label, {_phone_status_expr("status")}, connection_cost, monthly_fee,
             outgoing_rate, incoming_rate, currency_id, comment, is_active, review_required, created_by,
             created_at, updated_by, updated_at, deactivated_at
         FROM phone_numbers
@@ -138,7 +165,7 @@ def run_lightweight_migrations(conn: sqlite3.Connection) -> None:
     _add_column_if_missing(conn, "phone_numbers", "tariff_label", "TEXT")
     _add_column_if_missing(conn, "phone_numbers", "deactivated_at", "TEXT")
     _add_column_if_missing(conn, "phone_numbers", "review_required", "INTEGER NOT NULL DEFAULT 0 CHECK (review_required IN (0, 1))")
-    _rebuild_phone_numbers_if_assignment_check(conn)
+    _rebuild_phone_numbers_if_needed(conn)
     conn.execute("""
         CREATE TABLE IF NOT EXISTS phone_number_types (
             id INTEGER PRIMARY KEY AUTOINCREMENT,

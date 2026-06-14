@@ -6,7 +6,7 @@ import sqlite3
 from dataclasses import dataclass, field
 from typing import Iterable
 
-from app.repository import BusinessRuleError, Repository, validate_phone_number
+from app.repository import BusinessRuleError, Repository, normalize_phone_status, validate_phone_number
 
 
 @dataclass
@@ -196,7 +196,7 @@ def _phone_import_values(conn: sqlite3.Connection, row: dict[str, str]) -> dict[
     return {
         "project_label": project,
         "assignment_type": assignment,
-        "status": _first(row, "status", "статус") or "unknown",
+        "status": normalize_phone_status(_first(row, "status", "статус")),
         "is_active": _parse_bool(_first(row, "is_active", "активен"), default=True),
         "connection_cost": _first(row, "connection_fee", "connection_cost", "стоимость подключения") or None,
         "monthly_fee": _first(row, "monthly_fee", "абонплата") or None,

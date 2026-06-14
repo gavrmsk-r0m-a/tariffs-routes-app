@@ -48,6 +48,14 @@ class ServerSmokeTest(unittest.TestCase):
             conn.close()
         return f"mvp_current_user_id={user_id}"
 
+
+    def test_phone_status_options_expose_only_simplified_statuses(self):
+        html = server.phone_status_options(empty="Все")
+        for label in ("Используется", "Свободен", "Проблемный", "Неизвестно"):
+            self.assertIn(label, html)
+        for old_value in ("reserved", "blocked", "disabled"):
+            self.assertNotIn(f"value='{old_value}'", html)
+
     def test_main_screens_render(self):
         for path, marker in [
             ("/routes", "Маршруты"),

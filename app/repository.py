@@ -8,7 +8,15 @@ from datetime import datetime
 from decimal import Decimal, ROUND_HALF_UP
 
 PHONE_RE = re.compile(r"^[1-9][0-9]{6,20}$")
-BLOCKED_ROUTE_PHONE_STATUSES = {"disabled", "blocked"}
+VALID_PHONE_STATUSES = {"used", "free", "problem", "unknown"}
+OLD_PHONE_STATUS_MAP = {"reserved": "free", "blocked": "problem", "disabled": "problem"}
+
+
+def normalize_phone_status(status: str | None) -> str:
+    normalized = (status or "").strip().lower()
+    if normalized in VALID_PHONE_STATUSES:
+        return normalized
+    return OLD_PHONE_STATUS_MAP.get(normalized, "unknown")
 
 ROUTING_SCOPE_LABELS = {
     "none": "Не меняли настройки в нашей системе",
@@ -294,7 +302,7 @@ class Repository:
                 assignment_type,
                 phone_type,
                 tariff_label,
-                status,
+                normalize_phone_status(status),
                 connection_cost,
                 monthly_fee,
                 outgoing_rate,
@@ -336,9 +344,7 @@ class Repository:
         if phone is None:
             raise BusinessRuleError("Phone number not found")
         if int(phone["is_active"]) != 1:
-            raise BusinessRuleError("Inactive phone numbers cannot be added to a route")
-        if phone["status"] in BLOCKED_ROUTE_PHONE_STATUSES:
-            raise BusinessRuleError("Disabled or blocked phone numbers cannot be added to a route")
+            raise BusinessRuleError("Нельзя добавить номер в маршрут: номер не активен у провайдера")
 
         cur = self.conn.execute(
             """
@@ -495,7 +501,6 @@ class Repository:
                 WHERE rpn.route_id = ?
                   AND rpn.is_active = 1
                   AND pn.is_active = 1
-                  AND pn.status NOT IN ('disabled', 'blocked')
                 ORDER BY pn.number
                 """,
                 (route_id,),
@@ -583,9 +588,9 @@ class Repository:
         requested_active = 1 if is_active else 0
         forced_review_required = 1 if (requested_active == 1 and existing["deactivated_at"] is not None) else 0
         final_review_required = 1 if review_required or forced_review_required else 0
-        final_status = status
-        if requested_active == 0 and status not in BLOCKED_ROUTE_PHONE_STATUSES:
-            final_status = "disabled"
+        final_status = normalize_phone_status(status)
+        if requested_active == 0 and int(existing["is_active"]) == 1 and existing["status"] == "used":
+            final_status = "problem"
         self.conn.execute(
             """
             UPDATE phone_numbers
