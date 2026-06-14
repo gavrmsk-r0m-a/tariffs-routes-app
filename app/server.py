@@ -72,6 +72,10 @@ def export_link(base_path: str, q: dict[str, str]) -> str:
     return f"<p><a class='button' href='{esc(base_path + '?' + urlencode(params))}'>Экспорт в Excel</a></p>"
 
 
+def copy_column_button(column: str) -> str:
+    return f"<button class='copy-column-button' type='button' data-copy-action='{esc(column)}' title='Скопировать колонку' aria-label='Скопировать колонку'>⧉</button>"
+
+
 def csv_response(filename: str, headers: list[str], rows: list[list[object]]) -> bytes:
     output = io.StringIO(newline="")
     writer = csv.writer(output, delimiter=";")
@@ -358,6 +362,10 @@ def page(title: str, body: str, notice: str | None = None) -> bytes:
     th, td {{ border: 0; border-bottom: 1px solid #e5ebe6; padding: 7px 9px; vertical-align: top; }}
     tr:last-child td {{ border-bottom: 0; }}
     th {{ background: var(--surface-strong); text-align: left; font-weight: 750; color: #44504a; position: sticky; top: 0; z-index: 1; }}
+    .copyable-header {{ display: inline-flex; align-items: center; gap: 6px; }}
+    .copy-column-button {{ min-height: 24px; padding: 2px 6px; font-size: 12px; color: var(--accent-strong); border-color: var(--border-strong); background: var(--accent-soft); box-shadow: none; }}
+    .copy-column-button:hover {{ background: #dfece3; border-color: var(--accent); }}
+    .copy-column-status {{ margin-left: 4px; color: var(--success); font-size: 12px; font-weight: 720; white-space: nowrap; }}
     tbody tr:nth-child(even) {{ background: #fbfcfb; }}
     tbody tr:hover {{ background: var(--accent-soft); }}
     td {{ max-width: 360px; overflow-wrap: anywhere; }}
@@ -467,6 +475,50 @@ def page(title: str, body: str, notice: str | None = None) -> bytes:
         const expanded = button.getAttribute("aria-expanded") === "true";
         button.setAttribute("aria-expanded", expanded ? "false" : "true");
         target.classList.toggle("open", !expanded);
+      }});
+    }});
+    function fallbackCopyText(text) {{
+      const textarea = document.createElement("textarea");
+      textarea.value = text;
+      textarea.setAttribute("readonly", "");
+      textarea.style.position = "fixed";
+      textarea.style.top = "-1000px";
+      document.body.appendChild(textarea);
+      textarea.select();
+      try {{
+        document.execCommand("copy");
+      }} finally {{
+        document.body.removeChild(textarea);
+      }}
+    }}
+    document.querySelectorAll("[data-copy-action]").forEach((button) => {{
+      button.addEventListener("click", async () => {{
+        const table = button.closest("table");
+        if (!table) return;
+        const column = button.dataset.copyAction;
+        const values = Array.from(table.querySelectorAll(`[data-copy-column="${{column}}"]`))
+          .map((cell) => cell.textContent.trim())
+          .filter(Boolean);
+        const text = values.join("\\n");
+        try {{
+          if (navigator.clipboard && window.isSecureContext) {{
+            await navigator.clipboard.writeText(text);
+          }} else {{
+            fallbackCopyText(text);
+          }}
+        }} catch (error) {{
+          fallbackCopyText(text);
+        }}
+        let status = button.parentElement.querySelector(".copy-column-status");
+        if (!status) {{
+          status = document.createElement("span");
+          status.className = "copy-column-status";
+          button.parentElement.appendChild(status);
+        }}
+        status.textContent = "Скопировано";
+        window.setTimeout(() => {{
+          status.textContent = "";
+        }}, 1800);
       }});
     }});
   </script>
@@ -1186,7 +1238,7 @@ def routes_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
         prefix = route["prefix"] or "Без префикса"
         numbers = f'{route["phone_count"]} номеров <a class="button" href="/routes/{route["id"]}/numbers">Показать номера</a>' if route["cli_source_type"] in {"pool", "sim"} else ("RND провайдера" if route["cli_source_type"] == "rnd" else "—")
         edit = f"<a class='button' href='/routes/{route['id']}/edit'>✏️ Редактировать</a>" if can_write("routes") else ""
-        rows.append(f"<tr><td>{esc(route['country_name'])}</td><td>{esc(route['name'])}</td><td>{esc(route['provider_name'])}</td><td>{esc(prefix)}</td><td>{'Да' if route['is_actual'] else 'Нет'}</td><td>{esc(route['comment'])}</td><td>{numbers}</td><td class='actions'>{edit}</td></tr>")
+        rows.append(f"<tr><td>{esc(route['country_name'])}</td><td data-copy-column='route-name'>{esc(route['name'])}</td><td>{esc(route['provider_name'])}</td><td>{esc(prefix)}</td><td>{'Да' if route['is_actual'] else 'Нет'}</td><td>{esc(route['comment'])}</td><td>{numbers}</td><td class='actions'>{edit}</td></tr>")
     filters_html = f"""<form class="filter-grid" method="get" action="/routes">
 <label>ГЕО <select name="country_id">{options(repo, 'countries', selected=q.get('country_id'), empty='Все')}</select></label>
 <label>Провайдер <select name="provider_id">{options(repo, 'providers', selected=q.get('provider_id'), empty='Все')}</select></label>
@@ -1205,7 +1257,7 @@ def routes_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
   <p class="muted wide">Название будет сформировано автоматически по выбранным полям. Свободный ввод названия отключён.</p>
   <button>Сохранить</button>
 </form>"""
-    table_html = f"<table><thead><tr><th>ГЕО</th><th>Название маршрута</th><th>Провайдер</th><th>Префикс</th><th>Актуальный</th><th>Комментарий</th><th>Номера</th><th>Действия</th></tr></thead><tbody>{''.join(rows)}</tbody></table>"
+    table_html = f"<table><thead><tr><th>ГЕО</th><th><span class='copyable-header'>Название маршрута {copy_column_button('route-name')}</span></th><th>Провайдер</th><th>Префикс</th><th>Актуальный</th><th>Комментарий</th><th>Номера</th><th>Действия</th></tr></thead><tbody>{''.join(rows)}</tbody></table>"
     body = f"""
 <h1>Маршруты</h1>
 {filter_card(filters_html, q, ('country_id', 'provider_id', 'prefix_id', 'is_actual', 'search'))}
@@ -1294,7 +1346,7 @@ def phones_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
     for phone in records:
         assignment_label = phone["assignment_type_label"] or ASSIGNMENT_LABELS.get(phone["assignment_type"], phone["assignment_type"])
         actions = f"<a class='button' href='/phones/{phone['id']}/edit'>✏️ Редактировать</a>" if can_write("phones") else ""
-        rows.append(f"""<tr><td>{esc(phone['number'])}</td><td>{esc(phone['country_name'])}</td><td>{esc(phone['provider_name'])}</td><td>{esc(phone['project_label'])}</td><td>{esc(assignment_label)}</td><td>{esc(STATUS_LABELS.get(phone['status'], phone['status']))}</td><td>{'Да' if phone['is_active'] else 'Нет'}</td><td>{phone['route_count']}</td><td>{esc(phone['connection_cost'])}</td><td>{esc(phone['monthly_fee'])}</td><td>{esc(phone['currency_code'])}</td><td>{esc(phone['phone_type'])}</td><td>{esc(phone['tariff_label'])}</td><td>{esc(phone['created_at'])}</td><td>{esc(phone['updated_at'])}</td><td>{esc(phone['deactivated_at'])}</td><td>{esc(phone['comment'])}</td><td>{actions}</td></tr>""")
+        rows.append(f"""<tr><td data-copy-column='phone-number'>{esc(phone['number'])}</td><td>{esc(phone['country_name'])}</td><td>{esc(phone['provider_name'])}</td><td>{esc(phone['project_label'])}</td><td>{esc(assignment_label)}</td><td>{esc(STATUS_LABELS.get(phone['status'], phone['status']))}</td><td>{'Да' if phone['is_active'] else 'Нет'}</td><td>{phone['route_count']}</td><td>{esc(phone['connection_cost'])}</td><td>{esc(phone['monthly_fee'])}</td><td>{esc(phone['currency_code'])}</td><td>{esc(phone['phone_type'])}</td><td>{esc(phone['tariff_label'])}</td><td>{esc(phone['created_at'])}</td><td>{esc(phone['updated_at'])}</td><td>{esc(phone['deactivated_at'])}</td><td>{esc(phone['comment'])}</td><td>{actions}</td></tr>""")
     filters_html = f"""<form class="filter-grid" method="get" action="/phones">
 <label>ГЕО <select name="country_id">{options(repo, 'countries', selected=q.get('country_id'), empty='Все')}</select></label>
 <label>Провайдер <select name="provider_id">{options(repo, 'providers', selected=q.get('provider_id'), empty='Все')}</select></label>
@@ -1304,7 +1356,7 @@ def phones_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
 <label>Поиск по номеру <input name="number" value="{esc(q.get('number'))}"></label><button>Поиск</button></form>"""
     create_html = f"""<form class="form-grid" method="post" action="/phones/create">
 <label>Номер <span class="required">*</span><input name="number" placeholder="393331234567"></label><label>ГЕО <span class="required">*</span><select name="country_id">{active_options(repo, 'countries')}</select></label><label>Провайдер <select name="provider_id"><option value="">—</option>{active_options(repo, 'providers')}</select></label><label>Проект <select name="project_label">{project_options(repo, empty='—')}</select></label><label>Назначение <span class="required">*</span><select name="assignment_type">{assignment_options(repo)}</select></label><label>Статус <span class="required">*</span><select name="status"><option value="used">Используется</option><option value="free">Свободен</option><option value="disabled">Отключён</option><option value="blocked">Заблокирован</option></select></label><label>Стоимость подключения <input name="connection_cost"></label><label>Абонентская плата <input name="monthly_fee"></label><label>Валюта <select name="currency_id"><option value="">—</option>{active_options(repo, 'currencies', 'code')}</select></label><label>Тип номера <select name="phone_type">{phone_type_options(repo, empty='—')}</select></label><label>Тариф <input name="tariff_label"></label><label>Комментарий <input name="comment"></label><button>Сохранить</button></form>"""
-    table_html = f"<table><thead><tr><th>Номер</th><th>ГЕО</th><th>Провайдер</th><th>Проект</th><th>Назначение</th><th>Статус</th><th>Активен</th><th>Маршрутов</th><th>Подключение</th><th>Абонплата</th><th>Валюта</th><th>Тип номера</th><th>Тариф</th><th>Дата создания</th><th>Дата изменения</th><th>Дата отключения</th><th>Комментарий</th><th>Действия</th></tr></thead><tbody>{''.join(rows)}</tbody></table>"
+    table_html = f"<table><thead><tr><th><span class='copyable-header'>Номер {copy_column_button('phone-number')}</span></th><th>ГЕО</th><th>Провайдер</th><th>Проект</th><th>Назначение</th><th>Статус</th><th>Активен</th><th>Маршрутов</th><th>Подключение</th><th>Абонплата</th><th>Валюта</th><th>Тип номера</th><th>Тариф</th><th>Дата создания</th><th>Дата изменения</th><th>Дата отключения</th><th>Комментарий</th><th>Действия</th></tr></thead><tbody>{''.join(rows)}</tbody></table>"
     body = f"""
 <h1>Купленные номера</h1>
 {filter_card(filters_html, q, ('country_id', 'provider_id', 'project', 'assignment_type', 'status', 'number'))}
