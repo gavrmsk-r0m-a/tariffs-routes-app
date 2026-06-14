@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import csv
 import html
+import io
 import json
 import os
 import re
@@ -8,7 +10,7 @@ import sqlite3
 from datetime import datetime
 from http.cookies import SimpleCookie
 from pathlib import Path
-from urllib.parse import parse_qs
+from urllib.parse import parse_qs, urlencode
 from wsgiref.simple_server import make_server
 
 from app.db import DEFAULT_DB_PATH, connect, init_db
@@ -27,6 +29,56 @@ STATUS_LABELS = {
     "blocked": "Заблокирован",
     "unknown": "Неизвестно",
 }
+
+PAGE_SIZE = 50
+
+
+def parse_page(q: dict[str, str]) -> int:
+    try:
+        page_number = int(q.get("page") or "1")
+    except (TypeError, ValueError):
+        return 1
+    return page_number if page_number > 0 else 1
+
+
+def paginate_rows(rows: list, q: dict[str, str], base_path: str) -> tuple[list, str]:
+    total = len(rows)
+    current = parse_page(q)
+    page_count = max(1, (total + PAGE_SIZE - 1) // PAGE_SIZE)
+    if current > page_count:
+        current = 1
+    start = (current - 1) * PAGE_SIZE
+    visible = rows[start:start + PAGE_SIZE]
+    if total <= PAGE_SIZE:
+        return visible, f"<p class='muted'>Всего записей: {total}</p>"
+
+    def page_href(page_number: int) -> str:
+        params = {key: value for key, value in q.items() if key not in {"page", "limit", "export"} and value not in (None, "")}
+        params["page"] = str(page_number)
+        return base_path + "?" + urlencode(params)
+
+    previous_link = f"<a class='button' href='{esc(page_href(current - 1))}'>← Назад</a>" if current > 1 else ""
+    next_link = f"<a class='button' href='{esc(page_href(current + 1))}'>Вперёд →</a>" if current < page_count else ""
+    return visible, (
+        "<nav class='pagination' aria-label='Пагинация'>"
+        f"<span class='muted'>Всего записей: {total}. Страница {current} из {page_count}</span> "
+        f"{previous_link} {next_link}</nav>"
+    )
+
+
+def export_link(base_path: str, q: dict[str, str]) -> str:
+    params = {key: value for key, value in q.items() if key not in {"page", "limit", "export"} and value not in (None, "")}
+    params["export"] = "csv"
+    return f"<p><a class='button' href='{esc(base_path + '?' + urlencode(params))}'>Экспорт в Excel</a></p>"
+
+
+def csv_response(filename: str, headers: list[str], rows: list[list[object]]) -> bytes:
+    output = io.StringIO(newline="")
+    writer = csv.writer(output, delimiter=";")
+    writer.writerow(headers)
+    writer.writerows([["" if value is None else value for value in row] for row in rows])
+    return ("\ufeff" + output.getvalue()).encode("utf-8")
+
 ASSIGNMENT_LABELS = {
     "pool_number": "Номер из пула",
     "outgoing_cli": "АОН",
@@ -50,6 +102,17 @@ ROLE_PERMISSIONS = {
     },
     "guest": {"read": {"routes", "tariffs"}, "write": set()},
 }
+
+EXPORT_FILENAMES = {
+    "/routes": "routes_export.csv",
+    "/tariffs": "tariffs_export.csv",
+    "/phones": "phones_export.csv",
+    "/companies": "companies_export.csv",
+    "/provider-changes": "provider_changes_export.csv",
+    "/admin/server-priorities": "server_priorities_export.csv",
+    "/admin/company-routing-settings": "company_routing_settings_export.csv",
+}
+
 ADMIN_SECTION_KEYS = {
     "admin",
     "admin_server_priorities",
@@ -1114,8 +1177,12 @@ def route_options_for_country(repo: Repository, country_id: object | None = None
 def routes_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
     q = q or {}
     filters = {"country_id": q.get("country_id"), "provider_id": q.get("provider_id"), "prefix_id": q.get("prefix_id"), "is_actual": q.get("is_actual"), "search_like": q.get("search")}
+    records = list(repo.list_routes(filters))
+    if q.get("export") == "csv":
+        return csv_response("routes_export.csv", ["GEO", "Провайдер", "Маршрут", "Сервер", "Активен", "Комментарий"], [[r["country_name"], r["provider_name"], r["name"], "", "Да" if r["is_actual"] else "Нет", r["comment"]] for r in records])
+    records, pagination_html = paginate_rows(records, q, "/routes")
     rows = []
-    for route in repo.list_routes(filters):
+    for route in records:
         prefix = route["prefix"] or "Без префикса"
         numbers = f'{route["phone_count"]} номеров <a class="button" href="/routes/{route["id"]}/numbers">Показать номера</a>' if route["cli_source_type"] in {"pool", "sim"} else ("RND провайдера" if route["cli_source_type"] == "rnd" else "—")
         edit = f"<a class='button' href='/routes/{route['id']}/edit'>✏️ Редактировать</a>" if can_write("routes") else ""
@@ -1142,8 +1209,11 @@ def routes_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
     body = f"""
 <h1>Маршруты</h1>
 {filter_card(filters_html, q, ('country_id', 'provider_id', 'prefix_id', 'is_actual', 'search'))}
+{export_link('/routes', q)}
 {form_card('+ Добавить маршрут <span class="muted">Admin</span>', create_html) if can_write("routes") else ""}
+{pagination_html}
 {table_card(table_html)}
+{pagination_html}
 """
     return page("Маршруты", body)
 
@@ -1177,8 +1247,13 @@ def route_numbers_page(repo: Repository, route_id: int, q: dict[str, str] | None
 
 def tariffs_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
     q = q or {}
+    filters = {"country_id": q.get("country_id"), "provider_id": q.get("provider_id"), "priority_status": q.get("priority_status"), "status": q.get("status", "active")}
+    records = list(repo.list_tariffs(filters))
+    if q.get("export") == "csv":
+        return csv_response("tariffs_export.csv", ["GEO", "Валюта", "Цена/Тариф", "Название", "Активен", "Комментарий"], [[t["country_name"], t["currency_code"], t["price_in_provider_currency"], f"{t['provider_name']} / {t['prefix'] or 'Без префикса'}", "Да" if t["is_current"] else "Нет", t["comment"]] for t in records])
+    records, pagination_html = paginate_rows(records, q, "/tariffs")
     rows = []
-    for t in repo.list_tariffs({"country_id": q.get("country_id"), "provider_id": q.get("provider_id"), "priority_status": q.get("priority_status"), "status": q.get("status", "active")}):
+    for t in records:
         prefix = t["prefix"] or "Без префикса"
         actions = f"""<form method='post' action='/tariffs/{t['id']}/deactivate'><button onclick="return confirm('Деактивировать тариф?')">⛔ Деактивировать</button></form>""" if can_write("tariffs") else ""
         rows.append(f"""<tr><td>{esc(t['country_name'])}</td><td>{esc(t['provider_name'])}</td><td>{esc(prefix)}</td><td>{esc(t['price_in_provider_currency'])} {esc(t['currency_code'])}</td><td>{esc(t['eur_price'])} EUR</td><td>{esc(t['priority_status'])}</td><td>{'Да' if t['is_current'] else 'Нет'}</td><td>{esc(t['comment'])}</td><td>{actions}</td></tr>""")
@@ -1200,15 +1275,23 @@ def tariffs_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
     body = f"""
 <h1>Тарифы</h1>
 {filter_card(filters_html, q, ('country_id', 'provider_id', 'priority_status', 'status'))}
+{export_link('/tariffs', q)}
 {form_card('+ Добавить тариф <span class="muted">Admin</span>', create_html) if can_write("tariffs") else ""}
-{table_card(table_html)}"""
+{pagination_html}
+{table_card(table_html)}
+{pagination_html}"""
     return page("Тарифы", body)
 
 
 def phones_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
     q = q or {}
+    filters = {"country_id": q.get("country_id"), "provider_id": q.get("provider_id"), "project": q.get("project"), "assignment_type": q.get("assignment_type"), "status": q.get("status"), "number_like": q.get("number")}
+    records = list(repo.list_phone_numbers(filters))
+    if q.get("export") == "csv":
+        return csv_response("phones_export.csv", ["Номер", "GEO", "Провайдер", "Тип номера", "Кампания", "Активен", "Комментарий"], [[p["number"], p["country_name"], p["provider_name"], p["phone_type"], p["project_label"], "Да" if p["is_active"] else "Нет", p["comment"]] for p in records])
+    records, pagination_html = paginate_rows(records, q, "/phones")
     rows = []
-    for phone in repo.list_phone_numbers({"country_id": q.get("country_id"), "provider_id": q.get("provider_id"), "project": q.get("project"), "assignment_type": q.get("assignment_type"), "status": q.get("status"), "number_like": q.get("number")}):
+    for phone in records:
         assignment_label = phone["assignment_type_label"] or ASSIGNMENT_LABELS.get(phone["assignment_type"], phone["assignment_type"])
         actions = f"<a class='button' href='/phones/{phone['id']}/edit'>✏️ Редактировать</a>" if can_write("phones") else ""
         rows.append(f"""<tr><td>{esc(phone['number'])}</td><td>{esc(phone['country_name'])}</td><td>{esc(phone['provider_name'])}</td><td>{esc(phone['project_label'])}</td><td>{esc(assignment_label)}</td><td>{esc(STATUS_LABELS.get(phone['status'], phone['status']))}</td><td>{'Да' if phone['is_active'] else 'Нет'}</td><td>{phone['route_count']}</td><td>{esc(phone['connection_cost'])}</td><td>{esc(phone['monthly_fee'])}</td><td>{esc(phone['currency_code'])}</td><td>{esc(phone['phone_type'])}</td><td>{esc(phone['tariff_label'])}</td><td>{esc(phone['created_at'])}</td><td>{esc(phone['updated_at'])}</td><td>{esc(phone['deactivated_at'])}</td><td>{esc(phone['comment'])}</td><td>{actions}</td></tr>""")
@@ -1225,15 +1308,23 @@ def phones_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
     body = f"""
 <h1>Купленные номера</h1>
 {filter_card(filters_html, q, ('country_id', 'provider_id', 'project', 'assignment_type', 'status', 'number'))}
+{export_link('/phones', q)}
 {form_card('+ Добавить номер <span class="muted">Admin</span>', create_html) if can_write("phones") else ""}
-{table_card(table_html)}"""
+{pagination_html}
+{table_card(table_html)}
+{pagination_html}"""
     return page("Купленные номера", body)
 
 
 def companies_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
     q = q or {}
+    filters = {"server_id": q.get("server_id"), "country_id": q.get("country_id"), "company_like": q.get("company"), "external_id_like": q.get("external_id"), "has_autorotation": q.get("has_autorotation"), "is_active": q.get("is_active")}
+    records = list(repo.list_calling_companies(filters))
+    if q.get("export") == "csv":
+        return csv_response("companies_export.csv", ["Название", "GEO", "Проект", "Активен", "Комментарий"], [[c["company_name"], c["country_name"], c["company_id_external"], "Да" if c["is_active"] else "Нет", c["comment"]] for c in records])
+    records, pagination_html = paginate_rows(records, q, "/companies")
     rows = []
-    for cc in repo.list_calling_companies({"server_id": q.get("server_id"), "country_id": q.get("country_id"), "company_like": q.get("company"), "external_id_like": q.get("external_id"), "has_autorotation": q.get("has_autorotation"), "is_active": q.get("is_active")}):
+    for cc in records:
         actions = f"<a class='button' href='/companies/{cc['id']}/edit'>✏️ Редактировать</a>" if can_write("companies") else ""
         rows.append(f"<tr><td>{esc(cc['server_name'])}</td><td>{esc(cc['country_name'])}</td><td>{esc(cc['company_name'])}</td><td>{esc(cc['company_id_external'])}</td><td>{esc(cc['line_count'])}</td><td>{esc(cc['dial_set_count'])}</td><td>{'Да' if cc['has_autorotation'] else 'Нет'}</td><td>{esc(cc['retry_interval_seconds'])}</td><td>{'Активна' if cc['is_active'] else 'Неактивна'}</td><td>{esc(cc['comment'])}</td><td>{actions}</td></tr>")
     filters_html = f"""<form class="filter-grid" method="get" action="/companies">
@@ -1243,8 +1334,11 @@ def companies_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
     body = f"""
 <h1>Кампании прозвона</h1>
 {filter_card(filters_html, q, ('server_id', 'country_id', 'company', 'external_id', 'has_autorotation', 'is_active'))}
+{export_link('/companies', q)}
 {form_card('+ Добавить кампанию <span class="muted">Admin</span>', create_html) if can_write("companies") else ""}
-{table_card(table_html)}"""
+{pagination_html}
+{table_card(table_html)}
+{pagination_html}"""
     return page("Кампании прозвона", body)
 
 def routing_reason_options(selected: str | None = None) -> str:
@@ -1527,8 +1621,18 @@ def provider_event_details(ev) -> tuple[str, str, str]:
 
 def provider_changes_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
     q = q or {}
+    filters = {"country_id": q.get("country_id"), "apply_scope": q.get("apply_scope"), "server_id": q.get("server_id"), "campaign_id": q.get("campaign_id"), "provider_id": q.get("provider_id"), "include_inactive": q.get("include_inactive") == "1"}
+    records = list(repo.list_routing_events(filters))
+    if q.get("export") == "csv":
+        export_rows = []
+        for ev in records:
+            server_text, campaign_text, details_text = provider_event_details(ev)
+            details_plain = re.sub(r"<[^>]+>", " ", details_text)
+            export_rows.append([ev["event_at"], ev["country_name"], ev["old_route_name"] or "—", ev["new_route_name"] or ev["new_company_route_name"] or "—", ev["reason"], ROUTING_SCOPE_LABELS.get(ev["apply_scope"], ev["apply_scope"]), "Активна" if ev["is_active"] else "Неактивна", ev["comment"] or details_plain])
+        return csv_response("provider_changes_export.csv", ["Дата", "GEO", "Старый провайдер", "Новый провайдер", "Причина", "Scope", "Статус", "Комментарий"], export_rows)
+    records, pagination_html = paginate_rows(records, q, "/provider-changes")
     rows = []
-    for ev in repo.list_routing_events({"country_id": q.get("country_id"), "apply_scope": q.get("apply_scope"), "server_id": q.get("server_id"), "campaign_id": q.get("campaign_id"), "provider_id": q.get("provider_id"), "include_inactive": q.get("include_inactive") == "1"}):
+    for ev in records:
         server_text, campaign_text, details_text = provider_event_details(ev)
         actions = f"<a class='button' href='/provider-changes/{ev['id']}/edit'>Редактировать</a>" if can_write("provider_changes") else ""
         if ev["is_active"] and can_write("provider_changes"):
@@ -1549,7 +1653,10 @@ def provider_changes_page(repo: Repository, q: dict[str, str] | None = None) -> 
 <h1>Смена провайдеров</h1>
 {routing_event_form(repo) if can_write("provider_changes") else ""}
 {filter_card(filters_html, q, ('country_id', 'apply_scope', 'server_id', 'campaign_id', 'provider_id', 'include_inactive'))}
-{table_card(journal_html, title='Журнал событий', extra_class='journal-card')}"""
+{export_link('/provider-changes', q)}
+{pagination_html}
+{table_card(journal_html, title='Журнал событий', extra_class='journal-card')}
+{pagination_html}"""
     return page("Смена провайдеров", body)
 
 
@@ -1631,7 +1738,7 @@ def server_priorities_page(repo: Repository, q: dict[str, str] | None = None) ->
         priority_clauses.append("srp.server_id = ?")
         priority_params.append(q["server_id"])
     priority_where = " WHERE " + " AND ".join(priority_clauses)
-    for row in repo.conn.execute(f"""
+    priority_records = list(repo.conn.execute(f"""
         SELECT srp.*, c.name AS country_name, s.name AS server_name,
                cp.name AS current_provider_name, pp.name AS previous_provider_name,
                cr.name AS current_route_name, pr.name AS previous_route_name,
@@ -1643,7 +1750,11 @@ def server_priorities_page(repo: Repository, q: dict[str, str] | None = None) ->
         LEFT JOIN users u ON u.id = srp.changed_by
         {priority_where}
         ORDER BY s.name, c.name
-    """, priority_params):
+    """, priority_params))
+    if q.get("export") == "csv":
+        return csv_response("server_priorities_export.csv", ["GEO", "Сервер", "Провайдер/маршрут", "Приоритет", "Активен", "Комментарий"], [[row["country_name"], row["server_name"], f"{row['current_provider_name'] or '—'} / {row['current_route_name'] or '—'}", row["current_route_name"] or "—", "Да" if row["is_active"] else "Нет", row["comment"]] for row in priority_records])
+    priority_records, pagination_html = paginate_rows(priority_records, q, "/admin/server-priorities")
+    for row in priority_records:
         route_opts = select_options(repo, """
             SELECT r.id, r.name || ' — ' || p.name AS label
             FROM routes r
@@ -1695,7 +1806,10 @@ def server_priorities_page(repo: Repository, q: dict[str, str] | None = None) ->
     body = f"""
 <h1>Администрирование → Приоритет по серверам</h1>
 {filter_card(filters_html, q, ('country_id', 'server_id'))}
-{''.join(blocks)}"""
+{export_link('/admin/server-priorities', q)}
+{pagination_html}
+{''.join(blocks)}
+{pagination_html}"""
     return page("Приоритет по серверам", body)
 
 
@@ -1712,8 +1826,12 @@ def company_routing_settings_page(repo: Repository, q: dict[str, str] | None = N
         "show_history": show_history,
     }
     create_country_id = q.get("country_id") or None
+    records = list(repo.list_company_routing_settings(filters))
+    if q.get("export") == "csv":
+        return csv_response("company_routing_settings_export.csv", ["Кампания", "GEO", "Маршрут", "Авторотация", "Активен", "Комментарий"], [[f"{r['company_id_external']} — {r['company_name']}", r["country_name"], r["route_name"] or "—", "Да" if r["has_autorotation"] else "Нет", "Да" if r["is_active"] else "Нет", r["comment"]] for r in records])
+    records, pagination_html = paginate_rows(records, q, "/admin/company-routing-settings")
     rows = []
-    for setting in repo.list_company_routing_settings(filters):
+    for setting in records:
         route_label = setting["route_name"] or "—"
         provider_label = f"<br><span class='muted'>Провайдер: {esc(setting['provider_name'])}</span>" if setting["provider_name"] else ""
         active_badge = "Да" if setting["is_active"] else "Нет"
@@ -1768,7 +1886,9 @@ def company_routing_settings_page(repo: Repository, q: dict[str, str] | None = N
     body = f"""
 <h1>Администрирование → Схема маршрутизации кампаний</h1>
 {filter_card(filters_html, q, ('country_id', 'server_id', 'company_id_external', 'routing_mode', 'is_active', 'show_history'))}
+{export_link('/admin/company-routing-settings', q)}
 {form_card('+ Добавить схему маршрутизации кампании', create_html)}
+{pagination_html}
 <script>
 document.querySelectorAll('form').forEach(form => {{
   const mode = form.querySelector('select[name="routing_mode"]');
@@ -1780,6 +1900,7 @@ document.querySelectorAll('form').forEach(form => {{
 }});
 </script>
 {table_card(table_html)}
+{pagination_html}
 """
     return page("Схема маршрутизации кампаний", body)
 
@@ -2526,7 +2647,11 @@ def app(environ, start_response):
         elif path.startswith("/routes/") and path.endswith("/numbers"): response = route_numbers_page(repo, int(path.strip("/").split("/")[1]), q)
         else:
             start_response("404 Not Found", [("Content-Type", "text/html; charset=utf-8")]); return [page("404", "<h1>404</h1>")]
-        start_response("200 OK", [("Content-Type", "text/html; charset=utf-8")]); return [response]
+        if q.get("export") == "csv" and path in EXPORT_FILENAMES:
+            start_response("200 OK", [("Content-Type", "text/csv; charset=utf-8"), ("Content-Disposition", f"attachment; filename={EXPORT_FILENAMES[path]}")])
+        else:
+            start_response("200 OK", [("Content-Type", "text/html; charset=utf-8")])
+        return [response]
     except ForbiddenError:
         start_response("403 Forbidden", [("Content-Type", "text/html; charset=utf-8")])
         return [forbidden_page()]

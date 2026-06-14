@@ -39,6 +39,15 @@ class ServerSmokeTest(unittest.TestCase):
         content = b"".join(server.app(environ, start_response)).decode("utf-8")
         return captured, content
 
+    def user_cookie(self, username):
+        self.request("/routes")
+        conn = server.connect(server.DB_PATH)
+        try:
+            user_id = conn.execute("SELECT id FROM users WHERE username = ?", (username,)).fetchone()["id"]
+        finally:
+            conn.close()
+        return f"mvp_current_user_id={user_id}"
+
     def test_main_screens_render(self):
         for path, marker in [
             ("/routes", "Маршруты"),
@@ -761,6 +770,7 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
     setUp = ServerSmokeTest.setUp
     tearDown = ServerSmokeTest.tearDown
     request = ServerSmokeTest.request
+    user_cookie = ServerSmokeTest.user_cookie
 
     def test_server_priority_event_updates_dashboard_and_change_log(self):
         self.request("/routes")
@@ -1037,6 +1047,69 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
         self.assertNotIn("старое событие", content)
         _, content = self.request("/provider-changes?include_inactive=1")
         self.assertIn("старое событие", content)
+
+    def add_extra_routes(self, count=55, prefix="BulkRoute"):
+        self.request("/routes")
+        conn = server.connect(server.DB_PATH)
+        try:
+            country_id = conn.execute("SELECT id FROM countries WHERE code = 'MEX'").fetchone()["id"]
+            provider_id = conn.execute("SELECT id FROM providers WHERE name = 'DemoTel'").fetchone()["id"]
+            admin_id = conn.execute("SELECT id FROM users WHERE username = 'admin'").fetchone()["id"]
+            for index in range(count):
+                conn.execute(
+                    """
+                    INSERT INTO routes(country_id, provider_id, name, cli_source_type, cli_source_label, is_actual, priority_status, comment, created_by)
+                    VALUES (?, ?, ?, 'rnd', ?, 1, 'normal', ?, ?)
+                    """,
+                    (country_id, provider_id, f"{prefix} {index:03d}", f"{prefix}{index:03d}", "bulk export row", admin_id),
+                )
+            conn.commit()
+        finally:
+            conn.close()
+
+    def test_table_pages_limit_routes_to_50_and_preserve_filter_pagination(self):
+        self.add_extra_routes(55)
+        captured, content = self.request("/routes?provider_id=3&page=not-a-number")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertEqual(content.count("bulk export row"), 50)
+        self.assertIn("Страница 1 из", content)
+        self.assertIn("provider_id=3&amp;page=2", content)
+
+        captured, content = self.request("/routes?provider_id=3&page=2")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertLessEqual(content.count("bulk export row"), 50)
+        self.assertIn("provider_id=3&amp;page=1", content)
+
+    def test_export_link_preserves_filters_and_removes_page_limit(self):
+        captured, content = self.request("/routes?provider_id=3&page=3&limit=50")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("Экспорт в Excel", content)
+        self.assertIn("/routes?provider_id=3&amp;export=csv", content)
+        self.assertNotIn("export=csv&amp;page", content)
+        self.assertNotIn("limit=50&amp;export=csv", content)
+
+    def test_csv_export_format_and_all_filtered_rows(self):
+        self.add_extra_routes(55)
+        captured, content = self.request("/routes?provider_id=3&page=2&export=csv")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn(("Content-Type", "text/csv; charset=utf-8"), captured["headers"])
+        self.assertIn(("Content-Disposition", "attachment; filename=routes_export.csv"), captured["headers"])
+        self.assertTrue(content.startswith("\ufeffGEO;Провайдер;Маршрут;Сервер;Активен;Комментарий"))
+        self.assertIn(";", content.splitlines()[0])
+        self.assertEqual(content.count("bulk export row"), 55)
+
+    def test_csv_export_respects_permissions(self):
+        captured, content = self.request("/routes?export=csv", cookie=self.user_cookie("guest"))
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertTrue(content.startswith("\ufeff"))
+
+        captured, content = self.request("/provider-changes?export=csv", cookie=self.user_cookie("guest"))
+        self.assertEqual(captured["status"], "403 Forbidden")
+        self.assertIn("Нет доступа", content)
+
+        captured, content = self.request("/admin/server-priorities?export=csv", cookie=self.user_cookie("duty"))
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("GEO;Сервер;Провайдер/маршрут;Приоритет;Активен;Комментарий", content)
 
 
 if __name__ == "__main__":
