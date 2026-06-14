@@ -51,15 +51,17 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
         )
         self.assertGreater(result.route_phone_number_id, 0)
 
-    def test_problem_phone_can_be_added_to_route_when_provider_active(self):
-        phone_id = self.create_phone(status="problem")
-        result = self.repo.add_phone_to_route(
-            route_id=self.route_id,
-            phone_number_id=phone_id,
-            usage_type="pool_member",
-            added_by=self.admin_id,
-        )
-        self.assertGreater(result.route_phone_number_id, 0)
+    def test_non_used_provider_active_phones_cannot_be_added_to_route(self):
+        for index, status in enumerate(("free", "problem", "unknown")):
+            with self.subTest(status=status):
+                phone_id = self.create_phone(status=status, number=f"39333123457{index}")
+                with self.assertRaisesRegex(BusinessRuleError, "рабочий статус номера должен быть ‘Используется’"):
+                    self.repo.add_phone_to_route(
+                        route_id=self.route_id,
+                        phone_number_id=phone_id,
+                        usage_type="pool_member",
+                        added_by=self.admin_id,
+                    )
 
     def test_inactive_phone_cannot_be_added_to_route(self):
         phone_id = self.create_phone(is_active=False)
@@ -75,7 +77,10 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
         visible_statuses = ["used", "free", "problem", "unknown"]
         for index, status in enumerate(visible_statuses):
             phone_id = self.create_phone(status=status, number=f"39333123456{index}")
-            self.repo.add_phone_to_route(route_id=self.route_id, phone_number_id=phone_id, usage_type="pool_member", added_by=self.admin_id)
+            self.conn.execute(
+                "INSERT INTO route_phone_numbers(route_id, phone_number_id, usage_type, is_active, added_by) VALUES (?, ?, 'pool_member', 1, ?)",
+                (self.route_id, phone_id, self.admin_id),
+            )
         inactive_id = self.create_phone(status="used", number="393331234580")
         for phone_id in (inactive_id,):
             self.conn.execute(
@@ -199,6 +204,20 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
             number="393331234592",
             assignment_type="pool_number",
             status="free",
+            is_active=True,
+            updated_by=self.admin_id,
+            currency_id=self.currency_id,
+            review_required=True,
+        )
+        with self.assertRaisesRegex(BusinessRuleError, "рабочий статус номера должен быть ‘Используется’"):
+            self.repo.add_phone_to_route(route_id=self.route_id, phone_number_id=phone_id, usage_type="pool_member", added_by=self.admin_id)
+        self.repo.update_phone_number(
+            phone_id,
+            country_id=self.country_id,
+            provider_id=self.provider_id,
+            number="393331234592",
+            assignment_type="pool_number",
+            status="used",
             is_active=True,
             updated_by=self.admin_id,
             currency_id=self.currency_id,

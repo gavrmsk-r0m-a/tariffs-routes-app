@@ -581,6 +581,83 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertEqual(captured["status"], "400 Bad Request")
         self.assertIn("Номер уже добавлен", content)
 
+    def test_route_number_add_rejects_non_used_phone_status(self):
+        self.request("/routes")
+        body = urlencode({"number": "525550099998", "country_id": "1", "provider_id": "1", "assignment_type": "pool_number", "status": "free", "is_active": "1"})
+        self.request("/phones/create", method="POST", body=body)
+        body = urlencode({"phone_number": "525550099998", "usage_type": "pool_member"})
+        captured, content = self.request("/routes/1/numbers/add", method="POST", body=body)
+        self.assertEqual(captured["status"], "400 Bad Request")
+        self.assertIn("рабочий статус номера должен быть ‘Используется’", content)
+
+    def test_route_number_bulk_add_reports_status_errors_and_adds_used(self):
+        self.request("/routes")
+        conn = server.connect(server.DB_PATH)
+        try:
+            route_id = conn.execute("SELECT id FROM routes WHERE id NOT IN (SELECT route_id FROM route_phone_numbers WHERE is_active = 1) LIMIT 1").fetchone()["id"]
+            conn.execute("UPDATE phone_numbers SET status = 'free' WHERE number = '525550000005'")
+            conn.commit()
+        finally:
+            conn.close()
+        body = urlencode({"phone_numbers": "525550000005\n525550000006"})
+        captured, _ = self.request(f"/routes/{route_id}/numbers/bulk-add", method="POST", body=body)
+        self.assertEqual(captured["status"], "303 See Other")
+        location = dict(captured["headers"])["Location"]
+        self.assertIn("numbers?notice=", location)
+        captured, content = self.request(location)
+        self.assertIn("Добавлено 1 из 2", content)
+        self.assertIn("рабочий статус номера должен быть ‘Используется’", content)
+        self.assertIn("525550000006", content)
+
+    def test_phones_page_and_export_show_route_names(self):
+        self.request("/routes")
+        body = urlencode({"number": "525550099999", "country_id": "1", "provider_id": "1", "assignment_type": "pool_number", "status": "used", "is_active": "1"})
+        self.request("/phones/create", method="POST", body=body)
+        captured, content = self.request("/phones")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("Маршруты", content)
+        self.assertIn("Мексика/Sancom/Demo_0827@", content)
+        self.assertIn("<td data-col='routes'>—</td>", content)
+        self.assertNotIn("Маршрутов</button>", content)
+
+        conn = server.connect(server.DB_PATH)
+        try:
+            phone_id = conn.execute("SELECT id FROM phone_numbers WHERE number = '525550000001'").fetchone()["id"]
+            route_id = conn.execute("SELECT id FROM routes WHERE name != 'Мексика/Sancom/Demo_0827@' LIMIT 1").fetchone()["id"]
+            conn.execute(
+                "INSERT INTO route_phone_numbers(route_id, phone_number_id, usage_type, is_active, added_by) VALUES (?, ?, 'pool_member', 1, 1)",
+                (route_id, phone_id),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        _, content = self.request("/phones")
+        self.assertIn("Мексика/Sancom/Demo_0827@", content)
+        self.assertIn(", ", content)
+
+        captured, content = self.request("/phones?export=csv")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("Маршруты", content)
+        self.assertIn("Мексика/Sancom/Demo_0827@", content)
+
+    def test_route_numbers_and_edit_pages_are_available_without_numbers(self):
+        self.request("/routes")
+        conn = server.connect(server.DB_PATH)
+        try:
+            route_id = conn.execute("SELECT id FROM routes WHERE id NOT IN (SELECT route_id FROM route_phone_numbers WHERE is_active = 1) LIMIT 1").fetchone()["id"]
+        finally:
+            conn.close()
+        captured, content = self.request(f"/routes/{route_id}/numbers")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("+ Добавить номер", content)
+        captured, content = self.request(f"/routes/{route_id}/edit")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("Номера маршрута / АОНы", content)
+        self.assertIn(f"/routes/{route_id}/numbers", content)
+        captured, content = self.request("/routes")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn(f"/routes/{route_id}/numbers", content)
+
     def test_duplicate_route_returns_user_message(self):
         self.request("/routes")
         body = urlencode({"country_id": "1", "provider_id": "2", "provider_prefix_id": "3", "project_label": "", "cli_source_type": "pool", "cli_source_label": "Demo_A", "is_actual": "1"})
