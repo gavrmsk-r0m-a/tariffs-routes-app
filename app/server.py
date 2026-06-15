@@ -307,8 +307,9 @@ def breadcrumbs(title: str) -> str:
             parts.append(f"<span>{esc(label)}</span>")
     return "<nav class='breadcrumbs' aria-label='Хлебные крошки'>" + "<span class='separator'>→</span>".join(parts) + "</nav>"
 
-def page(title: str, body: str, notice: str | None = None) -> bytes:
-    notice_html = f"<div class='ok'>{esc(notice)}</div>" if notice else ""
+def page(title: str, body: str, notice: str | None = None, notice_type: str = "success") -> bytes:
+    notice_class = "error" if notice_type == "error" else "ok"
+    notice_html = f"<div class='{notice_class}'>{esc(notice)}</div>" if notice else ""
     return f"""<!doctype html>
 <html lang="ru">
 <head>
@@ -589,6 +590,7 @@ def page(title: str, body: str, notice: str | None = None) -> bytes:
     tbody tr:hover td[data-col="actions"] {{ background: var(--accent-soft); }}
     .actions, .compact-actions, td[data-col="actions"] {{ white-space: nowrap; text-align: center; }}
     td[data-col="actions"] form {{ justify-content: center; }}
+    .route-numbers-action {{ min-height: 28px; padding: 4px 8px; font-size: 12px; box-shadow: none; }}
     .action-button, .actions .button, .actions button, .compact-actions .button, .compact-actions button, td[data-col="actions"] .button, td[data-col="actions"] button {{ min-width: 30px; min-height: 30px; padding: 4px 7px; border-radius: 8px; font-size: 12px; line-height: 1; box-shadow: none; }}
     .edit-action, td[data-col="actions"] details.edit-details > summary {{ position: relative; width: 32px; min-width: 32px; height: 32px; min-height: 32px; padding: 0; display: inline-flex; align-items: center; justify-content: center; overflow: visible; color: transparent; font-size: 0; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--surface); box-shadow: none; list-style: none; }}
     .edit-action:hover, td[data-col="actions"] details.edit-details > summary:hover {{ background: var(--accent-soft); border-color: var(--accent); color: transparent; }}
@@ -818,7 +820,7 @@ def current_actor_id() -> int:
 def section_for_get_path(path: str) -> str | None:
     if path in {"/", "/dashboard"}:
         return "dashboard"
-    if path == "/routes" or (path.startswith("/routes/") and path.endswith("/numbers")):
+    if path == "/routes" or (path.startswith("/routes/") and (path.endswith("/numbers") or path.endswith("/numbers/manage"))):
         return "routes"
     if path == "/tariffs":
         return "tariffs"
@@ -1550,9 +1552,8 @@ def routes_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
     rows = []
     for route in records:
         prefix = route["prefix"] or "Без префикса"
-        numbers = f'{route["phone_count"]} номеров <a class="button" href="/routes/{route["id"]}/numbers">Показать номера</a>'
-        if route["cli_source_type"] == "rnd":
-            numbers = f'RND провайдера <a class="button" href="/routes/{route["id"]}/numbers">Номера</a>'
+        numbers_label = "RND провайдера" if route["cli_source_type"] == "rnd" else f'{route["phone_count"]} номеров'
+        numbers = f'{numbers_label} <a class="button route-numbers-action" href="/routes/{route["id"]}/numbers">Показать номера</a>'
         edit = f"<a class='button edit-action' href='/routes/{route['id']}/edit' title='Редактировать' aria-label='Редактировать' data-tooltip='Редактировать'>Редактировать</a>" if can_write("routes") else ""
         rows.append(f"<tr><td data-col='geo'>{esc(route['country_name'])}</td><td data-col='route' data-copy-column='route-name'>{esc(route['name'])}</td><td data-col='provider'>{esc(route['provider_name'])}</td><td data-col='prefix'>{esc(prefix)}</td><td data-col='actual'>{'Да' if route['is_actual'] else 'Нет'}</td><td data-col='comment' class='comment-cell'>{esc(route['comment'])}</td><td data-col='numbers'>{numbers}</td><td data-col='actions' class='actions'>{edit}</td></tr>")
     filters_html = f"""<form class="filter-grid" method="get" action="/routes">
@@ -1584,32 +1585,49 @@ def routes_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
     return page("Маршруты", body)
 
 
+def route_number_rows(repo: Repository, route_id: int, *, selectable: bool = False) -> tuple[list[sqlite3.Row], str, str]:
+    numbers = repo.route_numbers(route_id)
+    rows = []
+    for phone in numbers:
+        cost = f"Подкл: {phone['connection_cost'] or '—'} / Абон: {phone['monthly_fee'] or '—'} / Исх: {phone['outgoing_rate'] or '—'} / Вх: {phone['incoming_rate'] or '—'}"
+        select_cell = f"<td><input type='checkbox' name='link_ids' value='{phone['link_id']}'></td>" if selectable else ""
+        rows.append(f"<tr>{select_cell}<td>{esc(phone['number'])}</td><td>{esc(STATUS_LABELS.get(phone['status'], phone['status']))}</td><td>{esc(ASSIGNMENT_LABELS.get(phone['assignment_type'], phone['assignment_type']))}</td><td>{esc(cost)}</td><td class='comment-cell'>{esc(phone['link_comment'] or phone['phone_comment'])}</td></tr>")
+    select_header = "<th></th>" if selectable else ""
+    table_html = f"<table><thead><tr>{select_header}<th>Номер</th><th>Статус</th><th>Назначение</th><th>Стоимость</th><th>Комментарий</th></tr></thead><tbody>{''.join(rows)}</tbody></table>"
+    all_numbers = chr(10).join([p["number"] for p in numbers])
+    return numbers, all_numbers, table_html
+
+
 def route_numbers_page(repo: Repository, route_id: int, q: dict[str, str] | None = None) -> bytes:
     q = q or {}
     route = repo.conn.execute("SELECT name FROM routes WHERE id = ?", (route_id,)).fetchone()
     if route is None:
         return page("Не найдено", "<h1>Маршрут не найден</h1>")
-    numbers = repo.route_numbers(route_id)
-    rows = []
-    for phone in numbers:
-        cost = f"Подкл: {phone['connection_cost'] or '—'} / Абон: {phone['monthly_fee'] or '—'} / Исх: {phone['outgoing_rate'] or '—'} / Вх: {phone['incoming_rate'] or '—'}"
-        select_cell = f"<input type='checkbox' name='link_ids' value='{phone['link_id']}'>" if can_write("routes") else ""
-        rows.append(f"<tr><td>{select_cell}</td><td>{esc(phone['number'])}</td><td>{esc(STATUS_LABELS.get(phone['status'], phone['status']))}</td><td>{esc(ASSIGNMENT_LABELS.get(phone['assignment_type'], phone['assignment_type']))}</td><td>{esc(cost)}</td><td class='comment-cell'>{esc(phone['link_comment'] or phone['phone_comment'])}</td></tr>")
-    all_numbers = chr(10).join([p["number"] for p in numbers])
-    write_tools = ""
-    if can_write("routes"):
-        write_tools = f"""
-<div class="card"><h2>+ Добавить номер <span class="muted">Admin</span></h2><form method="post" action="/routes/{route_id}/numbers/add"><label>Номер телефона <span class="required">*</span><input name="phone_number"></label><label>Назначение <span class="required">*</span><input name="usage_type" value="pool_member"></label><label>Комментарий <input name="comment"></label><button>Добавить</button></form></div>
-<div class="card"><h2>Массовое добавление</h2><form method="post" action="/routes/{route_id}/numbers/bulk-add"><textarea name="phone_numbers" rows="7" cols="40" placeholder="по одному номеру в строке"></textarea><br><button>Добавить список</button></form></div>"""
-    table_html = f"<table><thead><tr><th>{'' if can_write('routes') else ''}</th><th>Номер</th><th>Статус</th><th>Назначение</th><th>Стоимость</th><th>Комментарий</th></tr></thead><tbody>{''.join(rows)}</tbody></table>"
-    if can_write("routes"):
-        table_html = f"""<form method="post" action="/routes/{route_id}/numbers/remove"><label>Причина <input name="reason"></label><button onclick="return confirm('Исключить выбранные номера из маршрута?')">Исключить из маршрута</button>{table_html}</form>"""
+    _, all_numbers, table_html = route_number_rows(repo, route_id, selectable=False)
     body = f"""
 <h1>Номера в маршруте: {esc(route['name'])}</h1><p><a href="/routes">← Назад</a></p>
-<div class="grid"><div class="card"><h2>Скопировать все</h2><textarea rows="7" cols="40" readonly>{esc(all_numbers)}</textarea></div>{write_tools}</div>
+<div class="grid"><div class="card"><h2>Скопировать все</h2><textarea rows="7" cols="40" readonly>{esc(all_numbers)}</textarea></div></div>
 {table_html}
 """
-    return page("Номера маршрута", body, q.get("notice"))
+    return page("Номера маршрута", body, q.get("notice"), "error" if q.get("notice_type") == "error" else "success")
+
+
+def route_numbers_manage_page(repo: Repository, route_id: int, q: dict[str, str] | None = None) -> bytes:
+    q = q or {}
+    route = repo.conn.execute("SELECT name FROM routes WHERE id = ?", (route_id,)).fetchone()
+    if route is None:
+        return page("Маршрут не найден", "<h1>Маршрут не найден</h1>")
+    _, all_numbers, table_html = route_number_rows(repo, route_id, selectable=True)
+    add_tools = f"""
+<div class="card"><h2>+ Добавить номер <span class="muted">Admin</span></h2><form method="post" action="/routes/{route_id}/numbers/add"><label>Номер телефона <span class="required">*</span><input name="phone_number"></label><label>Назначение <span class="required">*</span><input name="usage_type" value="pool_member"></label><label>Комментарий <input name="comment"></label><button>Добавить</button></form></div>
+<div class="card"><h2>Массовое добавление</h2><form method="post" action="/routes/{route_id}/numbers/bulk-add"><textarea name="phone_numbers" rows="7" cols="40" placeholder="по одному номеру в строке"></textarea><br><button>Добавить список</button></form></div>"""
+    remove_form = f"""<form method="post" action="/routes/{route_id}/numbers/remove"><label>Причина <input name="reason"></label><button onclick="return confirm('Исключить выбранные номера из маршрута?')">Исключить из маршрута</button>{table_html}</form>"""
+    body = f"""
+<h1>Номера маршрута / АОНы: {esc(route['name'])}</h1><p><a href="/routes/{route_id}/edit">← Назад к маршруту</a> · <a href="/routes/{route_id}/numbers">Только просмотр</a></p>
+<div class="grid"><div class="card"><h2>Скопировать все</h2><textarea rows="7" cols="40" readonly>{esc(all_numbers)}</textarea></div>{add_tools}</div>
+{remove_form}
+"""
+    return page("Номера маршрута / АОНы", body, q.get("notice"), "error" if q.get("notice_type") == "error" else "success")
 
 def tariffs_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
     q = q or {}
@@ -2481,7 +2499,7 @@ def route_edit_page(repo: Repository, route_id: int) -> bytes:
 <label>Актуальный <select name='is_actual'><option value='1' {'selected' if route['is_actual'] else ''}>Активный</option><option value='0' {'selected' if not route['is_actual'] else ''}>Неактивный</option></select></label>
 <label>Приоритет <select name='priority_status'><option value='priority' {'selected' if route['priority_status']=='priority' else ''}>priority</option><option value='alternative' {'selected' if route['priority_status']=='alternative' else ''}>alternative</option><option value='unknown' {'selected' if route['priority_status']=='unknown' else ''}>unknown</option></select></label>
 <button onclick="return confirm('Сохранить изменения?')">Сохранить</button></form>
-<div class='card'><h2>Номера маршрута / АОНы</h2><p>Управление купленными номерами доступно для каждого маршрута, даже если номеров пока нет.</p><p><a class='button' href='/routes/{route_id}/numbers'>Показать номера / управлять АОНами</a></p></div>"""
+<div class='card'><h2>Номера маршрута / АОНы</h2><p>Управление купленными номерами доступно для каждого маршрута, даже если номеров пока нет.</p><p><a class='button' href='/routes/{route_id}/numbers/manage'>Номера маршрута / АОНы</a></p></div>"""
     return page("Редактировать маршрут", body)
 
 
@@ -2595,7 +2613,7 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
     if path.startswith("/routes/") and path.endswith("/numbers/add"):
         route_id = int(path.strip("/").split("/")[1])
         repo.add_phone_to_route_by_number(route_id=route_id, number=data["phone_number"], usage_type=data.get("usage_type") or "pool_member", added_by=actor_id, comment=data.get("comment"))
-        return f"/routes/{route_id}/numbers"
+        return f"/routes/{route_id}/numbers/manage"
     if path.startswith("/routes/") and path.endswith("/numbers/bulk-add"):
         route_id = int(path.strip("/").split("/")[1])
         added, errors = 0, []
@@ -2607,14 +2625,15 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
                 errors.append(f"{number}: {exc}")
         from urllib.parse import quote
         report = "Массовое добавление завершено. Добавлено %s из %s. Не добавлены: %s" % (added, added + len(errors), "; ".join(errors) or "—")
-        return f"/routes/{route_id}/numbers?notice={quote(report)}"
+        notice_type = "error" if errors else "success"
+        return f"/routes/{route_id}/numbers/manage?notice={quote(report)}&notice_type={notice_type}"
     if path.startswith("/routes/") and path.endswith("/numbers/remove"):
         route_id = int(path.strip("/").split("/")[1])
         link_ids = [int(v) for v in parse_qs(data.get("_raw", "")).get("link_ids", []) if v]
         removed = repo.remove_phone_links_from_route(route_id=route_id, link_ids=link_ids, removed_by=actor_id, reason=data.get("reason"))
         if removed == 0:
             raise BusinessRuleError("Выберите номера для исключения из маршрута")
-        return f"/routes/{route_id}/numbers"
+        return f"/routes/{route_id}/numbers/manage"
     if path == "/phones/create":
         provider_id = parse_int(data.get("provider_id"))
         if provider_id is None:
@@ -2876,7 +2895,7 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
 
 def error_return_path(path: str) -> str:
     if path.startswith("/routes/") and "/numbers/" in path:
-        return "/routes/" + path.strip("/").split("/")[1] + "/numbers"
+        return "/routes/" + path.strip("/").split("/")[1] + "/numbers/manage"
     if path.startswith("/routes/") and path.endswith("/update"):
         return "/routes/" + path.strip("/").split("/")[1] + "/edit"
     if path == "/routes/create":
@@ -3018,6 +3037,9 @@ def app(environ, start_response):
         elif path.startswith("/phones/") and path.endswith("/edit"): response = phone_edit_page(repo, int(path.strip("/").split("/")[1]))
         elif path.startswith("/companies/") and path.endswith("/edit"): response = company_edit_page(repo, int(path.strip("/").split("/")[1]))
         elif path.startswith("/provider-changes/") and path.endswith("/edit"): response = provider_change_edit_page(repo, int(path.strip("/").split("/")[1]))
+        elif path.startswith("/routes/") and path.endswith("/numbers/manage"):
+            require_permission("write", "routes")
+            response = route_numbers_manage_page(repo, int(path.strip("/").split("/")[1]), q)
         elif path.startswith("/routes/") and path.endswith("/numbers"): response = route_numbers_page(repo, int(path.strip("/").split("/")[1]), q)
         else:
             start_response("404 Not Found", [("Content-Type", "text/html; charset=utf-8")]); return [page("404", "<h1>404</h1>")]
@@ -3031,7 +3053,11 @@ def app(environ, start_response):
         return [forbidden_page()]
     except (BusinessRuleError, ValueError, sqlite3.IntegrityError) as exc:
         start_response("400 Bad Request", [("Content-Type", "text/html; charset=utf-8")])
-        return [validation_error_page(error_return_path(path), user_error(exc))]
+        return_path = error_return_path(path)
+        if return_path.startswith("/routes/") and return_path.endswith("/numbers/manage"):
+            route_id = int(return_path.strip("/").split("/")[1])
+            return [route_numbers_manage_page(repo, route_id, {"notice": user_error(exc), "notice_type": "error"})]
+        return [validation_error_page(return_path, user_error(exc))]
     finally:
         _REQUEST_CONTEXT.clear()
         conn.close()
