@@ -235,9 +235,12 @@ def sidebar(title: str) -> str:
         )
     return f"""
   <aside class="sidebar">
-    <div class="brand-block">
-      <div class="brand-mark">⌁</div>
-      <div class="brand-copy"><strong>TeleRoute</strong><span>Admin Panel</span></div>
+    <div class="sidebar-head">
+      <div class="brand-block">
+        <div class="brand-mark">⌁</div>
+        <div class="brand-copy"><strong>TeleRoute</strong><span>Admin Panel</span></div>
+      </div>
+      <button class="sidebar-collapse" type="button" data-sidebar-toggle data-tooltip="Свернуть"><span class="side-icon">‹</span><span class="side-label">Свернуть</span></button>
     </div>
     <nav class="side-nav" aria-label="Основная навигация">
       {main_links}
@@ -249,7 +252,6 @@ def sidebar(title: str) -> str:
     <div class="sidebar-footer">
       {current_user_selector()}
       {theme_selector()}
-      <button class="sidebar-collapse" type="button" data-sidebar-toggle data-tooltip="Свернуть"><span class="side-icon">‹</span><span class="side-label">Свернуть</span></button>
     </div>
   </aside>"""
 
@@ -322,7 +324,7 @@ def breadcrumbs(title: str) -> str:
             parts.append(f"<a href='{esc(href)}'>{esc(label)}</a>")
         else:
             parts.append(f"<span>{esc(label)}</span>")
-    return "<nav class='breadcrumbs' aria-label='Хлебные крошки'>" + "<span class='separator'>→</span>".join(parts) + "</nav>"
+    return f"<nav class='breadcrumbs' aria-label='Хлебные крошки' data-current='{esc(title)}'>" + "<span class='separator'>→</span>".join(parts) + "</nav>"
 
 def page(title: str, body: str, notice: str | None = None, notice_type: str = "success") -> bytes:
     notice_class = "error" if notice_type == "error" else "ok"
@@ -656,10 +658,11 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .content {{ padding: 18px 30px 42px; }}
     .content > h1 {{ display: none; }}
     .breadcrumbs {{ margin: -18px -30px 20px; padding: 12px 30px 10px; min-height: 60px; display: flex; align-content: center; border-bottom: 1px solid var(--border); background: #f3f6fc; }}
-    .breadcrumbs::after {{ content: attr(aria-label); display: block; flex-basis: 100%; color: var(--text-strong); font-size: 16px; font-weight: 800; }}
+    .breadcrumbs::after {{ content: attr(data-current); display: block; flex-basis: 100%; color: var(--text-strong); font-size: 16px; font-weight: 800; }}
     .breadcrumbs .separator {{ font-size: 0; }} .breadcrumbs .separator::before {{ content: '›'; font-size: 12px; }}
-    .sidebar {{ display: flex; flex-direction: column; gap: 18px; padding: 14px 12px; background: #fff; height: 100vh; overflow: visible; }}
-    .brand-block {{ display: flex; align-items: center; gap: 12px; padding: 0 10px 14px; border-bottom: 1px solid var(--border); }}
+    .sidebar {{ display: flex; flex-direction: column; gap: 18px; padding: 14px 12px; background: #fff; height: 100vh; overflow: visible; z-index: 100; }}
+    .sidebar-head {{ display: grid; grid-template-columns: minmax(0, 1fr) 42px; gap: 8px; align-items: start; padding-bottom: 14px; border-bottom: 1px solid var(--border); }}
+    .brand-block {{ display: flex; align-items: center; gap: 12px; padding: 0 0 0 10px; border-bottom: 0; }}
     .brand-mark, .side-icon, .metric-icon, .quick-icon, .feed-icon {{ display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; }}
     .brand-mark {{ width: 36px; height: 36px; border-radius: 11px; background: linear-gradient(135deg,#4f46e5,#3525c8); color: #fff; box-shadow: 0 8px 18px rgba(79,70,229,.25); font-weight: 900; }}
     .brand-copy strong, .brand-copy span {{ display: block; }} .brand-copy strong {{ color: var(--text-strong); }} .brand-copy span {{ color: var(--muted); font-size: 12px; }}
@@ -682,9 +685,14 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .sidebar-collapsed .sidebar {{ padding-left: 8px; padding-right: 8px; }}
     .sidebar-collapsed .brand-copy, .sidebar-collapsed .side-label, .sidebar-collapsed .user-copy, .sidebar-collapsed .admin-tree {{ display: none; }}
     .sidebar-collapsed .side-link {{ font-size: 0; gap: 0; }}
+    .sidebar-collapsed .sidebar-head {{ grid-template-columns: 1fr; gap: 10px; }}
+    .sidebar-collapsed .sidebar-collapse {{ order: -1; }}
+    .sidebar-collapsed .sidebar-collapse .side-icon {{ color: var(--accent-strong); }}
+    .sidebar-collapsed .sidebar-collapse .side-icon::before {{ content: '›'; font-size: 18px; }}
+    .sidebar-collapsed .sidebar-collapse .side-icon {{ font-size: 0; }}
     .sidebar-collapsed .brand-block, .sidebar-collapsed .side-link, .sidebar-collapsed .current-user-selector, .sidebar-collapsed .theme-selector, .sidebar-collapsed .sidebar-collapse {{ justify-content: center; padding-left: 0; padding-right: 0; }}
     .sidebar-collapsed [data-tooltip] {{ position: relative; }}
-    .sidebar-collapsed [data-tooltip]:hover::after {{ content: attr(data-tooltip); position: absolute; left: calc(100% + 10px); top: 50%; transform: translateY(-50%); z-index: 50; white-space: nowrap; border-radius: 8px; padding: 7px 9px; background: #111827; color: #fff; font-size: 12px; box-shadow: var(--shadow-card); }}
+    .sidebar-collapsed [data-tooltip]:hover::after {{ content: attr(data-tooltip); position: absolute; left: calc(100% + 10px); top: 50%; transform: translateY(-50%); z-index: 10000; pointer-events: none; white-space: nowrap; border-radius: 8px; padding: 7px 9px; background: #111827; color: #fff; font-size: 12px; box-shadow: var(--shadow-card); }}
     .metrics-grid {{ grid-template-columns: repeat(4, minmax(180px,1fr)); gap: 20px; margin: 8px 0 28px; }}
     .metric-card {{ min-height: 156px; padding: 20px; border: 1px solid var(--border); border-left: 1px solid var(--border); border-radius: 14px; background: #fff; box-shadow: var(--shadow-card); }}
     .metric-top {{ display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }}
@@ -707,10 +715,10 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     table {{ border-collapse: separate; border-spacing: 0; width: 100%; font-size: 13px; }}
     th {{ height: 36px; background: #f6f8fc; color: #7985a8; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; border-bottom: 1px solid #d9e3f5; }}
     th, td {{ border-right: 1px solid #e8eef9; }} th:last-child, td:last-child {{ border-right: 0; }}
-    td {{ height: 48px; padding: 9px 14px; border-bottom: 1px solid #e8eef9; background: #fff; }} tbody tr:nth-child(even) td {{ background: #fbfcff; }} tbody tr:hover td {{ background: #f7f9ff; }}
+    td {{ height: 44px; padding: 8px 12px; line-height: 1.25; vertical-align: middle; border-bottom: 1px solid #e8eef9; background: #fff; }} tbody tr:nth-child(even) td {{ background: #fbfcff; }} tbody tr:hover td {{ background: #f7f9ff; }}
     td[data-col='number'], td[data-col='routes'], td[data-col='route'] {{ font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }}
     .status-badge, .badge {{ border: 0; background: transparent; padding: 0; border-radius: 0; }}
-    .dot-status {{ display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; font-weight: 650; }} .dot-status span {{ font-size: 12px; }} .dot-status.ok span {{ color:#22c55e; }} .dot-status.warning span {{ color:#f59e0b; }} .dot-status.neutral span {{ color:#c5ccdc; }}
+    .dot-status {{ display: inline-flex; align-items: center; gap: 6px; min-height: 0; white-space: nowrap; color: inherit; font: inherit; font-weight: 400; }} .dot-status span {{ width: 6px; height: 6px; border-radius: 50%; background:#c5ccdc; font-size: 0; line-height: 0; }} .dot-status.ok span {{ background:#22c55e; }} .dot-status.warning span {{ background:#f59e0b; }} .dot-status.danger span {{ background:#ef4444; }} .dot-status.neutral span {{ background:#c5ccdc; }}
     th[data-col="actions"], td[data-col="actions"], .dictionary-workspace th:last-child {{ width: 78px; min-width: 78px; max-width: 82px; background: inherit; }}
     .edit-action, td[data-col="actions"] details.edit-details > summary {{ width: 30px; min-width: 30px; height: 30px; min-height: 30px; }}
     .edit-action::before, td[data-col="actions"] details.edit-details > summary::before {{ content: "✎"; font-size: 16px; }}
@@ -752,12 +760,19 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     const savedSidebar = localStorage.getItem("mvp-sidebar-collapsed") === "true";
     if (shell) shell.classList.toggle("sidebar-collapsed", savedSidebar);
     document.querySelectorAll("[data-sidebar-toggle]").forEach((button) => {{
+      const label = button.querySelector(".side-label");
+      if (label) label.textContent = savedSidebar ? "Развернуть" : "Свернуть";
+      button.dataset.tooltip = savedSidebar ? "Развернуть" : "Свернуть";
+    }});
+    document.querySelectorAll("[data-sidebar-toggle]").forEach((button) => {{
       button.addEventListener("click", () => {{
         if (!shell) return;
         const collapsed = !shell.classList.contains("sidebar-collapsed");
         shell.classList.toggle("sidebar-collapsed", collapsed);
         localStorage.setItem("mvp-sidebar-collapsed", collapsed ? "true" : "false");
-        button.querySelector(".side-label").textContent = collapsed ? "Развернуть" : "Свернуть";
+        const label = button.querySelector(".side-label");
+        if (label) label.textContent = collapsed ? "Развернуть" : "Свернуть";
+        button.dataset.tooltip = collapsed ? "Развернуть" : "Свернуть";
       }});
     }});
     document.querySelectorAll("[data-theme-toggle]").forEach((button) => {{
@@ -1605,7 +1620,7 @@ def route_options_for_country(repo: Repository, country_id: object | None = None
 
 
 def dot_status(label: str, tone: str = "neutral") -> str:
-    return f"<span class='dot-status {esc(tone)}'><span aria-hidden='true'>●</span>{esc(label)}</span>"
+    return f"<span class='dot-status {esc(tone)}'><span aria-hidden='true'></span>{esc(label)}</span>"
 
 def dashboard_metric(repo: Repository, sql: str, label: str, hint: str, icon: str, tone: str, points: str) -> str:
     row = repo.conn.execute(sql).fetchone()
@@ -1781,7 +1796,7 @@ def phones_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
         assignment_label = phone["assignment_type_label"] or ASSIGNMENT_LABELS.get(phone["assignment_type"], phone["assignment_type"])
         actions = f"<a class='button edit-action' href='/phones/{phone['id']}/edit' title='Редактировать' aria-label='Редактировать' data-tooltip='Редактировать'>Редактировать</a>" if can_write("phones") else ""
         review_badge = "<span class='badge'>Требует проверки</span>" if phone["review_required"] else ""
-        rows.append(f"""<tr><td data-col='number' data-copy-column='phone-number'>{esc(phone['number'])} {review_badge}</td><td data-col='geo'>{esc(phone['country_name'])}</td><td data-col='provider'>{esc(phone['provider_name'])}</td><td data-col='project'>{esc(phone['project_label'])}</td><td data-col='assignment'>{esc(assignment_label)}</td><td data-col='status'>{dot_status(STATUS_LABELS.get(phone['status'], phone['status']), 'warning' if phone['status'] in {'problem','unknown'} else 'ok')}</td><td data-col='active'>{dot_status('Да' if phone['is_active'] else 'Нет', 'ok' if phone['is_active'] else 'neutral')}</td><td data-col='routes'>{esc(phone['route_names'] or '—')}</td><td data-col='connection'>{esc(phone['connection_cost'])}</td><td data-col='monthly'>{esc(phone['monthly_fee'])}</td><td data-col='currency'>{esc(phone['currency_code'])}</td><td data-col='phone_type'>{esc(phone['phone_type'])}</td><td data-col='tariff'>{esc(phone['tariff_label'])}</td><td data-col='created'>{esc(phone['created_at'])}</td><td data-col='updated'>{esc(phone['updated_at'])}</td><td data-col='deactivated'>{esc(phone['deactivated_at'])}</td><td data-col='comment' class='comment-cell'>{esc(phone['comment'] or '—')}</td><td data-col='actions'>{actions}</td></tr>""")
+        rows.append(f"""<tr><td data-col='number' data-copy-column='phone-number'>{esc(phone['number'])} {review_badge}</td><td data-col='geo'>{esc(phone['country_name'])}</td><td data-col='provider'>{esc(phone['provider_name'])}</td><td data-col='project'>{esc(phone['project_label'])}</td><td data-col='assignment'>{esc(assignment_label)}</td><td data-col='status'>{dot_status(STATUS_LABELS.get(phone['status'], phone['status']), 'danger' if phone['status'] == 'problem' else ('warning' if phone['status'] == 'unknown' else ('neutral' if phone['status'] == 'free' else 'ok')))}</td><td data-col='active'>{dot_status('Да' if phone['is_active'] else 'Нет', 'ok' if phone['is_active'] else 'danger')}</td><td data-col='routes'>{esc(phone['route_names'] or '—')}</td><td data-col='connection'>{esc(phone['connection_cost'])}</td><td data-col='monthly'>{esc(phone['monthly_fee'])}</td><td data-col='currency'>{esc(phone['currency_code'])}</td><td data-col='phone_type'>{esc(phone['phone_type'])}</td><td data-col='tariff'>{esc(phone['tariff_label'])}</td><td data-col='created'>{esc(phone['created_at'])}</td><td data-col='updated'>{esc(phone['updated_at'])}</td><td data-col='deactivated'>{esc(phone['deactivated_at'])}</td><td data-col='comment' class='comment-cell'>{esc(phone['comment'] or '—')}</td><td data-col='actions'>{actions}</td></tr>""")
     filters_html = f"""<form class="filter-grid" method="get" action="/phones">
 <label>ГЕО <select name="country_id">{options(repo, 'countries', selected=q.get('country_id'), empty='Все')}</select></label>
 <label>Провайдер <select name="provider_id">{options(repo, 'providers', selected=q.get('provider_id'), empty='Все')}</select></label>
