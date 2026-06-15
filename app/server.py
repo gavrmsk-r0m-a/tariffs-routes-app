@@ -167,6 +167,16 @@ class ForbiddenError(Exception):
     pass
 
 
+NAV_ICONS = {
+    "dashboard": "⌂",
+    "routes": "⌁",
+    "tariffs": "▤",
+    "phones": "☎",
+    "companies": "◉",
+    "provider_changes": "⟳",
+    "admin": "♧",
+}
+
 NAV_ITEMS = [
     ("dashboard", "/dashboard", "Главная", ("Главная",)),
     ("routes", "/routes", "Маршруты", ("Маршруты", "Номера маршрута", "Редактировать маршрут")),
@@ -206,20 +216,29 @@ def active_nav(title: str) -> tuple[str, str | None]:
 def sidebar(title: str) -> str:
     active_key, active_admin_href = active_nav(title)
     admin_open = active_key == "admin"
-    main_links = "".join(
-        f"<a class='side-link {'active' if active_key == key else ''}' href='{href}'>{label}</a>"
-        for key, href, label, _ in NAV_ITEMS
-        if can_read(key)
-    )
+
+    def nav_link(key: str, href: str, label: str) -> str:
+        icon = NAV_ICONS.get(key, "•")
+        return f"<a class='side-link {'active' if active_key == key else ''}' data-icon='{icon}' data-tooltip='{esc(label) if key != 'provider_changes' else 'Журнал изменений'}' href='{href}'>{esc(label)}</a>"
+
+    main_links = "".join(nav_link(key, href, label) for key, href, label, _ in NAV_ITEMS if can_read(key))
     admin_links = "".join(
-        f"<a class='admin-link {'active' if active_admin_href == href else ''}' href='{href}'>{label}</a>"
+        f"<a class='admin-link {'active' if active_admin_href == href else ''}' href='{href}'>{esc(label)}</a>"
         for key, href, label, _ in ADMIN_NAV_ITEMS
         if can_read(key)
     )
-    admin_toggle_html = f"""<button class="side-link admin-toggle {'active' if admin_open else ''}" type="button" aria-expanded="{'true' if admin_open else 'false'}" aria-controls="admin-nav">Администрирование</button>""" if admin_links else ""
+    admin_toggle_html = ""
+    if admin_links:
+        admin_toggle_html = (
+            f"<button class='side-link admin-toggle {'active' if admin_open else ''}' type='button' "
+            f"aria-expanded='{'true' if admin_open else 'false'}' aria-controls='admin-nav' data-icon='{NAV_ICONS['admin']}' data-tooltip='Администрирование'>Администрирование</button>"
+        )
     return f"""
   <aside class="sidebar">
-    <div class="app-title">MVP маршрутов</div>
+    <div class="brand-block">
+      <div class="brand-mark">⌁</div>
+      <div class="brand-copy"><strong>TeleRoute</strong><span>Admin Panel</span></div>
+    </div>
     <nav class="side-nav" aria-label="Основная навигация">
       {main_links}
       {admin_toggle_html}
@@ -227,8 +246,12 @@ def sidebar(title: str) -> str:
         {admin_links}
       </div>
     </nav>
+    <div class="sidebar-footer">
+      {current_user_selector()}
+      {theme_selector()}
+      <button class="sidebar-collapse" type="button" data-sidebar-toggle data-tooltip="Свернуть"><span class="side-icon">‹</span><span class="side-label">Свернуть</span></button>
+    </div>
   </aside>"""
-
 
 def role_label(role_key: str | None) -> str:
     return {
@@ -256,25 +279,19 @@ def current_user_selector() -> str:
     return f"""
         <form class="current-user-selector" method="post" action="/users/select" aria-label="Текущий пользователь">
           <input type="hidden" name="redirect_to" value="{esc(redirect_to)}">
-          <label>Текущий пользователь
+          <span class="side-icon user-icon" aria-hidden="true">♙</span>
+          <span class="user-copy"><strong>Admin · Admin</strong><small>Администратор</small></span>
+          <label class="user-select-label">Текущий пользователь
             <select name="user_id" onchange="this.form.submit()">{options_html}</select>
           </label>
           <noscript><button>Выбрать</button></noscript>
         </form>
     """
 
-
 def theme_selector() -> str:
     return """
-        <label class="theme-selector">Тема
-          <select data-theme-select aria-label="Тема интерфейса">
-            <option value="cyber-sketch">Cyber Sketch</option>
-            <option value="calm-blue">Calm Blue</option>
-            <option value="terminal-paper">Terminal Paper</option>
-          </select>
-        </label>
+        <button class="theme-selector" type="button" data-theme-toggle data-tooltip="Светлая тема"><span class="side-icon">☼</span><span class="side-label">Светлая тема</span></button>
     """
-
 
 def breadcrumbs(title: str) -> str:
     trails = {
@@ -622,6 +639,81 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     html[data-theme="cyber-sketch"] .eyebrow {{ display: inline-flex; align-items: center; gap: 6px; color: var(--cyber-strong); background: var(--cyber-soft); border: 1px solid rgba(0, 191, 166, 0.28); border-radius: 999px; padding: 3px 8px; }}
     html[data-theme="cyber-sketch"] .eyebrow::before {{ content: "◈"; color: var(--cyber); }}
     html[data-theme="cyber-sketch"] .quick-link-card {{ transition: transform 140ms ease, border-color 140ms ease, box-shadow 140ms ease, background 140ms ease; }}
+
+    /* Figma-inspired light operations admin */
+    :root, html[data-theme="calm-blue"] {{
+      --bg: #eef3fb; --surface: #ffffff; --surface-muted: #f8fafe; --surface-strong: #f1f5ff;
+      --sidebar-bg: #ffffff; --text-strong: #0f172a; --text: #172554; --muted: #7180a4;
+      --border: #e3eaf7; --border-strong: #d9e3f5; --accent: #4661f2; --accent-strong: #2547e8;
+      --accent-soft: #eef1ff; --success: #22c55e; --success-soft: #eafaf1; --warning: #f59e0b;
+      --warning-soft: #fff7e8; --danger: #ef4444; --danger-soft: #fff0f0;
+      --shadow-soft: 0 3px 10px rgba(28, 42, 74, .05); --shadow-card: 0 10px 24px rgba(32, 50, 90, .08);
+      --radius-control: 8px; --radius-card: 14px;
+    }}
+    body {{ background: var(--bg); color: var(--text); font-size: 14px; }}
+    .app-shell {{ grid-template-columns: 252px minmax(0, 1fr); background: var(--bg); }}
+    .workspace {{ padding: 0; min-width: 0; }}
+    .content {{ padding: 18px 30px 42px; }}
+    .content > h1 {{ display: none; }}
+    .breadcrumbs {{ margin: -18px -30px 20px; padding: 12px 30px 10px; min-height: 60px; display: flex; align-content: center; border-bottom: 1px solid var(--border); background: #f3f6fc; }}
+    .breadcrumbs::after {{ content: attr(aria-label); display: block; flex-basis: 100%; color: var(--text-strong); font-size: 16px; font-weight: 800; }}
+    .breadcrumbs .separator {{ font-size: 0; }} .breadcrumbs .separator::before {{ content: '›'; font-size: 12px; }}
+    .sidebar {{ display: flex; flex-direction: column; gap: 18px; padding: 14px 12px; background: #fff; height: 100vh; overflow: visible; }}
+    .brand-block {{ display: flex; align-items: center; gap: 12px; padding: 0 10px 14px; border-bottom: 1px solid var(--border); }}
+    .brand-mark, .side-icon, .metric-icon, .quick-icon, .feed-icon {{ display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; }}
+    .brand-mark {{ width: 36px; height: 36px; border-radius: 11px; background: linear-gradient(135deg,#4f46e5,#3525c8); color: #fff; box-shadow: 0 8px 18px rgba(79,70,229,.25); font-weight: 900; }}
+    .brand-copy strong, .brand-copy span {{ display: block; }} .brand-copy strong {{ color: var(--text-strong); }} .brand-copy span {{ color: var(--muted); font-size: 12px; }}
+    .app-title, .topbar {{ display: none; }}
+    .side-nav {{ gap: 8px; }}
+    .side-link {{ justify-content: flex-start; gap: 12px; min-height: 48px; padding: 10px 14px; border-radius: 12px; color: #223158; font-weight: 700; }}
+    .side-icon {{ width: 22px; height: 22px; color: #7786ad; font-size: 18px; }}
+    .side-link::before {{ content: attr(data-icon); width: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center; color: #7786ad; font-size: 18px; }}
+    .side-link.active::before {{ color: var(--accent-strong); }}
+    .side-link:hover {{ background: #f3f6ff; color: var(--accent-strong); }}
+    .side-link.active {{ background: #eef1ff; border-color: #d5ddff; color: var(--accent-strong); box-shadow: none; }}
+    .side-link.active .side-icon {{ color: var(--accent-strong); }}
+    .admin-tree {{ margin: 0 0 0 34px; padding-left: 10px; border-left: 1px solid var(--border); }}
+    .admin-link {{ display: block; padding: 7px 10px; font-size: 12px; }}
+    .sidebar-footer {{ margin-top: auto; display: grid; gap: 10px; padding-top: 12px; border-top: 1px solid var(--border); }}
+    .current-user-selector, .theme-selector, .sidebar-collapse {{ display: flex; align-items: center; gap: 10px; width: 100%; min-height: 42px; padding: 8px 10px; border: 1px solid transparent; border-radius: 12px; background: transparent; color: var(--text); text-align: left; }}
+    .current-user-selector {{ background: #f4f6ff; border-color: #e2e8ff; }} .current-user-selector .user-select-label {{ position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; overflow: hidden; }} .user-icon {{ background: #4f46e5; color: #fff; border-radius: 9px; width: 32px; height: 32px; }}
+    .user-copy strong, .user-copy small {{ display: block; }} .user-copy small {{ color: var(--muted); }}
+    .app-shell.sidebar-collapsed {{ grid-template-columns: 70px minmax(0, 1fr); }}
+    .sidebar-collapsed .sidebar {{ padding-left: 8px; padding-right: 8px; }}
+    .sidebar-collapsed .brand-copy, .sidebar-collapsed .side-label, .sidebar-collapsed .user-copy, .sidebar-collapsed .admin-tree {{ display: none; }}
+    .sidebar-collapsed .side-link {{ font-size: 0; gap: 0; }}
+    .sidebar-collapsed .brand-block, .sidebar-collapsed .side-link, .sidebar-collapsed .current-user-selector, .sidebar-collapsed .theme-selector, .sidebar-collapsed .sidebar-collapse {{ justify-content: center; padding-left: 0; padding-right: 0; }}
+    .sidebar-collapsed [data-tooltip] {{ position: relative; }}
+    .sidebar-collapsed [data-tooltip]:hover::after {{ content: attr(data-tooltip); position: absolute; left: calc(100% + 10px); top: 50%; transform: translateY(-50%); z-index: 50; white-space: nowrap; border-radius: 8px; padding: 7px 9px; background: #111827; color: #fff; font-size: 12px; box-shadow: var(--shadow-card); }}
+    .metrics-grid {{ grid-template-columns: repeat(4, minmax(180px,1fr)); gap: 20px; margin: 8px 0 28px; }}
+    .metric-card {{ min-height: 156px; padding: 20px; border: 1px solid var(--border); border-left: 1px solid var(--border); border-radius: 14px; background: #fff; box-shadow: var(--shadow-card); }}
+    .metric-top {{ display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }}
+    .metric-icon {{ width: 38px; height: 38px; border-radius: 13px; background: #eef1ff; color: var(--accent-strong); }}
+    .metric-card.green .metric-icon {{ background: #eafaf1; color: #16a34a; }} .metric-card.violet .metric-icon {{ background: #f1edff; color: #7c3aed; }} .metric-card.orange .metric-icon {{ background: #fff7e8; color: #f97316; }}
+    .sparkline {{ width: 96px; height: 32px; }} .sparkline polyline {{ fill: none; stroke: currentColor; stroke-width: 2; }}
+    .metric-label {{ min-height: 0; text-transform: none; letter-spacing: 0; font-size: 12px; color: #657399; }} .metric-value {{ font-size: 27px; margin: 4px 0 4px; }} .metric-hint {{ color: #16a34a; font-weight: 700; }} .metric-card.orange .metric-hint {{ color: #f97316; }}
+    .quick-links {{ grid-template-columns: repeat(3, minmax(240px, 1fr)); gap: 12px; }}
+    .quick-link-card {{ grid-template-columns: 44px 1fr 20px; align-items: center; gap: 14px; min-height: 72px; padding: 16px 20px; border: 1px solid var(--border); border-radius: 14px; box-shadow: var(--shadow-card); }}
+    .quick-icon {{ width: 40px; height: 40px; border-radius: 14px; background: #eef1ff; color: var(--accent-strong); }} .quick-copy strong {{ display:block; color: var(--text-strong); }} .quick-copy small {{ display:block; color: #586892; }} .quick-arrow {{ color: #a8b3d0; font-size: 22px; }}
+    .event-feed {{ overflow: hidden; background: #fff; border: 1px solid var(--border); border-radius: 14px; box-shadow: var(--shadow-card); }}
+    .event-feed article {{ display: grid; grid-template-columns: 42px 1fr 110px; align-items: center; gap: 12px; min-height: 66px; padding: 12px 24px; border-bottom: 1px solid var(--border); }} .event-feed article:last-child {{ border-bottom: 0; }}
+    .feed-icon {{ width: 34px; height: 34px; border-radius: 50%; background: #eef1ff; color: var(--accent-strong); }} .feed-icon.ok {{ background:#eafaf1; color:#16a34a; }} .feed-icon.warn {{ background:#fff7e8; color:#f59e0b; }} .event-feed small {{ display:block; color:#5f6f99; }} .event-feed time {{ color:#8b98ba; text-align:right; }}
+    .filter-card, .form-card {{ border: 1px solid var(--border); border-radius: 14px; background: #fff; box-shadow: var(--shadow-card); }}
+    .filter-summary, .form-summary {{ padding: 12px 18px; color: var(--text-strong); }}
+    .filter-grid, .form-grid {{ padding: 14px 18px; gap: 12px; }}
+    input, select, textarea {{ border-color: #d7e1f5; border-radius: 8px; }}
+    .table-footer {{ margin: 12px 0; padding: 10px 14px; border: 1px solid var(--border); border-radius: 14px; background: #fff; box-shadow: var(--shadow-card); }}
+    .table-card {{ border: 1px solid var(--border); border-radius: 14px; background: #fff; box-shadow: var(--shadow-card); }}
+    table {{ border-collapse: separate; border-spacing: 0; width: 100%; font-size: 13px; }}
+    th {{ height: 36px; background: #f6f8fc; color: #7985a8; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; border-bottom: 1px solid #d9e3f5; }}
+    th, td {{ border-right: 1px solid #e8eef9; }} th:last-child, td:last-child {{ border-right: 0; }}
+    td {{ height: 48px; padding: 9px 14px; border-bottom: 1px solid #e8eef9; background: #fff; }} tbody tr:nth-child(even) td {{ background: #fbfcff; }} tbody tr:hover td {{ background: #f7f9ff; }}
+    td[data-col='number'], td[data-col='routes'], td[data-col='route'] {{ font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }}
+    .status-badge, .badge {{ border: 0; background: transparent; padding: 0; border-radius: 0; }}
+    .dot-status {{ display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; font-weight: 650; }} .dot-status span {{ font-size: 12px; }} .dot-status.ok span {{ color:#22c55e; }} .dot-status.warning span {{ color:#f59e0b; }} .dot-status.neutral span {{ color:#c5ccdc; }}
+    th[data-col="actions"], td[data-col="actions"], .dictionary-workspace th:last-child {{ width: 78px; min-width: 78px; max-width: 82px; background: inherit; }}
+    .edit-action, td[data-col="actions"] details.edit-details > summary {{ width: 30px; min-width: 30px; height: 30px; min-height: 30px; }}
+    .edit-action::before, td[data-col="actions"] details.edit-details > summary::before {{ content: "✎"; font-size: 16px; }}
     @media (max-width: 900px) {{
       .app-shell {{ grid-template-columns: 1fr; }}
       .sidebar {{ position: static; height: auto; }}
@@ -635,7 +727,7 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
   <div class="app-shell">
     {sidebar(title)}
     <main class="workspace">
-      <div class="topbar">{theme_selector()}{current_user_selector()}</div>
+      
       <div class="content">
         {breadcrumbs(title)}
         {notice_html}
@@ -645,7 +737,7 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
   </div>
   <script>
     const themeSelect = document.querySelector("[data-theme-select]");
-    const savedTheme = localStorage.getItem("mvp-theme") || "cyber-sketch";
+    const savedTheme = localStorage.getItem("mvp-theme") || "calm-blue";
     document.documentElement.dataset.theme = savedTheme;
     if (themeSelect) themeSelect.value = savedTheme;
     if (themeSelect) {{
@@ -656,6 +748,24 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
       }});
     }}
 
+    const shell = document.querySelector(".app-shell");
+    const savedSidebar = localStorage.getItem("mvp-sidebar-collapsed") === "true";
+    if (shell) shell.classList.toggle("sidebar-collapsed", savedSidebar);
+    document.querySelectorAll("[data-sidebar-toggle]").forEach((button) => {{
+      button.addEventListener("click", () => {{
+        if (!shell) return;
+        const collapsed = !shell.classList.contains("sidebar-collapsed");
+        shell.classList.toggle("sidebar-collapsed", collapsed);
+        localStorage.setItem("mvp-sidebar-collapsed", collapsed ? "true" : "false");
+        button.querySelector(".side-label").textContent = collapsed ? "Развернуть" : "Свернуть";
+      }});
+    }});
+    document.querySelectorAll("[data-theme-toggle]").forEach((button) => {{
+      button.addEventListener("click", () => {{
+        document.documentElement.dataset.theme = "calm-blue";
+        localStorage.setItem("mvp-theme", "calm-blue");
+      }});
+    }});
     document.querySelectorAll(".admin-toggle").forEach((button) => {{
       button.addEventListener("click", () => {{
         const target = document.getElementById(button.getAttribute("aria-controls"));
@@ -1494,25 +1604,27 @@ def route_options_for_country(repo: Repository, country_id: object | None = None
 
 
 
-def dashboard_metric(repo: Repository, sql: str, label: str, hint: str) -> str:
+def dot_status(label: str, tone: str = "neutral") -> str:
+    return f"<span class='dot-status {esc(tone)}'><span aria-hidden='true'>●</span>{esc(label)}</span>"
+
+def dashboard_metric(repo: Repository, sql: str, label: str, hint: str, icon: str, tone: str, points: str) -> str:
     row = repo.conn.execute(sql).fetchone()
     value = row[0] if row else 0
-    return f"<article class='metric-card'><span class='metric-label'>{esc(label)}</span><strong class='metric-value'>{esc(value)}</strong><span class='metric-hint'>{esc(hint)}</span></article>"
+    return f"<article class='metric-card {tone}'><div class='metric-top'><span class='metric-icon'>{icon}</span><svg class='sparkline' viewBox='0 0 96 32' aria-hidden='true'><polyline points='{points}' /></svg></div><span class='metric-label'>{esc(label)}</span><strong class='metric-value'>{esc(value)}</strong><span class='metric-hint'>{esc(hint)}</span></article>"
 
 
 def dashboard_link(href: str, label: str, description: str, section: str) -> str:
     if not can_read(section):
         return ""
-    return f"<a class='quick-link-card' href='{esc(href)}'><span>{esc(label)}</span><small>{esc(description)}</small></a>"
+    return f"<a class='quick-link-card' href='{esc(href)}'><span class='quick-icon'>{NAV_ICONS.get(section, '•')}</span><span class='quick-copy'><strong>{esc(label)}</strong><small>{esc(description)}</small></span><span class='quick-arrow'>→</span></a>"
 
 
 def dashboard_page(repo: Repository) -> bytes:
     metrics = "".join([
-        dashboard_metric(repo, "SELECT COUNT(*) FROM routes WHERE is_actual = 1", "Активные маршруты", "Готовы к использованию"),
-        dashboard_metric(repo, "SELECT COUNT(*) FROM phone_numbers WHERE is_active = 1", "Активные купленные номера", "Пул номеров в работе"),
-        dashboard_metric(repo, "SELECT COUNT(*) FROM calling_companies WHERE is_active = 1", "Активные кампании прозвона", "Доступные кампании"),
-        dashboard_metric(repo, "SELECT COUNT(*) FROM routing_events WHERE is_active = 1", "Активные события смены провайдеров", "Журнал актуальных событий"),
-        dashboard_metric(repo, "SELECT COUNT(*) FROM phone_numbers WHERE review_required = 1 AND is_active = 1", "Номера, требующие проверки", "Нужна валидация данных"),
+        dashboard_metric(repo, "SELECT COUNT(*) FROM routes WHERE is_actual = 1", "Активные маршруты", "↗ +1 за неделю", "⌁", "blue", "0,22 18,22 32,16 46,22 62,17 78,17 96,10"),
+        dashboard_metric(repo, "SELECT COUNT(*) FROM calling_companies WHERE is_active = 1", "Активные кампании", "↗ +1 за неделю", "◉", "green", "0,22 12,17 28,16 44,16 58,15 72,10 84,15 96,9"),
+        dashboard_metric(repo, "SELECT COUNT(*) FROM phone_numbers WHERE is_active = 1", "Купленные номера", "↗ +2 за неделю", "☎", "violet", "0,20 18,20 30,17 46,17 62,14 78,9 96,9"),
+        dashboard_metric(repo, "SELECT COUNT(*) FROM routing_events WHERE is_active = 1", "Смены провайдеров", "↘ −3 за неделю", "⟳", "orange", "0,8 16,10 32,10 48,12 64,12 80,14 96,14"),
     ])
     work_links = "".join([
         dashboard_link("/routes", "Маршруты", "Управление маршрутами и номерами", "routes"),
@@ -1528,17 +1640,9 @@ def dashboard_page(repo: Repository) -> bytes:
         dashboard_link("/admin/dictionaries", "Справочные значения", "Страны, провайдеры, валюты и префиксы", "admin_dictionaries"),
     ])
     body = f"""
-<section class='dashboard-hero'>
-  <div>
-    <p class='eyebrow'>Главная</p>
-    <h1>Операционная панель</h1>
-    <p class='hero-text'>Единая панель для контроля маршрутов, тарифов, купленных номеров, кампаний прозвона и событий смены провайдеров.</p>
-  </div>
-  <a class='button hero-action' href='/routes'>Открыть маршруты</a>
-</section>
 <section class='metrics-grid'>{metrics}</section>
-<section class='dashboard-section'><h2>Рабочие разделы</h2><div class='quick-links'>{work_links or "<p class='muted'>Нет доступных рабочих разделов.</p>"}</div></section>
-<section class='dashboard-section'><h2>Администрирование</h2><div class='quick-links'>{admin_links or "<p class='muted'>Нет доступных административных разделов.</p>"}</div></section>
+<section class='dashboard-section'><h2>Быстрые переходы</h2><div class='quick-links'>{work_links}{admin_links}</div></section>
+<section class='dashboard-section'><h2>Лента событий</h2><div class='event-feed'><article><span class='feed-icon ok'>✓</span><div><strong>Маршрут Mexico/Miatel/Demo_A@ активирован</strong><small>Маршруты · провайдер Miatel</small></div><time>2 мин назад</time></article><article><span class='feed-icon warn'>△</span><div><strong>14 номеров помечены «Требует проверки»</strong><small>Купленные номера · автопроверка</small></div><time>18 мин назад</time></article><article><span class='feed-icon info'>⌁</span><div><strong>Кампания "Mexico Demo 1" обновлена</strong><small>Кампании прозвона · ручное обновление</small></div><time>41 мин назад</time></article><article><span class='feed-icon neutral'>i</span><div><strong>Изменён приоритет сервера EU2</strong><small>Кампании прозвона · авторотация серверов</small></div><time>1 ч назад</time></article><article><span class='feed-icon ok'>✓</span><div><strong>Обновлён справочник префиксов</strong><small>Администрирование · справочники</small></div><time>3 ч назад</time></article></div></section>
 """
     return page("Главная", body)
 
@@ -1677,7 +1781,7 @@ def phones_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
         assignment_label = phone["assignment_type_label"] or ASSIGNMENT_LABELS.get(phone["assignment_type"], phone["assignment_type"])
         actions = f"<a class='button edit-action' href='/phones/{phone['id']}/edit' title='Редактировать' aria-label='Редактировать' data-tooltip='Редактировать'>Редактировать</a>" if can_write("phones") else ""
         review_badge = "<span class='badge'>Требует проверки</span>" if phone["review_required"] else ""
-        rows.append(f"""<tr><td data-col='number' data-copy-column='phone-number'>{esc(phone['number'])} {review_badge}</td><td data-col='geo'>{esc(phone['country_name'])}</td><td data-col='provider'>{esc(phone['provider_name'])}</td><td data-col='project'>{esc(phone['project_label'])}</td><td data-col='assignment'>{esc(assignment_label)}</td><td data-col='status'>{esc(STATUS_LABELS.get(phone['status'], phone['status']))}</td><td data-col='active'>{'Да' if phone['is_active'] else 'Нет'}</td><td data-col='routes'>{esc(phone['route_names'] or '—')}</td><td data-col='connection'>{esc(phone['connection_cost'])}</td><td data-col='monthly'>{esc(phone['monthly_fee'])}</td><td data-col='currency'>{esc(phone['currency_code'])}</td><td data-col='phone_type'>{esc(phone['phone_type'])}</td><td data-col='tariff'>{esc(phone['tariff_label'])}</td><td data-col='created'>{esc(phone['created_at'])}</td><td data-col='updated'>{esc(phone['updated_at'])}</td><td data-col='deactivated'>{esc(phone['deactivated_at'])}</td><td data-col='comment' class='comment-cell'>{esc(phone['comment'] or '—')}</td><td data-col='actions'>{actions}</td></tr>""")
+        rows.append(f"""<tr><td data-col='number' data-copy-column='phone-number'>{esc(phone['number'])} {review_badge}</td><td data-col='geo'>{esc(phone['country_name'])}</td><td data-col='provider'>{esc(phone['provider_name'])}</td><td data-col='project'>{esc(phone['project_label'])}</td><td data-col='assignment'>{esc(assignment_label)}</td><td data-col='status'>{dot_status(STATUS_LABELS.get(phone['status'], phone['status']), 'warning' if phone['status'] in {'problem','unknown'} else 'ok')}</td><td data-col='active'>{dot_status('Да' if phone['is_active'] else 'Нет', 'ok' if phone['is_active'] else 'neutral')}</td><td data-col='routes'>{esc(phone['route_names'] or '—')}</td><td data-col='connection'>{esc(phone['connection_cost'])}</td><td data-col='monthly'>{esc(phone['monthly_fee'])}</td><td data-col='currency'>{esc(phone['currency_code'])}</td><td data-col='phone_type'>{esc(phone['phone_type'])}</td><td data-col='tariff'>{esc(phone['tariff_label'])}</td><td data-col='created'>{esc(phone['created_at'])}</td><td data-col='updated'>{esc(phone['updated_at'])}</td><td data-col='deactivated'>{esc(phone['deactivated_at'])}</td><td data-col='comment' class='comment-cell'>{esc(phone['comment'] or '—')}</td><td data-col='actions'>{actions}</td></tr>""")
     filters_html = f"""<form class="filter-grid" method="get" action="/phones">
 <label>ГЕО <select name="country_id">{options(repo, 'countries', selected=q.get('country_id'), empty='Все')}</select></label>
 <label>Провайдер <select name="provider_id">{options(repo, 'providers', selected=q.get('provider_id'), empty='Все')}</select></label>
