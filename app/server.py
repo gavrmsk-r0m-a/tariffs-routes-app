@@ -240,7 +240,7 @@ def sidebar(title: str) -> str:
         <div class="brand-mark">⌁</div>
         <div class="brand-copy"><strong>TeleRoute</strong><span>Admin Panel</span></div>
       </div>
-      <button class="sidebar-collapse" type="button" data-sidebar-toggle data-tooltip="Свернуть"><span class="side-icon">‹</span><span class="side-label">Свернуть</span></button>
+      <button class="sidebar-collapse" type="button" data-sidebar-toggle data-tooltip="Свернуть" aria-label="Свернуть боковую панель" title="Свернуть боковую панель"><span class="sidebar-collapse-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M7 5l7 7-7 7M13 5l7 7-7 7"/></svg></span></button>
     </div>
     <nav class="side-nav" aria-label="Основная навигация">
       {main_links}
@@ -615,6 +615,7 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .edit-action:hover, td[data-col="actions"] details.edit-details > summary:hover {{ background: var(--accent-soft); border-color: var(--accent); color: transparent; }}
     .edit-action::before, td[data-col="actions"] details.edit-details > summary::before {{ content: "✏️"; color: var(--accent-strong); font-size: 14px; line-height: 1; }}
     td[data-col="actions"] details.edit-details > summary::-webkit-details-marker {{ display: none; }}
+    td[data-col="actions"] details.edit-details > summary::marker {{ content: ""; display: none; }}
     td[data-col="actions"] details {{ position: relative; display: inline-block; margin: 0; border: 0; background: transparent; box-shadow: none; }}
     td[data-col="actions"] details.edit-details[open] > summary {{ border-radius: 8px; background: var(--accent-soft); border-color: var(--accent); }}
     td[data-col="actions"] details:not(.edit-details) > summary {{ width: 32px; min-width: 32px; height: 30px; min-height: 30px; padding: 0; display: inline-flex; align-items: center; justify-content: center; overflow: hidden; color: transparent; font-size: 0; border: 1px solid var(--danger); border-radius: 8px; background: var(--danger-soft); box-shadow: none; list-style: none; }}
@@ -670,8 +671,8 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .side-nav {{ gap: 8px; }}
     .side-link {{ justify-content: flex-start; gap: 12px; min-height: 48px; padding: 10px 14px; border-radius: 12px; color: #223158; font-weight: 700; }}
     .side-icon {{ width: 22px; height: 22px; color: #7786ad; font-size: 18px; }}
-    .side-link::before {{ content: attr(data-icon); width: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center; color: #7786ad; font-size: 18px; }}
-    .side-link.active::before {{ color: var(--accent-strong); }}
+    .side-link::before {{ content: attr(data-icon); width: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center; color: #7786ad; font-size: 18px; position: static; flex: 0 0 22px; border-radius: 0; background: transparent; }}
+    .side-link.active::before {{ content: attr(data-icon); color: var(--accent-strong); position: static; width: 22px; height: 22px; flex: 0 0 22px; background: transparent; }}
     .side-link:hover {{ background: #f3f6ff; color: var(--accent-strong); }}
     .side-link.active {{ background: #eef1ff; border-color: #d5ddff; color: var(--accent-strong); box-shadow: none; }}
     .side-link.active .side-icon {{ color: var(--accent-strong); }}
@@ -679,6 +680,10 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .admin-link {{ display: block; padding: 7px 10px; font-size: 12px; }}
     .sidebar-footer {{ margin-top: auto; display: grid; gap: 10px; padding-top: 12px; border-top: 1px solid var(--border); }}
     .current-user-selector, .theme-selector, .sidebar-collapse {{ display: flex; align-items: center; gap: 10px; width: 100%; min-height: 42px; padding: 8px 10px; border: 1px solid transparent; border-radius: 12px; background: transparent; color: var(--text); text-align: left; }}
+    .sidebar-collapse {{ width: 36px; min-width: 36px; max-width: 36px; height: 36px; min-height: 36px; padding: 0; justify-content: center; justify-self: end; color: #223158; border-color: var(--border); background: var(--surface); box-shadow: var(--shadow-soft); overflow: hidden; }}
+    .sidebar-collapse:hover {{ background: var(--accent-soft); border-color: var(--accent); color: var(--accent-strong); }}
+    .sidebar-collapse-icon {{ width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; transform: scaleX(-1); }}
+    .sidebar-collapse-icon svg {{ width: 18px; height: 18px; display: block; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }}
     .current-user-selector {{ background: #f4f6ff; border-color: #e2e8ff; }} .current-user-selector .user-select-label {{ position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; overflow: hidden; }} .user-icon {{ background: #4f46e5; color: #fff; border-radius: 9px; width: 32px; height: 32px; }}
     .user-copy strong, .user-copy small {{ display: block; }} .user-copy small {{ color: var(--muted); }}
     .app-shell.sidebar-collapsed {{ grid-template-columns: 70px minmax(0, 1fr); }}
@@ -686,11 +691,9 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .sidebar-collapsed .brand-copy, .sidebar-collapsed .side-label, .sidebar-collapsed .user-copy, .sidebar-collapsed .admin-tree {{ display: none; }}
     .sidebar-collapsed .side-link {{ font-size: 0; gap: 0; }}
     .sidebar-collapsed .sidebar-head {{ grid-template-columns: 1fr; gap: 10px; }}
-    .sidebar-collapsed .sidebar-collapse {{ order: -1; }}
-    .sidebar-collapsed .sidebar-collapse .side-icon {{ color: var(--accent-strong); }}
-    .sidebar-collapsed .sidebar-collapse .side-icon::before {{ content: '›'; font-size: 18px; }}
-    .sidebar-collapsed .sidebar-collapse .side-icon {{ font-size: 0; }}
-    .sidebar-collapsed .brand-block, .sidebar-collapsed .side-link, .sidebar-collapsed .current-user-selector, .sidebar-collapsed .theme-selector, .sidebar-collapsed .sidebar-collapse {{ justify-content: center; padding-left: 0; padding-right: 0; }}
+    .sidebar-collapsed .sidebar-collapse {{ order: -1; justify-self: center; }}
+    .sidebar-collapsed .sidebar-collapse-icon {{ transform: none; color: var(--accent-strong); }}
+    .sidebar-collapsed .brand-block, .sidebar-collapsed .side-link, .sidebar-collapsed .current-user-selector, .sidebar-collapsed .theme-selector {{ justify-content: center; padding-left: 0; padding-right: 0; }}
     .sidebar-collapsed [data-tooltip] {{ position: relative; }}
     .sidebar-collapsed [data-tooltip]:hover::after {{ content: attr(data-tooltip); position: absolute; left: calc(100% + 10px); top: 50%; transform: translateY(-50%); z-index: 10000; pointer-events: none; white-space: nowrap; border-radius: 8px; padding: 7px 9px; background: #111827; color: #fff; font-size: 12px; box-shadow: var(--shadow-card); }}
     .metrics-grid {{ grid-template-columns: repeat(4, minmax(180px,1fr)); gap: 20px; margin: 8px 0 28px; }}
@@ -721,6 +724,7 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .dot-status {{ display: inline-flex; align-items: center; gap: 6px; min-height: 0; white-space: nowrap; color: inherit; font: inherit; font-weight: 400; }} .dot-status span {{ width: 6px; height: 6px; border-radius: 50%; background:#c5ccdc; font-size: 0; line-height: 0; }} .dot-status.ok span {{ background:#22c55e; }} .dot-status.warning span {{ background:#f59e0b; }} .dot-status.danger span {{ background:#ef4444; }} .dot-status.neutral span {{ background:#c5ccdc; }}
     th[data-col="actions"], td[data-col="actions"], .dictionary-workspace th:last-child {{ width: 78px; min-width: 78px; max-width: 82px; background: inherit; }}
     .edit-action, td[data-col="actions"] details.edit-details > summary {{ width: 30px; min-width: 30px; height: 30px; min-height: 30px; }}
+    td[data-col="actions"] details.edit-details > summary {{ appearance: none; -webkit-appearance: none; }}
     .edit-action::before, td[data-col="actions"] details.edit-details > summary::before {{ content: "✎"; font-size: 16px; }}
     @media (max-width: 900px) {{
       .app-shell {{ grid-template-columns: 1fr; }}
@@ -761,8 +765,10 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     if (shell) shell.classList.toggle("sidebar-collapsed", savedSidebar);
     document.querySelectorAll("[data-sidebar-toggle]").forEach((button) => {{
       const label = button.querySelector(".side-label");
-      if (label) label.textContent = savedSidebar ? "Развернуть" : "Свернуть";
+      const sidebarAction = savedSidebar ? "Развернуть боковую панель" : "Свернуть боковую панель";
       button.dataset.tooltip = savedSidebar ? "Развернуть" : "Свернуть";
+      button.setAttribute("aria-label", sidebarAction);
+      button.title = sidebarAction;
     }});
     document.querySelectorAll("[data-sidebar-toggle]").forEach((button) => {{
       button.addEventListener("click", () => {{
@@ -771,8 +777,10 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
         shell.classList.toggle("sidebar-collapsed", collapsed);
         localStorage.setItem("mvp-sidebar-collapsed", collapsed ? "true" : "false");
         const label = button.querySelector(".side-label");
-        if (label) label.textContent = collapsed ? "Развернуть" : "Свернуть";
+        const sidebarAction = collapsed ? "Развернуть боковую панель" : "Свернуть боковую панель";
         button.dataset.tooltip = collapsed ? "Развернуть" : "Свернуть";
+        button.setAttribute("aria-label", sidebarAction);
+        button.title = sidebarAction;
       }});
     }});
     document.querySelectorAll("[data-theme-toggle]").forEach((button) => {{
