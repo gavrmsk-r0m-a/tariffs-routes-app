@@ -335,112 +335,6 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
   <meta charset="utf-8">
   <title>{esc(title)}</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/core@1.0.0-beta20/dist/css/tabler.min.css">
-      /* Manual UI hotfix: sidebar active icons + table edit action */
-
-    .sidebar .side-link::before,
-    .sidebar .side-link.active::before,
-    .sidebar-collapsed .side-link::before,
-    .sidebar-collapsed .side-link.active::before,
-    html[data-theme="calm-blue"] .side-link::before,
-    html[data-theme="calm-blue"] .side-link.active::before,
-    html[data-theme="terminal-paper"] .side-link::before,
-    html[data-theme="terminal-paper"] .side-link.active::before {{
-      content: attr(data-icon) !important;
-      display: inline-flex !important;
-      align-items: center !important;
-      justify-content: center !important;
-      width: 22px !important;
-      height: 22px !important;
-      min-width: 22px !important;
-      flex: 0 0 22px !important;
-      position: static !important;
-      inset: auto !important;
-      border: 0 !important;
-      border-radius: 0 !important;
-      background: transparent !important;
-      color: #7786ad !important;
-      font-size: 18px !important;
-      line-height: 1 !important;
-      opacity: 1 !important;
-      visibility: visible !important;
-    }}
-
-    .sidebar .side-link.active::before,
-    .sidebar-collapsed .side-link.active::before,
-    html[data-theme="calm-blue"] .side-link.active::before,
-    html[data-theme="terminal-paper"] .side-link.active::before {{
-      content: attr(data-icon) !important;
-      color: var(--accent-strong) !important;
-    }}
-
-    .sidebar-collapsed .side-link {{
-      justify-content: center !important;
-      font-size: 0 !important;
-    }}
-
-    .sidebar-collapsed .side-link.active {{
-      background: #eef1ff !important;
-      border-color: #d5ddff !important;
-    }}
-
-    td[data-col="actions"] {{
-      text-align: center !important;
-      vertical-align: middle !important;
-    }}
-
-    td[data-col="actions"] .edit-action,
-    td[data-col="actions"] details.edit-details > summary {{
-      position: relative !important;
-      display: inline-grid !important;
-      place-items: center !important;
-      width: 30px !important;
-      min-width: 30px !important;
-      max-width: 30px !important;
-      height: 30px !important;
-      min-height: 30px !important;
-      max-height: 30px !important;
-      padding: 0 !important;
-      margin: 0 auto !important;
-      overflow: hidden !important;
-      border: 1px solid var(--border-strong) !important;
-      border-radius: 8px !important;
-      background: var(--surface) !important;
-      box-shadow: none !important;
-      color: transparent !important;
-      font-size: 0 !important;
-      line-height: 0 !important;
-      text-indent: -9999px !important;
-      white-space: nowrap !important;
-    }}
-
-    td[data-col="actions"] .edit-action::before,
-    td[data-col="actions"] details.edit-details > summary::before {{
-      content: "✎" !important;
-      position: absolute !important;
-      inset: 0 !important;
-      display: grid !important;
-      place-items: center !important;
-      color: var(--accent-strong) !important;
-      font-size: 16px !important;
-      line-height: 1 !important;
-      text-indent: 0 !important;
-      transform: none !important;
-    }}
-
-    td[data-col="actions"] .edit-action:hover,
-    td[data-col="actions"] details.edit-details > summary:hover {{
-      background: var(--accent-soft) !important;
-      border-color: var(--accent) !important;
-    }}
-
-    td[data-col="actions"] details.edit-details > summary::-webkit-details-marker {{
-      display: none !important;
-    }}
-
-    td[data-col="actions"] details.edit-details > summary::marker {{
-      content: "" !important;
-      display: none !important;
-    }}
   <style>
     :root,
     html[data-theme="cyber-sketch"] {{
@@ -838,6 +732,107 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
       .workspace {{ padding: 18px 14px 28px; }}
       .dictionary-layout {{ grid-template-columns: 1fr; }}
       .dictionary-sidebar {{ position: static; }}
+    }}
+    /* Manual UI hotfix: sidebar active icons + table edit action */
+
+    .sidebar .side-link::before,
+    .sidebar .side-link.active::before,
+    .sidebar-collapsed .side-link::before,
+    .sidebar-collapsed .side-link.active::before,
+    html[data-theme="calm-blue"] .side-link::before,
+    html[data-theme="calm-blue"] .side-link.active::before,
+    html[data-theme="terminal-paper"] .side-link::before,
+    html[data-theme="terminal-paper"] .side-link.active::before {{
+      content: attr(data-icon) !important;
+      display: inline-flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      width: 22px !important;
+      height: 22px !important;
+      min-width: 22px !important;
+      flex: 0 0 22px !important;
+      position: static !important;
+      inset: auto !important;
+      border: 0 !important;
+      border-radius: 0 !important;
+      background: transparent !important;
+      color: #7786ad !important;
+      font-size: 18px !important;
+      line-height: 1 !important;
+      opacity: 1 !important;
+      visibility: visible !important;
+    }}
+
+    .sidebar .side-link.active::before,
+    .sidebar-collapsed .side-link.active::before,
+    html[data-theme="calm-blue"] .side-link.active::before,
+    html[data-theme="terminal-paper"] .side-link.active::before {{
+      content: attr(data-icon) !important;
+      color: var(--accent-strong) !important;
+    }}
+
+    .sidebar-collapsed .side-link {{
+      justify-content: center !important;
+      font-size: 0 !important;
+    }}
+
+    .sidebar-collapsed .side-link.active {{
+      background: #eef1ff !important;
+      border-color: #d5ddff !important;
+    }}
+
+    td[data-col="actions"] {{
+      text-align: center !important;
+      vertical-align: middle !important;
+    }}
+
+    td[data-col="actions"] .edit-action,
+    td[data-col="actions"] details.edit-details > summary {{
+      position: relative !important;
+      display: inline-grid !important;
+      place-items: center !important;
+      width: 30px !important;
+      min-width: 30px !important;
+      max-width: 30px !important;
+      height: 30px !important;
+      min-height: 30px !important;
+      max-height: 30px !important;
+      padding: 0 !important;
+      margin: 0 auto !important;
+      overflow: hidden !important;
+      border: 1px solid var(--border-strong) !important;
+      border-radius: 8px !important;
+      background: var(--surface) !important;
+      box-shadow: none !important;
+      color: transparent !important;
+      font-size: 0 !important;
+      line-height: 0 !important;
+      text-indent: -9999px !important;
+      white-space: nowrap !important;
+    }}
+
+    td[data-col="actions"] .edit-action::before,
+    td[data-col="actions"] details.edit-details > summary::before {{
+      content: "✎" !important;
+      position: absolute !important;
+      inset: 0 !important;
+      display: grid !important;
+      place-items: center !important;
+      color: var(--accent-strong) !important;
+      font-size: 16px !important;
+      line-height: 1 !important;
+      text-indent: 0 !important;
+      transform: none !important;
+    }}
+
+    td[data-col="actions"] .edit-action:hover,
+    td[data-col="actions"] details.edit-details > summary:hover {{
+      background: var(--accent-soft) !important;
+      border-color: var(--accent) !important;
+    }}
+
+    td[data-col="actions"] details.edit-details > summary::-webkit-details-marker {{
+      display: none !important;
     }}
   </style>
 </head>
