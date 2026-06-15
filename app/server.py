@@ -834,6 +834,49 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     td[data-col="actions"] details.edit-details > summary::-webkit-details-marker {{
       display: none !important;
     }}
+
+    /* /phones table statuses: plain text + CSS dot, without pill/badge chrome. */
+    table[data-table-key="phones"] td {{
+      height: 40px;
+      padding-top: 7px;
+      padding-bottom: 7px;
+      line-height: 1.25;
+    }}
+
+    table[data-table-key="phones"] td[data-col="status"] .dot-status,
+    table[data-table-key="phones"] td[data-col="active"] .dot-status {{
+      display: inline-flex !important;
+      align-items: center !important;
+      gap: 6px !important;
+      min-width: 0 !important;
+      min-height: 0 !important;
+      height: auto !important;
+      padding: 0 !important;
+      border: 0 !important;
+      border-radius: 0 !important;
+      background: transparent !important;
+      box-shadow: none !important;
+      color: inherit !important;
+      font: inherit !important;
+      font-weight: 500 !important;
+      line-height: inherit !important;
+      white-space: nowrap !important;
+    }}
+
+    table[data-table-key="phones"] td[data-col="status"] .dot-status > span,
+    table[data-table-key="phones"] td[data-col="active"] .dot-status > span {{
+      flex: 0 0 6px !important;
+      width: 6px !important;
+      min-width: 6px !important;
+      height: 6px !important;
+      min-height: 6px !important;
+      padding: 0 !important;
+      border: 0 !important;
+      border-radius: 50% !important;
+      box-shadow: none !important;
+      font-size: 0 !important;
+      line-height: 0 !important;
+    }}
   </style>
 </head>
 <body>
