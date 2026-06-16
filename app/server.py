@@ -167,31 +167,28 @@ class ForbiddenError(Exception):
     pass
 
 
-NAV_ICONS = {
-    "dashboard": "⌂",
-    "routes": "⌁",
-    "tariffs": "▤",
-    "phones": "☎",
-    "companies": "◉",
-    "provider_changes": "⟳",
-    "admin": "♧",
-}
-
-
 def svg_icon(path: str, view_box: str = "0 0 24 24") -> str:
     return f"<svg viewBox='{view_box}' focusable='false' aria-hidden='true'>{path}</svg>"
 
+SEMANTIC_ICONS = {
+    "dashboard": svg_icon("<path d='M3 11.2 12 4l9 7.2v8.1c0 .9-.7 1.7-1.7 1.7h-4.5v-6.1H9.2V21H4.7c-1 0-1.7-.8-1.7-1.7v-8.1Z'/>"),
+    "routes": svg_icon("<path d='M5 4.2a2.8 2.8 0 1 1 2 4.7v2.3c0 .9.7 1.6 1.6 1.6h4.1l-1.9-1.9 1.4-1.4 4.3 4.3-4.3 4.3-1.4-1.4 1.9-1.9H8.6A3.6 3.6 0 0 1 5 11.2V8.9a2.8 2.8 0 0 1 0-4.7Zm8.2.8 4.3 4.3-4.3 4.3-1.4-1.4 1.9-1.9h-2.1A3.6 3.6 0 0 1 8 6.7h2c0 .9.7 1.6 1.6 1.6h2.1l-1.9-1.9L13.2 5ZM6.4 6.2a.9.9 0 1 0-1.8 0 .9.9 0 0 0 1.8 0Z'/>"),
+    "tariffs": svg_icon("<path d='M4 5.8C4 4.8 4.8 4 5.8 4h6.4c.5 0 .9.2 1.3.5l6 6c.7.7.7 1.8 0 2.5L13 19.5c-.7.7-1.8.7-2.5 0l-6-6c-.3-.4-.5-.8-.5-1.3V5.8Zm4.4 3.4a1.8 1.8 0 1 0 0-3.6 1.8 1.8 0 0 0 0 3.6Z'/>"),
+    "phones": svg_icon("<path d='M7 3.5h7.2c.5 0 .9.2 1.3.5l2.9 2.9c.4.4.6.8.6 1.3v10.3c0 1.1-.9 2-2 2H7c-1.1 0-2-.9-2-2v-13c0-1.1.9-2 2-2Zm1.2 3.1v2.1h2.1V6.6H8.2Zm3.6 0v2.1h2V6.6h-2Zm3.5.5v3.1h-3.1v2h3.1v-2H17V8.4l-1.7-1.3ZM8.2 10.2v2h2.1v-2H8.2Zm0 3.5v2h2.1v-2H8.2Zm3.6 0v2h3.5v-2h-3.5Z'/>"),
+    "companies": svg_icon("<path d='M12 4.2c-3.2 0-5.9 2.6-5.9 5.9h2A3.9 3.9 0 0 1 12 6.2a3.9 3.9 0 0 1 3.9 3.9h2c0-3.3-2.7-5.9-5.9-5.9Zm0 3.8a2.1 2.1 0 0 0-2.1 2.1c0 .8.4 1.5 1.1 1.8v7.9h2v-7.9a2.1 2.1 0 0 0-1-3.9Zm-7.2 2.1a7.2 7.2 0 0 1 14.4 0h2a9.2 9.2 0 0 0-18.4 0h2Zm10 3 1.5 1.3 2.5-3 .4 4.8-4.8-.4 1.1-1.4-.7-1.3Zm-5.6 0-1.5 1.3-2.5-3-.4 4.8 4.8-.4-1.1-1.4.7-1.3Z'/>"),
+    "provider_changes": svg_icon("<path d='M7.4 7.1A6.7 6.7 0 0 1 18 8.8l-2.1.2 3.7 3.6 2.9-4.3-2.4.2A8.7 8.7 0 0 0 5.8 5.8L7.4 7.1Zm9.2 9.8A6.7 6.7 0 0 1 6 15.2l2.1-.2-3.7-3.6-2.9 4.3 2.4-.2a8.7 8.7 0 0 0 14.3 2.7l-1.6-1.3Z'/>"),
+    "admin": svg_icon("<path d='M20.4 6.8 17.2 10l-3.1-3.1 3.2-3.2a5 5 0 0 0-6.4 6.3l-7.1 7.1a2.2 2.2 0 0 0 3.1 3.1l7.1-7.1a5 5 0 0 0 6.4-6.3Z'/>"),
+    "admin_server_priorities": svg_icon("<path d='M5 5h14v2H5V5Zm2 4h10v2H7V9Zm-2 4h14v2H5v-2Zm2 4h10v2H7v-2Z'/>"),
+    "admin_company_routing_settings": svg_icon("<path d='M5 4h5v5H5V4Zm9 0h5v5h-5V4ZM5 15h5v5H5v-5Zm6-8h2v9h-2v-3H8v-2h8v2h-3v3h-2V7Z'/>"),
+    "admin_users": svg_icon("<path d='M9 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Zm6.5.5a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM9 13c-3.6 0-6.3 2-6.3 4.4 0 .7.6 1.1 1.3 1.1h10c.7 0 1.3-.4 1.3-1.1C15.3 15 12.6 13 9 13Zm6.5.5c-.8 0-1.5.1-2.2.4 1.4.9 2.3 2.1 2.6 3.6H20c.7 0 1.3-.4 1.3-1.1 0-1.6-2.4-2.9-5.8-2.9Z'/>"),
+    "admin_dictionaries": svg_icon("<path d='M5 4h6c1.1 0 2 .9 2 2v14H7c-1.1 0-2-.9-2-2V4Zm8 2c0-1.1.9-2 2-2h4v14c0 1.1-.9 2-2 2h-4V6ZM7 7v2h4V7H7Zm0 4v2h4v-2H7Z'/>"),
+}
+
+NAV_ICONS = SEMANTIC_ICONS
+
 
 def nav_icon(key: str) -> str:
-    icons = {
-        "dashboard": svg_icon("<path d='M3 11.2 12 4l9 7.2v8.1c0 .9-.7 1.7-1.7 1.7h-4.5v-6.1H9.2V21H4.7c-1 0-1.7-.8-1.7-1.7v-8.1Z'/>"),
-        "routes": svg_icon("<path d='M6.2 7.2a3.2 3.2 0 1 1 2.2 3l4.1 4.2a3.5 3.5 0 0 0 2.5 1h.9a3.2 3.2 0 1 1-.1 2h-.8a5.5 5.5 0 0 1-3.9-1.6L7 11.6A3.2 3.2 0 0 1 6.2 7.2Zm3.2 0a1.2 1.2 0 1 0-2.4 0 1.2 1.2 0 0 0 2.4 0Zm9.8 9.2a1.2 1.2 0 1 0-2.4 0 1.2 1.2 0 0 0 2.4 0Z'/>"),
-        "tariffs": svg_icon("<path d='M4 5.8C4 4.8 4.8 4 5.8 4h6.4c.5 0 .9.2 1.3.5l6 6c.7.7.7 1.8 0 2.5L13 19.5c-.7.7-1.8.7-2.5 0l-6-6c-.3-.4-.5-.8-.5-1.3V5.8Zm4.4 3.4a1.8 1.8 0 1 0 0-3.6 1.8 1.8 0 0 0 0 3.6Z'/>"),
-        "phones": svg_icon("<path d='M8 3.5h8c1 0 1.8.8 1.8 1.8v13.4c0 1-.8 1.8-1.8 1.8H8c-1 0-1.8-.8-1.8-1.8V5.3c0-1 .8-1.8 1.8-1.8Zm1.4 2.2v10.9h5.2V5.7H9.4Zm2.6 13.2a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z'/>"),
-        "companies": svg_icon("<path d='M6.2 8.5a3.8 3.8 0 1 1 7.1 1.9l3.7 2.2a3.4 3.4 0 1 1-1.1 1.7l-3.8-2.2a3.8 3.8 0 0 1-1.6.3c-.6 0-1.1-.1-1.6-.3l-2 2.2a3.3 3.3 0 1 1-1.5-1.4l2-2.2a3.8 3.8 0 0 1-1.2-2.2Zm4-1.7a1.8 1.8 0 1 0 .6 3.5 1.8 1.8 0 0 0-.6-3.5Zm-5 9.1a1.3 1.3 0 1 0 0 2.6 1.3 1.3 0 0 0 0-2.6Zm13.6-1.3a1.4 1.4 0 1 0 0 2.8 1.4 1.4 0 0 0 0-2.8Z'/>"),
-        "admin": svg_icon("<path d='M20.4 6.8 17.2 10l-3.1-3.1 3.2-3.2a5 5 0 0 0-6.4 6.3l-7.1 7.1a2.2 2.2 0 0 0 3.1 3.1l7.1-7.1a5 5 0 0 0 6.4-6.3Z'/>"),
-    }
-    return icons.get(key, "")
+    return SEMANTIC_ICONS.get(key, "")
 
 
 def nav_icon_span(key: str) -> str:
@@ -706,6 +703,9 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .side-icon {{ width: 22px; height: 22px; color: #7786ad; font-size: 18px; }}
     .nav-icon {{ display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; flex: 0 0 24px; color: #7786ad; }}
     .nav-icon svg {{ width: 22px; height: 22px; display: block; fill: currentColor; }}
+    .metric-icon svg, .quick-icon svg, .feed-icon svg {{ width: 22px; height: 22px; display: block; fill: currentColor; }}
+    .metric-icon svg {{ width: 21px; height: 21px; }}
+    .feed-icon svg {{ width: 19px; height: 19px; }}
     .side-link:hover .nav-icon, .side-link.active .nav-icon {{ color: var(--accent-strong); }}
     .side-link.has-inline-icon::before, .side-link.has-inline-icon.active::before {{ content: none; display: none; }}
     .side-link::before {{ content: attr(data-icon); width: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center; color: #7786ad; font-size: 18px; position: static; flex: 0 0 22px; border-radius: 0; background: transparent; }}
@@ -1833,10 +1833,10 @@ def dashboard_link(href: str, label: str, description: str, section: str) -> str
 
 def dashboard_page(repo: Repository) -> bytes:
     metrics = "".join([
-        dashboard_metric(repo, "SELECT COUNT(*) FROM routes WHERE is_actual = 1", "Активные маршруты", "↗ +1 за неделю", "⌁", "blue", "0,22 18,22 32,16 46,22 62,17 78,17 96,10"),
-        dashboard_metric(repo, "SELECT COUNT(*) FROM calling_companies WHERE is_active = 1", "Активные кампании", "↗ +1 за неделю", "◉", "green", "0,22 12,17 28,16 44,16 58,15 72,10 84,15 96,9"),
-        dashboard_metric(repo, "SELECT COUNT(*) FROM phone_numbers WHERE is_active = 1", "Купленные номера", "↗ +2 за неделю", "☎", "violet", "0,20 18,20 30,17 46,17 62,14 78,9 96,9"),
-        dashboard_metric(repo, "SELECT COUNT(*) FROM routing_events WHERE is_active = 1", "Смены провайдеров", "↘ −3 за неделю", "⟳", "orange", "0,8 16,10 32,10 48,12 64,12 80,14 96,14"),
+        dashboard_metric(repo, "SELECT COUNT(*) FROM routes WHERE is_actual = 1", "Активные маршруты", "↗ +1 за неделю", nav_icon("routes"), "blue", "0,22 18,22 32,16 46,22 62,17 78,17 96,10"),
+        dashboard_metric(repo, "SELECT COUNT(*) FROM calling_companies WHERE is_active = 1", "Активные кампании", "↗ +1 за неделю", nav_icon("companies"), "green", "0,22 12,17 28,16 44,16 58,15 72,10 84,15 96,9"),
+        dashboard_metric(repo, "SELECT COUNT(*) FROM phone_numbers WHERE is_active = 1", "Купленные номера", "↗ +2 за неделю", nav_icon("phones"), "violet", "0,20 18,20 30,17 46,17 62,14 78,9 96,9"),
+        dashboard_metric(repo, "SELECT COUNT(*) FROM routing_events WHERE is_active = 1", "Смены провайдеров", "↘ −3 за неделю", nav_icon("provider_changes"), "orange", "0,8 16,10 32,10 48,12 64,12 80,14 96,14"),
     ])
     work_links = "".join([
         dashboard_link("/routes", "Маршруты", "Управление маршрутами и номерами", "routes"),
@@ -1854,7 +1854,7 @@ def dashboard_page(repo: Repository) -> bytes:
     body = f"""
 <section class='metrics-grid'>{metrics}</section>
 <section class='dashboard-section'><h2>Быстрые переходы</h2><div class='quick-links'>{work_links}{admin_links}</div></section>
-<section class='dashboard-section'><h2>Лента событий</h2><div class='event-feed'><article><span class='feed-icon ok'>✓</span><div><strong>Маршрут Mexico/Miatel/Demo_A@ активирован</strong><small>Маршруты · провайдер Miatel</small></div><time>2 мин назад</time></article><article><span class='feed-icon warn'>△</span><div><strong>14 номеров помечены «Требует проверки»</strong><small>Купленные номера · автопроверка</small></div><time>18 мин назад</time></article><article><span class='feed-icon info'>⌁</span><div><strong>Кампания "Mexico Demo 1" обновлена</strong><small>Кампании прозвона · ручное обновление</small></div><time>41 мин назад</time></article><article><span class='feed-icon neutral'>i</span><div><strong>Изменён приоритет сервера EU2</strong><small>Кампании прозвона · авторотация серверов</small></div><time>1 ч назад</time></article><article><span class='feed-icon ok'>✓</span><div><strong>Обновлён справочник префиксов</strong><small>Администрирование · справочники</small></div><time>3 ч назад</time></article></div></section>
+<section class='dashboard-section'><h2>Лента событий</h2><div class='event-feed'><article><span class='feed-icon ok'>{nav_icon("routes")}</span><div><strong>Маршрут Mexico/Miatel/Demo_A@ активирован</strong><small>Маршруты · провайдер Miatel</small></div><time>2 мин назад</time></article><article><span class='feed-icon warn'>{nav_icon("phones")}</span><div><strong>14 номеров помечены «Требует проверки»</strong><small>Купленные номера · автопроверка</small></div><time>18 мин назад</time></article><article><span class='feed-icon info'>{nav_icon("companies")}</span><div><strong>Кампания "Mexico Demo 1" обновлена</strong><small>Кампании прозвона · ручное обновление</small></div><time>41 мин назад</time></article><article><span class='feed-icon neutral'>{nav_icon("provider_changes")}</span><div><strong>Изменён приоритет сервера EU2</strong><small>Смена провайдеров · авторотация серверов</small></div><time>1 ч назад</time></article><article><span class='feed-icon ok'>{nav_icon("admin")}</span><div><strong>Обновлён справочник префиксов</strong><small>Администрирование · справочники</small></div><time>3 ч назад</time></article></div></section>
 """
     return page("Главная", body)
 
