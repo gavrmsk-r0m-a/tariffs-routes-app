@@ -603,9 +603,10 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .filter-grid {{ display: flex; flex-wrap: wrap; gap: 10px; align-items: end; }}
     .filter-grid label, .form-grid label {{ min-width: 150px; }}
     .filter-grid input, .filter-grid select, .form-grid input, .form-grid select {{ width: 100%; }}
-    .form-grid .route-select-field {{ min-width: min(420px, 100%); width: min(560px, 100%); }}
-    .form-grid .route-select-field select {{ min-width: min(520px, 100%); }}
+    .form-grid .route-select-field {{ min-width: min(420px, 100%); width: clamp(420px, 44vw, 560px); grid-column: span 2; }}
+    .form-grid .route-select-field .route-select {{ width: 100%; min-width: 0; font-size: 14px; }}
     .form-grid .route-select-field option {{ font-size: 13px; }}
+    @media (max-width: 720px) {{ .form-grid .route-select-field {{ grid-column: 1 / -1; width: 100%; min-width: 0; }} }}
     .filter-grid .checkbox-inline, .form-grid .checkbox-inline {{ min-width: auto; display: flex; align-items: center; gap: 5px; align-self: center; font-weight: 560; }}
     .form-grid .wide, .filter-grid .wide {{ grid-column: 1 / -1; }}
     .form-grid fieldset, .filter-grid fieldset {{ grid-column: 1 / -1; margin: 0; }}

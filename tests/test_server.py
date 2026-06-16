@@ -289,8 +289,10 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertIn("class='scope-field route-select-field' data-scopes='server_priority'>Новый маршрут", create_form)
         self.assertIn("<select name='new_route_id' id='new-route' class='route-select'>", create_form)
         self.assertIn("title='Мексика / Miatel / Мексика/Miatel/Demo_A@'", create_form)
-        self.assertIn(".form-grid .route-select-field", content)
-        self.assertIn(".form-grid .route-select-field option", content)
+        self.assertIn(".form-grid .route-select-field { min-width: min(420px, 100%); width: clamp(420px, 44vw, 560px); grid-column: span 2; }", content)
+        self.assertIn(".form-grid .route-select-field .route-select { width: 100%; min-width: 0; font-size: 14px; }", content)
+        self.assertIn(".form-grid .route-select-field option { font-size: 13px; }", content)
+        self.assertIn("@media (max-width: 720px)", content)
 
     def test_provider_change_server_priority_uses_active_server_checkboxes(self):
         self.request("/routes")
