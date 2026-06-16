@@ -238,10 +238,28 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertIn("side-nav", content)
         self.assertIn("Администрирование</button>", content)
         self.assertIn("admin-tree open", content)
-        self.assertIn("href='/routes'>Маршруты</a>", content)
-        self.assertIn("href='/provider-changes'>Смена провайдеров</a>", content)
+        self.assertIn("href='/routes'><span class='nav-icon'", content)
+        self.assertIn("<span class='side-label'>Маршруты</span></a>", content)
+        self.assertIn("href='/provider-changes'><span class='nav-icon'", content)
+        self.assertIn("<span class='side-label'>Смена провайдеров</span></a>", content)
         self.assertIn("href='/admin/company-routing-settings'>Схема маршрутизации кампаний</a>", content)
         self.assertIn("admin-link active", content)
+
+    def test_provider_changes_sidebar_link_renders_attributes_and_icon_safely(self):
+        for path in ("/dashboard", "/provider-changes"):
+            with self.subTest(path=path):
+                captured, content = self.request(path)
+                self.assertEqual(captured["status"], "200 OK")
+                sidebar_item = content.split("href='/provider-changes'", 1)[0].rsplit("<a class='side-link", 1)[1]
+                sidebar_item += content.split("href='/provider-changes'", 1)[1].split("</a>", 1)[0] + "</a>"
+                self.assertIn("data-tooltip='Журнал изменений'", sidebar_item)
+                self.assertIn("<span class='nav-icon' aria-hidden='true'><svg", sidebar_item)
+                self.assertIn("<span class='side-label'>Смена провайдеров</span>", sidebar_item)
+                self.assertNotIn("data-icon='<svg", sidebar_item)
+                self.assertNotIn("viewBox='0 0 24 24' focusable='false' aria-hidden='true'><path", sidebar_item.split(">", 1)[0])
+        _, active_content = self.request("/provider-changes")
+        active_item = active_content.split("href='/provider-changes'", 1)[0].rsplit("<a class='side-link", 1)[1]
+        self.assertIn("active", active_item)
 
     def test_provider_change_form_is_dynamic_and_defaults_to_none_scope(self):
         self.request("/routes")
@@ -302,9 +320,10 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertNotIn("Администрирование → Смена провайдеров", content)
         captured, content = self.request("/admin")
         self.assertEqual(captured["status"], "200 OK")
-        self.assertIn("href='/provider-changes'>Смена провайдеров</a>", content)
+        self.assertIn("href='/provider-changes'><span class='nav-icon'", content)
+        self.assertIn("<span class='side-label'>Смена провайдеров</span></a>", content)
         self.assertNotIn('<a class="card" href="/provider-changes">Смена провайдеров</a>', content)
-        self.assertEqual(content.count("Смена провайдеров"), 1)
+        self.assertEqual(content.count("<span class='side-label'>Смена провайдеров</span>"), 1)
 
     def test_default_seed_contains_mvp_demo_dataset(self):
         self.request("/routes")
