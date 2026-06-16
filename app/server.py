@@ -562,14 +562,21 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .server-checkbox-actions {{ display: inline-flex; gap: 6px; flex-wrap: wrap; }}
     .server-checkbox-toolbar button {{ min-height: 28px; padding: 3px 9px; border-radius: var(--radius-control); font-size: 12px; font-weight: 620; box-shadow: none; }}
     .server-selection-count {{ color: var(--muted); font-size: 12px; font-weight: 620; white-space: nowrap; }}
-    .server-checkbox-grid {{ display: grid; grid-template-columns: repeat(3, minmax(190px, 1fr)); gap: 8px; margin-top: 6px; }}
-    .server-checkbox-item {{ min-height: 58px; display: flex; align-items: flex-start; gap: 8px; border: 1px solid var(--border); border-radius: var(--radius-control); padding: 8px 9px; background: var(--surface); margin: 0; font-weight: 520; cursor: pointer; transition: border-color 140ms ease, background 140ms ease, box-shadow 140ms ease; }}
+    .server-checkbox-grid {{ display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }}
+    .server-checkbox-item {{ min-height: 36px; display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border); border-radius: 999px; padding: 7px 12px; background: var(--surface); margin: 0; font-weight: 720; line-height: 1; cursor: pointer; transition: border-color 140ms ease, background 140ms ease, box-shadow 140ms ease, color 140ms ease; }}
     .server-checkbox-item:hover {{ border-color: var(--accent); background: var(--surface-muted); }}
-    .server-checkbox-item input[type="checkbox"] {{ flex: 0 0 17px; width: 17px; height: 17px; margin: 1px 0 0; accent-color: var(--accent); }}
-    .server-checkbox-item:has(input:checked) {{ border-color: var(--accent); background: var(--accent-soft); box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 24%, transparent) inset; }}
-    .server-checkbox-copy {{ min-width: 0; display: grid; gap: 2px; }}
-    .server-checkbox-main {{ font-weight: 760; line-height: 1.15; color: var(--text-strong); }}
-    .server-route-hint {{ display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; margin-top: 0; font-size: 12px; color: var(--muted); line-height: 1.25; overflow-wrap: anywhere; }}
+    .server-checkbox-item input[type="checkbox"] {{ position: absolute; opacity: 0; pointer-events: none; }}
+    .server-checkbox-item:has(input:checked) {{ border-color: var(--accent); background: var(--accent-soft); color: var(--text-strong); box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 24%, transparent) inset; }}
+    .server-checkbox-item:has(input:checked)::before {{ content: "✓"; display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; border-radius: 999px; background: var(--accent); color: #fff; font-size: 11px; font-weight: 820; }}
+    .server-checkbox-copy {{ min-width: 0; display: inline-flex; align-items: center; }}
+    .server-checkbox-main {{ font-weight: 760; line-height: 1.15; color: inherit; }}
+    .server-current-routes {{ display: grid; gap: 5px; max-height: 210px; overflow: auto; margin-top: 10px; padding: 9px 10px; border: 1px solid var(--border); border-radius: var(--radius-control); background: var(--surface); }}
+    .server-current-route-row {{ display: grid; grid-template-columns: 46px minmax(0, 1fr); gap: 8px; align-items: baseline; min-height: 22px; font-size: 13px; line-height: 1.3; }}
+    .server-current-route-name {{ color: var(--accent-strong); font-weight: 800; }}
+    .server-current-route-text {{ min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
+    .server-current-route-label {{ color: var(--muted); }}
+    .server-current-routes-empty {{ color: var(--muted); font-size: 13px; }}
+    .server-route-hint {{ display: none; }}
     .event-server-list {{ margin: 4px 0 0 18px; padding: 0; }}
     .event-server-list li {{ margin: 2px 0; }}
     fieldset {{ border: 1px solid var(--border); border-radius: var(--radius-card); margin: 12px 0; padding: 12px; background: var(--surface); }}
@@ -818,7 +825,7 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
       .workspace {{ padding: 18px 14px 28px; }}
       .dictionary-layout {{ grid-template-columns: 1fr; }}
       .dictionary-sidebar {{ position: static; }}
-      .scope-cards, .server-checkbox-grid {{ grid-template-columns: 1fr; }}
+      .scope-cards {{ grid-template-columns: 1fr; }}
     }}
     /* Manual UI hotfix: sidebar active icons + table edit action */
 
@@ -1482,8 +1489,9 @@ def active_server_priority_checkboxes(repo: Repository, selected: set[str] | Non
         checked = "checked" if str(row["id"]) in selected else ""
         hint = route_hints.get((initial_country_id, str(row["id"])), "—")
         boxes.append(
-            f"<label class='server-checkbox-item'><input type='checkbox' name='server_ids' value='{row['id']}' {checked}> "
-            f"<span class='server-checkbox-copy'><span class='server-checkbox-main'>{esc(row['name'])}</span> "
+            f"<label class='server-checkbox-item' data-server-chip data-server-id='{row['id']}' data-server-name='{esc(row['name'])}' data-initial-route='{esc(hint)}'>"
+            f"<input type='checkbox' name='server_ids' value='{row['id']}' {checked}>"
+            f"<span class='server-checkbox-copy'><span class='server-checkbox-main'>{esc(row['name'])}</span>"
             f"<span class='server-route-hint' data-current-route-hint data-server-id='{row['id']}' title='текущий: {esc(hint)}'>текущий: {esc(hint)}</span></span></label>"
         )
     return (
@@ -1493,7 +1501,7 @@ def active_server_priority_checkboxes(repo: Repository, selected: set[str] | Non
         "<button type='button' data-server-select='none'>Снять все</button></span>"
         "</div><div class='server-checkbox-grid'>"
         + "".join(boxes)
-        + "</div>"
+        + "</div><div class='server-current-routes' data-server-current-routes aria-live='polite' aria-label='Текущий маршрут выбранных серверов'></div>"
     )
 
 
@@ -2288,7 +2296,6 @@ def routing_event_form(repo: Repository, event=None) -> str:
   <label>Дата события <span class='required'>*</span><input type='datetime-local' name='event_at' value='{esc(event_at)}' required></label>
   <label class='scope-field' data-scopes='none server_priority'>GEO <select name='country_id' id='event-country'>{active_options(repo, 'countries', selected=event['country_id'] if event else None, empty='—')}</select></label>
   <fieldset class='scope-field' data-scopes='server_priority'><legend>Серверы <span class='required'>*</span></legend>{server_priority_server_boxes}</fieldset>
-  <span class='scope-field current-route-box' data-scopes='server_priority' id='current-route-box'>Текущий маршрут: —</span>
   <label class='scope-field' data-scopes='none server_priority'>Провайдер <span class='required provider-required'>*</span><select name='provider_id' id='event-provider'>{active_options(repo, 'providers', selected=provider_selected, empty='—')}</select></label>
   <label class='scope-field' data-scopes='none'>Маршрут/префикс <select name='affected_route_id' id='affected-route'>{route_opts}</select></label>
   {old_route_field}
@@ -2346,13 +2353,17 @@ def routing_event_form(repo: Repository, event=None) -> str:
     const country = document.getElementById('event-country');
     const provider = document.getElementById('event-provider');
     const hintCountryId = (country && country.value) || form.dataset.defaultCountryId || '';
-    form.querySelectorAll('[data-current-route-hint]').forEach((hint) => {{
-      const key = `${{hintCountryId}}:${{hint.dataset.serverId}}`;
-      hint.textContent = priorities[key] ? `текущий: ${{priorities[key]}}` : 'текущий: —';
-      hint.title = hint.textContent;
+    form.querySelectorAll('[data-server-chip]').forEach((chip) => {{
+      const key = `${{hintCountryId}}:${{chip.dataset.serverId}}`;
+      const route = hintCountryId ? (priorities[key] || '—') : '—';
+      chip.dataset.currentRoute = route;
+      const hint = chip.querySelector('[data-current-route-hint]');
+      if (hint) {{
+        hint.textContent = `текущий: ${{route}}`;
+        hint.title = hint.textContent;
+      }}
     }});
-    const currentBox = document.getElementById('current-route-box');
-    if (currentBox) currentBox.textContent = hintCountryId ? 'Текущий маршрут показан рядом с каждым сервером.' : 'Выберите GEO, чтобы увидеть текущие маршруты серверов.';
+    renderCurrentRoutes();
     rebuildRouteSelect(document.getElementById('affected-route'), country && country.value, provider && provider.value, null);
     rebuildRouteSelect(document.getElementById('new-route'), country && country.value, provider && provider.value, document.getElementById('new-route-empty'));
     const company = document.getElementById('event-company');
@@ -2368,12 +2379,42 @@ def routing_event_form(repo: Repository, event=None) -> str:
     setRequired(company, scope === 'campaign_setting');
     setRequired(ctype, scope === 'campaign_setting');
   }}
+  function renderCurrentRoutes() {{
+    const panel = form.querySelector('[data-server-current-routes]');
+    if (!panel) return;
+    const checkedBoxes = Array.from(form.querySelectorAll('input[name="server_ids"]:checked'));
+    if (!checkedBoxes.length) {{
+      panel.innerHTML = '<span class="server-current-routes-empty">Выберите серверы, чтобы увидеть текущие маршруты</span>';
+      return;
+    }}
+    panel.innerHTML = '';
+    checkedBoxes.forEach((box) => {{
+      const chip = box.closest('[data-server-chip]');
+      const name = chip ? chip.dataset.serverName : box.value;
+      const route = (chip && chip.dataset.currentRoute) || (chip && chip.dataset.initialRoute) || '—';
+      const row = document.createElement('div');
+      row.className = 'server-current-route-row';
+      const server = document.createElement('span');
+      server.className = 'server-current-route-name';
+      server.textContent = name;
+      const text = document.createElement('span');
+      text.className = 'server-current-route-text';
+      text.title = `текущий: ${{route}}`;
+      const label = document.createElement('span');
+      label.className = 'server-current-route-label';
+      label.textContent = 'текущий: ';
+      text.append(label, document.createTextNode(route));
+      row.append(server, text);
+      panel.appendChild(row);
+    }});
+  }}
   function updateServerSelectionCount() {{
     const boxes = Array.from(form.querySelectorAll('input[name="server_ids"]'));
     const counter = form.querySelector('[data-server-selection-count]');
     if (counter) {{
       counter.textContent = `${{boxes.filter((box) => box.checked).length}} из ${{boxes.length}} выбрано`;
     }}
+    renderCurrentRoutes();
   }}
   form.querySelectorAll('[data-server-select]').forEach((button) => button.addEventListener('click', () => {{
     const checked = button.dataset.serverSelect === 'all';
