@@ -603,6 +603,9 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .filter-grid {{ display: flex; flex-wrap: wrap; gap: 10px; align-items: end; }}
     .filter-grid label, .form-grid label {{ min-width: 150px; }}
     .filter-grid input, .filter-grid select, .form-grid input, .form-grid select {{ width: 100%; }}
+    .form-grid .route-select-field {{ min-width: min(420px, 100%); width: min(560px, 100%); }}
+    .form-grid .route-select-field select {{ min-width: min(520px, 100%); }}
+    .form-grid .route-select-field option {{ font-size: 13px; }}
     .filter-grid .checkbox-inline, .form-grid .checkbox-inline {{ min-width: auto; display: flex; align-items: center; gap: 5px; align-self: center; font-weight: 560; }}
     .form-grid .wide, .filter-grid .wide {{ grid-column: 1 / -1; }}
     .form-grid fieldset, .filter-grid fieldset {{ grid-column: 1 / -1; margin: 0; }}
@@ -2223,7 +2226,7 @@ def route_options_for_dynamic_form(repo: Repository, selected: object | None = N
         label = f"{row['country_name']} / {row['provider_name']} / {row['name']}"
         opts += (
             f"<option value='{row['id']}' data-country-id='{row['country_id']}' data-provider-id='{row['provider_id']}' "
-            f"{'selected' if str(row['id']) == str(selected) else ''}>{esc(label)}</option>"
+            f"title='{esc(label)}' {'selected' if str(row['id']) == str(selected) else ''}>{esc(label)}</option>"
         )
     return opts
 
@@ -2299,7 +2302,7 @@ def routing_event_form(repo: Repository, event=None) -> str:
   <label class='scope-field' data-scopes='none server_priority'>Провайдер <span class='required provider-required'>*</span><select name='provider_id' id='event-provider'>{active_options(repo, 'providers', selected=provider_selected, empty='—')}</select></label>
   <label class='scope-field' data-scopes='none'>Маршрут/префикс <select name='affected_route_id' id='affected-route'>{route_opts}</select></label>
   {old_route_field}
-  <label class='scope-field' data-scopes='server_priority'>Новый маршрут <span class='required'>*</span><select name='new_route_id' id='new-route'>{new_route_opts}</select></label>
+  <label class='scope-field route-select-field' data-scopes='server_priority'>Новый маршрут <span class='required'>*</span><select name='new_route_id' id='new-route' class='route-select'>{new_route_opts}</select></label>
   <span class='scope-field route-empty-message muted' data-scopes='server_priority' id='new-route-empty' hidden>Нет маршрутов для выбранного провайдера и GEO</span>
   <label class='scope-field' data-scopes='campaign_setting'>Кампания <span class='required'>*</span><select name='calling_company_id' id='event-company'>{company_opts}</select></label>
   <label class='scope-field' data-scopes='campaign_setting'>Тип изменения кампании <span class='required'>*</span><select name='company_change_type' id='company-change-type'>
@@ -2335,12 +2338,19 @@ def routing_event_form(repo: Repository, event=None) -> str:
         const opt = document.createElement('option');
         opt.value = route.id;
         opt.textContent = route.label;
+        opt.title = route.label;
         if (String(route.id) === String(current)) opt.selected = true;
         select.appendChild(opt);
         count += 1;
       }}
     }});
+    updateSelectTitle(select);
     if (emptyEl) emptyEl.hidden = !(countryId && providerId && count === 0);
+  }}
+  function updateSelectTitle(select) {{
+    if (!select) return;
+    const selected = select.options[select.selectedIndex];
+    select.title = selected ? selected.textContent : '';
   }}
   function sync() {{
     const scope = selectedScope();
@@ -2375,6 +2385,8 @@ def routing_event_form(repo: Repository, event=None) -> str:
     form.querySelectorAll('[data-campaign-route-field]').forEach((el) => {{ el.hidden = !needsRoute; el.querySelectorAll('select').forEach((f) => f.required = needsRoute); }});
     setRequired(country, scope === 'server_priority');
     setRequired(provider, scope === 'none' || scope === 'server_priority');
+    updateSelectTitle(document.getElementById('new-route'));
+    updateSelectTitle(document.getElementById('company-route'));
     setRequired(document.getElementById('new-route'), scope === 'server_priority');
     setRequired(company, scope === 'campaign_setting');
     setRequired(ctype, scope === 'campaign_setting');
@@ -2424,6 +2436,7 @@ def routing_event_form(repo: Repository, event=None) -> str:
   form.querySelectorAll('input[name="server_ids"]').forEach((box) => box.addEventListener('change', updateServerSelectionCount));
   updateServerSelectionCount();
   form.querySelectorAll('input[name="apply_scope"], #event-country, #event-provider, #event-company, #campaign-provider, #company-change-type').forEach((el) => el.addEventListener('change', sync));
+  form.querySelectorAll('.route-select').forEach((el) => el.addEventListener('change', () => updateSelectTitle(el)));
   sync();
 }})();
 </script>
