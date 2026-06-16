@@ -558,13 +558,18 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     form button {{ align-self: end; }}
     .checkbox-list {{ display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 4px 0; }}
     .checkbox-list label {{ margin: 0; font-weight: 520; }}
-    .server-checkbox-toolbar {{ display: flex; gap: 8px; margin: 0 0 8px; }}
-    .server-checkbox-toolbar button {{ padding: 3px 8px; font-size: 0.9em; }}
-    .server-checkbox-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 6px 10px; margin-top: 6px; }}
-    .server-checkbox-item {{ display: flex; align-items: flex-start; gap: 6px; border: 1px solid var(--border); border-radius: var(--radius-control); padding: 6px 8px; background: var(--surface); margin: 0; font-weight: 520; }}
-    .server-checkbox-item:has(input:checked) {{ border-color: var(--accent); background: var(--accent-soft); box-shadow: 0 0 0 1px var(--border-strong) inset; }}
-    .server-checkbox-main {{ font-weight: 720; }}
-    .server-route-hint {{ display: block; margin-top: 2px; font-size: 0.9em; color: var(--muted); line-height: 1.25; }}
+    .server-checkbox-toolbar {{ display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0 0 8px; flex-wrap: wrap; }}
+    .server-checkbox-actions {{ display: inline-flex; gap: 6px; flex-wrap: wrap; }}
+    .server-checkbox-toolbar button {{ min-height: 28px; padding: 3px 9px; border-radius: var(--radius-control); font-size: 12px; font-weight: 620; box-shadow: none; }}
+    .server-selection-count {{ color: var(--muted); font-size: 12px; font-weight: 620; white-space: nowrap; }}
+    .server-checkbox-grid {{ display: grid; grid-template-columns: repeat(3, minmax(190px, 1fr)); gap: 8px; margin-top: 6px; }}
+    .server-checkbox-item {{ min-height: 58px; display: flex; align-items: flex-start; gap: 8px; border: 1px solid var(--border); border-radius: var(--radius-control); padding: 8px 9px; background: var(--surface); margin: 0; font-weight: 520; cursor: pointer; transition: border-color 140ms ease, background 140ms ease, box-shadow 140ms ease; }}
+    .server-checkbox-item:hover {{ border-color: var(--accent); background: var(--surface-muted); }}
+    .server-checkbox-item input[type="checkbox"] {{ flex: 0 0 17px; width: 17px; height: 17px; margin: 1px 0 0; accent-color: var(--accent); }}
+    .server-checkbox-item:has(input:checked) {{ border-color: var(--accent); background: var(--accent-soft); box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 24%, transparent) inset; }}
+    .server-checkbox-copy {{ min-width: 0; display: grid; gap: 2px; }}
+    .server-checkbox-main {{ font-weight: 760; line-height: 1.15; color: var(--text-strong); }}
+    .server-route-hint {{ display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; margin-top: 0; font-size: 12px; color: var(--muted); line-height: 1.25; overflow-wrap: anywhere; }}
     .event-server-list {{ margin: 4px 0 0 18px; padding: 0; }}
     .event-server-list li {{ margin: 2px 0; }}
     fieldset {{ border: 1px solid var(--border); border-radius: var(--radius-card); margin: 12px 0; padding: 12px; background: var(--surface); }}
@@ -622,9 +627,16 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .journal-card .table-scroll {{ min-height: 360px; }}
     .empty-state {{ padding: 24px 14px; color: var(--muted); background: var(--surface-muted); }}
     .compact-actions, .actions {{ white-space: nowrap; }}
-    .scope-cards {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px; }}
-    .scope-card {{ cursor: pointer; display: block; box-shadow: none; }}
-    .scope-card.selected {{ border-color: var(--accent); background: var(--accent-soft); box-shadow: 0 0 0 2px var(--border-strong) inset; }}
+    .scope-cards {{ display: grid; grid-template-columns: repeat(3, minmax(190px, 1fr)); gap: 8px; }}
+    .scope-card {{ min-height: 58px; cursor: pointer; display: flex; align-items: center; gap: 9px; padding: 9px 10px; border-radius: var(--radius-control); box-shadow: none; font-weight: 650; line-height: 1.2; }}
+    .scope-card:hover {{ transform: none; background: var(--surface-muted); }}
+    .scope-card input[type="radio"] {{ position: absolute; opacity: 0; pointer-events: none; }}
+    .scope-card-indicator {{ flex: 0 0 18px; width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--border-strong); border-radius: 999px; background: var(--surface); transition: border-color 140ms ease, background 140ms ease; }}
+    .scope-card-indicator::after {{ content: ""; width: 8px; height: 8px; border-radius: 999px; background: var(--accent); opacity: 0; transform: scale(.6); transition: opacity 140ms ease, transform 140ms ease; }}
+    .scope-card-text {{ min-width: 0; }}
+    .scope-card.selected {{ border-color: var(--accent); background: var(--accent-soft); box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 24%, transparent) inset; color: var(--text-strong); }}
+    .scope-card.selected .scope-card-indicator {{ border-color: var(--accent); background: var(--surface); }}
+    .scope-card.selected .scope-card-indicator::after {{ opacity: 1; transform: scale(1); }}
     .scope-field[hidden], .conditional-field[hidden], .route-empty-message[hidden] {{ display: none !important; }}
     .current-route-box {{ display: block; border: 1px dashed var(--border-strong); border-radius: var(--radius-card); padding: 8px; margin: 4px 12px 4px 0; background: var(--surface-muted); }}
     .star {{ color: var(--warning); font-weight: 800; }}
@@ -806,6 +818,7 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
       .workspace {{ padding: 18px 14px 28px; }}
       .dictionary-layout {{ grid-template-columns: 1fr; }}
       .dictionary-sidebar {{ position: static; }}
+      .scope-cards, .server-checkbox-grid {{ grid-template-columns: 1fr; }}
     }}
     /* Manual UI hotfix: sidebar active icons + table edit action */
 
@@ -1470,13 +1483,14 @@ def active_server_priority_checkboxes(repo: Repository, selected: set[str] | Non
         hint = route_hints.get((initial_country_id, str(row["id"])), "—")
         boxes.append(
             f"<label class='server-checkbox-item'><input type='checkbox' name='server_ids' value='{row['id']}' {checked}> "
-            f"<span><span class='server-checkbox-main'>{esc(row['name'])}</span> "
-            f"<span class='server-route-hint' data-current-route-hint data-server-id='{row['id']}'>текущий: {esc(hint)}</span></span></label>"
+            f"<span class='server-checkbox-copy'><span class='server-checkbox-main'>{esc(row['name'])}</span> "
+            f"<span class='server-route-hint' data-current-route-hint data-server-id='{row['id']}' title='текущий: {esc(hint)}'>текущий: {esc(hint)}</span></span></label>"
         )
     return (
         "<div class='server-checkbox-toolbar'>"
-        "<button type='button' data-server-select='all'>Выбрать все</button>"
-        "<button type='button' data-server-select='none'>Снять все</button>"
+        "<span class='server-selection-count' data-server-selection-count>0 выбрано</span>"
+        "<span class='server-checkbox-actions'><button type='button' data-server-select='all'>Выбрать все</button>"
+        "<button type='button' data-server-select='none'>Снять все</button></span>"
         "</div><div class='server-checkbox-grid'>"
         + "".join(boxes)
         + "</div>"
@@ -2265,9 +2279,9 @@ def routing_event_form(repo: Repository, event=None) -> str:
 <form method='post' action='{action}' class='form-grid' id='routing-event-form' data-default-country-id='{esc(active_country_id_if_single(repo) or '')}'>
   <fieldset><legend>Область применения</legend>
     <div class='scope-cards'>
-      <label class='card scope-card'><input type='radio' name='apply_scope' value='none' {'checked' if scope == 'none' else ''}> Не меняли настройки в нашей системе</label>
-      <label class='card scope-card'><input type='radio' name='apply_scope' value='server_priority' {'checked' if scope == 'server_priority' else ''}> Серверный приоритет</label>
-      <label class='card scope-card'><input type='radio' name='apply_scope' value='campaign_setting' {'checked' if scope == 'campaign_setting' else ''}> Настройка кампании</label>
+      <label class='card scope-card'><input type='radio' name='apply_scope' value='none' {'checked' if scope == 'none' else ''}><span class='scope-card-indicator' aria-hidden='true'></span><span class='scope-card-text'>Не меняли настройки в нашей системе</span></label>
+      <label class='card scope-card'><input type='radio' name='apply_scope' value='server_priority' {'checked' if scope == 'server_priority' else ''}><span class='scope-card-indicator' aria-hidden='true'></span><span class='scope-card-text'>Серверный приоритет</span></label>
+      <label class='card scope-card'><input type='radio' name='apply_scope' value='campaign_setting' {'checked' if scope == 'campaign_setting' else ''}><span class='scope-card-indicator' aria-hidden='true'></span><span class='scope-card-text'>Настройка кампании</span></label>
     </div>
   </fieldset>
   {inactive_note}
@@ -2335,6 +2349,7 @@ def routing_event_form(repo: Repository, event=None) -> str:
     form.querySelectorAll('[data-current-route-hint]').forEach((hint) => {{
       const key = `${{hintCountryId}}:${{hint.dataset.serverId}}`;
       hint.textContent = priorities[key] ? `текущий: ${{priorities[key]}}` : 'текущий: —';
+      hint.title = hint.textContent;
     }});
     const currentBox = document.getElementById('current-route-box');
     if (currentBox) currentBox.textContent = hintCountryId ? 'Текущий маршрут показан рядом с каждым сервером.' : 'Выберите GEO, чтобы увидеть текущие маршруты серверов.';
@@ -2353,10 +2368,20 @@ def routing_event_form(repo: Repository, event=None) -> str:
     setRequired(company, scope === 'campaign_setting');
     setRequired(ctype, scope === 'campaign_setting');
   }}
+  function updateServerSelectionCount() {{
+    const boxes = Array.from(form.querySelectorAll('input[name="server_ids"]'));
+    const counter = form.querySelector('[data-server-selection-count]');
+    if (counter) {{
+      counter.textContent = `${{boxes.filter((box) => box.checked).length}} из ${{boxes.length}} выбрано`;
+    }}
+  }}
   form.querySelectorAll('[data-server-select]').forEach((button) => button.addEventListener('click', () => {{
     const checked = button.dataset.serverSelect === 'all';
     form.querySelectorAll('input[name="server_ids"]').forEach((box) => {{ box.checked = checked; }});
+    updateServerSelectionCount();
   }}));
+  form.querySelectorAll('input[name="server_ids"]').forEach((box) => box.addEventListener('change', updateServerSelectionCount));
+  updateServerSelectionCount();
   form.querySelectorAll('input[name="apply_scope"], #event-country, #event-provider, #event-company, #campaign-provider, #company-change-type').forEach((el) => el.addEventListener('change', sync));
   sync();
 }})();
