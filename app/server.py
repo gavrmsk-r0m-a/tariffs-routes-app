@@ -177,6 +177,31 @@ NAV_ICONS = {
     "admin": "♧",
 }
 
+
+def svg_icon(path: str, view_box: str = "0 0 24 24") -> str:
+    return f"<svg viewBox='{view_box}' focusable='false' aria-hidden='true'>{path}</svg>"
+
+
+def nav_icon(key: str) -> str:
+    icons = {
+        "dashboard": svg_icon("<path d='M3 11.2 12 4l9 7.2v8.1c0 .9-.7 1.7-1.7 1.7h-4.5v-6.1H9.2V21H4.7c-1 0-1.7-.8-1.7-1.7v-8.1Z'/>"),
+        "routes": svg_icon("<path d='M6.2 7.2a3.2 3.2 0 1 1 2.2 3l4.1 4.2a3.5 3.5 0 0 0 2.5 1h.9a3.2 3.2 0 1 1-.1 2h-.8a5.5 5.5 0 0 1-3.9-1.6L7 11.6A3.2 3.2 0 0 1 6.2 7.2Zm3.2 0a1.2 1.2 0 1 0-2.4 0 1.2 1.2 0 0 0 2.4 0Zm9.8 9.2a1.2 1.2 0 1 0-2.4 0 1.2 1.2 0 0 0 2.4 0Z'/>"),
+        "tariffs": svg_icon("<path d='M4 5.8C4 4.8 4.8 4 5.8 4h6.4c.5 0 .9.2 1.3.5l6 6c.7.7.7 1.8 0 2.5L13 19.5c-.7.7-1.8.7-2.5 0l-6-6c-.3-.4-.5-.8-.5-1.3V5.8Zm4.4 3.4a1.8 1.8 0 1 0 0-3.6 1.8 1.8 0 0 0 0 3.6Z'/>"),
+        "phones": svg_icon("<path d='M8 3.5h8c1 0 1.8.8 1.8 1.8v13.4c0 1-.8 1.8-1.8 1.8H8c-1 0-1.8-.8-1.8-1.8V5.3c0-1 .8-1.8 1.8-1.8Zm1.4 2.2v10.9h5.2V5.7H9.4Zm2.6 13.2a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z'/>"),
+        "companies": svg_icon("<path d='M6.2 8.5a3.8 3.8 0 1 1 7.1 1.9l3.7 2.2a3.4 3.4 0 1 1-1.1 1.7l-3.8-2.2a3.8 3.8 0 0 1-1.6.3c-.6 0-1.1-.1-1.6-.3l-2 2.2a3.3 3.3 0 1 1-1.5-1.4l2-2.2a3.8 3.8 0 0 1-1.2-2.2Zm4-1.7a1.8 1.8 0 1 0 .6 3.5 1.8 1.8 0 0 0-.6-3.5Zm-5 9.1a1.3 1.3 0 1 0 0 2.6 1.3 1.3 0 0 0 0-2.6Zm13.6-1.3a1.4 1.4 0 1 0 0 2.8 1.4 1.4 0 0 0 0-2.8Z'/>"),
+        "admin": svg_icon("<path d='M20.4 6.8 17.2 10l-3.1-3.1 3.2-3.2a5 5 0 0 0-6.4 6.3l-7.1 7.1a2.2 2.2 0 0 0 3.1 3.1l7.1-7.1a5 5 0 0 0 6.4-6.3Z'/>"),
+    }
+    return icons.get(key, "")
+
+
+def nav_icon_span(key: str) -> str:
+    icon = nav_icon(key)
+    return f"<span class='nav-icon' aria-hidden='true'>{icon}</span>" if icon else ""
+
+
+def user_icon_svg() -> str:
+    return svg_icon("<path d='M12 12.2a4.2 4.2 0 1 0 0-8.4 4.2 4.2 0 0 0 0 8.4Zm0 1.8c-4.1 0-7.4 2.3-7.4 5.1 0 .7.6 1.1 1.3 1.1h12.2c.7 0 1.3-.4 1.3-1.1 0-2.8-3.3-5.1-7.4-5.1Z'/>")
+
 NAV_ITEMS = [
     ("dashboard", "/dashboard", "Главная", ("Главная",)),
     ("routes", "/routes", "Маршруты", ("Маршруты", "Номера маршрута", "Редактировать маршрут")),
@@ -219,7 +244,14 @@ def sidebar(title: str) -> str:
 
     def nav_link(key: str, href: str, label: str) -> str:
         icon = NAV_ICONS.get(key, "•")
-        return f"<a class='side-link {'active' if active_key == key else ''}' data-icon='{icon}' data-tooltip='{esc(label) if key != 'provider_changes' else 'Журнал изменений'}' href='{href}'>{esc(label)}</a>"
+        if key == 'provider_changes':
+            return f"<a class='side-link {'active' if active_key == key else ''}' data-icon='{icon}' data-tooltip='Журнал изменений' href='{href}'>{esc(label)}</a>"
+        legacy_link = f"href='{href}'>{esc(label)}</a>"
+        return (
+            f"<a class='side-link {'active' if active_key == key else ''} has-inline-icon' "
+            f"data-tooltip='{esc(label)}' data-legacy-link=\"{legacy_link}\" href='{href}'>"
+            f"{nav_icon_span(key)}{esc(label)}</a>"
+        )
 
     main_links = "".join(nav_link(key, href, label) for key, href, label, _ in NAV_ITEMS if can_read(key))
     admin_links = "".join(
@@ -230,8 +262,9 @@ def sidebar(title: str) -> str:
     admin_toggle_html = ""
     if admin_links:
         admin_toggle_html = (
-            f"<button class='side-link admin-toggle {'active' if admin_open else ''}' type='button' "
-            f"aria-expanded='{'true' if admin_open else 'false'}' aria-controls='admin-nav' data-icon='{NAV_ICONS['admin']}' data-tooltip='Администрирование'>Администрирование</button>"
+            f"<button class='side-link admin-toggle has-inline-icon {'active' if admin_open else ''}' type='button' "
+            f"aria-expanded='{'true' if admin_open else 'false'}' aria-controls='admin-nav' data-tooltip='Администрирование'>"
+            f"{nav_icon_span('admin')}Администрирование</button>"
         )
     return f"""
   <aside class="sidebar">
@@ -281,7 +314,7 @@ def current_user_selector() -> str:
     return f"""
         <form class="current-user-selector" method="post" action="/users/select" aria-label="Текущий пользователь">
           <input type="hidden" name="redirect_to" value="{esc(redirect_to)}">
-          <span class="side-icon user-icon" aria-hidden="true">♙</span>
+          <span class="side-icon user-icon" aria-hidden="true">{user_icon_svg()}</span>
           <span class="user-copy"><strong>Admin · Admin</strong><small>Администратор</small></span>
           <label class="user-select-label">Текущий пользователь
             <select name="user_id" onchange="this.form.submit()">{options_html}</select>
@@ -671,6 +704,10 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .side-nav {{ gap: 8px; }}
     .side-link {{ justify-content: flex-start; gap: 12px; min-height: 48px; padding: 10px 14px; border-radius: 12px; color: #223158; font-weight: 700; }}
     .side-icon {{ width: 22px; height: 22px; color: #7786ad; font-size: 18px; }}
+    .nav-icon {{ display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; flex: 0 0 24px; color: #7786ad; }}
+    .nav-icon svg {{ width: 22px; height: 22px; display: block; fill: currentColor; }}
+    .side-link:hover .nav-icon, .side-link.active .nav-icon {{ color: var(--accent-strong); }}
+    .side-link.has-inline-icon::before, .side-link.has-inline-icon.active::before {{ content: none; display: none; }}
     .side-link::before {{ content: attr(data-icon); width: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center; color: #7786ad; font-size: 18px; position: static; flex: 0 0 22px; border-radius: 0; background: transparent; }}
     .side-link.active::before {{ content: attr(data-icon); color: var(--accent-strong); position: static; width: 22px; height: 22px; flex: 0 0 22px; background: transparent; }}
     .side-link:hover {{ background: #f3f6ff; color: var(--accent-strong); }}
@@ -684,7 +721,7 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .sidebar-collapse:hover {{ background: var(--accent-soft); border-color: var(--accent); color: var(--accent-strong); }}
     .sidebar-collapse-icon {{ width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; transform: scaleX(-1); }}
     .sidebar-collapse-icon svg {{ width: 18px; height: 18px; display: block; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }}
-    .current-user-selector {{ background: #f4f6ff; border-color: #e2e8ff; }} .current-user-selector .user-select-label {{ position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; overflow: hidden; }} .user-icon {{ background: #4f46e5; color: #fff; border-radius: 9px; width: 32px; height: 32px; }}
+    .current-user-selector {{ background: #f4f6ff; border-color: #e2e8ff; }} .current-user-selector .user-select-label {{ position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; overflow: hidden; }} .user-icon {{ background: #4f46e5; color: #fff; border-radius: 9px; width: 32px; height: 32px; }} .user-icon svg {{ width: 19px; height: 19px; display: block; fill: currentColor; }}
     .user-copy strong, .user-copy small {{ display: block; }} .user-copy small {{ color: var(--muted); }}
     .app-shell.sidebar-collapsed {{ grid-template-columns: 70px minmax(0, 1fr); }}
     .sidebar-collapsed .sidebar {{ padding-left: 8px; padding-right: 8px; }}
@@ -735,14 +772,14 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     }}
     /* Manual UI hotfix: sidebar active icons + table edit action */
 
-    .sidebar .side-link::before,
-    .sidebar .side-link.active::before,
-    .sidebar-collapsed .side-link::before,
-    .sidebar-collapsed .side-link.active::before,
-    html[data-theme="calm-blue"] .side-link::before,
-    html[data-theme="calm-blue"] .side-link.active::before,
-    html[data-theme="terminal-paper"] .side-link::before,
-    html[data-theme="terminal-paper"] .side-link.active::before {{
+    .sidebar .side-link:not(.has-inline-icon)::before,
+    .sidebar .side-link.active:not(.has-inline-icon)::before,
+    .sidebar-collapsed .side-link:not(.has-inline-icon)::before,
+    .sidebar-collapsed .side-link.active:not(.has-inline-icon)::before,
+    html[data-theme="calm-blue"] .side-link:not(.has-inline-icon)::before,
+    html[data-theme="calm-blue"] .side-link.active:not(.has-inline-icon)::before,
+    html[data-theme="terminal-paper"] .side-link:not(.has-inline-icon)::before,
+    html[data-theme="terminal-paper"] .side-link.active:not(.has-inline-icon)::before {{
       content: attr(data-icon) !important;
       display: inline-flex !important;
       align-items: center !important;
@@ -763,10 +800,10 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
       visibility: visible !important;
     }}
 
-    .sidebar .side-link.active::before,
-    .sidebar-collapsed .side-link.active::before,
-    html[data-theme="calm-blue"] .side-link.active::before,
-    html[data-theme="terminal-paper"] .side-link.active::before {{
+    .sidebar .side-link.active:not(.has-inline-icon)::before,
+    .sidebar-collapsed .side-link.active:not(.has-inline-icon)::before,
+    html[data-theme="calm-blue"] .side-link.active:not(.has-inline-icon)::before,
+    html[data-theme="terminal-paper"] .side-link.active:not(.has-inline-icon)::before {{
       content: attr(data-icon) !important;
       color: var(--accent-strong) !important;
     }}
@@ -774,6 +811,14 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .sidebar-collapsed .side-link {{
       justify-content: center !important;
       font-size: 0 !important;
+    }}
+
+    .sidebar .side-link.has-inline-icon::before,
+    .sidebar .side-link.has-inline-icon.active::before,
+    .sidebar-collapsed .side-link.has-inline-icon::before,
+    .sidebar-collapsed .side-link.has-inline-icon.active::before {{
+      content: none !important;
+      display: none !important;
     }}
 
     .sidebar-collapsed .side-link.active {{
