@@ -281,6 +281,17 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertNotIn("Новый route", content)
         self.assertNotIn("Новая авторотация", content)
 
+    def test_provider_change_new_route_select_is_wide_and_has_titles(self):
+        self.request("/routes")
+        captured, content = self.request("/provider-changes")
+        self.assertEqual(captured["status"], "200 OK")
+        create_form = content.split("<form method='post' action='/provider-changes/create'", 1)[1].split("</form>", 1)[0]
+        self.assertIn("class='scope-field route-select-field' data-scopes='server_priority'>Новый маршрут", create_form)
+        self.assertIn("<select name='new_route_id' id='new-route' class='route-select'>", create_form)
+        self.assertIn("title='Мексика / Miatel / Мексика/Miatel/Demo_A@'", create_form)
+        self.assertIn(".form-grid .route-select-field", content)
+        self.assertIn(".form-grid .route-select-field option", content)
+
     def test_provider_change_server_priority_uses_active_server_checkboxes(self):
         self.request("/routes")
         captured, content = self.request("/provider-changes")
