@@ -117,7 +117,8 @@ def clamp_cell(col: str, content_html: str, title: object, *, extra_attrs: str =
     attrs = f" {extra_attrs.strip()}" if extra_attrs.strip() else ""
     title_text = plain_text(title)
     title_attr = f" title='{esc(title_text)}'" if len(title_text) > 60 else ""
-    return f"<td data-col='{esc(col)}'{class_attr}{attrs}{title_attr}><span class='cell-clamp'>{content_html}</span></td>"
+    full_text_attr = f" data-full-text='{esc(title_text)}'" if len(title_text) > 60 else ""
+    return f"<td data-col='{esc(col)}'{class_attr}{attrs}{title_attr}{full_text_attr}><span class='cell-clamp'>{content_html}</span></td>"
 
 
 ROLE_PERMISSIONS = {
@@ -538,6 +539,14 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
       min-width: 180px; max-width: 360px; white-space: normal; overflow: hidden; overflow-wrap: anywhere; word-break: normal;
     }}
     .cell-clamp {{ display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }}
+    td[data-full-text] {{ cursor: pointer; }}
+    td[data-full-text]:hover .cell-clamp {{ color: var(--accent-strong); }}
+    .cell-popover {{ position: fixed; z-index: 1000; width: min(640px, calc(100vw - 24px)); max-height: 340px; display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 8px; padding: 10px; border: 1px solid var(--border-strong); border-radius: var(--radius-control); background: var(--surface); box-shadow: 0 18px 45px rgba(15, 23, 42, .16), 0 4px 12px rgba(15, 23, 42, .10); color: var(--text); }}
+    .cell-popover-header {{ display: flex; align-items: center; justify-content: space-between; gap: 8px; }}
+    .cell-popover-actions {{ display: inline-flex; align-items: center; gap: 6px; margin-left: auto; }}
+    .cell-popover-copy, .cell-popover-close {{ min-height: 26px; padding: 3px 8px; font-size: 12px; }}
+    .cell-popover-close {{ width: 28px; padding: 0; font-size: 18px; line-height: 1; }}
+    .cell-popover-text {{ max-height: 280px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; font-size: 13px; line-height: 1.35; }}
     input, select, textarea {{ border: 1px solid var(--border-strong); border-radius: var(--radius-control); padding: 6px 8px; margin: 0; max-width: 100%; background: var(--surface); color: var(--text-strong); font: inherit; min-height: 32px; box-shadow: inset 0 1px 1px rgba(34, 48, 42, 0.03); }}
     input:hover, select:hover, textarea:hover {{ border-color: var(--accent); }}
     input:focus, select:focus, textarea:focus {{ border-color: var(--focus); background: var(--surface); }}
@@ -1063,6 +1072,95 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
         }}, 1800);
       }});
     }});
+    const fullTextPopover = (() => {{
+      let popover = null;
+      let activeCell = null;
+      function close() {{
+        if (popover) popover.remove();
+        popover = null;
+        activeCell = null;
+      }}
+      function place(cell) {{
+        if (!popover) return;
+        const rect = cell.getBoundingClientRect();
+        const margin = 8;
+        const width = Math.min(640, window.innerWidth - margin * 2);
+        popover.style.width = `${{width}}px`;
+        let left = Math.min(Math.max(rect.left, margin), window.innerWidth - width - margin);
+        let top = rect.bottom + margin;
+        popover.style.left = `${{left}}px`;
+        popover.style.top = `${{top}}px`;
+        const popRect = popover.getBoundingClientRect();
+        if (popRect.bottom > window.innerHeight - margin) {{
+          top = Math.max(margin, rect.top - popRect.height - margin);
+          popover.style.top = `${{top}}px`;
+        }}
+      }}
+      async function copy(text, button) {{
+        try {{
+          if (navigator.clipboard && window.isSecureContext) {{
+            await navigator.clipboard.writeText(text);
+          }} else {{
+            fallbackCopyText(text);
+          }}
+        }} catch (error) {{
+          fallbackCopyText(text);
+        }}
+        const oldText = button.textContent;
+        button.textContent = "Скопировано";
+        window.setTimeout(() => {{ button.textContent = oldText; }}, 1400);
+      }}
+      function open(cell) {{
+        const text = cell.dataset.fullText || "";
+        if (!text.trim()) return;
+        close();
+        activeCell = cell;
+        popover = document.createElement("div");
+        popover.className = "cell-popover";
+        popover.setAttribute("role", "dialog");
+        popover.setAttribute("aria-label", "Полный текст ячейки");
+        const header = document.createElement("div");
+        header.className = "cell-popover-header";
+        const actions = document.createElement("div");
+        actions.className = "cell-popover-actions";
+        const copyButton = document.createElement("button");
+        copyButton.type = "button";
+        copyButton.className = "cell-popover-copy";
+        copyButton.textContent = "Копировать";
+        const closeButton = document.createElement("button");
+        closeButton.type = "button";
+        closeButton.className = "cell-popover-close";
+        closeButton.setAttribute("aria-label", "Закрыть");
+        closeButton.textContent = "×";
+        const textBox = document.createElement("div");
+        textBox.className = "cell-popover-text";
+        textBox.textContent = text;
+        copyButton.addEventListener("click", () => copy(text, copyButton));
+        closeButton.addEventListener("click", close);
+        actions.append(copyButton, closeButton);
+        header.append(actions);
+        popover.append(header, textBox);
+        document.body.appendChild(popover);
+        place(cell);
+        copyButton.focus();
+      }}
+      document.addEventListener("click", (event) => {{
+        const cell = event.target.closest("td[data-full-text]");
+        if (cell) {{
+          if (popover && activeCell === cell && popover.contains(event.target)) return;
+          open(cell);
+          event.stopPropagation();
+          return;
+        }}
+        if (popover && !popover.contains(event.target)) close();
+      }});
+      document.addEventListener("keydown", (event) => {{
+        if (event.key === "Escape") close();
+      }});
+      window.addEventListener("resize", () => activeCell && place(activeCell));
+      window.addEventListener("scroll", () => activeCell && place(activeCell), true);
+      return {{ close }};
+    }})();
     document.querySelectorAll("[data-column-settings]").forEach((settings) => {{
       const tableKey = settings.dataset.columnSettings;
       const tables = Array.from(document.querySelectorAll(`[data-table-key="${{tableKey}}"]`));
