@@ -172,10 +172,10 @@ def svg_icon(path: str, view_box: str = "0 0 24 24") -> str:
 
 SEMANTIC_ICONS = {
     "dashboard": svg_icon("<path d='M3 11.2 12 4l9 7.2v8.1c0 .9-.7 1.7-1.7 1.7h-4.5v-6.1H9.2V21H4.7c-1 0-1.7-.8-1.7-1.7v-8.1Z'/>"),
-    "routes": svg_icon("<path d='M5 4.2a2.8 2.8 0 1 1 2 4.7v2.3c0 .9.7 1.6 1.6 1.6h4.1l-1.9-1.9 1.4-1.4 4.3 4.3-4.3 4.3-1.4-1.4 1.9-1.9H8.6A3.6 3.6 0 0 1 5 11.2V8.9a2.8 2.8 0 0 1 0-4.7Zm8.2.8 4.3 4.3-4.3 4.3-1.4-1.4 1.9-1.9h-2.1A3.6 3.6 0 0 1 8 6.7h2c0 .9.7 1.6 1.6 1.6h2.1l-1.9-1.9L13.2 5ZM6.4 6.2a.9.9 0 1 0-1.8 0 .9.9 0 0 0 1.8 0Z'/>"),
+    "routes": svg_icon("<path d='M6 5.8a2.6 2.6 0 1 1 2 2.5v2.1c0 1 .8 1.8 1.8 1.8h4.7l-2-2 1.4-1.4 4.4 4.4-4.4 4.4-1.4-1.4 2-2H9.8A3.8 3.8 0 0 1 6 10.4V8.3a2.6 2.6 0 0 1 0-2.5Zm8.1-.4 4.4 4.4-4.4 4.4-1.4-1.4 2-2h-3.4A4.3 4.3 0 0 1 7 6.5h2a2.3 2.3 0 0 0 2.3 2.3h3.4l-2-2 1.4-1.4ZM6.5 6.9a.8.8 0 1 0 0-1.6.8.8 0 0 0 0 1.6Z'/>"),
     "tariffs": svg_icon("<path d='M4 5.8C4 4.8 4.8 4 5.8 4h6.4c.5 0 .9.2 1.3.5l6 6c.7.7.7 1.8 0 2.5L13 19.5c-.7.7-1.8.7-2.5 0l-6-6c-.3-.4-.5-.8-.5-1.3V5.8Zm4.4 3.4a1.8 1.8 0 1 0 0-3.6 1.8 1.8 0 0 0 0 3.6Z'/>"),
     "phones": svg_icon("<path d='M7 3.5h7.2c.5 0 .9.2 1.3.5l2.9 2.9c.4.4.6.8.6 1.3v10.3c0 1.1-.9 2-2 2H7c-1.1 0-2-.9-2-2v-13c0-1.1.9-2 2-2Zm1.2 3.1v2.1h2.1V6.6H8.2Zm3.6 0v2.1h2V6.6h-2Zm3.5.5v3.1h-3.1v2h3.1v-2H17V8.4l-1.7-1.3ZM8.2 10.2v2h2.1v-2H8.2Zm0 3.5v2h2.1v-2H8.2Zm3.6 0v2h3.5v-2h-3.5Z'/>"),
-    "companies": svg_icon("<path d='M12 4.2c-3.2 0-5.9 2.6-5.9 5.9h2A3.9 3.9 0 0 1 12 6.2a3.9 3.9 0 0 1 3.9 3.9h2c0-3.3-2.7-5.9-5.9-5.9Zm0 3.8a2.1 2.1 0 0 0-2.1 2.1c0 .8.4 1.5 1.1 1.8v7.9h2v-7.9a2.1 2.1 0 0 0-1-3.9Zm-7.2 2.1a7.2 7.2 0 0 1 14.4 0h2a9.2 9.2 0 0 0-18.4 0h2Zm10 3 1.5 1.3 2.5-3 .4 4.8-4.8-.4 1.1-1.4-.7-1.3Zm-5.6 0-1.5 1.3-2.5-3-.4 4.8 4.8-.4-1.1-1.4.7-1.3Z'/>"),
+    "companies": svg_icon("<path d='M12 10.9a2.2 2.2 0 1 0 0-4.4 2.2 2.2 0 0 0 0 4.4Zm-3.8-.1a5.4 5.4 0 0 1 0-4.6L6.5 5.1a7.5 7.5 0 0 0 0 6.8l1.7-1.1Zm7.6 0 1.7 1.1a7.5 7.5 0 0 0 0-6.8l-1.7 1.1a5.4 5.4 0 0 1 0 4.6ZM4.6 13.2a9.7 9.7 0 0 1 0-9.4L2.9 2.7a11.7 11.7 0 0 0 0 11.6l1.7-1.1Zm14.8 0 1.7 1.1a11.7 11.7 0 0 0 0-11.6l-1.7 1.1a9.7 9.7 0 0 1 0 9.4ZM11 12.3h2v7.5h-2v-7.5Zm-3 6.5h8v2H8v-2Z'/>"),
     "provider_changes": svg_icon("<path d='M7.4 7.1A6.7 6.7 0 0 1 18 8.8l-2.1.2 3.7 3.6 2.9-4.3-2.4.2A8.7 8.7 0 0 0 5.8 5.8L7.4 7.1Zm9.2 9.8A6.7 6.7 0 0 1 6 15.2l2.1-.2-3.7-3.6-2.9 4.3 2.4-.2a8.7 8.7 0 0 0 14.3 2.7l-1.6-1.3Z'/>"),
     "admin": svg_icon("<path d='M20.4 6.8 17.2 10l-3.1-3.1 3.2-3.2a5 5 0 0 0-6.4 6.3l-7.1 7.1a2.2 2.2 0 0 0 3.1 3.1l7.1-7.1a5 5 0 0 0 6.4-6.3Z'/>"),
     "admin_server_priorities": svg_icon("<path d='M5 5h14v2H5V5Zm2 4h10v2H7V9Zm-2 4h14v2H5v-2Zm2 4h10v2H7v-2Z'/>"),
@@ -240,14 +240,11 @@ def sidebar(title: str) -> str:
     admin_open = active_key == "admin"
 
     def nav_link(key: str, href: str, label: str) -> str:
-        icon = NAV_ICONS.get(key, "•")
-        if key == 'provider_changes':
-            return f"<a class='side-link {'active' if active_key == key else ''}' data-icon='{icon}' data-tooltip='Журнал изменений' href='{href}'>{esc(label)}</a>"
-        legacy_link = f"href='{href}'>{esc(label)}</a>"
+        tooltip = "Журнал изменений" if key == "provider_changes" else esc(label)
         return (
             f"<a class='side-link {'active' if active_key == key else ''} has-inline-icon' "
-            f"data-tooltip='{esc(label)}' data-legacy-link=\"{legacy_link}\" href='{href}'>"
-            f"{nav_icon_span(key)}{esc(label)}</a>"
+            f"data-tooltip='{tooltip}' href='{href}'>"
+            f"{nav_icon_span(key)}<span class='side-label'>{esc(label)}</span></a>"
         )
 
     main_links = "".join(nav_link(key, href, label) for key, href, label, _ in NAV_ITEMS if can_read(key))
