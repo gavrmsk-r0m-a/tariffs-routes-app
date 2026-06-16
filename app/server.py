@@ -563,11 +563,11 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .server-checkbox-toolbar button {{ min-height: 28px; padding: 3px 9px; border-radius: var(--radius-control); font-size: 12px; font-weight: 620; box-shadow: none; }}
     .server-selection-count {{ color: var(--muted); font-size: 12px; font-weight: 620; white-space: nowrap; }}
     .server-checkbox-grid {{ display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }}
-    .server-checkbox-item {{ min-height: 36px; display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border); border-radius: 999px; padding: 7px 12px; background: var(--surface); margin: 0; font-weight: 720; line-height: 1; cursor: pointer; transition: border-color 140ms ease, background 140ms ease, box-shadow 140ms ease, color 140ms ease; }}
+    .server-checkbox-item {{ min-height: 36px; display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border-strong); border-radius: var(--radius-control); padding: 7px 12px; background: var(--surface); margin: 0; font-weight: 720; line-height: 1; cursor: pointer; box-shadow: inset 0 1px 1px rgba(34, 48, 42, 0.03); transition: border-color 140ms ease, background 140ms ease, box-shadow 140ms ease, color 140ms ease; }}
     .server-checkbox-item:hover {{ border-color: var(--accent); background: var(--surface-muted); }}
     .server-checkbox-item input[type="checkbox"] {{ position: absolute; opacity: 0; pointer-events: none; }}
     .server-checkbox-item:has(input:checked) {{ border-color: var(--accent); background: var(--accent-soft); color: var(--text-strong); box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 24%, transparent) inset; }}
-    .server-checkbox-item:has(input:checked)::before {{ content: "✓"; display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; border-radius: 999px; background: var(--accent); color: #fff; font-size: 11px; font-weight: 820; }}
+    .server-checkbox-item:has(input:checked)::before {{ content: "✓"; display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; border-radius: 4px; background: var(--accent); color: #fff; font-size: 11px; font-weight: 820; }}
     .server-checkbox-copy {{ min-width: 0; display: inline-flex; align-items: center; }}
     .server-checkbox-main {{ font-weight: 760; line-height: 1.15; color: inherit; }}
     .server-current-routes {{ display: grid; gap: 5px; max-height: 210px; overflow: auto; margin-top: 10px; padding: 9px 10px; border: 1px solid var(--border); border-radius: var(--radius-control); background: var(--surface); }}
