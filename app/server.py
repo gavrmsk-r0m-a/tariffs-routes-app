@@ -606,6 +606,11 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .form-grid .route-select-field {{ min-width: min(420px, 100%); width: clamp(420px, 44vw, 560px); grid-column: span 2; }}
     .form-grid .route-select-field .route-select {{ width: 100%; min-width: 0; font-size: 14px; }}
     .form-grid .route-select-field option {{ font-size: 13px; }}
+    #routing-event-form {{ grid-template-columns: minmax(170px, 175px) minmax(360px, 520px) minmax(170px, 190px); column-gap: 12px; }}
+    #routing-event-form .routing-provider-field {{ width: 175px; }}
+    #routing-event-form .route-select-field {{ grid-column: auto; min-width: min(360px, 100%); width: clamp(360px, 38vw, 520px); }}
+    #routing-event-form .routing-reason-field {{ width: 190px; }}
+    @media (max-width: 1020px) {{ #routing-event-form {{ grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }} #routing-event-form .routing-provider-field, #routing-event-form .routing-reason-field, #routing-event-form .route-select-field {{ width: 100%; min-width: 0; }} }}
     @media (max-width: 720px) {{ .form-grid .route-select-field {{ grid-column: 1 / -1; width: 100%; min-width: 0; }} }}
     .filter-grid .checkbox-inline, .form-grid .checkbox-inline {{ min-width: auto; display: flex; align-items: center; gap: 5px; align-self: center; font-weight: 560; }}
     .form-grid .wide, .filter-grid .wide {{ grid-column: 1 / -1; }}
@@ -2300,7 +2305,7 @@ def routing_event_form(repo: Repository, event=None) -> str:
   <label>Дата события <span class='required'>*</span><input type='datetime-local' name='event_at' value='{esc(event_at)}' required></label>
   <label class='scope-field' data-scopes='none server_priority'>GEO <select name='country_id' id='event-country'>{active_options(repo, 'countries', selected=event['country_id'] if event else None, empty='—')}</select></label>
   <fieldset class='scope-field' data-scopes='server_priority'><legend>Серверы <span class='required'>*</span></legend>{server_priority_server_boxes}</fieldset>
-  <label class='scope-field' data-scopes='none server_priority'>Провайдер <span class='required provider-required'>*</span><select name='provider_id' id='event-provider'>{active_options(repo, 'providers', selected=provider_selected, empty='—')}</select></label>
+  <label class='scope-field routing-provider-field' data-scopes='none server_priority'>Провайдер <span class='required provider-required'>*</span><select name='provider_id' id='event-provider'>{active_options(repo, 'providers', selected=provider_selected, empty='—')}</select></label>
   <label class='scope-field' data-scopes='none'>Маршрут/префикс <select name='affected_route_id' id='affected-route'>{route_opts}</select></label>
   {old_route_field}
   <label class='scope-field route-select-field' data-scopes='server_priority'>Новый маршрут <span class='required'>*</span><select name='new_route_id' id='new-route' class='route-select'>{new_route_opts}</select></label>
@@ -2313,7 +2318,7 @@ def routing_event_form(repo: Repository, event=None) -> str:
   <label class='scope-field conditional-field' data-scopes='campaign_setting' data-campaign-route-field='1'>Новый провайдер кампании <span class='required'>*</span><select name='campaign_provider_id' id='campaign-provider'>{active_options(repo, 'providers', selected=provider_selected, empty='—')}</select></label>
   <label class='scope-field conditional-field' data-scopes='campaign_setting' data-campaign-route-field='1'>Новый маршрут кампании <span class='required'>*</span><select name='new_company_route_id' id='company-route'>{company_route_opts}</select></label>
   <span class='scope-field route-empty-message muted' data-scopes='campaign_setting' id='company-route-empty' hidden>Нет маршрутов для выбранного провайдера и GEO кампании</span>
-  <label>Причина <span class='required'>*</span><select name='reason' required>{routing_reason_options(event['reason'] if event else None)}</select></label>
+  <label class='routing-reason-field'>Причина <span class='required'>*</span><select name='reason' required>{routing_reason_options(event['reason'] if event else None)}</select></label>
   <label class='wide'>Комментарий <span class='required'>*</span><textarea name='comment' rows='3' cols='60' required>{esc(event['comment'] if event else '')}</textarea></label>
   <p class='scope-field muted wide' data-scopes='campaign_setting'>Событие будет сохранено в журнале и применено к ‘Схеме маршрутизации кампаний’.</p>
   <p class='scope-field muted wide' data-scopes='server_priority'>Старый маршрут подтягивается автоматически из текущего server_route_priorities при создании.</p>
