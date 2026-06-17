@@ -823,6 +823,16 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .event-feed {{ overflow: hidden; background: #fff; border: 1px solid var(--border); border-radius: 14px; box-shadow: var(--shadow-card); }}
     .event-feed article {{ display: grid; grid-template-columns: 42px 1fr 110px; align-items: center; gap: 12px; min-height: 66px; padding: 12px 24px; border-bottom: 1px solid var(--border); }} .event-feed article:last-child {{ border-bottom: 0; }}
     .feed-icon {{ width: 34px; height: 34px; border-radius: 50%; background: #eef1ff; color: var(--accent-strong); }} .feed-icon.ok {{ background:#eafaf1; color:#16a34a; }} .feed-icon.warn {{ background:#fff7e8; color:#f59e0b; }} .event-feed small {{ display:block; color:#5f6f99; }} .event-feed time {{ color:#8b98ba; text-align:right; }}
+    .table-page-container {{ width: 100%; }}
+    @media (min-width: 1200px) {{
+      .table-page-container {{
+        width: min(1580px, calc(100vw - 48px));
+        max-width: calc(100vw - 48px);
+        position: relative;
+        left: 50%;
+        transform: translateX(-50%);
+      }}
+    }}
     .filter-card, .form-card {{ border: 1px solid var(--border); border-radius: 14px; background: #fff; box-shadow: var(--shadow-card); }}
     .filter-summary, .form-summary {{ padding: 12px 18px; color: var(--text-strong); }}
     .filter-grid, .form-grid {{ padding: 14px 18px; gap: 12px; }}
@@ -1512,6 +1522,10 @@ def filter_card(form_html: str, q: dict[str, str], keys: list[str] | tuple[str, 
 def form_card(summary: str, form_html: str, *, open_by_default: bool = False) -> str:
     open_attr = " open" if open_by_default else ""
     return f"<details class='form-card'{open_attr}><summary class='form-summary'>{summary}</summary>{form_html}</details>"
+
+
+def table_page_container(inner_html: str) -> str:
+    return f"<div class='table-page-container'>{inner_html}</div>"
 
 
 def table_card(table_html: str, *, title: str | None = None, extra_class: str = "") -> str:
@@ -2213,7 +2227,7 @@ def routes_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
 {table_card(table_html)}
 {table_footer(pagination_html, export_link('/routes', q) + column_settings('routes', [('geo', 'ГЕО'), ('route', 'Название маршрута'), ('provider', 'Провайдер'), ('prefix', 'Префикс'), ('actual', 'Актуальный'), ('comment', 'Комментарий'), ('numbers', 'Номера'), ('actions', 'Действия')]))}
 """
-    return page("Маршруты", body)
+    return page("Маршруты", table_page_container(body))
 
 
 def route_number_rows(repo: Repository, route_id: int, *, selectable: bool = False) -> tuple[list[sqlite3.Row], str, str]:
@@ -2293,7 +2307,7 @@ def tariffs_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
 {form_card('+ Добавить тариф <span class="muted">Admin</span>', create_html) if can_write("tariffs") else ""}
 {table_card(table_html)}
 {table_footer(pagination_html, export_link('/tariffs', q) + column_settings('tariffs', [('geo', 'ГЕО'), ('provider', 'Провайдер'), ('prefix', 'Префикс'), ('provider_price', 'Цена провайдера'), ('eur_price', 'Цена EUR'), ('priority', 'Приоритет'), ('active', 'Активный'), ('info', 'Инфо'), ('actions', 'Действия')]))}"""
-    return page("Тарифы", body)
+    return page("Тарифы", table_page_container(body))
 
 
 def phones_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
@@ -2325,7 +2339,7 @@ def phones_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
 {form_card('+ Добавить номер <span class="muted">Admin</span>', create_html) if can_write("phones") else ""}
 {table_card(table_html)}
 {table_footer(pagination_html, export_link('/phones', q) + column_settings('phones', [('number', 'Номер'), ('geo', 'ГЕО'), ('provider', 'Провайдер'), ('project', 'Проект'), ('assignment', 'Назначение'), ('status', 'Рабочий статус'), ('active', 'Активен у провайдера'), ('routes', 'Маршруты'), ('connection', 'Подключение'), ('monthly', 'Абонплата'), ('currency', 'Валюта'), ('phone_type', 'Тип номера'), ('tariff', 'Тариф'), ('created', 'Дата создания'), ('updated', 'Дата изменения'), ('deactivated', 'Дата отключения'), ('comment', 'Комментарий'), ('actions', 'Действия')]))}"""
-    return page("Купленные номера", body)
+    return page("Купленные номера", table_page_container(body))
 
 
 def companies_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
@@ -2349,7 +2363,7 @@ def companies_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
 {form_card('+ Добавить кампанию <span class="muted">Admin</span>', create_html) if can_write("companies") else ""}
 {table_card(table_html)}
 {table_footer(pagination_html, export_link('/companies', q) + column_settings('companies', [('server', 'Сервер'), ('geo', 'ГЕО'), ('company_name', 'Название кампании'), ('company_id', 'ID кампании'), ('lines', 'Количество линий'), ('dial_sets', 'Количество наборов'), ('autorotation', 'Авторотация'), ('retry_interval', 'Интервал дозвона'), ('active', 'Активна'), ('comment', 'Комментарий'), ('actions', 'Действия')]))}"""
-    return page("Кампании прозвона", body)
+    return page("Кампании прозвона", table_page_container(body))
 
 def routing_reason_options(selected: str | None = None) -> str:
     return "".join(
@@ -2716,9 +2730,11 @@ def provider_changes_page(repo: Repository, q: dict[str, str] | None = None) -> 
     body = f"""
 <h1>Смена провайдеров</h1>
 {routing_event_form(repo) if can_write("provider_changes") else ""}
+{table_page_container(f'''
 {filter_card(filters_html, q, ('country_id', 'apply_scope', 'server_id', 'campaign_id', 'provider_id', 'include_inactive'))}
 {table_card(journal_html, title='Журнал событий', extra_class='journal-card')}
-{table_footer(pagination_html, export_link('/provider-changes', q) + column_settings('provider_changes', [('event_at', 'Дата события'), ('scope', 'Область применения'), ('geo', 'GEO'), ('server', 'Сервер'), ('campaign', 'Кампания'), ('details', 'Детали'), ('reason', 'Причина'), ('comment', 'Комментарий'), ('active', 'Активна'), ('actions', 'Действия')]))}"""
+{table_footer(pagination_html, export_link('/provider-changes', q) + column_settings('provider_changes', [('event_at', 'Дата события'), ('scope', 'Область применения'), ('geo', 'GEO'), ('server', 'Сервер'), ('campaign', 'Кампания'), ('details', 'Детали'), ('reason', 'Причина'), ('comment', 'Комментарий'), ('active', 'Активна'), ('actions', 'Действия')]))}
+''')}"""
     return page("Смена провайдеров", body)
 
 
