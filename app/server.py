@@ -630,10 +630,21 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .column-settings summary {{ min-height: 28px; padding: 4px 9px; border: 1px solid var(--border-strong); border-radius: var(--radius-control); background: var(--surface); color: var(--accent-strong); font-size: 12px; font-weight: 720; list-style: none; box-shadow: 0 1px 0 rgba(34, 48, 42, 0.03); }}
     .column-settings summary::-webkit-details-marker {{ display: none; }}
     .column-settings[open] summary, .column-settings summary:hover {{ background: var(--surface-muted); border-color: var(--accent); }}
-    .column-settings-panel {{ position: absolute; right: 0; top: calc(100% + 6px); z-index: 5; display: grid; gap: 4px; min-width: 210px; max-height: 320px; overflow: auto; padding: 10px; border: 1px solid var(--border-strong); border-radius: var(--radius-control); background: var(--surface); box-shadow: var(--shadow-card); }}
-    .column-settings-panel label {{ display: flex; align-items: center; gap: 6px; margin: 0; font-size: 13px; font-weight: 560; white-space: nowrap; }}
-    .column-reset {{ justify-content: flex-start; margin-top: 5px; padding: 4px 0; min-height: 24px; border: 0; background: transparent; box-shadow: none; color: var(--accent-strong); font-size: 12px; }}
+    .column-settings-panel {{ position: absolute; right: 0; top: calc(100% + 6px); z-index: 30; display: grid; gap: 8px; min-width: 300px; max-height: 380px; overflow: auto; padding: 10px; border: 1px solid var(--border-strong); border-radius: var(--radius-control); background: #fff; box-shadow: var(--shadow-card); }}
+    .column-settings-list {{ display: grid; gap: 4px; }}
+    .column-settings-row {{ display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; min-height: 30px; padding: 3px 4px; border-radius: 8px; }}
+    .column-settings-row:hover {{ background: var(--surface-muted); }}
+    .column-settings-row label {{ min-width: 0; display: flex; align-items: center; gap: 6px; margin: 0; font-size: 13px; font-weight: 560; white-space: nowrap; }}
+    .column-settings-row.is-locked label {{ color: var(--muted); }}
+    .column-order-controls {{ display: inline-flex; gap: 3px; }}
+    .column-order-button {{ width: 24px; min-width: 24px; min-height: 24px; padding: 0; box-shadow: none; font-size: 12px; }}
+    .column-reset {{ justify-content: flex-start; margin-top: 2px; padding: 5px 7px; min-height: 28px; border: 0; background: transparent; box-shadow: none; color: var(--accent-strong); font-size: 12px; }}
     [data-column-hidden="true"] {{ display: none !important; }}
+    th[data-col] {{ position: sticky; }}
+    .resizable-header {{ position: relative; padding-right: 16px; }}
+    .column-resize-handle {{ position: absolute; top: 0; right: -3px; width: 8px; height: 100%; cursor: col-resize; user-select: none; touch-action: none; z-index: 6; }}
+    .column-resize-handle::after {{ content: ""; position: absolute; top: 20%; bottom: 20%; left: 3px; width: 2px; border-radius: 999px; background: transparent; }}
+    .resizable-header:hover .column-resize-handle::after, .column-resize-handle:hover::after, body.is-resizing-column .column-resize-handle::after {{ background: var(--accent); }}
     .table-card, .journal-card {{ border: 1px solid var(--border-strong); border-radius: var(--radius-card); background: var(--surface); margin: 12px 0; overflow: hidden; box-shadow: var(--shadow-card); }}
     .table-card h2, .journal-card h2 {{ margin: 0; padding: 12px 14px; border-bottom: 1px solid var(--border); background: var(--surface-muted); color: var(--text-strong); }}
     .journal-card h2 {{ font-size: 19px; }}
@@ -1193,54 +1204,177 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     }})();
     document.querySelectorAll("[data-column-settings]").forEach((settings) => {{
       const tableKey = settings.dataset.columnSettings;
+      const storageKey = settings.dataset.storageKey || `teleRoute.table.${{tableKey}}`;
       const tables = Array.from(document.querySelectorAll(`[data-table-key="${{tableKey}}"]`));
       if (!tables.length) return;
-      const storageKey = `tableColumns:${{tableKey}}`;
-      const checkboxes = Array.from(settings.querySelectorAll("input[type='checkbox'][data-col-toggle]"));
-      const columns = checkboxes.map((box) => box.dataset.colToggle);
+      const list = settings.querySelector("[data-column-settings-list]");
+      const defaults = Array.from(settings.querySelectorAll("[data-col-row]")).map((row) => ({{
+        key: row.dataset.colRow,
+        locked: row.dataset.locked === "true",
+        visible: row.dataset.locked === "true" ? true : row.querySelector("[data-col-toggle]")?.checked !== false,
+      }}));
+      const defaultOrder = defaults.map((column) => column.key);
+      const lockedColumns = new Set(defaults.filter((column) => column.locked).map((column) => column.key));
+      const minWidth = 72;
+      let state = defaultState();
+
+      function defaultState() {{
+        return {{
+          visible: Object.fromEntries(defaults.map((column) => [column.key, true])),
+          order: defaultOrder.slice(),
+          widths: {{}},
+        }};
+      }}
+      function normalizePrefs(prefs) {{
+        const base = defaultState();
+        const incomingOrder = Array.isArray(prefs?.order) ? prefs.order.filter((key) => defaultOrder.includes(key)) : [];
+        base.order = incomingOrder.concat(defaultOrder.filter((key) => !incomingOrder.includes(key)));
+        lockedColumns.forEach((key) => {{
+          base.order = base.order.filter((column) => column !== key).concat(key);
+        }});
+        if (prefs?.visible && typeof prefs.visible === "object") {{
+          defaultOrder.forEach((key) => {{ base.visible[key] = prefs.visible[key] !== false; }});
+        }}
+        lockedColumns.forEach((key) => {{ base.visible[key] = true; }});
+        if (!defaultOrder.some((key) => !lockedColumns.has(key) && base.visible[key])) {{
+          const first = defaultOrder.find((key) => !lockedColumns.has(key));
+          if (first) base.visible[first] = true;
+        }}
+        if (prefs?.widths && typeof prefs.widths === "object") {{
+          defaultOrder.forEach((key) => {{
+            const width = Number.parseInt(prefs.widths[key], 10);
+            if (Number.isFinite(width) && width >= minWidth) base.widths[key] = width;
+          }});
+        }}
+        return base;
+      }}
       function loadPrefs() {{
         try {{
           const raw = window.localStorage && window.localStorage.getItem(storageKey);
-          if (!raw) return null;
-          const parsed = JSON.parse(raw);
-          return parsed && typeof parsed === "object" ? parsed : null;
-        }} catch (error) {{
-          return null;
-        }}
+          return raw ? JSON.parse(raw) : null;
+        }} catch (error) {{ return null; }}
       }}
-      function savePrefs(visible) {{
-        try {{
-          if (window.localStorage) window.localStorage.setItem(storageKey, JSON.stringify(visible));
-        }} catch (error) {{}}
+      function savePrefs() {{
+        try {{ if (window.localStorage) window.localStorage.setItem(storageKey, JSON.stringify(state)); }} catch (error) {{}}
       }}
       function clearPrefs() {{
-        try {{
-          if (window.localStorage) window.localStorage.removeItem(storageKey);
-        }} catch (error) {{}}
+        try {{ if (window.localStorage) window.localStorage.removeItem(storageKey); }} catch (error) {{}}
       }}
-      function apply(visible, persist) {{
-        columns.forEach((column) => {{
-          const isVisible = visible[column] !== false;
-          tables.forEach((table) => table.querySelectorAll(`[data-col="${{column}}"]`).forEach((cell) => {{
-            cell.dataset.columnHidden = isVisible ? "false" : "true";
-          }}));
-          checkboxes.filter((box) => box.dataset.colToggle === column).forEach((box) => {{ box.checked = isVisible; }});
+      function applyColumnOrder(table) {{
+        table.querySelectorAll("tr").forEach((row) => {{
+          state.order.forEach((key) => {{
+            const cell = row.querySelector(`:scope > [data-col="${{key}}"]`);
+            if (cell) row.appendChild(cell);
+          }});
         }});
-        if (persist) savePrefs(visible);
       }}
-      const defaults = Object.fromEntries(columns.map((column) => [column, true]));
-      apply(Object.assign(defaults, loadPrefs() || {{}}), false);
-      checkboxes.forEach((box) => {{
-        box.addEventListener("change", () => {{
-          const visible = Object.fromEntries(checkboxes.map((item) => [item.dataset.colToggle, item.checked]));
-          apply(visible, true);
+      function applyState(persist = true) {{
+        tables.forEach((table) => {{
+          applyColumnOrder(table);
+          defaultOrder.forEach((key) => {{
+            const width = state.widths[key];
+            table.querySelectorAll(`[data-col="${{key}}"]`).forEach((cell) => {{
+              cell.dataset.columnHidden = state.visible[key] ? "false" : "true";
+              if (width) {{
+                cell.style.width = `${{width}}px`;
+                cell.style.minWidth = `${{width}}px`;
+                cell.style.maxWidth = `${{width}}px`;
+              }} else {{
+                cell.style.width = "";
+                cell.style.minWidth = "";
+                cell.style.maxWidth = "";
+              }}
+            }});
+          }});
         }});
+        renderPanel();
+        if (persist) savePrefs();
+      }}
+      function renderPanel() {{
+        if (!list) return;
+        state.order.forEach((key, index) => {{
+          const row = list.querySelector(`[data-col-row="${{key}}"]`);
+          if (!row) return;
+          list.appendChild(row);
+          const checkbox = row.querySelector("[data-col-toggle]");
+          if (checkbox) {{
+            checkbox.checked = state.visible[key] !== false;
+            checkbox.disabled = lockedColumns.has(key);
+          }}
+          row.querySelectorAll("[data-column-move]").forEach((button) => {{
+            const dir = button.dataset.columnMove;
+            button.disabled = lockedColumns.has(key) || (dir === "up" && index === 0) || (dir === "down" && (index >= state.order.length - 1 || lockedColumns.has(state.order[index + 1])));
+          }});
+        }});
+      }}
+      function moveColumn(key, direction) {{
+        const index = state.order.indexOf(key);
+        const next = direction === "up" ? index - 1 : index + 1;
+        if (index < 0 || next < 0 || next >= state.order.length || lockedColumns.has(key) || lockedColumns.has(state.order[next])) return;
+        [state.order[index], state.order[next]] = [state.order[next], state.order[index]];
+        applyState(true);
+      }}
+      function setVisible(key, visible) {{
+        if (lockedColumns.has(key)) return;
+        if (!visible && !defaultOrder.some((column) => column !== key && !lockedColumns.has(column) && state.visible[column])) {{
+          state.visible[key] = true;
+          renderPanel();
+          return;
+        }}
+        state.visible[key] = visible;
+        applyState(true);
+      }}
+      function addResizeHandles() {{
+        tables.forEach((table) => table.querySelectorAll("th[data-col]").forEach((th) => {{
+          const key = th.dataset.col;
+          if (lockedColumns.has(key) || th.querySelector(".column-resize-handle")) return;
+          th.classList.add("resizable-header");
+          const handle = document.createElement("span");
+          handle.className = "column-resize-handle";
+          handle.setAttribute("role", "separator");
+          handle.setAttribute("aria-label", "Изменить ширину колонки");
+          handle.addEventListener("click", (event) => event.stopPropagation());
+          handle.addEventListener("mousedown", (event) => {{
+            event.preventDefault();
+            event.stopPropagation();
+            const startX = event.clientX;
+            const startWidth = th.getBoundingClientRect().width;
+            document.body.classList.add("is-resizing-column");
+            const onMove = (moveEvent) => {{
+              state.widths[key] = Math.max(minWidth, Math.round(startWidth + moveEvent.clientX - startX));
+              applyState(false);
+            }};
+            const onUp = () => {{
+              document.removeEventListener("mousemove", onMove);
+              document.removeEventListener("mouseup", onUp);
+              document.body.classList.remove("is-resizing-column");
+              savePrefs();
+            }};
+            document.addEventListener("mousemove", onMove);
+            document.addEventListener("mouseup", onUp);
+          }});
+          th.appendChild(handle);
+        }}));
+      }}
+      settings.addEventListener("change", (event) => {{
+        const checkbox = event.target.closest("[data-col-toggle]");
+        if (checkbox) setVisible(checkbox.dataset.colToggle, checkbox.checked);
       }});
-      const reset = settings.querySelector("[data-column-reset]");
-      if (reset) reset.addEventListener("click", () => {{
-        clearPrefs();
-        apply(Object.fromEntries(columns.map((column) => [column, true])), false);
+      settings.addEventListener("click", (event) => {{
+        const mover = event.target.closest("[data-column-move]");
+        if (mover) {{
+          moveColumn(mover.closest("[data-col-row]").dataset.colRow, mover.dataset.columnMove);
+          return;
+        }}
+        if (event.target.closest("[data-column-reset]")) {{
+          clearPrefs();
+          state = defaultState();
+          applyState(false);
+        }}
       }});
+      state = normalizePrefs(loadPrefs());
+      addResizeHandles();
+      applyState(false);
     }});
   </script>
   <script src="https://cdn.jsdelivr.net/npm/@tabler/core@1.0.0-beta20/dist/js/tabler.min.js"></script>
@@ -1386,14 +1520,34 @@ def table_card(table_html: str, *, title: str | None = None, extra_class: str = 
     return f"<section class='{classes}'>{title_html}<div class='table-scroll'>{table_html}</div></section>"
 
 
+def table_storage_key(table_key: str) -> str:
+    return {
+        "phones": "teleRoute.table.phones",
+        "routes": "teleRoute.table.routes",
+        "tariffs": "teleRoute.table.tariffs",
+        "companies": "teleRoute.table.companies",
+        "provider_changes": "teleRoute.table.providerChanges",
+    }.get(table_key, f"teleRoute.table.{table_key}")
+
+
 def column_settings(table_key: str, columns: list[tuple[str, str]]) -> str:
-    checks = "".join(
-        f"<label><input type='checkbox' data-col-toggle='{esc(key)}' checked> {esc(label)}</label>"
-        for key, label in columns
-    )
-    return f"""<details class='column-settings' data-column-settings='{esc(table_key)}'>
+    rows = []
+    for key, label in columns:
+        locked = key == "actions"
+        disabled = " disabled" if locked else ""
+        locked_attr = " data-locked='true'" if locked else ""
+        locked_class = " is-locked" if locked else ""
+        rows.append(
+            f"<div class='column-settings-row{locked_class}' data-col-row='{esc(key)}'{locked_attr}>"
+            f"<label><input type='checkbox' data-col-toggle='{esc(key)}' checked{disabled}> {esc(label)}</label>"
+            "<span class='column-order-controls'>"
+            "<button type='button' class='column-order-button' data-column-move='up' title='Выше' aria-label='Переместить выше'>↑</button>"
+            "<button type='button' class='column-order-button' data-column-move='down' title='Ниже' aria-label='Переместить ниже'>↓</button>"
+            "</span></div>"
+        )
+    return f"""<details class='column-settings' data-column-settings='{esc(table_key)}' data-storage-key='{esc(table_storage_key(table_key))}'>
 <summary>Колонки</summary>
-<div class='column-settings-panel'>{checks}<button type='button' class='column-reset' data-column-reset>Сбросить колонки</button></div>
+<div class='column-settings-panel'><div class='column-settings-list' data-column-settings-list>{''.join(rows)}</div><button type='button' class='column-reset' data-column-reset title='Сбросить колонки'>Сбросить вид таблицы</button></div>
 </details>"""
 
 
