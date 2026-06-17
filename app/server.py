@@ -709,11 +709,9 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .quick-link-card span {{ font-weight: 780; }}
     .quick-link-card small {{ color: var(--muted); line-height: 1.35; }}
     .table-scroll {{ max-height: calc(100vh - 270px); overflow: auto; position: relative; }}
-    th[data-col="actions"], td[data-col="actions"], .dictionary-workspace th:last-child {{ position: sticky; right: 0; z-index: 2; width: 64px; min-width: 64px; max-width: 72px; text-align: center; box-shadow: -10px 0 16px rgba(34, 48, 42, 0.08); }}
-    th[data-col="actions"], .dictionary-workspace th:last-child {{ z-index: 4; padding-left: 8px; padding-right: 8px; }}
-    td[data-col="actions"] {{ background: inherit; padding: 6px 8px; overflow: visible; }}
-    tbody tr:nth-child(even) td[data-col="actions"] {{ background: var(--surface-muted); }}
-    tbody tr:hover td[data-col="actions"] {{ background: var(--accent-soft); }}
+    th[data-col="actions"], td[data-col="actions"], .dictionary-workspace th:last-child {{ width: 64px; min-width: 64px; max-width: 72px; text-align: center; }}
+    th[data-col="actions"], .dictionary-workspace th:last-child {{ padding-left: 8px; padding-right: 8px; }}
+    td[data-col="actions"] {{ padding: 6px 8px; overflow: visible; }}
     .actions, .compact-actions, td[data-col="actions"] {{ white-space: nowrap; text-align: center; }}
     td[data-col="actions"] form {{ justify-content: center; }}
     .route-numbers-action {{ min-height: 28px; padding: 4px 8px; font-size: 12px; box-shadow: none; }}
@@ -1551,9 +1549,10 @@ def column_settings(table_key: str, columns: list[tuple[str, str]]) -> str:
         disabled = " disabled" if locked else ""
         locked_attr = " data-locked='true'" if locked else ""
         locked_class = " is-locked" if locked else ""
+        lock_hint = "Системная колонка всегда видима" if locked else ""
         rows.append(
             f"<div class='column-settings-row{locked_class}' data-col-row='{esc(key)}'{locked_attr}>"
-            f"<label><input type='checkbox' data-col-toggle='{esc(key)}' checked{disabled}> {esc(label)}</label>"
+            f"<label title='{esc(lock_hint)}'><input type='checkbox' data-col-toggle='{esc(key)}' checked{disabled}> {esc(label)}</label>"
             "<span class='column-order-controls'>"
             "<button type='button' class='column-order-button' data-column-move='up' title='Выше' aria-label='Переместить выше'>↑</button>"
             "<button type='button' class='column-order-button' data-column-move='down' title='Ниже' aria-label='Переместить ниже'>↓</button>"
