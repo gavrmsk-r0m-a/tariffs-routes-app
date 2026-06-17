@@ -1237,9 +1237,6 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
         const base = defaultState();
         const incomingOrder = Array.isArray(prefs?.order) ? prefs.order.filter((key) => defaultOrder.includes(key)) : [];
         base.order = incomingOrder.concat(defaultOrder.filter((key) => !incomingOrder.includes(key)));
-        lockedColumns.forEach((key) => {{
-          base.order = base.order.filter((column) => column !== key).concat(key);
-        }});
         if (prefs?.visible && typeof prefs.visible === "object") {{
           defaultOrder.forEach((key) => {{ base.visible[key] = prefs.visible[key] !== false; }});
         }}
@@ -1311,14 +1308,14 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
           }}
           row.querySelectorAll("[data-column-move]").forEach((button) => {{
             const dir = button.dataset.columnMove;
-            button.disabled = lockedColumns.has(key) || (dir === "up" && index === 0) || (dir === "down" && (index >= state.order.length - 1 || lockedColumns.has(state.order[index + 1])));
+            button.disabled = (dir === "up" && index === 0) || (dir === "down" && index >= state.order.length - 1);
           }});
         }});
       }}
       function moveColumn(key, direction) {{
         const index = state.order.indexOf(key);
         const next = direction === "up" ? index - 1 : index + 1;
-        if (index < 0 || next < 0 || next >= state.order.length || lockedColumns.has(key) || lockedColumns.has(state.order[next])) return;
+        if (index < 0 || next < 0 || next >= state.order.length) return;
         [state.order[index], state.order[next]] = [state.order[next], state.order[index]];
         applyState(true);
       }}
