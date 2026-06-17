@@ -214,6 +214,21 @@ class ServerSmokeTest(unittest.TestCase):
             self.assertIn(f"data-col='{sample_col}'", content)
             self.assertIn("Сбросить колонки", content)
 
+
+    def test_configurable_table_headers_have_full_title_tooltips(self):
+        for path, expected_headers in {
+            "/tariffs": ["Цена провайдера"],
+            "/companies": ["Количество наборов", "Количество линий"],
+            "/phones": ["Активен у провайдера"],
+            "/provider-changes": ["Область применения", "Комментарий", "Детали"],
+            "/routes": ["Название маршрута"],
+        }.items():
+            with self.subTest(path=path):
+                captured, content = self.request(path)
+                self.assertEqual(captured["status"], "200 OK")
+                for header in expected_headers:
+                    self.assertIn(f"title='{header}'", content)
+
     def test_change_log_has_no_column_visibility_control(self):
         captured, content = self.request("/admin/change-log")
         self.assertEqual(captured["status"], "200 OK")
@@ -902,7 +917,7 @@ class ServerSmokeTest(unittest.TestCase):
             self.assertIn(f"Сервер: {server_name}", content)
         self.assertLess(content.index("Сервер: EU1"), content.index("Сервер: EU2"))
         self.assertLess(content.index("Сервер: EU2"), content.index("Сервер: EU3"))
-        self.assertIn("<th data-col='geo'>GEO</th><th data-col='current_priority'>Текущий приоритет</th><th data-col='previous_priority'>Предыдущий приоритет</th><th data-col='actions'>Действия</th>", content)
+        self.assertIn("<th data-col='geo' title='GEO'>GEO</th><th data-col='current_priority' title='Текущий приоритет'>Текущий приоритет</th><th data-col='previous_priority' title='Предыдущий приоритет'>Предыдущий приоритет</th><th data-col='actions' title='Действия'>Действия</th>", content)
         self.assertIn("Нет настроенных приоритетов", content)
         eu3_block = content.split("Сервер: EU3", 1)[1].split("</section>", 1)[0]
         self.assertIn("Нет настроенных приоритетов", eu3_block)

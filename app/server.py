@@ -1555,7 +1555,10 @@ def table_footer(summary_html: str, utility_html: str) -> str:
     return f"<div class='table-footer'><div class='table-footer-summary'>{summary_html}</div><div class='table-footer-tools'>{utility_html}</div></div>"
 
 def data_table(table_key: str, columns: list[tuple[str, str]], rows_html: str) -> str:
-    header = "".join(f"<th data-col='{esc(key)}'>{label}</th>" for key, label in columns)
+    header = "".join(
+        f"<th data-col='{esc(key)}' title='{plain_title(label)}'>{label}</th>"
+        for key, label in columns
+    )
     return f"<table data-table-key='{esc(table_key)}'><thead><tr>{header}</tr></thead><tbody>{rows_html}</tbody></table>"
 
 
