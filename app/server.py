@@ -469,6 +469,7 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
       --focus: var(--accent);
     }}
     * {{ box-sizing: border-box; }}
+    html {{ scrollbar-gutter: stable; }}
     body {{ font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 0; color: var(--text); background: var(--bg); font-size: 14px; line-height: 1.45; }}
     html[data-theme="cyber-sketch"] body {{ background:
       radial-gradient(circle at 16% 10%, rgba(0, 191, 166, 0.12), transparent 24rem),
