@@ -821,16 +821,13 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .event-feed {{ overflow: hidden; background: #fff; border: 1px solid var(--border); border-radius: 14px; box-shadow: var(--shadow-card); }}
     .event-feed article {{ display: grid; grid-template-columns: 42px 1fr 110px; align-items: center; gap: 12px; min-height: 66px; padding: 12px 24px; border-bottom: 1px solid var(--border); }} .event-feed article:last-child {{ border-bottom: 0; }}
     .feed-icon {{ width: 34px; height: 34px; border-radius: 50%; background: #eef1ff; color: var(--accent-strong); }} .feed-icon.ok {{ background:#eafaf1; color:#16a34a; }} .feed-icon.warn {{ background:#fff7e8; color:#f59e0b; }} .event-feed small {{ display:block; color:#5f6f99; }} .event-feed time {{ color:#8b98ba; text-align:right; }}
-    .table-page-container {{ width: 100%; }}
-    @media (min-width: 1200px) {{
-      .table-page-container {{
-        width: min(1580px, calc(100vw - 48px));
-        max-width: calc(100vw - 48px);
-        position: relative;
-        left: 50%;
-        transform: translateX(-50%);
-      }}
-    }}
+    .content:has(> .table-page-container) {{ max-width: none; min-width: 0; }}
+    .table-page-container {{ width: min(1580px, 100%); max-width: 100%; min-width: 0; margin-inline: auto; }}
+    .table-page-container > *, .table-page-container details, .table-page-container fieldset {{ min-width: 0; }}
+    .table-page-container .filter-card, .table-page-container .form-card, .table-page-container .table-card, .table-page-container .journal-card, .table-page-container .table-footer {{ width: 100%; max-width: 100%; }}
+    .table-page-container .filter-grid, .table-page-container .form-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(min(190px, 100%), 1fr)); }}
+    .table-page-container .filter-grid label, .table-page-container .form-grid label {{ min-width: 0; }}
+    .table-page-container .table-scroll {{ max-width: 100%; }}
     .filter-card, .form-card {{ border: 1px solid var(--border); border-radius: 14px; background: #fff; box-shadow: var(--shadow-card); }}
     .filter-summary, .form-summary {{ padding: 12px 18px; color: var(--text-strong); }}
     .filter-grid, .form-grid {{ padding: 14px 18px; gap: 12px; }}
@@ -2726,12 +2723,11 @@ def provider_changes_page(repo: Repository, q: dict[str, str] | None = None) -> 
     body = f"""
 <h1>Смена провайдеров</h1>
 {routing_event_form(repo) if can_write("provider_changes") else ""}
-{table_page_container(f'''
 {filter_card(filters_html, q, ('country_id', 'apply_scope', 'server_id', 'campaign_id', 'provider_id', 'include_inactive'))}
 {table_card(journal_html, title='Журнал событий', extra_class='journal-card')}
 {table_footer(pagination_html, export_link('/provider-changes', q) + column_settings('provider_changes', [('event_at', 'Дата события'), ('scope', 'Область применения'), ('geo', 'GEO'), ('server', 'Сервер'), ('campaign', 'Кампания'), ('details', 'Детали'), ('reason', 'Причина'), ('comment', 'Комментарий'), ('active', 'Активна'), ('actions', 'Действия')]))}
-''')}"""
-    return page("Смена провайдеров", body)
+"""
+    return page("Смена провайдеров", table_page_container(body))
 
 
 def admin_page(repo: Repository) -> bytes:
