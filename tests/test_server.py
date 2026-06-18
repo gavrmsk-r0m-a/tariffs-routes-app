@@ -111,6 +111,92 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertEqual(captured["status"], "200 OK")
         self.assertIn(f"<option value='{duty_id}' selected>Дежурный", content)
 
+
+    def test_sidebar_displays_selected_user_and_selector_is_single_source(self):
+        cookie = self.user_cookie("duty")
+        captured, content = self.request("/routes", cookie=cookie)
+        self.assertEqual(captured["status"], "200 OK")
+        selector = content.split('<form class="current-user-selector"', 1)[1].split("</form>", 1)[0]
+        self.assertIn("Дежурный · Дежурный", selector)
+        self.assertIn("<small>Текущий пользователь</small>", selector)
+        self.assertEqual(content.count('action="/users/select"'), 1)
+
+    def test_theme_toggle_is_clickable_and_persistent_scripted_control(self):
+        captured, content = self.request("/routes")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn('data-theme-toggle', content)
+        self.assertIn('data-theme-label>Светлая тема', content)
+        self.assertIn('localStorage.setItem("mvp-theme", nextTheme)', content)
+        self.assertIn('const savedTheme = localStorage.getItem("mvp-theme") || "calm-blue"', content)
+        self.assertIn('Тёмная тема', content)
+
+    def test_selected_user_records_route_and_phone_history_actor(self):
+        self.request("/routes")
+        admin_cookie = self.user_cookie("admin")
+        body = urlencode({"number": "525550077001", "country_id": "1", "provider_id": "1", "assignment_type": "pool_number", "status": "used", "is_active": "1"})
+        self.request("/phones/create", method="POST", body=body, cookie=admin_cookie)
+        add_body = urlencode({"phone_number": "525550077001", "usage_type": "pool_member", "comment": "admin actor"})
+        self.request("/routes/1/numbers/add", method="POST", body=add_body, cookie=admin_cookie)
+        conn = server.connect(server.DB_PATH)
+        try:
+            admin_id = conn.execute("SELECT id FROM users WHERE username = 'admin'").fetchone()["id"]
+            phone_id = conn.execute("SELECT id FROM phone_numbers WHERE number = '525550077001'").fetchone()["id"]
+            link = conn.execute("SELECT id, added_by FROM route_phone_numbers WHERE route_id = 1 AND phone_number_id = ?", (phone_id,)).fetchone()
+            self.assertEqual(link["added_by"], admin_id)
+            route_hist = conn.execute("SELECT changed_by FROM route_phone_number_history WHERE route_id = 1 AND phone_number_id = ? AND action = 'added'", (phone_id,)).fetchone()
+            phone_hist = conn.execute("SELECT changed_by FROM route_phone_number_history WHERE phone_number_id = ? AND action = 'added'", (phone_id,)).fetchone()
+            self.assertEqual(route_hist["changed_by"], admin_id)
+            self.assertEqual(phone_hist["changed_by"], admin_id)
+        finally:
+            conn.close()
+
+    def test_switching_to_roman_records_roman_and_remove_actor(self):
+        self.request("/routes")
+        roman_cookie = self.user_cookie("roman")
+        body = urlencode({"number": "525550077002", "country_id": "1", "provider_id": "1", "assignment_type": "pool_number", "status": "used", "is_active": "1"})
+        self.request("/phones/create", method="POST", body=body, cookie=roman_cookie)
+        self.request("/routes/1/numbers/add", method="POST", body=urlencode({"phone_number": "525550077002", "usage_type": "pool_member"}), cookie=roman_cookie)
+        conn = server.connect(server.DB_PATH)
+        try:
+            roman_id = conn.execute("SELECT id FROM users WHERE username = 'roman'").fetchone()["id"]
+            phone_id = conn.execute("SELECT id FROM phone_numbers WHERE number = '525550077002'").fetchone()["id"]
+            link_id = conn.execute("SELECT id FROM route_phone_numbers WHERE route_id = 1 AND phone_number_id = ?", (phone_id,)).fetchone()["id"]
+        finally:
+            conn.close()
+        self.request("/routes/1/numbers/remove", method="POST", body=urlencode({"link_ids": str(link_id), "reason": "roman remove"}), cookie=roman_cookie)
+        conn = server.connect(server.DB_PATH)
+        try:
+            added = conn.execute("SELECT changed_by FROM route_phone_number_history WHERE route_id = 1 AND phone_number_id = ? AND action = 'added'", (phone_id,)).fetchone()
+            removed_link = conn.execute("SELECT removed_by FROM route_phone_numbers WHERE id = ?", (link_id,)).fetchone()
+            removed = conn.execute("SELECT changed_by FROM route_phone_number_history WHERE route_id = 1 AND phone_number_id = ? AND action = 'removed'", (phone_id,)).fetchone()
+            self.assertEqual(added["changed_by"], roman_id)
+            self.assertEqual(removed_link["removed_by"], roman_id)
+            self.assertEqual(removed["changed_by"], roman_id)
+        finally:
+            conn.close()
+
+    def test_provider_deactivation_closes_route_links_with_selected_actor(self):
+        self.request("/routes")
+        roman_cookie = self.user_cookie("roman")
+        body = urlencode({"number": "525550077003", "country_id": "1", "provider_id": "1", "assignment_type": "pool_number", "status": "used", "is_active": "1"})
+        self.request("/phones/create", method="POST", body=body, cookie=roman_cookie)
+        self.request("/routes/1/numbers/add", method="POST", body=urlencode({"phone_number": "525550077003", "usage_type": "pool_member"}), cookie=roman_cookie)
+        conn = server.connect(server.DB_PATH)
+        try:
+            roman_id = conn.execute("SELECT id FROM users WHERE username = 'roman'").fetchone()["id"]
+            phone_id = conn.execute("SELECT id FROM phone_numbers WHERE number = '525550077003'").fetchone()["id"]
+            link_id = conn.execute("SELECT id FROM route_phone_numbers WHERE route_id = 1 AND phone_number_id = ?", (phone_id,)).fetchone()["id"]
+        finally:
+            conn.close()
+        update = urlencode({"number": "525550077003", "country_id": "1", "provider_id": "1", "project_label": "", "assignment_type": "pool_number", "status": "used", "is_active": "0", "connection_cost": "", "monthly_fee": "", "currency_id": "", "phone_type": "", "tariff_label": "", "comment": "deactivate"})
+        self.request(f"/phones/{phone_id}/update", method="POST", body=update, cookie=roman_cookie)
+        conn = server.connect(server.DB_PATH)
+        try:
+            link = conn.execute("SELECT removed_by FROM route_phone_numbers WHERE id = ?", (link_id,)).fetchone()
+            self.assertEqual(link["removed_by"], roman_id)
+        finally:
+            conn.close()
+
     def test_inactive_users_are_not_selectable(self):
         self.request("/routes")
         conn = server.connect(server.DB_PATH)

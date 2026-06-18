@@ -328,13 +328,14 @@ def current_user_selector() -> str:
         f"<option value='{user['id']}' {'selected' if int(user['id']) == int(current['id']) else ''}>{esc(user['display_name'])} · {esc(role_label(user['role_key']))}</option>"
         for user in users
     )
+    current_label = f"{current['display_name']} · {role_label(current['role_key'])}"
     return f"""
         <form class="current-user-selector" method="post" action="/users/select" aria-label="Текущий пользователь">
           <input type="hidden" name="redirect_to" value="{esc(redirect_to)}">
           <span class="side-icon user-icon" aria-hidden="true">{user_icon_svg()}</span>
-          <span class="user-copy"><strong>Admin · Admin</strong><small>Администратор</small></span>
+          <span class="user-copy"><strong>{esc(current_label)}</strong><small>Текущий пользователь</small></span>
           <label class="user-select-label">Текущий пользователь
-            <select name="user_id" onchange="this.form.submit()">{options_html}</select>
+            <select name="user_id" onchange="this.form.submit()" aria-label="Выбрать текущего пользователя">{options_html}</select>
           </label>
           <noscript><button>Выбрать</button></noscript>
         </form>
@@ -342,7 +343,7 @@ def current_user_selector() -> str:
 
 def theme_selector() -> str:
     return """
-        <button class="theme-selector" type="button" data-theme-toggle data-tooltip="Светлая тема"><span class="side-icon">☼</span><span class="side-label">Светлая тема</span></button>
+        <button class="theme-selector" type="button" data-theme-toggle data-tooltip="Светлая тема" aria-pressed="false"><span class="side-icon" data-theme-icon>☼</span><span class="side-label" data-theme-label>Светлая тема</span></button>
     """
 
 def breadcrumbs(title: str) -> str:
@@ -1060,10 +1061,27 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
         button.title = sidebarAction;
       }});
     }});
+    const updateThemeToggle = (theme) => {{
+      const isDark = theme === "cyber-sketch";
+      document.querySelectorAll("[data-theme-toggle]").forEach((button) => {{
+        const label = button.querySelector("[data-theme-label]");
+        const icon = button.querySelector("[data-theme-icon]");
+        const text = isDark ? "Тёмная тема" : "Светлая тема";
+        if (label) label.textContent = text;
+        if (icon) icon.textContent = isDark ? "☾" : "☼";
+        button.dataset.tooltip = text;
+        button.title = isDark ? "Переключить на светлую тему" : "Переключить на тёмную тему";
+        button.setAttribute("aria-pressed", isDark ? "true" : "false");
+      }});
+    }};
+    updateThemeToggle(savedTheme);
     document.querySelectorAll("[data-theme-toggle]").forEach((button) => {{
       button.addEventListener("click", () => {{
-        document.documentElement.dataset.theme = "calm-blue";
-        localStorage.setItem("mvp-theme", "calm-blue");
+        const currentTheme = document.documentElement.dataset.theme || "calm-blue";
+        const nextTheme = currentTheme === "cyber-sketch" ? "calm-blue" : "cyber-sketch";
+        document.documentElement.dataset.theme = nextTheme;
+        localStorage.setItem("mvp-theme", nextTheme);
+        updateThemeToggle(nextTheme);
       }});
     }});
     document.querySelectorAll(".admin-toggle").forEach((button) => {{
@@ -1413,10 +1431,13 @@ def resolve_current_user_id(repo: Repository, requested_id: int | None = None) -
         user = repo.get_user(requested_id)
         if user and user["is_active"]:
             return int(user["id"])
+    active_admin = repo.conn.execute("SELECT id FROM users WHERE is_active = 1 AND role_key = 'admin' ORDER BY id LIMIT 1").fetchone()
+    if active_admin:
+        return int(active_admin["id"])
     first_active = repo.conn.execute("SELECT id FROM users WHERE is_active = 1 ORDER BY id LIMIT 1").fetchone()
     if first_active:
         return int(first_active["id"])
-    return ADMIN_ID
+    return 0
 
 
 def current_request_path(environ) -> str:
@@ -1432,7 +1453,7 @@ def safe_redirect_target(value: str | None) -> str:
 
 
 def current_actor_id() -> int:
-    return int(_REQUEST_CONTEXT.get("current_user_id") or ADMIN_ID)
+    return int(_REQUEST_CONTEXT.get("current_user_id") or 0)
 
 
 
