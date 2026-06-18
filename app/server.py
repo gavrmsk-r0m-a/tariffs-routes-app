@@ -317,28 +317,23 @@ def role_label(role_key: str | None) -> str:
 def current_user_selector() -> str:
     repo = _REQUEST_CONTEXT.get("repo")
     current_user_id = _REQUEST_CONTEXT.get("current_user_id")
-    redirect_to = _REQUEST_CONTEXT.get("redirect_to") or "/"
-    if not isinstance(repo, Repository):
+    if not isinstance(repo, Repository) or current_user_id is None:
         return ""
-    users = repo.list_users(active_only=True)
-    if not users:
+    current = repo.get_user(int(current_user_id))
+    if not current or not current["is_active"]:
         return ""
-    current = next((user for user in users if int(user["id"]) == int(current_user_id or 0)), users[0])
-    options_html = "".join(
-        f"<option value='{user['id']}' {'selected' if int(user['id']) == int(current['id']) else ''}>{esc(user['display_name'])} · {esc(role_label(user['role_key']))}</option>"
-        for user in users
-    )
     current_label = f"{current['display_name']} · {role_label(current['role_key'])}"
     return f"""
-        <form class="current-user-selector" method="post" action="/users/select" aria-label="Текущий пользователь">
-          <input type="hidden" name="redirect_to" value="{esc(redirect_to)}">
-          <span class="side-icon user-icon" aria-hidden="true">{user_icon_svg()}</span>
-          <span class="user-copy"><strong>{esc(current_label)}</strong><small>Текущий пользователь</small></span>
-          <label class="user-select-label">Текущий пользователь
-            <select name="user_id" onchange="this.form.submit()" aria-label="Выбрать текущего пользователя">{options_html}</select>
-          </label>
-          <noscript><button>Выбрать</button></noscript>
-        </form>
+        <details class="current-user-selector" data-tooltip="{esc(current_label)}">
+          <summary>
+            <span class="side-icon user-icon" aria-hidden="true">{user_icon_svg()}</span>
+            <span class="user-copy"><strong>{esc(current_label)}</strong><small>Текущий пользователь</small></span>
+          </summary>
+          <div class="current-user-menu">
+            <a href="/login">Сменить пользователя</a>
+            <a class="logout-link" href="/logout">Выход</a>
+          </div>
+        </details>
     """
 
 def theme_selector() -> str:
@@ -802,7 +797,7 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .sidebar-collapse:hover {{ background: var(--accent-soft); border-color: var(--accent); color: var(--accent-strong); }}
     .sidebar-collapse-icon {{ width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; transform: scaleX(-1); }}
     .sidebar-collapse-icon svg {{ width: 18px; height: 18px; display: block; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }}
-    .current-user-selector {{ background: #f4f6ff; border-color: #e2e8ff; }} .current-user-selector .user-select-label {{ position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; overflow: hidden; }} .user-icon {{ background: #4f46e5; color: #fff; border-radius: 9px; width: 32px; height: 32px; }} .user-icon svg {{ width: 19px; height: 19px; display: block; fill: currentColor; }}
+    .current-user-selector {{ position: relative; background: #f4f6ff; border-color: #e2e8ff; }} .current-user-selector summary {{ display: flex; align-items: center; gap: 10px; cursor: pointer; list-style: none; }} .current-user-selector summary::-webkit-details-marker {{ display: none; }} .current-user-menu {{ position: absolute; left: 0; right: 0; bottom: calc(100% + 6px); display: grid; gap: 4px; padding: 6px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); box-shadow: var(--shadow-card); z-index: 50; }} .current-user-menu a {{ display: block; padding: 6px 8px; border-radius: 7px; color: var(--text); font-size: 12px; font-weight: 700; text-decoration: none; }} .current-user-menu a:hover {{ background: var(--accent-soft); color: var(--accent-strong); }} .current-user-menu .logout-link {{ color: #b42318; }} .user-icon {{ background: #4f46e5; color: #fff; border-radius: 9px; width: 32px; height: 32px; }} .user-icon svg {{ width: 19px; height: 19px; display: block; fill: currentColor; }} .login-body {{ min-height: 100vh; display: grid; place-items: center; padding: 24px; }} .login-shell {{ width: min(560px, 100%); }} .login-card {{ padding: 28px; border: 1px solid var(--border); border-radius: 18px; background: var(--surface); box-shadow: var(--shadow-card); }} .login-card h1 {{ margin-bottom: 6px; }} .login-users {{ display: grid; gap: 10px; margin: 20px 0; }} .login-user-card {{ display: flex; align-items: center; gap: 12px; padding: 12px; border: 1px solid var(--border); border-radius: 12px; cursor: pointer; }} .login-user-card:hover {{ border-color: var(--accent); background: var(--accent-soft); }} .login-user-card span strong, .login-user-card span small {{ display: block; }} .login-user-card span small, .muted {{ color: var(--muted); }} .login-error {{ padding: 10px 12px; border-radius: 10px; background: var(--danger-soft); color: #b42318; font-weight: 700; }}
     .user-copy strong, .user-copy small {{ display: block; }} .user-copy small {{ color: var(--muted); }}
     .app-shell.sidebar-collapsed {{ grid-template-columns: 70px minmax(0, 1fr); }}
     .sidebar-collapsed .sidebar {{ padding-left: 8px; padding-right: 8px; }}
@@ -1426,18 +1421,13 @@ def cookie_user_id(environ) -> int | None:
         return None
 
 
-def resolve_current_user_id(repo: Repository, requested_id: int | None = None) -> int:
-    if requested_id is not None:
-        user = repo.get_user(requested_id)
-        if user and user["is_active"]:
-            return int(user["id"])
-    active_admin = repo.conn.execute("SELECT id FROM users WHERE is_active = 1 AND role_key = 'admin' ORDER BY id LIMIT 1").fetchone()
-    if active_admin:
-        return int(active_admin["id"])
-    first_active = repo.conn.execute("SELECT id FROM users WHERE is_active = 1 ORDER BY id LIMIT 1").fetchone()
-    if first_active:
-        return int(first_active["id"])
-    return 0
+def resolve_current_user_id(repo: Repository, requested_id: int | None = None) -> int | None:
+    if requested_id is None:
+        return None
+    user = repo.get_user(requested_id)
+    if user and user["is_active"]:
+        return int(user["id"])
+    return None
 
 
 def current_request_path(environ) -> str:
@@ -1455,6 +1445,45 @@ def safe_redirect_target(value: str | None) -> str:
 def current_actor_id() -> int:
     return int(_REQUEST_CONTEXT.get("current_user_id") or 0)
 
+
+def clear_current_user_cookie() -> tuple[str, str]:
+    return ("Set-Cookie", f"{CURRENT_USER_COOKIE}=; Path=/; Max-Age=0; SameSite=Lax")
+
+
+def is_public_path(path: str) -> bool:
+    return path in {"/login", "/logout", "/health", "/check"} or path.startswith("/static/")
+
+
+def login_page(repo: Repository, message: str | None = None) -> bytes:
+    users = repo.list_users(active_only=True)
+    cards = []
+    for user in users:
+        cards.append(
+            f"<label class='login-user-card'><input type='radio' name='user_id' value='{user['id']}' required>"
+            f"<span><strong>{esc(user['display_name'])}</strong><small>{esc(role_label(user['role_key']))}</small></span></label>"
+        )
+    notice = f"<div class='login-error'>{esc(message)}</div>" if message else ""
+    options = "".join(cards) or "<p>Нет активных пользователей.</p>"
+    button = "<button class='button hero-action' type='submit'>Войти</button>" if users else ""
+    html = f"""<!doctype html>
+<html lang='ru' data-theme='calm-blue'>
+<head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'><title>Вход · TeleRoute</title><style>body{{font-family:Arial,sans-serif;background:#eef2f7;color:#172554}}.login-body{{min-height:100vh;display:grid;place-items:center;padding:24px}}.login-card{{max-width:560px;padding:28px;border:1px solid #e3eaf7;border-radius:18px;background:white;box-shadow:0 10px 24px rgba(32,50,90,.08)}}.brand-block{{display:flex;gap:12px;align-items:center}}.brand-mark{{display:grid;place-items:center;width:36px;height:36px;border-radius:11px;background:#4f46e5;color:white;font-weight:900}}.brand-copy strong,.brand-copy span,.login-user-card span strong,.login-user-card span small{{display:block}}.brand-copy span,.login-user-card span small,.muted{{color:#7180a4}}.login-users{{display:grid;gap:10px;margin:20px 0}}.login-user-card{{display:flex;gap:12px;align-items:center;padding:12px;border:1px solid #e3eaf7;border-radius:12px;cursor:pointer}}.login-user-card:hover{{border-color:#4661f2;background:#eef1ff}}.button{{border:0;border-radius:10px;background:#2547e8;color:white;font-weight:800;padding:10px 18px}}.login-error{{padding:10px 12px;border-radius:10px;background:#fff0f0;color:#b42318;font-weight:700}}</style></head>
+<body class='login-body'>
+  <main class='login-shell'>
+    <section class='login-card'>
+      <div class='brand-block'><div class='brand-mark'>⌁</div><div class='brand-copy'><strong>TeleRoute</strong><span>MVP выбор пользователя</span></div></div>
+      <h1>Выберите пользователя</h1>
+      <p class='muted'>Это не аутентификация: выберите активного пользователя для корректной истории и прав.</p>
+      {notice}
+      <form method='post' action='/login' class='login-form'>
+        <div class='login-users'>{options}</div>
+        {button}
+      </form>
+    </section>
+  </main>
+  <script>const savedTheme = localStorage.getItem("mvp-theme") || "calm-blue"; document.documentElement.dataset.theme = savedTheme;</script>
+</body></html>"""
+    return html.encode("utf-8")
 
 
 def section_for_get_path(path: str) -> str | None:
@@ -3790,8 +3819,9 @@ def app(environ, start_response):
     method = environ["REQUEST_METHOD"]
     path = environ.get("PATH_INFO", "/")
     q = request_query(environ)
-    current_user_id = resolve_current_user_id(repo, cookie_user_id(environ))
-    current_user = repo.get_user(current_user_id)
+    cookie_id = cookie_user_id(environ)
+    current_user_id = resolve_current_user_id(repo, cookie_id)
+    current_user = repo.get_user(current_user_id) if current_user_id is not None else None
     _REQUEST_CONTEXT.clear()
     _REQUEST_CONTEXT.update({
         "repo": repo,
@@ -3800,6 +3830,22 @@ def app(environ, start_response):
         "redirect_to": current_request_path(environ),
     })
     try:
+        if path == "/logout":
+            return redirect(start_response, "/login", [clear_current_user_cookie()])
+        if method == "GET" and path == "/login":
+            start_response("200 OK", [("Content-Type", "text/html; charset=utf-8")])
+            return [login_page(repo)]
+        if method == "POST" and path == "/login":
+            raw_size = int(environ.get("CONTENT_LENGTH") or "0")
+            raw_body = environ["wsgi.input"].read(raw_size).decode("utf-8")
+            parsed = {key: values[-1] for key, values in parse_qs(raw_body, keep_blank_values=True).items()}
+            selected_user_id = resolve_current_user_id(repo, parse_int(parsed.get("user_id")))
+            if selected_user_id is None:
+                start_response("400 Bad Request", [("Content-Type", "text/html; charset=utf-8"), clear_current_user_cookie()])
+                return [login_page(repo, "Выберите активного пользователя")]
+            return redirect(start_response, safe_redirect_target(parsed.get("redirect_to") or "/routes"), [("Set-Cookie", f"{CURRENT_USER_COOKIE}={selected_user_id}; Path=/; SameSite=Lax")])
+        if not is_public_path(path) and current_user_id is None:
+            return redirect(start_response, "/login", [clear_current_user_cookie()] if cookie_id is not None else None)
         if method == "POST":
             raw_size = int(environ.get("CONTENT_LENGTH") or "0")
             raw_body = environ["wsgi.input"].read(raw_size).decode("utf-8")
@@ -3822,7 +3868,9 @@ def app(environ, start_response):
                 return [import_page(repo, notice, selected_entity=parsed["entity_type"], selected_mode=parsed.get("mode", "append_update"), csv_data=parsed.get("csv_data", ""))]
             if path == "/users/select":
                 selected_user_id = resolve_current_user_id(repo, parse_int(parsed.get("user_id")))
-                location = safe_redirect_target(parsed.get("redirect_to"))
+                if selected_user_id is None:
+                    return redirect(start_response, "/login", [clear_current_user_cookie()])
+                location = safe_redirect_target(parsed.get("redirect_to") or "/routes")
                 return redirect(
                     start_response,
                     location,

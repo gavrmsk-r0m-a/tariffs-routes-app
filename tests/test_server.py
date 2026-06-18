@@ -17,7 +17,7 @@ class ServerSmokeTest(unittest.TestCase):
         server.DB_PATH = self.old_path
         os.unlink(self.tmp.name)
 
-    def request(self, path, method="GET", body="", cookie=""):
+    def request(self, path, method="GET", body="", cookie="", auto_login=True):
         captured = {}
 
         def start_response(status, headers):
@@ -36,11 +36,21 @@ class ServerSmokeTest(unittest.TestCase):
         }
         if cookie:
             environ["HTTP_COOKIE"] = cookie
+        elif auto_login and path not in ("/login", "/logout"):
+            conn = server.connect(server.DB_PATH)
+            try:
+                server.init_db(conn)
+                server.ensure_seed(server.Repository(conn))
+                row = conn.execute("SELECT id FROM users WHERE username = 'admin'").fetchone()
+            finally:
+                conn.close()
+            if row:
+                environ["HTTP_COOKIE"] = f"mvp_current_user_id={row['id']}"
         content = b"".join(server.app(environ, start_response)).decode("utf-8")
         return captured, content
 
     def user_cookie(self, username):
-        self.request("/routes")
+        self.request("/login")
         conn = server.connect(server.DB_PATH)
         try:
             user_id = conn.execute("SELECT id FROM users WHERE username = ?", (username,)).fetchone()["id"]
@@ -85,23 +95,33 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertIn("Гость", content)
         self.assertIn("без паролей", content)
 
-    def test_current_user_selector_appears_in_layout(self):
+    def test_login_page_returns_user_selection_and_active_users(self):
+        captured, content = self.request("/login")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("Выберите пользователя", content)
+        self.assertIn("Admin", content)
+        self.assertIn("Roman", content)
+        self.assertIn("Дежурный", content)
+        self.assertIn("Гость", content)
+        self.assertIn("Войти", content)
+
+    def test_current_user_card_appears_in_layout(self):
         captured, content = self.request("/routes")
         self.assertEqual(captured["status"], "200 OK")
         self.assertIn('class="current-user-selector"', content)
-        self.assertIn('action="/users/select"', content)
+        self.assertIn('href="/logout"', content)
         self.assertIn("Текущий пользователь", content)
-        self.assertIn("Roman", content)
+        self.assertIn("Admin · Admin", content)
 
     def test_selecting_user_persists_cookie_and_redirects(self):
-        self.request("/routes")
+        self.request("/login")
         conn = server.connect(server.DB_PATH)
         try:
             duty_id = conn.execute("SELECT id FROM users WHERE username = 'duty'").fetchone()["id"]
         finally:
             conn.close()
         body = urlencode({"user_id": str(duty_id), "redirect_to": "/phones"})
-        captured, content = self.request("/users/select", method="POST", body=body)
+        captured, content = self.request("/login", method="POST", body=body)
         self.assertEqual(captured["status"], "303 See Other")
         self.assertIn(("Location", "/phones"), captured["headers"])
         set_cookie = dict(captured["headers"]).get("Set-Cookie", "")
@@ -109,17 +129,42 @@ class ServerSmokeTest(unittest.TestCase):
 
         captured, content = self.request("/routes", cookie=f"mvp_current_user_id={duty_id}")
         self.assertEqual(captured["status"], "200 OK")
-        self.assertIn(f"<option value='{duty_id}' selected>Дежурный", content)
+        self.assertIn("Дежурный · Дежурный", content)
 
 
     def test_sidebar_displays_selected_user_and_selector_is_single_source(self):
         cookie = self.user_cookie("duty")
         captured, content = self.request("/routes", cookie=cookie)
         self.assertEqual(captured["status"], "200 OK")
-        selector = content.split('<form class="current-user-selector"', 1)[1].split("</form>", 1)[0]
+        selector = content.split('<details class="current-user-selector"', 1)[1].split("</details>", 1)[0]
         self.assertIn("Дежурный · Дежурный", selector)
         self.assertIn("<small>Текущий пользователь</small>", selector)
-        self.assertEqual(content.count('action="/users/select"'), 1)
+        self.assertEqual(content.count('href="/logout"'), 1)
+
+
+    def test_logout_clears_selected_user_and_routes_require_login(self):
+        cookie = self.user_cookie("admin")
+        captured, _ = self.request("/logout", cookie=cookie)
+        self.assertEqual(captured["status"], "303 See Other")
+        self.assertIn(("Location", "/login"), captured["headers"])
+        self.assertIn("Max-Age=0", dict(captured["headers"]).get("Set-Cookie", ""))
+
+        captured, _ = self.request("/routes", auto_login=False)
+        self.assertEqual(captured["status"], "303 See Other")
+        self.assertIn(("Location", "/login"), captured["headers"])
+
+    def test_inactive_or_missing_selected_user_redirects_to_login(self):
+        cookie = self.user_cookie("guest")
+        conn = server.connect(server.DB_PATH)
+        try:
+            conn.execute("UPDATE users SET is_active = 0 WHERE username = 'guest'")
+            conn.commit()
+        finally:
+            conn.close()
+        captured, _ = self.request("/routes", cookie=cookie, auto_login=False)
+        self.assertEqual(captured["status"], "303 See Other")
+        self.assertIn(("Location", "/login"), captured["headers"])
+        self.assertIn("Max-Age=0", dict(captured["headers"]).get("Set-Cookie", ""))
 
     def test_theme_toggle_is_clickable_and_persistent_scripted_control(self):
         captured, content = self.request("/routes")
@@ -206,10 +251,9 @@ class ServerSmokeTest(unittest.TestCase):
             conn.commit()
         finally:
             conn.close()
-        captured, content = self.request("/routes")
+        captured, content = self.request("/login")
         self.assertEqual(captured["status"], "200 OK")
-        selector = content.split('<form class="current-user-selector"', 1)[1].split("</form>", 1)[0]
-        self.assertNotIn(f"<option value='{guest_id}'", selector)
+        self.assertNotIn(f"value='{guest_id}'", content)
 
 
     def test_breadcrumbs_appear_on_representative_pages(self):
@@ -1581,7 +1625,7 @@ if __name__ == "__main__":
 
 class RolePermissionTest(ServerSmokeTest):
     def user_cookie(self, username):
-        self.request("/routes")
+        self.request("/login")
         conn = server.connect(server.DB_PATH)
         try:
             user_id = conn.execute("SELECT id FROM users WHERE username = ?", (username,)).fetchone()["id"]
