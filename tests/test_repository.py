@@ -360,6 +360,48 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
         self.assertNotIn("Стоимость подключения", details)
         self.repo.add_phone_to_route(route_id=self.route_id, phone_number_id=phone_id, usage_type="pool_member", added_by=self.admin_id)
 
+    def test_review_required_clear_is_rejected_without_provider(self):
+        phone_id = self.repo.create_phone_number(
+            country_id=self.country_id, provider_id=None, number="393331234588",
+            assignment_type="pool_number", status="unknown", created_by=self.admin_id,
+            review_required=True,
+        )
+
+        with self.assertRaisesRegex(BusinessRuleError, "Нельзя снять флаг проверки"):
+            self.repo.update_phone_number(
+                phone_id, country_id=self.country_id, provider_id=None, number="393331234588",
+                assignment_type="pool_number", status="unknown", is_active=True,
+                updated_by=self.admin_id, review_required=False,
+            )
+
+        row = self.conn.execute("SELECT review_required FROM phone_numbers WHERE id = ?", (phone_id,)).fetchone()
+        self.assertEqual(row["review_required"], 1)
+
+    def test_past_deactivation_does_not_force_review_after_manual_clear(self):
+        phone_id = self.create_phone(status="problem", is_active=False, number="393331234587")
+        self.repo.update_phone_number(
+            phone_id, country_id=self.country_id, provider_id=self.provider_id, number="393331234587",
+            assignment_type="pool_number", status="used", is_active=True, updated_by=self.admin_id,
+            currency_id=self.currency_id, review_required=False,
+        )
+        self.repo.update_phone_number(
+            phone_id, country_id=self.country_id, provider_id=self.provider_id, number="393331234587",
+            assignment_type="pool_number", status="used", is_active=True, updated_by=self.admin_id,
+            currency_id=self.currency_id, review_required=False,
+        )
+        self.repo.update_phone_number(
+            phone_id, country_id=self.country_id, provider_id=self.provider_id, number="393331234587",
+            assignment_type="pool_number", status="used", is_active=True, updated_by=self.admin_id,
+            currency_id=self.currency_id, comment="verified", review_required=False,
+        )
+
+        row = self.conn.execute("SELECT review_required, deactivated_at FROM phone_numbers WHERE id = ?", (phone_id,)).fetchone()
+        self.assertEqual(row["review_required"], 0)
+        self.assertIsNotNone(row["deactivated_at"])
+        details = self._latest_phone_update_details(phone_id)
+        self.assertEqual(details, "Комментарий: — → verified")
+        self.assertNotIn("Требует проверки: Нет → Да", details)
+
     def test_old_phone_statuses_are_normalized_on_create(self):
         cases = {"reserved": "free", "blocked": "problem", "disabled": "problem", "": "unknown", "invalid": "unknown"}
         for index, (old_status, expected) in enumerate(cases.items()):

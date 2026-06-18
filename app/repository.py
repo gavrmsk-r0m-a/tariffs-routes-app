@@ -707,6 +707,8 @@ class Repository:
         requested_active = 1 if is_active else 0
         forced_review_required = 1 if (requested_active == 1 and int(existing["is_active"]) == 0) else 0
         final_review_required = 1 if review_required or forced_review_required else 0
+        if provider_id is None and final_review_required == 0:
+            raise BusinessRuleError("Нельзя снять флаг проверки, пока не выбран провайдер")
         final_status = normalize_phone_status(status)
         if requested_active == 0 and int(existing["is_active"]) == 1 and existing["status"] == "used":
             final_status = "problem"
