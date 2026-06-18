@@ -152,6 +152,100 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
         self.assertEqual(row["review_required"], 1)
         self.assertIsNotNone(row["deactivated_at"])
 
+    def test_phone_update_history_records_readable_field_changes(self):
+        phone_id = self.create_phone(status="free", number="393331234593")
+        new_provider_id = self.repo.create_provider("Zadarma", "voip", self.currency_id)
+
+        self.repo.update_phone_number(
+            phone_id,
+            country_id=self.country_id,
+            provider_id=new_provider_id,
+            number="393331234593",
+            assignment_type="pool_number",
+            status="problem",
+            is_active=True,
+            updated_by=self.admin_id,
+            project_label="ИТМ",
+            currency_id=self.currency_id,
+            comment="new comment",
+        )
+
+        row = self.conn.execute(
+            "SELECT action, old_value, new_value FROM phone_number_history WHERE phone_number_id = ? AND action = 'updated' ORDER BY id DESC",
+            (phone_id,),
+        ).fetchone()
+        self.assertIsNotNone(row)
+        self.assertEqual(row["action"], "updated")
+        payload = json.loads(row["new_value"])
+        self.assertIn("Рабочий статус: Свободен → Проблемный", payload["details"])
+        self.assertIn("Провайдер: Miatel → Zadarma", payload["details"])
+        self.assertIn("Проект: — → ИТМ", payload["details"])
+        self.assertIn("Комментарий изменён", payload["details"])
+        self.assertNotIn("provider_id", payload["details"])
+
+    def test_phone_reactivation_history_includes_forced_review_required_change(self):
+        phone_id = self.create_phone(status="problem", is_active=False, number="393331234594")
+
+        self.repo.update_phone_number(
+            phone_id,
+            country_id=self.country_id,
+            provider_id=self.provider_id,
+            number="393331234594",
+            assignment_type="pool_number",
+            status="free",
+            is_active=True,
+            updated_by=self.admin_id,
+            currency_id=self.currency_id,
+            review_required=False,
+        )
+
+        row = self.conn.execute(
+            "SELECT new_value FROM phone_number_history WHERE phone_number_id = ? AND action = 'updated' ORDER BY id DESC",
+            (phone_id,),
+        ).fetchone()
+        payload = json.loads(row["new_value"])
+        self.assertIn("Активен у провайдера: Нет → Да", payload["details"])
+        self.assertIn("Требует проверки: Нет → Да", payload["details"])
+
+    def test_route_update_history_records_readable_field_changes(self):
+        new_provider_id = self.repo.create_provider("DemoTel", "voip", self.currency_id)
+        self.repo.update_route(
+            self.route_id,
+            name="Италия/Miatel/Pool_B@",
+            provider_id=new_provider_id,
+            provider_prefix_id=None,
+            comment="changed",
+            is_actual=False,
+            priority_status="unknown",
+            updated_by=self.admin_id,
+        )
+
+        row = self.conn.execute(
+            "SELECT new_value FROM route_history WHERE route_id = ? AND action = 'updated' ORDER BY id DESC",
+            (self.route_id,),
+        ).fetchone()
+        payload = json.loads(row["new_value"])
+        self.assertIn("Название маршрута: Италия/Miatel/Pool_A@ → Италия/Miatel/Pool_B@", payload["details"])
+        self.assertIn("Провайдер: Miatel → DemoTel", payload["details"])
+        self.assertIn("Активность маршрута: Да → Нет", payload["details"])
+        self.assertIn("Комментарий изменён", payload["details"])
+
+    def test_route_phone_add_remove_history_is_not_duplicated_by_field_history(self):
+        phone_id = self.create_phone(number="393331234595")
+        result = self.repo.add_phone_to_route(
+            route_id=self.route_id,
+            phone_number_id=phone_id,
+            usage_type="pool_member",
+            added_by=self.admin_id,
+        )
+        self.repo.remove_phone_links_from_route(route_id=self.route_id, link_ids=[result.route_phone_number_id], removed_by=self.admin_id)
+
+        events = self.conn.execute(
+            "SELECT action, COUNT(*) AS count FROM route_phone_number_history WHERE route_id = ? AND phone_number_id = ? GROUP BY action",
+            (self.route_id, phone_id),
+        ).fetchall()
+        self.assertEqual({row["action"]: row["count"] for row in events}, {"added": 1, "removed": 1})
+
 
     def test_old_phone_statuses_are_normalized_on_create(self):
         cases = {"reserved": "free", "blocked": "problem", "disabled": "problem", "": "unknown", "invalid": "unknown"}

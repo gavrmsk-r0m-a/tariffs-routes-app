@@ -32,6 +32,9 @@ COMPANY_CHANGE_LABELS = {
 }
 
 
+def _bool_label(value: object) -> str:
+    return "Да" if str(value) in {"1", "true", "True", "yes", "Да"} else "Нет"
+
 
 class BusinessRuleError(ValueError):
     """Raised when a confirmed MVP business rule is violated."""
@@ -717,10 +720,24 @@ class Repository:
                     new_values={"is_active": 0, "phone_number_id": phone_id},
                     summary="Phone provider deactivation closed active route link",
                 )
-        self.conn.execute(
-            "INSERT INTO phone_number_history(phone_number_id, action, changed_by, field_name, old_value, new_value, comment) VALUES (?, 'updated', ?, 'phone', ?, ?, ?)",
-            (phone_id, updated_by, json.dumps(old_values, ensure_ascii=False), json.dumps({"number": normalized, "status": final_status, "is_active": requested_active, "review_required": final_review_required}, ensure_ascii=False), comment),
-        )
+        new_values = {
+            **old_values,
+            "number": normalized,
+            "country_id": country_id,
+            "provider_id": provider_id,
+            "project_label": project_label,
+            "assignment_type": assignment_type,
+            "status": final_status,
+            "is_active": requested_active,
+            "connection_cost": connection_cost,
+            "monthly_fee": monthly_fee,
+            "currency_id": currency_id,
+            "phone_type": phone_type,
+            "tariff_label": tariff_label,
+            "comment": comment,
+            "review_required": final_review_required,
+        }
+        self.record_phone_update_history(phone_id, updated_by, old_values, new_values, comment)
         self._change_log(
             "phone_number",
             phone_id,
@@ -729,6 +746,102 @@ class Repository:
             old_values={"number": existing["number"], "status": existing["status"], "is_active": existing["is_active"], "review_required": existing["review_required"]},
             new_values={"number": normalized, "status": final_status, "is_active": requested_active, "review_required": final_review_required},
         )
+        self.conn.commit()
+
+    def _name_by_id(self, table: str, value: object, display_column: str = "name") -> str:
+        if value in (None, ""):
+            return "—"
+        row = self.conn.execute(f"SELECT {display_column} AS label FROM {table} WHERE id = ?", (value,)).fetchone()
+        return str(row["label"]) if row and row["label"] not in (None, "") else str(value)
+
+    def _currency_label(self, value: object) -> str:
+        return self._name_by_id("currencies", value, "code")
+
+    def _phone_field_changes(self, old: dict, new: dict) -> list[str]:
+        status_labels = {"used": "Используется", "free": "Свободен", "problem": "Проблемный", "unknown": "Неизвестно"}
+        specs = [
+            ("provider_id", "Провайдер", lambda v: self._name_by_id("providers", v)),
+            ("country_id", "GEO", lambda v: self._name_by_id("countries", v)),
+            ("project_label", "Проект", lambda v: "—" if v in (None, "") else str(v)),
+            ("assignment_type", "Назначение", lambda v: "—" if v in (None, "") else str(v)),
+            ("status", "Рабочий статус", lambda v: status_labels.get(str(v), str(v) if v not in (None, "") else "—")),
+            ("is_active", "Активен у провайдера", _bool_label),
+            ("review_required", "Требует проверки", _bool_label),
+            ("phone_type", "Тип номера", lambda v: "—" if v in (None, "") else str(v)),
+            ("connection_cost", "Стоимость подключения", lambda v: "—" if v in (None, "") else str(v)),
+            ("monthly_fee", "Абонентская плата", lambda v: "—" if v in (None, "") else str(v)),
+            ("outgoing_rate", "Исходящий тариф", lambda v: "—" if v in (None, "") else str(v)),
+            ("incoming_rate", "Входящий тариф", lambda v: "—" if v in (None, "") else str(v)),
+            ("currency_id", "Валюта", self._currency_label),
+            ("tariff_label", "Тариф", lambda v: "—" if v in (None, "") else str(v)),
+        ]
+        changes: list[str] = []
+        for key, label, formatter in specs:
+            if old.get(key) != new.get(key):
+                changes.append(f"{label}: {formatter(old.get(key))} → {formatter(new.get(key))}")
+        if old.get("comment") != new.get("comment"):
+            changes.append("Комментарий изменён")
+        return changes
+
+    def _route_field_changes(self, old: dict, new: dict) -> list[str]:
+        specs = [
+            ("name", "Название маршрута", lambda v: "—" if v in (None, "") else str(v)),
+            ("country_id", "GEO", lambda v: self._name_by_id("countries", v)),
+            ("provider_id", "Провайдер", lambda v: self._name_by_id("providers", v)),
+            ("provider_prefix_id", "Префикс", lambda v: self._name_by_id("provider_prefixes", v, "prefix")),
+            ("project_label", "Проект", lambda v: "—" if v in (None, "") else str(v)),
+            ("is_actual", "Активность маршрута", _bool_label),
+            ("cli_source_type", "Тип маршрута", lambda v: "—" if v in (None, "") else str(v)),
+            ("cli_source_label", "Источник маршрута", lambda v: "—" if v in (None, "") else str(v)),
+        ]
+        changes: list[str] = []
+        for key, label, formatter in specs:
+            if old.get(key) != new.get(key):
+                changes.append(f"{label}: {formatter(old.get(key))} → {formatter(new.get(key))}")
+        if old.get("comment") != new.get("comment"):
+            changes.append("Комментарий изменён")
+        return changes
+
+    def record_phone_update_history(self, phone_id: int, changed_by: int, old_values: dict, new_values: dict, comment: str | None = None) -> None:
+        changes = self._phone_field_changes(old_values, new_values)
+        if not changes:
+            return
+        details = "; ".join(changes)
+        payload = {"changes": changes, "description": f"Изменено полей: {len(changes)}", "details": details}
+        self.conn.execute(
+            "INSERT INTO phone_number_history(phone_number_id, action, changed_by, field_name, old_value, new_value, comment) VALUES (?, 'updated', ?, 'changes', ?, ?, ?)",
+            (phone_id, changed_by, json.dumps({"changes": changes}, ensure_ascii=False), json.dumps(payload, ensure_ascii=False), comment),
+        )
+
+    def update_route(
+        self,
+        route_id: int,
+        *,
+        name: str,
+        provider_id: int | None = None,
+        provider_prefix_id: int | None,
+        comment: str | None,
+        is_actual: bool,
+        priority_status: str,
+        updated_by: int,
+    ) -> None:
+        existing = self.conn.execute("SELECT * FROM routes WHERE id = ?", (route_id,)).fetchone()
+        if existing is None:
+            raise BusinessRuleError("Route not found")
+        old_values = dict(existing)
+        final_provider_id = provider_id if provider_id is not None else int(existing["provider_id"])
+        self.conn.execute(
+            "UPDATE routes SET name = ?, provider_id = ?, provider_prefix_id = ?, comment = ?, is_actual = ?, priority_status = ?, updated_by = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (name, final_provider_id, provider_prefix_id, comment, 1 if is_actual else 0, priority_status, updated_by, route_id),
+        )
+        new_values = {**old_values, "name": name, "provider_id": final_provider_id, "provider_prefix_id": provider_prefix_id, "comment": comment, "is_actual": 1 if is_actual else 0, "priority_status": priority_status}
+        changes = self._route_field_changes(old_values, new_values)
+        if changes:
+            payload = {"changes": changes, "description": f"Изменено полей: {len(changes)}", "details": "; ".join(changes)}
+            self.conn.execute(
+                "INSERT INTO route_history(route_id, action, changed_by, field_name, old_value, new_value, comment) VALUES (?, 'updated', ?, 'changes', ?, ?, ?)",
+                (route_id, updated_by, json.dumps({"changes": changes}, ensure_ascii=False), json.dumps(payload, ensure_ascii=False), comment),
+            )
         self.conn.commit()
 
     def create_tariff(

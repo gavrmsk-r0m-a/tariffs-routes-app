@@ -2282,6 +2282,8 @@ def readable_history_event(row: sqlite3.Row, *, subject: str) -> tuple[str, str,
     if source == "phone":
         if action == "created":
             return "Номер создан", "Номер создан или импортирован", details
+        if isinstance(new_values.get("changes"), list):
+            return "Номер изменён", str(new_values.get("description") or f"Изменено полей: {len(new_values['changes'])}"), str(new_values.get("details") or "; ".join(new_values["changes"]))
         changes = []
         if "status" in old_values or "status" in new_values:
             changes.append(f"Рабочий статус изменён: {STATUS_LABELS.get(str(old_values.get('status')), old_values.get('status', '—'))} → {STATUS_LABELS.get(str(new_values.get('status')), new_values.get('status', '—'))}")
@@ -2294,6 +2296,8 @@ def readable_history_event(row: sqlite3.Row, *, subject: str) -> tuple[str, str,
         return "Номер изменён", "; ".join(changes), details
     if action == "created":
         return "Маршрут создан", "Маршрут создан", details
+    if isinstance(new_values.get("changes"), list):
+        return "Маршрут изменён", str(new_values.get("description") or f"Изменено полей: {len(new_values['changes'])}"), str(new_values.get("details") or "; ".join(new_values["changes"]))
     return "Маршрут изменён", "Маршрут изменён", details
 
 
@@ -3342,6 +3346,7 @@ def route_edit_page(repo: Repository, route_id: int) -> bytes:
     body = f"""<h1>Редактировать маршрут</h1><p><a href='/routes'>← Назад</a></p>
 <form method='post' action='/routes/{route_id}/update'>
 <label>Название <span class='required'>*</span><input name='name' value='{esc(route['name'])}' size='60'></label>
+<label>Провайдер <span class='required'>*</span><select name='provider_id'>{active_options(repo, 'providers', selected=route['provider_id'])}</select></label>
 <label>Префикс <select name='provider_prefix_id'>{prefix_options(repo, selected=route['provider_prefix_id'])}</select></label>
 <label>Комментарий <input name='comment' value='{esc(route['comment'])}'></label>
 <label>Актуальный <select name='is_actual'><option value='1' {'selected' if route['is_actual'] else ''}>Активный</option><option value='0' {'selected' if not route['is_actual'] else ''}>Неактивный</option></select></label>
@@ -3444,19 +3449,16 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
         return "/routes"
     if path.startswith("/routes/") and path.endswith("/update"):
         route_id = int(path.strip("/").split("/")[1])
-        old = repo.conn.execute("SELECT name, provider_prefix_id, comment, is_actual, priority_status FROM routes WHERE id = ?", (route_id,)).fetchone()
         name = data.get("name", "").strip()
+        provider_id = int(data["provider_id"])
         prefix_id = parse_int(data.get("provider_prefix_id"))
-        route_provider = repo.conn.execute("SELECT provider_id FROM routes WHERE id = ?", (route_id,)).fetchone()
-        if prefix_id and route_provider:
+        if prefix_id:
             prefix_provider = repo.conn.execute("SELECT provider_id FROM provider_prefixes WHERE id = ?", (prefix_id,)).fetchone()
-            if prefix_provider and int(prefix_provider["provider_id"]) != int(route_provider["provider_id"]):
+            if prefix_provider and int(prefix_provider["provider_id"]) != provider_id:
                 raise BusinessRuleError("Префикс не принадлежит провайдеру маршрута")
         if not name:
             raise BusinessRuleError("Название маршрута обязательно")
-        repo.conn.execute("UPDATE routes SET name = ?, provider_prefix_id = ?, comment = ?, is_actual = ?, priority_status = ?, updated_by = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (name, prefix_id, data.get("comment"), 1 if data.get("is_actual") == "1" else 0, data.get("priority_status") or "unknown", actor_id, route_id))
-        repo.conn.execute("INSERT INTO route_history(route_id, action, changed_by, field_name, old_value, new_value, comment) VALUES (?, 'updated', ?, 'route', ?, ?, ?)", (route_id, actor_id, str(dict(old)) if old else None, str({"name": name, "provider_prefix_id": data.get("provider_prefix_id"), "comment": data.get("comment"), "is_actual": data.get("is_actual"), "priority_status": data.get("priority_status")}), data.get("comment")))
-        repo.conn.commit()
+        repo.update_route(route_id, name=name, provider_id=provider_id, provider_prefix_id=prefix_id, comment=data.get("comment"), is_actual=data.get("is_actual") == "1", priority_status=data.get("priority_status") or "unknown", updated_by=actor_id)
         return "/routes"
     if path.startswith("/routes/") and path.endswith("/numbers/add"):
         route_id = int(path.strip("/").split("/")[1])
