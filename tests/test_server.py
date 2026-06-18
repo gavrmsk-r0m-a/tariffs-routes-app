@@ -242,6 +242,13 @@ class ServerSmokeTest(unittest.TestCase):
         finally:
             conn.close()
 
+        captured, content = self.request(f"/phones/{phone_id}/history", cookie=roman_cookie)
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("Номер исключён из маршрута", content)
+        self.assertIn("Номер автоматически исключён из маршрута из-за неактивности у провайдера", content)
+        self.assertIn("Причина: номер стал неактивен у провайдера", content)
+        self.assertNotIn("Связь с маршрутом закрыта из-за деактивации номера у провайдера", content)
+
     def test_inactive_users_are_not_selectable(self):
         self.request("/routes")
         conn = server.connect(server.DB_PATH)

@@ -2271,7 +2271,7 @@ def readable_history_event(row: sqlite3.Row, *, subject: str) -> tuple[str, str,
                 return "Номер добавлен в маршрут", f"Номер добавлен в маршрут: {route_name}", details
             return "Номер добавлен", f"Номер добавлен в маршрут: {phone_number}", details
         if reason == "phone_number.deactivated":
-            return "Связь закрыта", "Связь с маршрутом закрыта из-за деактивации номера у провайдера", details
+            return "Номер исключён из маршрута", "Номер автоматически исключён из маршрута из-за неактивности у провайдера", "Причина: номер стал неактивен у провайдера"
         if subject == "phone":
             message = f"Номер исключён из маршрута: {route_name}"
         else:
