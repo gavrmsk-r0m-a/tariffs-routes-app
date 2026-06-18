@@ -583,6 +583,7 @@ class Repository:
                 "assignment_type": "pn.assignment_type",
                 "status": "pn.status",
                 "number_like": "pn.number",
+                "review_required": "pn.review_required",
             },
         )
         return list(

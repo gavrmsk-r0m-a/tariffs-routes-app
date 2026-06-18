@@ -24,7 +24,7 @@ FILTER_STATE_COOKIE = "mvp_filter_state"
 FILTER_SECTIONS = {
     "/routes": ("routes", ("country_id", "provider_id", "prefix_id", "is_actual", "search")),
     "/tariffs": ("tariffs", ("country_id", "provider_id", "priority_status", "status")),
-    "/phones": ("phones", ("country_id", "provider_id", "project", "assignment_type", "status", "number")),
+    "/phones": ("phones", ("country_id", "provider_id", "project", "assignment_type", "status", "number", "review_required")),
     "/companies": ("companies", ("server_id", "country_id", "company", "external_id", "has_autorotation", "is_active")),
     "/provider-changes": ("provider_changes", ("country_id", "apply_scope", "server_id", "campaign_id", "provider_id", "include_inactive")),
     "/admin/server-priorities": ("admin_server_priorities", ("country_id", "server_id")),
@@ -1021,6 +1021,36 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
       box-shadow: none !important;
       font-size: 0 !important;
       line-height: 0 !important;
+    }}
+
+    table[data-table-key="phones"] td[data-col="number"] .phone-number-cell {{
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      max-width: 100%;
+      white-space: nowrap;
+    }}
+
+    .review-required-icon {{
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex: 0 0 16px;
+      width: 16px;
+      height: 16px;
+      color: var(--warning);
+      vertical-align: -2px;
+    }}
+
+    .review-required-icon svg {{
+      width: 16px;
+      height: 16px;
+      display: block;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 1.8;
+      stroke-linecap: round;
+      stroke-linejoin: round;
     }}
   </style>
 </head>
@@ -2478,6 +2508,19 @@ def routes_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
     return page("Маршруты", table_page_container(body))
 
 
+def review_required_icon() -> str:
+    return (
+        "<span class='review-required-icon' title='Требует проверки' aria-label='Требует проверки'>"
+        "<svg viewBox='0 0 24 24' role='img' focusable='false' aria-hidden='true'>"
+        "<path d='M7 3.75h7.2L19 8.55v10.7A1.75 1.75 0 0 1 17.25 21H7a1.75 1.75 0 0 1-1.75-1.75V5.5A1.75 1.75 0 0 1 7 3.75Z'/>"
+        "<path d='M14 4v5h5'/>"
+        "<path d='M12 11.25v3.5'/>"
+        "<path d='M12 17.25h.01'/>"
+        "<path d='M9.05 18.5h5.9L12 8.85 9.05 18.5Z'/>"
+        "</svg>"
+        "</span>"
+    )
+
 def route_number_rows(repo: Repository, route_id: int, *, selectable: bool = False) -> tuple[list[sqlite3.Row], str, str]:
     numbers = repo.route_numbers(route_id)
     rows = []
@@ -2560,7 +2603,7 @@ def tariffs_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
 
 def phones_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
     q = q or {}
-    filters = {"country_id": q.get("country_id"), "provider_id": q.get("provider_id"), "project": q.get("project"), "assignment_type": q.get("assignment_type"), "status": q.get("status"), "number_like": q.get("number")}
+    filters = {"country_id": q.get("country_id"), "provider_id": q.get("provider_id"), "project": q.get("project"), "assignment_type": q.get("assignment_type"), "status": q.get("status"), "number_like": q.get("number"), "review_required": q.get("review_required")}
     records = list(repo.list_phone_numbers(filters))
     if q.get("export") == "csv":
         return csv_response("phones_export.csv", ["Номер", "GEO", "Провайдер", "Тип номера", "Кампания", "Рабочий статус", "Активен у провайдера", "Маршруты", "Требует проверки", "Комментарий"], [[p["number"], p["country_name"], p["provider_name"], p["phone_type"], p["project_label"], STATUS_LABELS.get(p["status"], p["status"]), "Да" if p["is_active"] else "Нет", p["route_names"] or "—", "Да" if p["review_required"] else "Нет", p["comment"]] for p in records])
@@ -2570,21 +2613,22 @@ def phones_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
         assignment_label = phone["assignment_type_label"] or ASSIGNMENT_LABELS.get(phone["assignment_type"], phone["assignment_type"])
         actions = f"<a class='button edit-action' href='/phones/{phone['id']}/edit' title='Редактировать' aria-label='Редактировать' data-tooltip='Редактировать'>Редактировать</a>" if can_write("phones") else ""
         history = history_icon_link(f"/phones/{phone['id']}/history")
-        review_badge = "<span class='badge'>Требует проверки</span>" if phone["review_required"] else ""
-        rows.append(f"""<tr><td data-col='number' data-copy-column='phone-number'>{esc(phone['number'])} {review_badge}</td><td data-col='geo'>{esc(phone['country_name'])}</td><td data-col='provider'>{esc(phone['provider_name'])}</td><td data-col='project'>{esc(phone['project_label'])}</td><td data-col='assignment'>{esc(assignment_label)}</td><td data-col='status'>{dot_status(STATUS_LABELS.get(phone['status'], phone['status']), 'danger' if phone['status'] == 'problem' else ('warning' if phone['status'] == 'unknown' else ('neutral' if phone['status'] == 'free' else 'ok')))}</td><td data-col='active'>{dot_status('Да' if phone['is_active'] else 'Нет', 'ok' if phone['is_active'] else 'danger')}</td>{clamp_cell('routes', esc(phone['route_names']), phone['route_names']) if phone['route_names'] else "<td data-col='routes'>—</td>"}<td data-col='connection'>{esc(phone['connection_cost'])}</td><td data-col='monthly'>{esc(phone['monthly_fee'])}</td><td data-col='currency'>{esc(phone['currency_code'])}</td><td data-col='phone_type'>{esc(phone['phone_type'])}</td><td data-col='tariff'>{esc(phone['tariff_label'])}</td><td data-col='created'>{esc(phone['created_at'])}</td><td data-col='updated'>{esc(phone['updated_at'])}</td><td data-col='deactivated'>{esc(phone['deactivated_at'])}</td>{clamp_cell('comment', esc(phone['comment'] or '—'), phone['comment'] or '—', classes='comment-cell')}<td data-col='history' class='history-cell'>{history}</td><td data-col='actions'>{actions}</td></tr>""")
+        review_marker = review_required_icon() if phone["review_required"] else ""
+        rows.append(f"""<tr><td data-col='number' data-copy-column='phone-number'><span class='phone-number-cell'>{esc(phone['number'])}{review_marker}</span></td><td data-col='geo'>{esc(phone['country_name'])}</td><td data-col='provider'>{esc(phone['provider_name'])}</td><td data-col='project'>{esc(phone['project_label'])}</td><td data-col='assignment'>{esc(assignment_label)}</td><td data-col='status'>{dot_status(STATUS_LABELS.get(phone['status'], phone['status']), 'danger' if phone['status'] == 'problem' else ('warning' if phone['status'] == 'unknown' else ('neutral' if phone['status'] == 'free' else 'ok')))}</td><td data-col='active'>{dot_status('Да' if phone['is_active'] else 'Нет', 'ok' if phone['is_active'] else 'danger')}</td>{clamp_cell('routes', esc(phone['route_names']), phone['route_names']) if phone['route_names'] else "<td data-col='routes'>—</td>"}<td data-col='connection'>{esc(phone['connection_cost'])}</td><td data-col='monthly'>{esc(phone['monthly_fee'])}</td><td data-col='currency'>{esc(phone['currency_code'])}</td><td data-col='phone_type'>{esc(phone['phone_type'])}</td><td data-col='tariff'>{esc(phone['tariff_label'])}</td><td data-col='created'>{esc(phone['created_at'])}</td><td data-col='updated'>{esc(phone['updated_at'])}</td><td data-col='deactivated'>{esc(phone['deactivated_at'])}</td>{clamp_cell('comment', esc(phone['comment'] or '—'), phone['comment'] or '—', classes='comment-cell')}<td data-col='history' class='history-cell'>{history}</td><td data-col='actions'>{actions}</td></tr>""")
     filters_html = f"""<form class="filter-grid" method="get" action="/phones">
 <label>ГЕО <select name="country_id">{options(repo, 'countries', selected=q.get('country_id'), empty='Все')}</select></label>
 <label>Провайдер <select name="provider_id">{options(repo, 'providers', selected=q.get('provider_id'), empty='Все')}</select></label>
     <label>Проект <select name="project">{project_options(repo, selected=q.get('project'), empty='Все')}</select></label>
     <label>Назначение <select name="assignment_type">{assignment_options(repo, selected=q.get('assignment_type'), empty='Все')}</select></label>
 <label>Рабочий статус <select name="status">{phone_status_options(q.get('status'), empty='Все')}</select></label>
-<label>Поиск по номеру <input name="number" value="{esc(q.get('number'))}"></label><button>Найти</button></form>"""
+<label>Поиск по номеру <input name="number" value="{esc(q.get('number'))}"></label>
+<label class="checkbox-inline"><input type="checkbox" name="review_required" value="1" {'checked' if q.get('review_required') == '1' else ''}> Требует проверки</label><button>Найти</button></form>"""
     create_html = f"""<form class="form-grid" method="post" action="/phones/create">
 <label>Номер <span class="required">*</span><input name="number" placeholder="393331234567"></label><label>ГЕО <span class="required">*</span><select name="country_id">{active_options(repo, 'countries')}</select></label><label>Провайдер <span class="required">*</span><select name="provider_id"><option value="">—</option>{active_options(repo, 'providers')}</select></label><label>Проект <select name="project_label">{project_options(repo, empty='—')}</select></label><label>Назначение <span class="required">*</span><select name="assignment_type">{assignment_options(repo)}</select></label><label>Рабочий статус <span class="required">*</span><select name="status">{phone_status_options('unknown')}</select></label><label>Стоимость подключения <input name="connection_cost"></label><label>Абонентская плата <input name="monthly_fee"></label><label>Валюта <select name="currency_id"><option value="">—</option>{active_options(repo, 'currencies', 'code')}</select></label><label>Тип номера <select name="phone_type">{phone_type_options(repo, empty='—')}</select></label><label>Тариф <input name="tariff_label"></label><label>Комментарий <input name="comment"></label><button>Сохранить</button></form>"""
     table_html = f"{data_table('phones', [('number', f"<span class='copyable-header'>Номер {copy_column_button('phone-number')}</span>"), ('geo', 'ГЕО'), ('provider', 'Провайдер'), ('project', 'Проект'), ('assignment', 'Назначение'), ('status', 'Рабочий статус'), ('active', 'Активен у провайдера'), ('routes', 'Маршруты'), ('connection', 'Подключение'), ('monthly', 'Абонплата'), ('currency', 'Валюта'), ('phone_type', 'Тип номера'), ('tariff', 'Тариф'), ('created', 'Дата создания'), ('updated', 'Дата изменения'), ('deactivated', 'Дата отключения'), ('comment', 'Комментарий'), ('history', 'Ист.'), ('actions', 'Действия')], ''.join(rows))}"
     body = f"""
 <h1>Купленные номера</h1>
-{filter_card(filters_html, q, ('country_id', 'provider_id', 'project', 'assignment_type', 'status', 'number'))}
+{filter_card(filters_html, q, ('country_id', 'provider_id', 'project', 'assignment_type', 'status', 'number', 'review_required'))}
 {form_card('+ Добавить номер <span class="muted">Admin</span>', create_html) if can_write("phones") else ""}
 {table_card(table_html)}
 {table_footer(pagination_html, export_link('/phones', q) + column_settings('phones', [('number', 'Номер'), ('geo', 'ГЕО'), ('provider', 'Провайдер'), ('project', 'Проект'), ('assignment', 'Назначение'), ('status', 'Рабочий статус'), ('active', 'Активен у провайдера'), ('routes', 'Маршруты'), ('connection', 'Подключение'), ('monthly', 'Абонплата'), ('currency', 'Валюта'), ('phone_type', 'Тип номера'), ('tariff', 'Тариф'), ('created', 'Дата создания'), ('updated', 'Дата изменения'), ('deactivated', 'Дата отключения'), ('comment', 'Комментарий'), ('actions', 'Действия')]))}"""
