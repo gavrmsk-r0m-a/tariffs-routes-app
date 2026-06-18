@@ -316,6 +316,64 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertIn("<details class='filter-card' open>", content)
         self.assertIn('name="search" value="Demo"', content)
 
+    def route_prefix_id(self, prefix):
+        self.request("/routes")
+        conn = server.connect(server.DB_PATH)
+        try:
+            return conn.execute("SELECT id FROM provider_prefixes WHERE prefix = ?", (prefix,)).fetchone()["id"]
+        finally:
+            conn.close()
+
+    def test_routes_prefix_filter_by_id_returns_only_matching_prefix_routes(self):
+        prefix_id = self.route_prefix_id("0828")
+        captured, content = self.request(f"/routes?prefix_id={prefix_id}")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("Мексика/Sancom/Demo_0828@", content)
+        self.assertNotIn("Мексика/Sancom/Demo_0827@", content)
+        self.assertNotIn("Мексика/Miatel/Demo_A@", content)
+
+    def test_routes_prefix_all_does_not_filter_routes(self):
+        captured, content = self.request("/routes?prefix_id=")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("Мексика/Sancom/Demo_0828@", content)
+        self.assertIn("Мексика/Sancom/Demo_0827@", content)
+        self.assertIn("Мексика/Miatel/Demo_A@", content)
+
+    def test_saved_route_prefix_filter_restores_and_reset_clears_it(self):
+        prefix_id = self.route_prefix_id("0828")
+        captured, content = self.request(f"/routes?prefix_id={prefix_id}")
+        self.assertEqual(captured["status"], "200 OK")
+        routes_cookie = dict(captured["headers"]).get("Set-Cookie", "")
+        self.assertIn("mvp_filter_state=", routes_cookie)
+        self.assertIn(str(prefix_id), routes_cookie)
+
+        captured, _ = self.request("/routes", cookie=f"{self.user_cookie('admin')}; {routes_cookie}")
+        self.assertEqual(captured["status"], "303 See Other")
+        self.assertIn(("Location", f"/routes?prefix_id={prefix_id}&_filters_restored=1"), captured["headers"])
+
+        captured, content = self.request(f"/routes?prefix_id={prefix_id}&_filters_restored=1", cookie=f"{self.user_cookie('admin')}; {routes_cookie}")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("<details class='filter-card' open>", content)
+        self.assertIn(f"<option value='{prefix_id}' selected>0828</option>", content)
+        self.assertIn("Мексика/Sancom/Demo_0828@", content)
+        self.assertNotIn("Мексика/Sancom/Demo_0827@", content)
+
+        captured, content = self.request("/routes?reset_filters=1", cookie=f"{self.user_cookie('admin')}; {routes_cookie}")
+        self.assertEqual(captured["status"], "200 OK")
+        reset_cookie = dict(captured["headers"]).get("Set-Cookie", "")
+        self.assertNotIn(str(prefix_id), reset_cookie)
+        self.assertIn("Мексика/Sancom/Demo_0828@", content)
+        self.assertIn("Мексика/Sancom/Demo_0827@", content)
+
+    def test_routes_csv_export_respects_prefix_filter(self):
+        prefix_id = self.route_prefix_id("0828")
+        captured, content = self.request(f"/routes?prefix_id={prefix_id}&export=csv")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn(("Content-Type", "text/csv; charset=utf-8"), captured["headers"])
+        self.assertIn("Мексика/Sancom/Demo_0828@", content)
+        self.assertNotIn("Мексика/Sancom/Demo_0827@", content)
+        self.assertNotIn("Мексика/Miatel/Demo_A@", content)
+
     def test_filter_state_persists_per_section_and_empty_search_stays_open_current_response(self):
         captured, content = self.request("/phones?number=525550000001&page=2")
         self.assertEqual(captured["status"], "200 OK")
