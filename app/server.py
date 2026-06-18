@@ -1678,7 +1678,7 @@ def update_filter_state_for_request(path: str, q: dict[str, str], state: dict[st
 def filter_card(form_html: str, q: dict[str, str], keys: list[str] | tuple[str, ...]) -> str:
     path = _REQUEST_CONTEXT.get("path")
     section = FILTER_SECTIONS.get(str(path), (None, ()))[0]
-    is_open = active_query(q, keys) or q.get("reset_filters") == "1"
+    is_open = active_query(q, keys) or q.get(FILTER_OPEN_KEY) == "1" or q.get("reset_filters") == "1"
     open_attr = " open" if is_open else ""
     action_match = re.search(r'action=["\']([^"\']+)["\']', form_html)
     reset_href = action_match.group(1) if action_match else current_request_path({"PATH_INFO": "/", "QUERY_STRING": ""})
