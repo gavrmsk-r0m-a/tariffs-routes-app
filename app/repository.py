@@ -36,6 +36,41 @@ def _bool_label(value: object) -> str:
     return "Да" if str(value) in {"1", "true", "True", "yes", "Да"} else "Нет"
 
 
+def _empty_label(value: object) -> str:
+    return "—" if value is None or str(value).strip() == "" else str(value)
+
+
+def _normalize_optional_text(value: object) -> str:
+    return "" if value is None or str(value).strip() == "" else str(value).strip()
+
+
+def _normalize_decimal_value(value: object) -> Decimal | None:
+    if value is None:
+        return None
+    if isinstance(value, str) and value.strip() == "":
+        return None
+    return Decimal(str(value).strip()).normalize()
+
+
+def _values_equal(old: object, new: object, kind: str = "text") -> bool:
+    if kind == "money":
+        return _normalize_decimal_value(old) == _normalize_decimal_value(new)
+    if kind == "bool":
+        return (1 if str(old) in {"1", "true", "True", "yes", "Да"} else 0) == (1 if str(new) in {"1", "true", "True", "yes", "Да"} else 0)
+    if kind == "optional_text":
+        return _normalize_optional_text(old) == _normalize_optional_text(new)
+    if old in (None, "") and new in (None, ""):
+        return True
+    return old == new
+
+
+def _truncate_history_text(value: object, limit: int = 100) -> str:
+    text = _empty_label(value).strip()
+    if text == "—":
+        return text
+    return text if len(text) <= limit else text[:limit].rstrip() + "…"
+
+
 class BusinessRuleError(ValueError):
     """Raised when a confirmed MVP business rule is violated."""
 
@@ -670,7 +705,7 @@ class Repository:
         normalized = validate_phone_number(number)
         old_values = dict(existing)
         requested_active = 1 if is_active else 0
-        forced_review_required = 1 if (requested_active == 1 and existing["deactivated_at"] is not None) else 0
+        forced_review_required = 1 if (requested_active == 1 and int(existing["is_active"]) == 0) else 0
         final_review_required = 1 if review_required or forced_review_required else 0
         final_status = normalize_phone_status(status)
         if requested_active == 0 and int(existing["is_active"]) == 1 and existing["status"] == "used":
@@ -760,46 +795,48 @@ class Repository:
     def _phone_field_changes(self, old: dict, new: dict) -> list[str]:
         status_labels = {"used": "Используется", "free": "Свободен", "problem": "Проблемный", "unknown": "Неизвестно"}
         specs = [
-            ("provider_id", "Провайдер", lambda v: self._name_by_id("providers", v)),
-            ("country_id", "GEO", lambda v: self._name_by_id("countries", v)),
-            ("project_label", "Проект", lambda v: "—" if v in (None, "") else str(v)),
-            ("assignment_type", "Назначение", lambda v: "—" if v in (None, "") else str(v)),
-            ("status", "Рабочий статус", lambda v: status_labels.get(str(v), str(v) if v not in (None, "") else "—")),
-            ("is_active", "Активен у провайдера", _bool_label),
-            ("review_required", "Требует проверки", _bool_label),
-            ("phone_type", "Тип номера", lambda v: "—" if v in (None, "") else str(v)),
-            ("connection_cost", "Стоимость подключения", lambda v: "—" if v in (None, "") else str(v)),
-            ("monthly_fee", "Абонентская плата", lambda v: "—" if v in (None, "") else str(v)),
-            ("outgoing_rate", "Исходящий тариф", lambda v: "—" if v in (None, "") else str(v)),
-            ("incoming_rate", "Входящий тариф", lambda v: "—" if v in (None, "") else str(v)),
-            ("currency_id", "Валюта", self._currency_label),
-            ("tariff_label", "Тариф", lambda v: "—" if v in (None, "") else str(v)),
+            ("provider_id", "Провайдер", lambda v: self._name_by_id("providers", v), "default"),
+            ("country_id", "GEO", lambda v: self._name_by_id("countries", v), "default"),
+            ("project_label", "Проект", _empty_label, "optional_text"),
+            ("assignment_type", "Назначение", _empty_label, "optional_text"),
+            ("status", "Рабочий статус", lambda v: status_labels.get(str(v), _empty_label(v)), "optional_text"),
+            ("is_active", "Активен у провайдера", _bool_label, "bool"),
+            ("review_required", "Требует проверки", _bool_label, "bool"),
+            ("phone_type", "Тип номера", _empty_label, "optional_text"),
+            ("connection_cost", "Стоимость подключения", _empty_label, "money"),
+            ("monthly_fee", "Абонентская плата", _empty_label, "money"),
+            ("outgoing_rate", "Исходящий тариф", _empty_label, "money"),
+            ("incoming_rate", "Входящий тариф", _empty_label, "money"),
+            ("currency_id", "Валюта", self._currency_label, "default"),
+            ("tariff_label", "Тариф", _empty_label, "optional_text"),
         ]
         changes: list[str] = []
-        for key, label, formatter in specs:
-            if old.get(key) != new.get(key):
+        for key, label, formatter, kind in specs:
+            if not _values_equal(old.get(key), new.get(key), kind):
                 changes.append(f"{label}: {formatter(old.get(key))} → {formatter(new.get(key))}")
-        if old.get("comment") != new.get("comment"):
-            changes.append("Комментарий изменён")
+        if not _values_equal(old.get("comment"), new.get("comment"), "optional_text"):
+            changes.append(f"Комментарий: {_truncate_history_text(old.get('comment'))} → {_truncate_history_text(new.get('comment'))}")
         return changes
 
     def _route_field_changes(self, old: dict, new: dict) -> list[str]:
+        priority_labels = {"priority": "Приоритетный", "alternative": "Альтернативный", "unknown": "Неизвестно"}
         specs = [
-            ("name", "Название маршрута", lambda v: "—" if v in (None, "") else str(v)),
-            ("country_id", "GEO", lambda v: self._name_by_id("countries", v)),
-            ("provider_id", "Провайдер", lambda v: self._name_by_id("providers", v)),
-            ("provider_prefix_id", "Префикс", lambda v: self._name_by_id("provider_prefixes", v, "prefix")),
-            ("project_label", "Проект", lambda v: "—" if v in (None, "") else str(v)),
-            ("is_actual", "Активность маршрута", _bool_label),
-            ("cli_source_type", "Тип маршрута", lambda v: "—" if v in (None, "") else str(v)),
-            ("cli_source_label", "Источник маршрута", lambda v: "—" if v in (None, "") else str(v)),
+            ("name", "Название маршрута", _empty_label, "optional_text"),
+            ("country_id", "GEO", lambda v: self._name_by_id("countries", v), "default"),
+            ("provider_id", "Провайдер", lambda v: self._name_by_id("providers", v), "default"),
+            ("provider_prefix_id", "Префикс", lambda v: self._name_by_id("provider_prefixes", v, "prefix"), "default"),
+            ("project_label", "Проект", _empty_label, "optional_text"),
+            ("is_actual", "Активность маршрута", _bool_label, "bool"),
+            ("priority_status", "Приоритет", lambda v: priority_labels.get(str(v), _empty_label(v)), "optional_text"),
+            ("cli_source_type", "Тип маршрута", _empty_label, "optional_text"),
+            ("cli_source_label", "Источник маршрута", _empty_label, "optional_text"),
         ]
         changes: list[str] = []
-        for key, label, formatter in specs:
-            if old.get(key) != new.get(key):
+        for key, label, formatter, kind in specs:
+            if not _values_equal(old.get(key), new.get(key), kind):
                 changes.append(f"{label}: {formatter(old.get(key))} → {formatter(new.get(key))}")
-        if old.get("comment") != new.get("comment"):
-            changes.append("Комментарий изменён")
+        if not _values_equal(old.get("comment"), new.get("comment"), "optional_text"):
+            changes.append(f"Комментарий: {_truncate_history_text(old.get('comment'))} → {_truncate_history_text(new.get('comment'))}")
         return changes
 
     def record_phone_update_history(self, phone_id: int, changed_by: int, old_values: dict, new_values: dict, comment: str | None = None) -> None:
