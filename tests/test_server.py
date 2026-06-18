@@ -358,6 +358,18 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertIn("525550000001", content)
         self.assertIn("525550000002", content)
 
+        captured, content = self.request("/routes?country_id=&provider_id=&prefix_id=&is_actual=&search=&_filters_open=1")
+        self.assertEqual(captured["status"], "200 OK")
+        empty_search_cookie = dict(captured["headers"]).get("Set-Cookie", "")
+        self.assertIn("mvp_filter_state=", empty_search_cookie)
+        self.assertIn("__filters_open", empty_search_cookie)
+        self.assertIn("<details class='filter-card' open>", content)
+
+        captured, content = self.request("/routes", cookie=f"{self.user_cookie('admin')}; {empty_search_cookie}")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("<details class='filter-card' open>", content)
+        self.assertNotIn("_filters_restored=1", content)
+
     def test_csv_export_uses_active_filters_without_changing_saved_filter_state(self):
         captured, content = self.request("/phones?number=525550000001&export=csv")
         self.assertEqual(captured["status"], "200 OK")

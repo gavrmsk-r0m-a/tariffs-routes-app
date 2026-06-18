@@ -30,7 +30,9 @@ FILTER_SECTIONS = {
     "/admin/server-priorities": ("admin_server_priorities", ("country_id", "server_id")),
     "/admin/company-routing-settings": ("admin_company_routing_settings", ("country_id", "server_id", "company_id_external", "routing_mode", "is_active", "show_history")),
 }
-FILTER_CONTROL_KEYS = {"page", "limit", "export", "reset_filters", "_filters_restored"}
+FILTER_OPEN_KEY = "_filters_open"
+FILTER_STATE_OPEN_KEY = "__filters_open"
+FILTER_CONTROL_KEYS = {"page", "limit", "export", "reset_filters", "_filters_restored", FILTER_OPEN_KEY}
 
 _REQUEST_CONTEXT: dict[str, object] = {}
 STATUS_LABELS = {
@@ -1595,7 +1597,7 @@ def saved_filter_redirect(path: str, q: dict[str, str], state: dict[str, dict[st
     if not config or q:
         return None
     section, _ = config
-    saved = {key: value for key, value in state.get(section, {}).items() if value not in (None, "")}
+    saved = {key: value for key, value in state.get(section, {}).items() if key != FILTER_STATE_OPEN_KEY and value not in (None, "")}
     if not saved:
         return None
     saved["_filters_restored"] = "1"
@@ -1609,15 +1611,21 @@ def update_filter_state_for_request(path: str, q: dict[str, str], state: dict[st
     section, keys = config
     updated = dict(state)
     if q.get("reset_filters") == "1":
-        updated.pop(section, None)
+        updated[section] = {FILTER_STATE_OPEN_KEY: "1"}
         return updated, filter_state_cookie(updated)
     if q.get("export") == "csv":
         return state, None
     submitted_filters = {key: q.get(key, "") for key in keys if q.get(key) not in (None, "")}
     has_user_query = any(key not in FILTER_CONTROL_KEYS for key in q)
     if has_user_query:
-        if submitted_filters:
-            updated[section] = submitted_filters
+        panel_open = q.get(FILTER_OPEN_KEY) == "1"
+        if submitted_filters or panel_open:
+            section_state = dict(submitted_filters)
+            if panel_open:
+                section_state[FILTER_STATE_OPEN_KEY] = "1"
+            else:
+                section_state[FILTER_STATE_OPEN_KEY] = "0"
+            updated[section] = section_state
         else:
             updated.pop(section, None)
         return updated, filter_state_cookie(updated)
@@ -1625,16 +1633,23 @@ def update_filter_state_for_request(path: str, q: dict[str, str], state: dict[st
 
 
 def filter_card(form_html: str, q: dict[str, str], keys: list[str] | tuple[str, ...]) -> str:
-    open_attr = " open" if active_query(q, keys) or q.get("reset_filters") == "1" else ""
+    path = _REQUEST_CONTEXT.get("path")
+    state = _REQUEST_CONTEXT.get("filter_state") if isinstance(_REQUEST_CONTEXT.get("filter_state"), dict) else {}
+    section = FILTER_SECTIONS.get(str(path), (None, ()))[0]
+    saved_open = state.get(section, {}).get(FILTER_STATE_OPEN_KEY) == "1" if section else False
+    is_open = active_query(q, keys) or q.get("reset_filters") == "1" or q.get(FILTER_OPEN_KEY) == "1" or saved_open
+    open_attr = " open" if is_open else ""
     action_match = re.search(r'action=["\']([^"\']+)["\']', form_html)
     reset_href = action_match.group(1) if action_match else current_request_path({"PATH_INFO": "/", "QUERY_STRING": ""})
     reset_href = f"{reset_href}?reset_filters=1"
     reset_link = f"<a class='button reset-filters' href='{esc(reset_href)}'>Сбросить фильтры</a>"
+    hidden_open = f'<input type="hidden" name="{FILTER_OPEN_KEY}" value="{'1' if is_open else '0'}" data-filters-open-field>'
     if "</form>" in form_html:
-        form_html = form_html.replace("</form>", reset_link + "</form>", 1)
+        form_html = form_html.replace("</form>", hidden_open + reset_link + "</form>", 1)
     else:
         form_html += reset_link
-    return f"<details class='filter-card'{open_attr}><summary class='filter-summary'>Фильтры</summary>{form_html}</details>"
+    script = "<script>(function(d){var f=d.querySelector('[data-filters-open-field]');if(!f)return;function sync(){f.value=d.open?'1':'0';}d.addEventListener('toggle',sync);var form=d.querySelector('form');if(form)form.addEventListener('submit',sync);})(document.currentScript.previousElementSibling);</script>"
+    return f"<details class='filter-card'{open_attr}><summary class='filter-summary'>Фильтры</summary>{form_html}</details>{script}"
 
 
 def form_card(summary: str, form_html: str, *, open_by_default: bool = False) -> str:
@@ -3902,6 +3917,8 @@ def app(environ, start_response):
         "current_user_id": current_user_id,
         "current_role_key": normalize_role(current_user["role_key"] if current_user else None),
         "redirect_to": current_request_path(environ),
+        "path": path,
+        "filter_state": filter_state,
     })
     try:
         if path == "/logout":
@@ -3961,6 +3978,7 @@ def app(environ, start_response):
         if filter_redirect:
             return redirect(start_response, filter_redirect)
         filter_state, filter_cookie = update_filter_state_for_request(path, q, filter_state)
+        _REQUEST_CONTEXT["filter_state"] = filter_state
         if path in {"/", "/dashboard"}: response = dashboard_page(repo)
         elif path == "/routes": response = routes_page(repo, q)
         elif path == "/tariffs": response = tariffs_page(repo, q)
