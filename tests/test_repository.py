@@ -1,9 +1,10 @@
 import json
 import sqlite3
 import unittest
+from decimal import Decimal
 
 from app.db import init_db, run_lightweight_migrations
-from app.repository import BusinessRuleError, Repository
+from app.repository import BusinessRuleError, Repository, _values_equal
 
 
 class RepositoryBusinessRulesTest(unittest.TestCase):
@@ -180,7 +181,7 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
         self.assertIn("Рабочий статус: Свободен → Проблемный", payload["details"])
         self.assertIn("Провайдер: Miatel → Zadarma", payload["details"])
         self.assertIn("Проект: — → ИТМ", payload["details"])
-        self.assertIn("Комментарий изменён", payload["details"])
+        self.assertIn("Комментарий: — → new comment", payload["details"])
         self.assertNotIn("provider_id", payload["details"])
 
     def test_phone_reactivation_history_includes_forced_review_required_change(self):
@@ -216,7 +217,7 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
             provider_prefix_id=None,
             comment="changed",
             is_actual=False,
-            priority_status="unknown",
+            priority_status="priority",
             updated_by=self.admin_id,
         )
 
@@ -228,7 +229,32 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
         self.assertIn("Название маршрута: Италия/Miatel/Pool_A@ → Италия/Miatel/Pool_B@", payload["details"])
         self.assertIn("Провайдер: Miatel → DemoTel", payload["details"])
         self.assertIn("Активность маршрута: Да → Нет", payload["details"])
-        self.assertIn("Комментарий изменён", payload["details"])
+        self.assertIn("Комментарий: — → changed", payload["details"])
+        self.assertIn("Приоритет: Неизвестно → Приоритетный", payload["details"])
+
+
+    def test_route_long_comment_history_is_truncated(self):
+        old_comment = "Старый " + "комментарий " * 20
+        new_comment = "Новый " + "комментарий " * 20
+        route_id = self.repo.create_route(
+            country_id=self.country_id, provider_id=self.provider_id, name="Италия/Miatel/Pool_Long@",
+            cli_source_type="pool", cli_source_label="Pool_Long", created_by=self.admin_id, comment=old_comment,
+        )
+
+        self.repo.update_route(
+            route_id, name="Италия/Miatel/Pool_Long@", provider_id=self.provider_id, provider_prefix_id=None,
+            comment=new_comment, is_actual=True, priority_status="unknown", updated_by=self.admin_id,
+        )
+
+        row = self.conn.execute(
+            "SELECT new_value FROM route_history WHERE route_id = ? AND action = 'updated' ORDER BY id DESC",
+            (route_id,),
+        ).fetchone()
+        payload = json.loads(row["new_value"])
+        self.assertIn("Комментарий: Старый", payload["details"])
+        self.assertIn("→ Новый", payload["details"])
+        self.assertIn("…", payload["details"])
+        self.assertLess(len(payload["details"]), 230)
 
     def test_route_phone_add_remove_history_is_not_duplicated_by_field_history(self):
         phone_id = self.create_phone(number="393331234595")
@@ -246,6 +272,93 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
         ).fetchall()
         self.assertEqual({row["action"]: row["count"] for row in events}, {"added": 1, "removed": 1})
 
+
+
+    def _latest_phone_update_details(self, phone_id):
+        row = self.conn.execute(
+            "SELECT new_value FROM phone_number_history WHERE phone_number_id = ? AND action = 'updated' ORDER BY id DESC",
+            (phone_id,),
+        ).fetchone()
+        self.assertIsNotNone(row)
+        return json.loads(row["new_value"])["details"]
+
+    def test_phone_money_history_ignores_unchanged_numeric_equivalents(self):
+        phone_id = self.repo.create_phone_number(
+            country_id=self.country_id, provider_id=self.provider_id, number="393331234596",
+            assignment_type="pool_number", status="used", created_by=self.admin_id,
+            connection_cost="50", monthly_fee="50.00", currency_id=self.currency_id,
+        )
+
+        self.repo.update_phone_number(
+            phone_id, country_id=self.country_id, provider_id=self.provider_id, number="393331234596",
+            assignment_type="pool_number", status="used", is_active=True, updated_by=self.admin_id,
+            connection_cost="50.0", monthly_fee="50.000000", currency_id=self.currency_id, comment="real change",
+        )
+
+        details = self._latest_phone_update_details(phone_id)
+        self.assertIn("Комментарий: — → real change", details)
+        self.assertNotIn("Стоимость подключения", details)
+        self.assertNotIn("Абонентская плата", details)
+        self.assertTrue(_values_equal(Decimal("50.000000"), "50", "money"))
+
+    def test_phone_monthly_fee_only_logs_monthly_fee(self):
+        phone_id = self.repo.create_phone_number(
+            country_id=self.country_id, provider_id=self.provider_id, number="393331234597",
+            assignment_type="pool_number", status="used", created_by=self.admin_id,
+            connection_cost="50", monthly_fee="50", currency_id=self.currency_id,
+        )
+
+        self.repo.update_phone_number(
+            phone_id, country_id=self.country_id, provider_id=self.provider_id, number="393331234597",
+            assignment_type="pool_number", status="used", is_active=True, updated_by=self.admin_id,
+            connection_cost="50.00", monthly_fee="60", currency_id=self.currency_id,
+        )
+
+        details = self._latest_phone_update_details(phone_id)
+        self.assertIn("Абонентская плата: 50 → 60", details)
+        self.assertNotIn("Стоимость подключения", details)
+
+    def test_phone_connection_cost_only_logs_connection_cost(self):
+        phone_id = self.repo.create_phone_number(
+            country_id=self.country_id, provider_id=self.provider_id, number="393331234598",
+            assignment_type="pool_number", status="used", created_by=self.admin_id,
+            connection_cost="50", monthly_fee="50", currency_id=self.currency_id,
+        )
+
+        self.repo.update_phone_number(
+            phone_id, country_id=self.country_id, provider_id=self.provider_id, number="393331234598",
+            assignment_type="pool_number", status="used", is_active=True, updated_by=self.admin_id,
+            connection_cost="60", monthly_fee="50.00", currency_id=self.currency_id,
+        )
+
+        details = self._latest_phone_update_details(phone_id)
+        self.assertIn("Стоимость подключения: 50 → 60", details)
+        self.assertNotIn("Абонентская плата", details)
+
+    def test_reactivation_review_can_be_cleared_without_repeating_history(self):
+        phone_id = self.create_phone(status="problem", is_active=False, number="393331234589")
+        self.repo.update_phone_number(
+            phone_id, country_id=self.country_id, provider_id=self.provider_id, number="393331234589",
+            assignment_type="pool_number", status="used", is_active=True, updated_by=self.admin_id,
+            connection_cost="50", monthly_fee="50", currency_id=self.currency_id, review_required=False,
+        )
+        first_details = self._latest_phone_update_details(phone_id)
+        self.assertIn("Активен у провайдера: Нет → Да", first_details)
+        self.assertIn("Требует проверки: Нет → Да", first_details)
+
+        self.repo.update_phone_number(
+            phone_id, country_id=self.country_id, provider_id=self.provider_id, number="393331234589",
+            assignment_type="pool_number", status="used", is_active=True, updated_by=self.admin_id,
+            connection_cost="50.00", monthly_fee="50.000000", currency_id=self.currency_id, review_required=False,
+        )
+
+        row = self.conn.execute("SELECT review_required FROM phone_numbers WHERE id = ?", (phone_id,)).fetchone()
+        self.assertEqual(row["review_required"], 0)
+        details = self._latest_phone_update_details(phone_id)
+        self.assertEqual(details, "Требует проверки: Да → Нет")
+        self.assertNotIn("Активен у провайдера: Нет → Да", details)
+        self.assertNotIn("Стоимость подключения", details)
+        self.repo.add_phone_to_route(route_id=self.route_id, phone_number_id=phone_id, usage_type="pool_member", added_by=self.admin_id)
 
     def test_old_phone_statuses_are_normalized_on_create(self):
         cases = {"reserved": "free", "blocked": "problem", "disabled": "problem", "": "unknown", "invalid": "unknown"}

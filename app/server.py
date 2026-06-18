@@ -3497,8 +3497,8 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
         provider_id = parse_int(data.get("provider_id"))
         review_required = 1 if data.get("review_required") == "1" else 0
         if provider_id is None and review_required == 0:
-            existing_phone = repo.conn.execute("SELECT deactivated_at FROM phone_numbers WHERE id = ?", (phone_id,)).fetchone()
-            if is_active == 1 and existing_phone and existing_phone["deactivated_at"] is not None:
+            existing_phone = repo.conn.execute("SELECT is_active FROM phone_numbers WHERE id = ?", (phone_id,)).fetchone()
+            if is_active == 1 and existing_phone and int(existing_phone["is_active"]) == 0:
                 review_required = 1
             else:
                 raise BusinessRuleError("Нельзя снять флаг проверки, пока не выбран провайдер")
