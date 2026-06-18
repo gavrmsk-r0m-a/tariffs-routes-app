@@ -350,6 +350,8 @@ def breadcrumbs(title: str) -> str:
         "Главная": [("Главная", None)],
         "Маршруты": [("Главная", "/dashboard"), ("Маршруты", None)],
         "Номера маршрута": [("Главная", "/dashboard"), ("Маршруты", "/routes"), ("Номера маршрута", None)],
+        "История маршрута": [("Главная", "/dashboard"), ("Маршруты", "/routes"), ("История маршрута", None)],
+        "История номера": [("Главная", "/dashboard"), ("Купленные номера", "/phones"), ("История номера", None)],
         "Тарифы": [("Главная", "/dashboard"), ("Тарифы", None)],
         "Купленные номера": [("Главная", "/dashboard"), ("Купленные номера", None)],
         "Кампании прозвона": [("Главная", "/dashboard"), ("Кампании прозвона", None)],
@@ -655,6 +657,9 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .journal-card .table-scroll {{ min-height: 360px; }}
     .empty-state {{ padding: 24px 14px; color: var(--muted); background: var(--surface-muted); }}
     .compact-actions, .actions {{ white-space: nowrap; }}
+    td.history-cell, th[data-col='history'] {{ width: 34px; min-width: 34px; max-width: 34px; padding-left: 6px; padding-right: 6px; text-align: center; }}
+    .history-link {{ display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 999px; color: var(--accent-strong); text-decoration: none; font-size: 16px; line-height: 1; font-weight: 800; }}
+    .history-link:hover {{ background: var(--accent-soft); text-decoration: none; }}
     .scope-cards {{ display: grid; grid-template-columns: repeat(3, minmax(190px, 1fr)); gap: 8px; }}
     .scope-card {{ min-height: 58px; cursor: pointer; display: flex; align-items: center; gap: 9px; padding: 9px 10px; border-radius: var(--radius-control); box-shadow: none; font-weight: 650; line-height: 1.2; }}
     .scope-card:hover {{ transform: none; background: var(--surface-muted); }}
@@ -1434,11 +1439,11 @@ def current_actor_id() -> int:
 def section_for_get_path(path: str) -> str | None:
     if path in {"/", "/dashboard"}:
         return "dashboard"
-    if path == "/routes" or (path.startswith("/routes/") and (path.endswith("/numbers") or path.endswith("/numbers/manage"))):
+    if path == "/routes" or (path.startswith("/routes/") and (path.endswith("/numbers") or path.endswith("/numbers/manage") or path.endswith("/history"))):
         return "routes"
     if path == "/tariffs":
         return "tariffs"
-    if path == "/phones":
+    if path == "/phones" or (path.startswith("/phones/") and path.endswith("/history")):
         return "phones"
     if path == "/companies":
         return "companies"
@@ -2180,6 +2185,104 @@ def dashboard_page(repo: Repository) -> bytes:
 """
     return page("Главная", body)
 
+
+
+def history_icon_link(href: str) -> str:
+    return f"<a class='history-link' href='{esc(href)}' title='История' aria-label='История'>ⓘ</a>"
+
+
+def _json_dict(value: object) -> dict:
+    if not value:
+        return {}
+    try:
+        parsed = json.loads(str(value))
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def readable_bool(value: object) -> str:
+    return "Да" if str(value) in {"1", "true", "True", "yes", "Да"} else "Нет"
+
+
+def readable_history_event(row: sqlite3.Row, *, subject: str) -> tuple[str, str, str]:
+    source = row["source"]
+    action = row["action"]
+    reason = row["reason"] or ""
+    comment = row["comment"] or ""
+    old_values = _json_dict(row["old_value"])
+    new_values = _json_dict(row["new_value"])
+    details = comment or reason or ""
+    if source == "route_phone":
+        route_name = row["route_name"] or "маршрут"
+        phone_number = row["phone_number"] or "номер"
+        if action == "added":
+            if subject == "phone":
+                return "Номер добавлен в маршрут", f"Номер добавлен в маршрут: {route_name}", details
+            return "Номер добавлен", f"Номер добавлен в маршрут: {phone_number}", details
+        if reason == "phone_number.deactivated":
+            return "Связь закрыта", "Связь с маршрутом закрыта из-за деактивации номера у провайдера", details
+        if subject == "phone":
+            message = f"Номер исключён из маршрута: {route_name}"
+        else:
+            message = f"Номер исключён из маршрута: {phone_number}"
+        if reason:
+            message += f". Причина: {reason}"
+        return "Номер исключён", message, comment or reason
+    if source == "phone":
+        if action == "created":
+            return "Номер создан", "Номер создан или импортирован", details
+        changes = []
+        if "status" in old_values or "status" in new_values:
+            changes.append(f"Рабочий статус изменён: {STATUS_LABELS.get(str(old_values.get('status')), old_values.get('status', '—'))} → {STATUS_LABELS.get(str(new_values.get('status')), new_values.get('status', '—'))}")
+        if "is_active" in old_values or "is_active" in new_values:
+            changes.append(f"Активен у провайдера изменено: {readable_bool(old_values.get('is_active'))} → {readable_bool(new_values.get('is_active'))}")
+        if "review_required" in old_values or "review_required" in new_values:
+            changes.append(f"Требует проверки изменено: {readable_bool(old_values.get('review_required'))} → {readable_bool(new_values.get('review_required'))}")
+        if not changes:
+            changes.append("Номер изменён")
+        return "Номер изменён", "; ".join(changes), details
+    if action == "created":
+        return "Маршрут создан", "Маршрут создан", details
+    return "Маршрут изменён", "Маршрут изменён", details
+
+
+def history_table(rows: list[sqlite3.Row], *, subject: str) -> str:
+    if not rows:
+        return "<div class='empty-state'>История пока пустая</div>"
+    html_rows = []
+    for row in rows:
+        event, description, details = readable_history_event(row, subject=subject)
+        html_rows.append(
+            f"<tr><td>{esc(row['changed_at'])}</td><td>{esc(row['user_name'] or '—')}</td><td>{esc(event)}</td>"
+            f"{clamp_cell('details', esc(description), description)}{clamp_cell('comment', esc(details or '—'), details or '—', classes='comment-cell')}</tr>"
+        )
+    return "<section class='journal-card'><div class='table-scroll'><table><thead><tr><th>Дата</th><th>Пользователь</th><th>Событие</th><th>Описание</th><th>Детали</th></tr></thead><tbody>" + "".join(html_rows) + "</tbody></table></div></section>"
+
+
+def phone_history_page(repo: Repository, phone_id: int) -> bytes:
+    phone = repo.get_phone_number(phone_id)
+    if phone is None:
+        return page("Не найдено", "<h1>Номер не найден</h1>")
+    body = f"""
+<h1>История номера</h1>
+<section class='card'><h2>{esc(phone['number'])}</h2><p class='muted'>{esc(phone['country_name'])} · {esc(phone['provider_name'] or 'Без провайдера')}</p><p><a href='/phones'>← Назад к купленным номерам</a> · <a href='/phones/{phone_id}/edit'>Редактировать номер</a></p></section>
+{history_table(repo.list_phone_history(phone_id), subject='phone')}
+"""
+    return page("История номера", body)
+
+
+def route_history_page(repo: Repository, route_id: int) -> bytes:
+    route = repo.get_route(route_id)
+    if route is None:
+        return page("Не найдено", "<h1>Маршрут не найден</h1>")
+    body = f"""
+<h1>История маршрута</h1>
+<section class='card'><h2>{esc(route['name'])}</h2><p class='muted'>{esc(route['country_name'])} · {esc(route['provider_name'])}</p><p><a href='/routes'>← Назад к маршрутам</a> · <a href='/routes/{route_id}/edit'>Редактировать маршрут</a></p></section>
+{history_table(repo.list_route_history(route_id), subject='route')}
+"""
+    return page("История маршрута", body)
+
 def routes_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
     q = q or {}
     filters = {"country_id": q.get("country_id"), "provider_id": q.get("provider_id"), "prefix_id": q.get("prefix_id"), "is_actual": q.get("is_actual"), "search_like": q.get("search")}
@@ -2193,7 +2296,8 @@ def routes_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
         numbers_label = "RND провайдера" if route["cli_source_type"] == "rnd" else f'{route["phone_count"]} номеров'
         numbers = f'{numbers_label} <a class="button route-numbers-action" href="/routes/{route["id"]}/numbers">Показать номера</a>'
         edit = f"<a class='button edit-action' href='/routes/{route['id']}/edit' title='Редактировать' aria-label='Редактировать' data-tooltip='Редактировать'>Редактировать</a>" if can_write("routes") else ""
-        rows.append(f"<tr><td data-col='geo'>{esc(route['country_name'])}</td>{clamp_cell('route', esc(route['name']), route['name'], extra_attrs="data-copy-column='route-name'")}<td data-col='provider'>{esc(route['provider_name'])}</td><td data-col='prefix'>{esc(prefix)}</td><td data-col='actual'>{'Да' if route['is_actual'] else 'Нет'}</td>{clamp_cell('comment', esc(route['comment']), route['comment'], classes='comment-cell')}<td data-col='numbers'>{numbers}</td><td data-col='actions' class='actions'>{edit}</td></tr>")
+        history = history_icon_link(f"/routes/{route['id']}/history")
+        rows.append(f"<tr><td data-col='geo'>{esc(route['country_name'])}</td>{clamp_cell('route', esc(route['name']), route['name'], extra_attrs="data-copy-column='route-name'")}<td data-col='provider'>{esc(route['provider_name'])}</td><td data-col='prefix'>{esc(prefix)}</td><td data-col='actual'>{'Да' if route['is_actual'] else 'Нет'}</td>{clamp_cell('comment', esc(route['comment']), route['comment'], classes='comment-cell')}<td data-col='numbers'>{numbers}</td><td data-col='history' class='history-cell'>{history}</td><td data-col='actions' class='actions'>{edit}</td></tr>")
     filters_html = f"""<form class="filter-grid" method="get" action="/routes">
 <label>ГЕО <select name="country_id">{options(repo, 'countries', selected=q.get('country_id'), empty='Все')}</select></label>
 <label>Провайдер <select name="provider_id">{options(repo, 'providers', selected=q.get('provider_id'), empty='Все')}</select></label>
@@ -2212,7 +2316,7 @@ def routes_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
   <p class="muted wide">Название будет сформировано автоматически по выбранным полям. Свободный ввод названия отключён.</p>
   <button>Сохранить</button>
 </form>"""
-    table_html = f"{data_table('routes', [('geo', 'ГЕО'), ('route', f"<span class='copyable-header'>Название маршрута {copy_column_button('route-name')}</span>"), ('provider', 'Провайдер'), ('prefix', 'Префикс'), ('actual', 'Актуальный'), ('comment', 'Комментарий'), ('numbers', 'Номера'), ('actions', 'Действия')], ''.join(rows))}"
+    table_html = f"{data_table('routes', [('geo', 'ГЕО'), ('route', f"<span class='copyable-header'>Название маршрута {copy_column_button('route-name')}</span>"), ('provider', 'Провайдер'), ('prefix', 'Префикс'), ('actual', 'Актуальный'), ('comment', 'Комментарий'), ('numbers', 'Номера'), ('history', 'Ист.'), ('actions', 'Действия')], ''.join(rows))}"
     body = f"""
 <h1>Маршруты</h1>
 {filter_card(filters_html, q, ('country_id', 'provider_id', 'prefix_id', 'is_actual', 'search'))}
@@ -2314,8 +2418,9 @@ def phones_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
     for phone in records:
         assignment_label = phone["assignment_type_label"] or ASSIGNMENT_LABELS.get(phone["assignment_type"], phone["assignment_type"])
         actions = f"<a class='button edit-action' href='/phones/{phone['id']}/edit' title='Редактировать' aria-label='Редактировать' data-tooltip='Редактировать'>Редактировать</a>" if can_write("phones") else ""
+        history = history_icon_link(f"/phones/{phone['id']}/history")
         review_badge = "<span class='badge'>Требует проверки</span>" if phone["review_required"] else ""
-        rows.append(f"""<tr><td data-col='number' data-copy-column='phone-number'>{esc(phone['number'])} {review_badge}</td><td data-col='geo'>{esc(phone['country_name'])}</td><td data-col='provider'>{esc(phone['provider_name'])}</td><td data-col='project'>{esc(phone['project_label'])}</td><td data-col='assignment'>{esc(assignment_label)}</td><td data-col='status'>{dot_status(STATUS_LABELS.get(phone['status'], phone['status']), 'danger' if phone['status'] == 'problem' else ('warning' if phone['status'] == 'unknown' else ('neutral' if phone['status'] == 'free' else 'ok')))}</td><td data-col='active'>{dot_status('Да' if phone['is_active'] else 'Нет', 'ok' if phone['is_active'] else 'danger')}</td>{clamp_cell('routes', esc(phone['route_names']), phone['route_names']) if phone['route_names'] else "<td data-col='routes'>—</td>"}<td data-col='connection'>{esc(phone['connection_cost'])}</td><td data-col='monthly'>{esc(phone['monthly_fee'])}</td><td data-col='currency'>{esc(phone['currency_code'])}</td><td data-col='phone_type'>{esc(phone['phone_type'])}</td><td data-col='tariff'>{esc(phone['tariff_label'])}</td><td data-col='created'>{esc(phone['created_at'])}</td><td data-col='updated'>{esc(phone['updated_at'])}</td><td data-col='deactivated'>{esc(phone['deactivated_at'])}</td>{clamp_cell('comment', esc(phone['comment'] or '—'), phone['comment'] or '—', classes='comment-cell')}<td data-col='actions'>{actions}</td></tr>""")
+        rows.append(f"""<tr><td data-col='number' data-copy-column='phone-number'>{esc(phone['number'])} {review_badge}</td><td data-col='geo'>{esc(phone['country_name'])}</td><td data-col='provider'>{esc(phone['provider_name'])}</td><td data-col='project'>{esc(phone['project_label'])}</td><td data-col='assignment'>{esc(assignment_label)}</td><td data-col='status'>{dot_status(STATUS_LABELS.get(phone['status'], phone['status']), 'danger' if phone['status'] == 'problem' else ('warning' if phone['status'] == 'unknown' else ('neutral' if phone['status'] == 'free' else 'ok')))}</td><td data-col='active'>{dot_status('Да' if phone['is_active'] else 'Нет', 'ok' if phone['is_active'] else 'danger')}</td>{clamp_cell('routes', esc(phone['route_names']), phone['route_names']) if phone['route_names'] else "<td data-col='routes'>—</td>"}<td data-col='connection'>{esc(phone['connection_cost'])}</td><td data-col='monthly'>{esc(phone['monthly_fee'])}</td><td data-col='currency'>{esc(phone['currency_code'])}</td><td data-col='phone_type'>{esc(phone['phone_type'])}</td><td data-col='tariff'>{esc(phone['tariff_label'])}</td><td data-col='created'>{esc(phone['created_at'])}</td><td data-col='updated'>{esc(phone['updated_at'])}</td><td data-col='deactivated'>{esc(phone['deactivated_at'])}</td>{clamp_cell('comment', esc(phone['comment'] or '—'), phone['comment'] or '—', classes='comment-cell')}<td data-col='history' class='history-cell'>{history}</td><td data-col='actions'>{actions}</td></tr>""")
     filters_html = f"""<form class="filter-grid" method="get" action="/phones">
 <label>ГЕО <select name="country_id">{options(repo, 'countries', selected=q.get('country_id'), empty='Все')}</select></label>
 <label>Провайдер <select name="provider_id">{options(repo, 'providers', selected=q.get('provider_id'), empty='Все')}</select></label>
@@ -2325,7 +2430,7 @@ def phones_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
 <label>Поиск по номеру <input name="number" value="{esc(q.get('number'))}"></label><button>Найти</button></form>"""
     create_html = f"""<form class="form-grid" method="post" action="/phones/create">
 <label>Номер <span class="required">*</span><input name="number" placeholder="393331234567"></label><label>ГЕО <span class="required">*</span><select name="country_id">{active_options(repo, 'countries')}</select></label><label>Провайдер <span class="required">*</span><select name="provider_id"><option value="">—</option>{active_options(repo, 'providers')}</select></label><label>Проект <select name="project_label">{project_options(repo, empty='—')}</select></label><label>Назначение <span class="required">*</span><select name="assignment_type">{assignment_options(repo)}</select></label><label>Рабочий статус <span class="required">*</span><select name="status">{phone_status_options('unknown')}</select></label><label>Стоимость подключения <input name="connection_cost"></label><label>Абонентская плата <input name="monthly_fee"></label><label>Валюта <select name="currency_id"><option value="">—</option>{active_options(repo, 'currencies', 'code')}</select></label><label>Тип номера <select name="phone_type">{phone_type_options(repo, empty='—')}</select></label><label>Тариф <input name="tariff_label"></label><label>Комментарий <input name="comment"></label><button>Сохранить</button></form>"""
-    table_html = f"{data_table('phones', [('number', f"<span class='copyable-header'>Номер {copy_column_button('phone-number')}</span>"), ('geo', 'ГЕО'), ('provider', 'Провайдер'), ('project', 'Проект'), ('assignment', 'Назначение'), ('status', 'Рабочий статус'), ('active', 'Активен у провайдера'), ('routes', 'Маршруты'), ('connection', 'Подключение'), ('monthly', 'Абонплата'), ('currency', 'Валюта'), ('phone_type', 'Тип номера'), ('tariff', 'Тариф'), ('created', 'Дата создания'), ('updated', 'Дата изменения'), ('deactivated', 'Дата отключения'), ('comment', 'Комментарий'), ('actions', 'Действия')], ''.join(rows))}"
+    table_html = f"{data_table('phones', [('number', f"<span class='copyable-header'>Номер {copy_column_button('phone-number')}</span>"), ('geo', 'ГЕО'), ('provider', 'Провайдер'), ('project', 'Проект'), ('assignment', 'Назначение'), ('status', 'Рабочий статус'), ('active', 'Активен у провайдера'), ('routes', 'Маршруты'), ('connection', 'Подключение'), ('monthly', 'Абонплата'), ('currency', 'Валюта'), ('phone_type', 'Тип номера'), ('tariff', 'Тариф'), ('created', 'Дата создания'), ('updated', 'Дата изменения'), ('deactivated', 'Дата отключения'), ('comment', 'Комментарий'), ('history', 'Ист.'), ('actions', 'Действия')], ''.join(rows))}"
     body = f"""
 <h1>Купленные номера</h1>
 {filter_card(filters_html, q, ('country_id', 'provider_id', 'project', 'assignment_type', 'status', 'number'))}
@@ -2950,7 +3055,7 @@ def company_routing_settings_page(repo: Repository, q: dict[str, str] | None = N
   <label>Комментарий <input name="comment"></label>
   <button>Создать</button>
 </form>"""
-    table_html = f"""{data_table('company_routing_settings', [('geo', 'GEO'), ('server', 'Сервер'), ('company_id', 'ID кампании'), ('company_name', 'Название кампании'), ('routing_mode', 'Режим маршрутизации'), ('autorotation', 'Авторотация'), ('route', 'Маршрут кампании'), ('active', 'Активна'), ('valid_from', 'Действует с'), ('valid_to', 'Действует до'), ('comment', 'Комментарий'), ('actions', 'Действия')], ''.join(rows))}"""
+    table_html = f"""{data_table('company_routing_settings', [('geo', 'GEO'), ('server', 'Сервер'), ('company_id', 'ID кампании'), ('company_name', 'Название кампании'), ('routing_mode', 'Режим маршрутизации'), ('autorotation', 'Авторотация'), ('route', 'Маршрут кампании'), ('active', 'Активна'), ('valid_from', 'Действует с'), ('valid_to', 'Действует до'), ('comment', 'Комментарий'), ('history', 'Ист.'), ('actions', 'Действия')], ''.join(rows))}"""
     body = f"""
 <h1>Администрирование → Схема маршрутизации кампаний</h1>
 {filter_card(filters_html, q, ('country_id', 'server_id', 'company_id_external', 'routing_mode', 'is_active', 'show_history'))}
@@ -3726,6 +3831,8 @@ def app(environ, start_response):
         elif path == "/admin/dictionaries": response = dictionaries_page(repo, q)
         elif path == "/admin/telegram": response = telegram_page(repo)
         elif path == "/admin/change-log": response = change_log_page(repo)
+        elif path.startswith("/routes/") and path.endswith("/history"): response = route_history_page(repo, int(path.strip("/").split("/")[1]))
+        elif path.startswith("/phones/") and path.endswith("/history"): response = phone_history_page(repo, int(path.strip("/").split("/")[1]))
         elif path.startswith("/routes/") and path.endswith("/edit"): response = route_edit_page(repo, int(path.strip("/").split("/")[1]))
         elif path.startswith("/phones/") and path.endswith("/edit"): response = phone_edit_page(repo, int(path.strip("/").split("/")[1]))
         elif path.startswith("/companies/") and path.endswith("/edit"): response = company_edit_page(repo, int(path.strip("/").split("/")[1]))
