@@ -98,6 +98,17 @@ def copy_column_button(column: str) -> str:
     return f"<button class='copy-column-button' type='button' data-copy-action='{esc(column)}' title='Скопировать колонку' aria-label='Скопировать колонку'>{nav_icon('copy')}</button>"
 
 
+COPY_SUCCESS_ICON = """<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="-0.335 -0.335 16 16" id="Check-Square--Streamline-Ultimate" height="16" width="16">
+  <desc>
+    Check Square Streamline Icon: https://streamlinehq.com
+  </desc>
+  <path fill="#78eb7b" d="M10.41916225 4.4521258249999995c0.33802649999999995 0 0.61205025 0.27402374999999995 0.61205025 0.6120438624999999V12.408612999999999c0 0.33802649999999995 -0.27402374999999995 0.61205025 -0.61205025 0.61205025H3.0747253249999993c-0.33802011249999997 0 -0.6120438624999999 -0.27402374999999995 -0.6120438624999999 -0.61205025V5.0641696875c0 -0.3380775999999999 0.2739662625 -0.61210135 0.6120438624999999 -0.6120438624999999H10.41916225Z" stroke-width="0.67"></path>
+  <path stroke="#191919" stroke-linecap="round" stroke-linejoin="round" d="M14.091527624999998 1.0852618 6.441027249999999 10.571887374999998 3.3808845874999998 7.511699999999999" stroke-width="0.67"></path>
+  <path stroke="#191919" stroke-linecap="round" stroke-linejoin="round" d="M12.255185249999998 7.206313624999999v6.4263998749999995c0 0.33796262499999996 -0.27402374999999995 0.6119863749999999 -0.61205025 0.6119863749999999H1.8505609499999998c-0.33802649999999995 0 -0.61205025 -0.27402374999999995 -0.61205025 -0.6119863749999999V3.8400819625c0 -0.33802011249999997 0.27402374999999995 -0.6120438624999999 0.61205025 -0.6120438624999999H8.888972749999999" stroke-width="0.67"></path>
+</svg>"""
+COPY_SUCCESS_ICON_JS = json.dumps(COPY_SUCCESS_ICON)
+
+
 def csv_response(filename: str, headers: list[str], rows: list[list[object]]) -> bytes:
     output = io.StringIO(newline="")
     writer = csv.writer(output, delimiter=";")
@@ -538,8 +549,8 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     tr:last-child td {{ border-bottom: 0; }}
     th {{ background: linear-gradient(180deg, var(--surface-muted) 0%, var(--surface-strong) 100%); text-align: left; font-weight: 760; color: var(--text); position: sticky; top: 0; z-index: 1; font-size: 12px; letter-spacing: .015em; white-space: nowrap; }}
     .copyable-header {{ display: inline-flex; align-items: center; gap: 6px; }}
-    .copy-column-button {{ min-height: 24px; padding: 2px 6px; font-size: 12px; color: var(--accent-strong); border-color: var(--border-strong); background: var(--accent-soft); box-shadow: none; }}
-    .copy-column-button svg {{ width: 15px; height: 15px; }}
+    .copy-column-button {{ display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 24px; min-height: 24px; padding: 2px 6px; font-size: 12px; color: var(--accent-strong); border-color: var(--border-strong); background: var(--accent-soft); box-shadow: none; }}
+    .copy-column-button svg {{ flex: 0 0 16px; width: 16px; height: 16px; }}
     .copy-column-button:hover {{ background: var(--cyber-soft); border-color: var(--accent); }}
     .copy-column-status {{ margin-left: 4px; color: var(--success); font-size: 12px; font-weight: 720; white-space: nowrap; }}
     tbody tr:nth-child(even) {{ background: var(--surface-muted); }}
@@ -1152,7 +1163,11 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
         document.body.removeChild(textarea);
       }}
     }}
+    const copySuccessIcon = {COPY_SUCCESS_ICON_JS};
     document.querySelectorAll("[data-copy-action]").forEach((button) => {{
+      const defaultIcon = button.innerHTML;
+      const defaultTitle = button.title;
+      let successTimer = null;
       button.addEventListener("click", async () => {{
         const table = button.closest("table");
         if (!table) return;
@@ -1170,16 +1185,16 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
         }} catch (error) {{
           fallbackCopyText(text);
         }}
-        let status = button.parentElement.querySelector(".copy-column-status");
-        if (!status) {{
-          status = document.createElement("span");
-          status.className = "copy-column-status";
-          button.parentElement.appendChild(status);
-        }}
-        status.textContent = "Скопировано";
-        window.setTimeout(() => {{
-          status.textContent = "";
-        }}, 1800);
+        button.innerHTML = copySuccessIcon;
+        button.title = "Скопировано";
+        button.setAttribute("aria-label", "Скопировано");
+        if (successTimer) window.clearTimeout(successTimer);
+        successTimer = window.setTimeout(() => {{
+          button.innerHTML = defaultIcon;
+          button.title = defaultTitle;
+          button.setAttribute("aria-label", defaultTitle);
+          successTimer = null;
+        }}, 1500);
       }});
     }});
     const fullTextPopover = (() => {{
