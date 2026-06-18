@@ -316,6 +316,56 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertIn("<details class='filter-card' open>", content)
         self.assertIn('name="search" value="Demo"', content)
 
+    def test_filter_state_persists_per_section_and_reset_keeps_panel_open(self):
+        captured, content = self.request("/phones?number=525550000001&page=2")
+        self.assertEqual(captured["status"], "200 OK")
+        filter_cookie = dict(captured["headers"]).get("Set-Cookie", "")
+        self.assertIn("mvp_filter_state=", filter_cookie)
+        self.assertIn('name="number" value="525550000001"', content)
+        self.assertIn("<details class='filter-card' open>", content)
+
+        captured, _ = self.request("/phones", cookie=f"{self.user_cookie('admin')}; {filter_cookie}")
+        self.assertEqual(captured["status"], "303 See Other")
+        self.assertIn(("Location", "/phones?number=525550000001&_filters_restored=1"), captured["headers"])
+
+        captured, content = self.request("/phones?number=525550000001&_filters_restored=1", cookie=f"{self.user_cookie('admin')}; {filter_cookie}")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn('name="number" value="525550000001"', content)
+        self.assertIn("525550000001", content)
+        self.assertNotIn("525550000002", content)
+        self.assertIn("<details class='filter-card' open>", content)
+        self.assertNotIn("page=2", content)
+
+        captured, content = self.request("/routes", cookie=f"{self.user_cookie('admin')}; {filter_cookie}")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertNotIn("525550000001", content)
+        self.assertNotIn('value="525550000001"', content)
+
+        captured, content = self.request("/routes?search=Demo_A")
+        self.assertEqual(captured["status"], "200 OK")
+        routes_cookie = dict(captured["headers"]).get("Set-Cookie", "")
+        self.assertIn("routes", routes_cookie)
+        self.assertIn("Demo_A", routes_cookie)
+        self.assertIn("<details class='filter-card' open>", content)
+
+        captured, content = self.request("/phones?reset_filters=1", cookie=f"{self.user_cookie('admin')}; {filter_cookie}")
+        self.assertEqual(captured["status"], "200 OK")
+        reset_cookie = dict(captured["headers"]).get("Set-Cookie", "")
+        self.assertIn("mvp_filter_state=", reset_cookie)
+        self.assertNotIn("525550000001", reset_cookie)
+        self.assertIn("<details class='filter-card' open>", content)
+        self.assertIn('name="number" value=""', content)
+        self.assertIn("525550000001", content)
+        self.assertIn("525550000002", content)
+
+    def test_csv_export_uses_active_filters_without_changing_saved_filter_state(self):
+        captured, content = self.request("/phones?number=525550000001&export=csv")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn(("Content-Type", "text/csv; charset=utf-8"), captured["headers"])
+        self.assertNotIn("Set-Cookie", dict(captured["headers"]))
+        self.assertIn("525550000001", content)
+        self.assertNotIn("525550000002", content)
+
     def test_routes_table_renders_route_name_quick_copy(self):
         captured, content = self.request("/routes")
         self.assertEqual(captured["status"], "200 OK")
