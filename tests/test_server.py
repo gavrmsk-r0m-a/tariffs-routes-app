@@ -729,6 +729,85 @@ class ServerSmokeTest(unittest.TestCase):
         finally:
             conn.close()
 
+    def test_reactivation_review_required_can_be_cleared_from_ui_and_logs_only_clear(self):
+        self.request("/routes")
+        conn = server.connect(server.DB_PATH)
+        try:
+            conn.execute(
+                """
+                INSERT INTO phone_numbers(country_id, provider_id, number, normalized_number, project_label, assignment_type, status, is_active, review_required, created_by, deactivated_at, connection_cost, monthly_fee)
+                VALUES (1, 1, '525550009909', '525550009909', 'Demo', 'pool_number', 'free', 0, 0, 1, CURRENT_TIMESTAMP, 50, 50)
+                """
+            )
+            conn.commit()
+            phone_id = conn.execute("SELECT id FROM phone_numbers WHERE number = '525550009909'").fetchone()["id"]
+        finally:
+            conn.close()
+
+        reactivate = urlencode({
+            "number": "525550009909",
+            "country_id": "1",
+            "provider_id": "1",
+            "project_label": "Demo",
+            "assignment_type": "pool_number",
+            "status": "free",
+            "is_active": "1",
+            "connection_cost": "50",
+            "monthly_fee": "50",
+            "currency_id": "",
+            "phone_type": "",
+            "tariff_label": "",
+            "comment": "reactivate",
+        })
+        captured, _ = self.request(f"/phones/{phone_id}/update", method="POST", body=reactivate)
+        self.assertEqual(captured["status"], "303 See Other")
+
+        clear = urlencode({
+            "number": "525550009909",
+            "country_id": "1",
+            "provider_id": "1",
+            "project_label": "Demo",
+            "assignment_type": "pool_number",
+            "status": "free",
+            "is_active": "1",
+            "connection_cost": "50",
+            "monthly_fee": "50",
+            "currency_id": "",
+            "phone_type": "",
+            "tariff_label": "",
+            "comment": "reactivate",
+        })
+        captured, _ = self.request(f"/phones/{phone_id}/update", method="POST", body=clear)
+        self.assertEqual(captured["status"], "303 See Other")
+        conn = server.connect(server.DB_PATH)
+        try:
+            row = conn.execute("SELECT review_required FROM phone_numbers WHERE id = ?", (phone_id,)).fetchone()
+            self.assertEqual(row["review_required"], 0)
+        finally:
+            conn.close()
+
+        captured, content = self.request("/phones")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("525550009909", content)
+        self.assertNotIn("525550009909 <span class='badge'>Требует проверки</span>", content)
+
+        captured, history = self.request(f"/phones/{phone_id}/history")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("Требует проверки: Да → Нет", history)
+        self.assertNotIn("Стоимость подключения: 50 → 50", history)
+        self.assertNotIn("Абонентская плата: 50 → 50", history)
+        conn = server.connect(server.DB_PATH)
+        try:
+            latest = conn.execute(
+                "SELECT new_value FROM phone_number_history WHERE phone_number_id = ? AND action = 'updated' ORDER BY id DESC LIMIT 1",
+                (phone_id,),
+            ).fetchone()["new_value"]
+            self.assertIn("Требует проверки: Да → Нет", latest)
+            self.assertNotIn("Активен у провайдера: Нет → Да", latest)
+            self.assertNotIn("Требует проверки: Нет → Да", latest)
+        finally:
+            conn.close()
+
     def test_phone_csv_export_includes_review_required(self):
         self.request("/routes")
         conn = server.connect(server.DB_PATH)

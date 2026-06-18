@@ -5,7 +5,7 @@ import sqlite3
 import json
 from dataclasses import dataclass
 from datetime import datetime
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
 PHONE_RE = re.compile(r"^[1-9][0-9]{6,20}$")
 VALID_PHONE_STATUSES = {"used", "free", "problem", "unknown"}
@@ -61,6 +61,15 @@ def validate_phone_number(number: str) -> str:
 def eur_price(price: str | Decimal, rate: str | Decimal) -> Decimal:
     value = Decimal(str(price)) * Decimal(str(rate))
     return value.quantize(Decimal("0.000001"), rounding=ROUND_HALF_UP)
+
+
+def _numeric_values_equal(left: object, right: object) -> bool:
+    if left in (None, "") and right in (None, ""):
+        return True
+    try:
+        return Decimal(str(left)) == Decimal(str(right))
+    except (InvalidOperation, TypeError, ValueError):
+        return left == right
 
 
 def query_filters(filters: dict | None, mapping: dict[str, str]) -> tuple[str, list]:
@@ -670,8 +679,11 @@ class Repository:
         normalized = validate_phone_number(number)
         old_values = dict(existing)
         requested_active = 1 if is_active else 0
-        forced_review_required = 1 if (requested_active == 1 and existing["deactivated_at"] is not None) else 0
+        was_inactive = int(existing["is_active"]) == 0
+        forced_review_required = 1 if (was_inactive and requested_active == 1) else 0
         final_review_required = 1 if review_required or forced_review_required else 0
+        if provider_id is None and final_review_required == 0:
+            raise BusinessRuleError("Нельзя снять флаг проверки, пока не выбран провайдер")
         final_status = normalize_phone_status(status)
         if requested_active == 0 and int(existing["is_active"]) == 1 and existing["status"] == "used":
             final_status = "problem"
@@ -759,6 +771,11 @@ class Repository:
 
     def _phone_field_changes(self, old: dict, new: dict) -> list[str]:
         status_labels = {"used": "Используется", "free": "Свободен", "problem": "Проблемный", "unknown": "Неизвестно"}
+        def equivalent(key: str, old_value: object, new_value: object) -> bool:
+            if key in {"connection_cost", "monthly_fee", "outgoing_rate", "incoming_rate"}:
+                return _numeric_values_equal(old_value, new_value)
+            return old_value == new_value
+
         specs = [
             ("provider_id", "Провайдер", lambda v: self._name_by_id("providers", v)),
             ("country_id", "GEO", lambda v: self._name_by_id("countries", v)),
@@ -777,7 +794,7 @@ class Repository:
         ]
         changes: list[str] = []
         for key, label, formatter in specs:
-            if old.get(key) != new.get(key):
+            if not equivalent(key, old.get(key), new.get(key)):
                 changes.append(f"{label}: {formatter(old.get(key))} → {formatter(new.get(key))}")
         if old.get("comment") != new.get("comment"):
             changes.append("Комментарий изменён")

@@ -152,6 +152,143 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
         self.assertEqual(row["review_required"], 1)
         self.assertIsNotNone(row["deactivated_at"])
 
+    def test_reactivated_active_phone_can_clear_review_required_and_history_is_only_clear(self):
+        phone_id = self.create_phone(status="problem", is_active=False, number="393331234596")
+        self.repo.update_phone_number(
+            phone_id,
+            country_id=self.country_id,
+            provider_id=self.provider_id,
+            number="393331234596",
+            assignment_type="pool_number",
+            status="free",
+            is_active=True,
+            updated_by=self.admin_id,
+            currency_id=self.currency_id,
+            review_required=False,
+        )
+        self.repo.update_phone_number(
+            phone_id,
+            country_id=self.country_id,
+            provider_id=self.provider_id,
+            number="393331234596",
+            assignment_type="pool_number",
+            status="free",
+            is_active=True,
+            updated_by=self.admin_id,
+            currency_id=self.currency_id,
+            review_required=False,
+        )
+
+        row = self.conn.execute("SELECT review_required, deactivated_at FROM phone_numbers WHERE id = ?", (phone_id,)).fetchone()
+        self.assertEqual(row["review_required"], 0)
+        self.assertIsNotNone(row["deactivated_at"])
+        history = self.conn.execute(
+            "SELECT new_value FROM phone_number_history WHERE phone_number_id = ? AND action = 'updated' ORDER BY id DESC",
+            (phone_id,),
+        ).fetchone()
+        payload = json.loads(history["new_value"])
+        self.assertEqual(payload["details"], "Требует проверки: Да → Нет")
+        self.assertNotIn("Активен у провайдера: Нет → Да", payload["details"])
+        self.assertNotIn("Требует проверки: Нет → Да", payload["details"])
+
+    def test_clearing_review_required_without_provider_is_rejected(self):
+        phone_id = self.create_phone(status="free", number="393331234597")
+        self.conn.execute("UPDATE phone_numbers SET provider_id = NULL, review_required = 1 WHERE id = ?", (phone_id,))
+        self.conn.commit()
+
+        with self.assertRaisesRegex(BusinessRuleError, "Нельзя снять флаг проверки"):
+            self.repo.update_phone_number(
+                phone_id,
+                country_id=self.country_id,
+                provider_id=None,
+                number="393331234597",
+                assignment_type="pool_number",
+                status="free",
+                is_active=True,
+                updated_by=self.admin_id,
+                currency_id=self.currency_id,
+                review_required=False,
+            )
+
+    def test_past_deactivation_history_does_not_force_review_required_after_manual_clear(self):
+        phone_id = self.create_phone(status="problem", is_active=False, number="393331234598")
+        self.repo.update_phone_number(
+            phone_id,
+            country_id=self.country_id,
+            provider_id=self.provider_id,
+            number="393331234598",
+            assignment_type="pool_number",
+            status="free",
+            is_active=True,
+            updated_by=self.admin_id,
+            currency_id=self.currency_id,
+            review_required=False,
+        )
+        self.repo.update_phone_number(
+            phone_id,
+            country_id=self.country_id,
+            provider_id=self.provider_id,
+            number="393331234598",
+            assignment_type="pool_number",
+            status="free",
+            is_active=True,
+            updated_by=self.admin_id,
+            currency_id=self.currency_id,
+            review_required=False,
+        )
+        self.repo.update_phone_number(
+            phone_id,
+            country_id=self.country_id,
+            provider_id=self.provider_id,
+            number="393331234598",
+            assignment_type="pool_number",
+            status="free",
+            is_active=True,
+            updated_by=self.admin_id,
+            currency_id=self.currency_id,
+            review_required=False,
+        )
+
+        row = self.conn.execute("SELECT review_required FROM phone_numbers WHERE id = ?", (phone_id,)).fetchone()
+        self.assertEqual(row["review_required"], 0)
+
+    def test_unchanged_numeric_phone_fields_are_not_logged_as_changes(self):
+        phone_id = self.repo.create_phone_number(
+            country_id=self.country_id,
+            provider_id=self.provider_id,
+            number="393331234599",
+            assignment_type="pool_number",
+            status="free",
+            created_by=self.admin_id,
+            currency_id=self.currency_id,
+            connection_cost="50",
+            monthly_fee="50",
+        )
+
+        self.repo.update_phone_number(
+            phone_id,
+            country_id=self.country_id,
+            provider_id=self.provider_id,
+            number="393331234599",
+            assignment_type="pool_number",
+            status="free",
+            is_active=True,
+            updated_by=self.admin_id,
+            currency_id=self.currency_id,
+            connection_cost="50",
+            monthly_fee="50",
+            comment="numeric unchanged",
+        )
+
+        row = self.conn.execute(
+            "SELECT new_value FROM phone_number_history WHERE phone_number_id = ? AND action = 'updated' ORDER BY id DESC",
+            (phone_id,),
+        ).fetchone()
+        payload = json.loads(row["new_value"])
+        self.assertNotIn("Стоимость подключения: 50 → 50", payload["details"])
+        self.assertNotIn("Абонентская плата: 50 → 50", payload["details"])
+        self.assertEqual(payload["details"], "Комментарий изменён")
+
     def test_phone_update_history_records_readable_field_changes(self):
         phone_id = self.create_phone(status="free", number="393331234593")
         new_provider_id = self.repo.create_provider("Zadarma", "voip", self.currency_id)
