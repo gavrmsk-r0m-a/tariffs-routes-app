@@ -771,7 +771,10 @@ class ServerSmokeTest(unittest.TestCase):
             conn.close()
         captured, content = self.request("/phones")
         self.assertEqual(captured["status"], "200 OK")
-        self.assertIn("Требует проверки", content)
+        self.assertIn("class='review-required-icon'", content)
+        self.assertIn("title='Требует проверки'", content)
+        phone_row = content[content.index("525550009902"):content.index("525550009902") + 700]
+        self.assertNotIn("<span class='badge'>Требует проверки</span>", phone_row)
         body = urlencode({"number": "525550009902", "country_id": "1", "provider_id": "", "assignment_type": "other", "status": "unknown", "is_active": "1"})
         captured, content = self.request(f"/phones/{phone_id}/update", method="POST", body=body)
         self.assertEqual(captured["status"], "400 Bad Request")
@@ -825,7 +828,7 @@ class ServerSmokeTest(unittest.TestCase):
         captured, content = self.request("/phones")
         self.assertEqual(captured["status"], "200 OK")
         self.assertIn("525550009909", content)
-        self.assertIn("Требует проверки", content)
+        self.assertIn("class='review-required-icon'", content)
 
         clear = urlencode({"number": "525550009909", "country_id": "1", "provider_id": "1", "assignment_type": "pool_number", "status": "used", "is_active": "1", "connection_cost": "50.00", "monthly_fee": "50.000000"})
         captured, _ = self.request(f"/phones/{phone_id}/update", method="POST", body=clear)
@@ -846,6 +849,36 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertEqual(captured["status"], "200 OK")
         phone_row = content[content.index("525550009909"):content.index("525550009909") + 300]
         self.assertNotIn("Требует проверки", phone_row)
+
+
+    def test_phones_review_required_filter_shows_only_review_numbers(self):
+        self.request("/routes")
+        conn = server.connect(server.DB_PATH)
+        try:
+            conn.execute("""
+                INSERT INTO phone_numbers(country_id, provider_id, number, normalized_number, project_label, assignment_type, status, comment, is_active, review_required, created_by)
+                VALUES (1, NULL, '525550009910', '525550009910', 'Demo', 'other', 'unknown', 'Needs review', 1, 1, 1)
+            """)
+            conn.execute("""
+                INSERT INTO phone_numbers(country_id, provider_id, number, normalized_number, project_label, assignment_type, status, comment, is_active, review_required, created_by)
+                VALUES (1, 1, '525550009911', '525550009911', 'Demo', 'other', 'unknown', 'No review', 1, 0, 1)
+            """)
+            conn.commit()
+        finally:
+            conn.close()
+
+        captured, content = self.request("/phones?review_required=1")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn('name="review_required" value="1" checked', content)
+        self.assertIn("525550009910", content)
+        self.assertNotIn("525550009911", content)
+        self.assertIn("<details class='filter-card' open>", content)
+
+        captured, content = self.request("/phones?reset_filters=1")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("525550009910", content)
+        self.assertIn("525550009911", content)
+        self.assertNotIn('name="review_required" value="1" checked', content)
 
     def test_phone_csv_export_includes_review_required(self):
         self.request("/routes")
