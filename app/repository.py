@@ -546,16 +546,27 @@ class Repository:
         ))
 
     def list_routes(self, filters: dict | None = None) -> list[sqlite3.Row]:
+        route_filters = dict(filters or {})
+        prefix_id = route_filters.pop("prefix_id", None)
         where, params = query_filters(
-            filters,
+            route_filters,
             {
                 "country_id": "r.country_id",
                 "provider_id": "r.provider_id",
-                "prefix_id": "COALESCE(r.provider_prefix_id, 0)",
                 "is_actual": "r.is_actual",
                 "search_like": "r.name",
             },
         )
+        if prefix_id not in (None, "", "all"):
+            prefix_row = self.conn.execute("SELECT prefix FROM provider_prefixes WHERE id = ?", (prefix_id,)).fetchone()
+            prefix_clause = "r.provider_prefix_id = ?"
+            if prefix_row and (prefix_row["prefix"] is None or str(prefix_row["prefix"]).strip() == ""):
+                prefix_clause = "(r.provider_prefix_id = ? OR r.provider_prefix_id IS NULL)"
+            if where:
+                where += " AND " + prefix_clause
+            else:
+                where = " WHERE " + prefix_clause
+            params.append(prefix_id)
         return list(
             self.conn.execute(
                 f"""
