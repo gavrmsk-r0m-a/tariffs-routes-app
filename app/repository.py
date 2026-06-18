@@ -434,6 +434,79 @@ class Repository:
         self.conn.commit()
         return int(cur.lastrowid)
 
+
+    def get_phone_number(self, phone_id: int) -> sqlite3.Row | None:
+        return self.conn.execute(
+            """
+            SELECT pn.*, c.name AS country_name, p.name AS provider_name
+            FROM phone_numbers pn
+            JOIN countries c ON c.id = pn.country_id
+            LEFT JOIN providers p ON p.id = pn.provider_id
+            WHERE pn.id = ?
+            """,
+            (phone_id,),
+        ).fetchone()
+
+    def get_route(self, route_id: int) -> sqlite3.Row | None:
+        return self.conn.execute(
+            """
+            SELECT r.*, c.name AS country_name, p.name AS provider_name
+            FROM routes r
+            JOIN countries c ON c.id = r.country_id
+            JOIN providers p ON p.id = r.provider_id
+            WHERE r.id = ?
+            """,
+            (route_id,),
+        ).fetchone()
+
+    def list_phone_history(self, phone_id: int) -> list[sqlite3.Row]:
+        return list(self.conn.execute(
+            """
+            SELECT 'phone' AS source, pnh.action, pnh.changed_at, u.display_name AS user_name,
+                   pnh.field_name, pnh.old_value, pnh.new_value, pnh.reason, pnh.comment,
+                   NULL AS route_name, pn.number AS phone_number
+            FROM phone_number_history pnh
+            LEFT JOIN users u ON u.id = pnh.changed_by
+            LEFT JOIN phone_numbers pn ON pn.id = pnh.phone_number_id
+            WHERE pnh.phone_number_id = ?
+            UNION ALL
+            SELECT 'route_phone' AS source, rpnh.action, rpnh.changed_at, u.display_name AS user_name,
+                   NULL AS field_name, rpnh.old_values AS old_value, rpnh.new_values AS new_value, rpnh.reason, rpnh.comment,
+                   r.name AS route_name, pn.number AS phone_number
+            FROM route_phone_number_history rpnh
+            LEFT JOIN users u ON u.id = rpnh.changed_by
+            LEFT JOIN routes r ON r.id = rpnh.route_id
+            LEFT JOIN phone_numbers pn ON pn.id = rpnh.phone_number_id
+            WHERE rpnh.phone_number_id = ? OR rpnh.old_phone_number_id = ? OR rpnh.new_phone_number_id = ?
+            ORDER BY changed_at DESC
+            """,
+            (phone_id, phone_id, phone_id, phone_id),
+        ))
+
+    def list_route_history(self, route_id: int) -> list[sqlite3.Row]:
+        return list(self.conn.execute(
+            """
+            SELECT 'route' AS source, rh.action, rh.changed_at, u.display_name AS user_name,
+                   rh.field_name, rh.old_value, rh.new_value, rh.reason, rh.comment,
+                   r.name AS route_name, NULL AS phone_number
+            FROM route_history rh
+            LEFT JOIN users u ON u.id = rh.changed_by
+            LEFT JOIN routes r ON r.id = rh.route_id
+            WHERE rh.route_id = ?
+            UNION ALL
+            SELECT 'route_phone' AS source, rpnh.action, rpnh.changed_at, u.display_name AS user_name,
+                   NULL AS field_name, rpnh.old_values AS old_value, rpnh.new_values AS new_value, rpnh.reason, rpnh.comment,
+                   r.name AS route_name, pn.number AS phone_number
+            FROM route_phone_number_history rpnh
+            LEFT JOIN users u ON u.id = rpnh.changed_by
+            LEFT JOIN routes r ON r.id = rpnh.route_id
+            LEFT JOIN phone_numbers pn ON pn.id = rpnh.phone_number_id
+            WHERE rpnh.route_id = ?
+            ORDER BY changed_at DESC
+            """,
+            (route_id, route_id),
+        ))
+
     def list_routes(self, filters: dict | None = None) -> list[sqlite3.Row]:
         where, params = query_filters(
             filters,

@@ -612,6 +612,87 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertIn("Требует проверки", content)
         self.assertIn("Да", content)
 
+
+    def test_history_icon_links_are_in_phone_and_route_tables_not_exports(self):
+        self.request("/routes")
+        captured, content = self.request("/phones")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("data-col='history'", content)
+        self.assertIn("title='История'", content)
+        self.assertRegex(content, r"href='/phones/\d+/history'.*ⓘ")
+
+        captured, content = self.request("/routes")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("data-col='history'", content)
+        self.assertRegex(content, r"href='/routes/\d+/history'.*ⓘ")
+
+        captured, content = self.request("/phones?export=csv")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertNotIn("Ист.", content)
+        self.assertNotIn("История", content)
+        self.assertNotIn("history", content)
+
+        captured, content = self.request("/routes?export=csv")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertNotIn("Ист.", content)
+        self.assertNotIn("История", content)
+        self.assertNotIn("history", content)
+
+    def test_phone_and_route_history_pages_show_titles_subjects_and_empty_state(self):
+        self.request("/routes")
+        conn = server.connect(server.DB_PATH)
+        try:
+            phone = conn.execute("SELECT id, number FROM phone_numbers ORDER BY id LIMIT 1").fetchone()
+            route = conn.execute("SELECT id, name FROM routes ORDER BY id LIMIT 1").fetchone()
+            conn.execute("DELETE FROM phone_number_history WHERE phone_number_id = ?", (phone["id"],))
+            conn.execute("DELETE FROM route_phone_number_history WHERE phone_number_id = ?", (phone["id"],))
+            conn.commit()
+        finally:
+            conn.close()
+
+        captured, content = self.request(f"/phones/{phone['id']}/history")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("История номера", content)
+        self.assertIn(phone["number"], content)
+        self.assertIn("История пока пустая", content)
+
+        captured, content = self.request(f"/routes/{route['id']}/history")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("История маршрута", content)
+        self.assertIn(route["name"], content)
+
+    def test_history_pages_include_route_phone_add_remove_events(self):
+        self.request("/routes")
+        body = urlencode({"number": "525550088888", "country_id": "1", "provider_id": "1", "assignment_type": "pool_number", "status": "used", "is_active": "1"})
+        self.request("/phones/create", method="POST", body=body)
+        body = urlencode({"phone_number": "525550088888", "usage_type": "pool_member", "comment": "for history"})
+        self.request("/routes/1/numbers/add", method="POST", body=body)
+        conn = server.connect(server.DB_PATH)
+        try:
+            phone_id = conn.execute("SELECT id FROM phone_numbers WHERE number = '525550088888'").fetchone()["id"]
+            link_id = conn.execute("SELECT id FROM route_phone_numbers WHERE route_id = 1 AND phone_number_id = ?", (phone_id,)).fetchone()["id"]
+        finally:
+            conn.close()
+        self.request("/routes/1/numbers/remove", method="POST", body=urlencode({"link_ids": str(link_id), "reason": "Проверка"}))
+
+        captured, content = self.request(f"/phones/{phone_id}/history")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("Номер добавлен в маршрут", content)
+        self.assertIn("Номер исключён из маршрута", content)
+        self.assertIn("Проверка", content)
+
+        captured, content = self.request("/routes/1/history")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("525550088888", content)
+        self.assertIn("Номер добавлен", content)
+        self.assertIn("Номер исключён", content)
+
+    def test_user_without_phone_read_permission_cannot_access_phone_history(self):
+        cookie = self.user_cookie("guest")
+        captured, content = self.request("/phones/1/history", cookie=cookie)
+        self.assertEqual(captured["status"], "403 Forbidden")
+        self.assertIn("Нет доступа", content)
+
     def test_duplicate_phone_returns_user_message(self):
         self.request("/routes")
         body = urlencode({"number": "525550000001", "country_id": "1", "provider_id": "2", "assignment_type": "pool_number", "status": "used"})
