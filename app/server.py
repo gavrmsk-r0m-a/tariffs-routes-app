@@ -10,7 +10,7 @@ import sqlite3
 from datetime import datetime
 from http.cookies import SimpleCookie
 from pathlib import Path
-from urllib.parse import parse_qs, urlencode
+from urllib.parse import parse_qs, quote, unquote, urlencode
 from wsgiref.simple_server import make_server
 
 from app.db import DEFAULT_DB_PATH, connect, init_db
@@ -20,6 +20,18 @@ from app.repository import BusinessRuleError, COMPANY_CHANGE_LABELS, ROUTING_SCO
 DB_PATH = Path(os.environ.get("MVP_DB_PATH", DEFAULT_DB_PATH))
 ADMIN_ID = 1
 CURRENT_USER_COOKIE = "mvp_current_user_id"
+FILTER_STATE_COOKIE = "mvp_filter_state"
+FILTER_SECTIONS = {
+    "/routes": ("routes", ("country_id", "provider_id", "prefix_id", "is_actual", "search")),
+    "/tariffs": ("tariffs", ("country_id", "provider_id", "priority_status", "status")),
+    "/phones": ("phones", ("country_id", "provider_id", "project", "assignment_type", "status", "number")),
+    "/companies": ("companies", ("server_id", "country_id", "company", "external_id", "has_autorotation", "is_active")),
+    "/provider-changes": ("provider_changes", ("country_id", "apply_scope", "server_id", "campaign_id", "provider_id", "include_inactive")),
+    "/admin/server-priorities": ("admin_server_priorities", ("country_id", "server_id")),
+    "/admin/company-routing-settings": ("admin_company_routing_settings", ("country_id", "server_id", "company_id_external", "routing_mode", "is_active", "show_history")),
+}
+FILTER_CONTROL_KEYS = {"page", "limit", "export", "reset_filters", "_filters_restored"}
+
 _REQUEST_CONTEXT: dict[str, object] = {}
 STATUS_LABELS = {
     "used": "Используется",
@@ -1554,10 +1566,69 @@ def active_query(q: dict[str, str], keys: list[str] | tuple[str, ...]) -> bool:
     return any(q.get(key) not in (None, "") for key in keys)
 
 
+def load_filter_state(environ) -> dict[str, dict[str, str]]:
+    cookie = SimpleCookie()
+    cookie.load(environ.get("HTTP_COOKIE", ""))
+    morsel = cookie.get(FILTER_STATE_COOKIE)
+    if not morsel:
+        return {}
+    try:
+        data = json.loads(unquote(morsel.value))
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    state: dict[str, dict[str, str]] = {}
+    for section, filters in data.items():
+        if isinstance(section, str) and isinstance(filters, dict):
+            state[section] = {str(key): str(value) for key, value in filters.items() if value not in (None, "")}
+    return state
+
+
+def filter_state_cookie(state: dict[str, dict[str, str]]) -> tuple[str, str]:
+    value = quote(json.dumps(state, ensure_ascii=False, separators=(",", ":")))
+    return ("Set-Cookie", f"{FILTER_STATE_COOKIE}={value}; Path=/; SameSite=Lax")
+
+
+def saved_filter_redirect(path: str, q: dict[str, str], state: dict[str, dict[str, str]]) -> str | None:
+    config = FILTER_SECTIONS.get(path)
+    if not config or q:
+        return None
+    section, _ = config
+    saved = {key: value for key, value in state.get(section, {}).items() if value not in (None, "")}
+    if not saved:
+        return None
+    saved["_filters_restored"] = "1"
+    return path + "?" + urlencode(saved)
+
+
+def update_filter_state_for_request(path: str, q: dict[str, str], state: dict[str, dict[str, str]]) -> tuple[dict[str, dict[str, str]], tuple[str, str] | None]:
+    config = FILTER_SECTIONS.get(path)
+    if not config:
+        return state, None
+    section, keys = config
+    updated = dict(state)
+    if q.get("reset_filters") == "1":
+        updated.pop(section, None)
+        return updated, filter_state_cookie(updated)
+    if q.get("export") == "csv":
+        return state, None
+    submitted_filters = {key: q.get(key, "") for key in keys if q.get(key) not in (None, "")}
+    has_user_query = any(key not in FILTER_CONTROL_KEYS for key in q)
+    if has_user_query:
+        if submitted_filters:
+            updated[section] = submitted_filters
+        else:
+            updated.pop(section, None)
+        return updated, filter_state_cookie(updated)
+    return state, None
+
+
 def filter_card(form_html: str, q: dict[str, str], keys: list[str] | tuple[str, ...]) -> str:
-    open_attr = " open" if active_query(q, keys) else ""
+    open_attr = " open" if active_query(q, keys) or q.get("reset_filters") == "1" else ""
     action_match = re.search(r'action=["\']([^"\']+)["\']', form_html)
     reset_href = action_match.group(1) if action_match else current_request_path({"PATH_INFO": "/", "QUERY_STRING": ""})
+    reset_href = f"{reset_href}?reset_filters=1"
     reset_link = f"<a class='button reset-filters' href='{esc(reset_href)}'>Сбросить фильтры</a>"
     if "</form>" in form_html:
         form_html = form_html.replace("</form>", reset_link + "</form>", 1)
@@ -3824,6 +3895,7 @@ def app(environ, start_response):
     cookie_id = cookie_user_id(environ)
     current_user_id = resolve_current_user_id(repo, cookie_id)
     current_user = repo.get_user(current_user_id) if current_user_id is not None else None
+    filter_state = load_filter_state(environ)
     _REQUEST_CONTEXT.clear()
     _REQUEST_CONTEXT.update({
         "repo": repo,
@@ -3885,6 +3957,10 @@ def app(environ, start_response):
             require_permission("write", section_for_write_path(path.replace("/edit", "/update")))
         if path.startswith("/provider-changes/") and path.endswith("/edit"):
             require_permission("write", "provider_changes")
+        filter_redirect = saved_filter_redirect(path, q, filter_state)
+        if filter_redirect:
+            return redirect(start_response, filter_redirect)
+        filter_state, filter_cookie = update_filter_state_for_request(path, q, filter_state)
         if path in {"/", "/dashboard"}: response = dashboard_page(repo)
         elif path == "/routes": response = routes_page(repo, q)
         elif path == "/tariffs": response = tariffs_page(repo, q)
@@ -3914,10 +3990,11 @@ def app(environ, start_response):
         elif path.startswith("/routes/") and path.endswith("/numbers"): response = route_numbers_page(repo, int(path.strip("/").split("/")[1]), q)
         else:
             start_response("404 Not Found", [("Content-Type", "text/html; charset=utf-8")]); return [page("404", "<h1>404</h1>")]
+        extra_headers = [filter_cookie] if filter_cookie else []
         if q.get("export") == "csv" and path in EXPORT_FILENAMES:
-            start_response("200 OK", [("Content-Type", "text/csv; charset=utf-8"), ("Content-Disposition", f"attachment; filename={EXPORT_FILENAMES[path]}")])
+            start_response("200 OK", [("Content-Type", "text/csv; charset=utf-8"), ("Content-Disposition", f"attachment; filename={EXPORT_FILENAMES[path]}")] + extra_headers)
         else:
-            start_response("200 OK", [("Content-Type", "text/html; charset=utf-8")])
+            start_response("200 OK", [("Content-Type", "text/html; charset=utf-8")] + extra_headers)
         return [response]
     except ForbiddenError:
         start_response("403 Forbidden", [("Content-Type", "text/html; charset=utf-8")])
