@@ -31,8 +31,10 @@ FILTER_SECTIONS = {
     "/admin/company-routing-settings": ("admin_company_routing_settings", ("country_id", "server_id", "company_id_external", "routing_mode", "is_active", "show_history")),
 }
 FILTER_OPEN_KEY = "_filters_open"
-FILTER_STATE_OPEN_KEY = "__filters_open"
 FILTER_CONTROL_KEYS = {"page", "limit", "export", "reset_filters", "_filters_restored", FILTER_OPEN_KEY}
+FILTER_DEFAULT_VALUES = {
+    "tariffs": {"status": "active"},
+}
 
 _REQUEST_CONTEXT: dict[str, object] = {}
 STATUS_LABELS = {
@@ -1564,8 +1566,25 @@ def request_query(environ) -> dict[str, str]:
     return {key: values[-1] for key, values in parse_qs(environ.get("QUERY_STRING", ""), keep_blank_values=True).items()}
 
 
+def is_meaningful_filter_value(section: str | None, key: str, value: object) -> bool:
+    if value in (None, ""):
+        return False
+    text = str(value)
+    if text == "all":
+        return False
+    if section and FILTER_DEFAULT_VALUES.get(section, {}).get(key) == text:
+        return False
+    return True
+
+
+def meaningful_filters(section: str | None, q: dict[str, str], keys: list[str] | tuple[str, ...]) -> dict[str, str]:
+    return {key: q.get(key, "") for key in keys if is_meaningful_filter_value(section, key, q.get(key))}
+
+
 def active_query(q: dict[str, str], keys: list[str] | tuple[str, ...]) -> bool:
-    return any(q.get(key) not in (None, "") for key in keys)
+    path = _REQUEST_CONTEXT.get("path")
+    section = FILTER_SECTIONS.get(str(path), (None, ()))[0]
+    return bool(meaningful_filters(section, q, keys))
 
 
 def load_filter_state(environ) -> dict[str, dict[str, str]]:
@@ -1583,7 +1602,7 @@ def load_filter_state(environ) -> dict[str, dict[str, str]]:
     state: dict[str, dict[str, str]] = {}
     for section, filters in data.items():
         if isinstance(section, str) and isinstance(filters, dict):
-            state[section] = {str(key): str(value) for key, value in filters.items() if value not in (None, "")}
+            state[section] = {str(key): str(value) for key, value in filters.items() if is_meaningful_filter_value(section, str(key), value)}
     return state
 
 
@@ -1597,7 +1616,7 @@ def saved_filter_redirect(path: str, q: dict[str, str], state: dict[str, dict[st
     if not config or q:
         return None
     section, _ = config
-    saved = {key: value for key, value in state.get(section, {}).items() if key != FILTER_STATE_OPEN_KEY and value not in (None, "")}
+    saved = {key: value for key, value in state.get(section, {}).items() if is_meaningful_filter_value(section, key, value)}
     if not saved:
         return None
     saved["_filters_restored"] = "1"
@@ -1611,21 +1630,15 @@ def update_filter_state_for_request(path: str, q: dict[str, str], state: dict[st
     section, keys = config
     updated = dict(state)
     if q.get("reset_filters") == "1":
-        updated[section] = {FILTER_STATE_OPEN_KEY: "1"}
+        updated.pop(section, None)
         return updated, filter_state_cookie(updated)
     if q.get("export") == "csv":
         return state, None
-    submitted_filters = {key: q.get(key, "") for key in keys if q.get(key) not in (None, "")}
+    submitted_filters = meaningful_filters(section, q, keys)
     has_user_query = any(key not in FILTER_CONTROL_KEYS for key in q)
     if has_user_query:
-        panel_open = q.get(FILTER_OPEN_KEY) == "1"
-        if submitted_filters or panel_open:
-            section_state = dict(submitted_filters)
-            if panel_open:
-                section_state[FILTER_STATE_OPEN_KEY] = "1"
-            else:
-                section_state[FILTER_STATE_OPEN_KEY] = "0"
-            updated[section] = section_state
+        if submitted_filters:
+            updated[section] = dict(submitted_filters)
         else:
             updated.pop(section, None)
         return updated, filter_state_cookie(updated)
@@ -1634,10 +1647,8 @@ def update_filter_state_for_request(path: str, q: dict[str, str], state: dict[st
 
 def filter_card(form_html: str, q: dict[str, str], keys: list[str] | tuple[str, ...]) -> str:
     path = _REQUEST_CONTEXT.get("path")
-    state = _REQUEST_CONTEXT.get("filter_state") if isinstance(_REQUEST_CONTEXT.get("filter_state"), dict) else {}
     section = FILTER_SECTIONS.get(str(path), (None, ()))[0]
-    saved_open = state.get(section, {}).get(FILTER_STATE_OPEN_KEY) == "1" if section else False
-    is_open = active_query(q, keys) or q.get("reset_filters") == "1" or q.get(FILTER_OPEN_KEY) == "1" or saved_open
+    is_open = active_query(q, keys) or q.get("reset_filters") == "1"
     open_attr = " open" if is_open else ""
     action_match = re.search(r'action=["\']([^"\']+)["\']', form_html)
     reset_href = action_match.group(1) if action_match else current_request_path({"PATH_INFO": "/", "QUERY_STRING": ""})

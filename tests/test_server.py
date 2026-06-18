@@ -316,7 +316,7 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertIn("<details class='filter-card' open>", content)
         self.assertIn('name="search" value="Demo"', content)
 
-    def test_filter_state_persists_per_section_and_reset_keeps_panel_open(self):
+    def test_filter_state_persists_per_section_and_empty_search_collapses(self):
         captured, content = self.request("/phones?number=525550000001&page=2")
         self.assertEqual(captured["status"], "200 OK")
         filter_cookie = dict(captured["headers"]).get("Set-Cookie", "")
@@ -362,12 +362,12 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertEqual(captured["status"], "200 OK")
         empty_search_cookie = dict(captured["headers"]).get("Set-Cookie", "")
         self.assertIn("mvp_filter_state=", empty_search_cookie)
-        self.assertIn("__filters_open", empty_search_cookie)
-        self.assertIn("<details class='filter-card' open>", content)
+        self.assertNotIn("__filters_open", empty_search_cookie)
+        self.assertNotIn("<details class='filter-card' open>", content)
 
         captured, content = self.request("/routes", cookie=f"{self.user_cookie('admin')}; {empty_search_cookie}")
         self.assertEqual(captured["status"], "200 OK")
-        self.assertIn("<details class='filter-card' open>", content)
+        self.assertNotIn("<details class='filter-card' open>", content)
         self.assertNotIn("_filters_restored=1", content)
 
     def test_csv_export_uses_active_filters_without_changing_saved_filter_state(self):
