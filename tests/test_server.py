@@ -1,4 +1,5 @@
 import os
+import re
 import tempfile
 import unittest
 from urllib.parse import urlencode
@@ -1600,6 +1601,45 @@ class ServerSmokeTest(unittest.TestCase):
         captured, content = self.request("/admin/company-routing-settings?company_id_external=no-match")
         self.assertEqual(captured["status"], "200 OK")
         self.assertNotIn("manual routing note", content)
+
+    def test_company_routing_settings_table_maps_autorotation_company_columns(self):
+        self.request("/routes")
+        body = urlencode({
+            "server_id": "1",
+            "country_id": "1",
+            "company_id_external": "1234",
+            "company_name": "CC Mexico Demo 22",
+            "line_count": "1",
+            "dial_set_count": "1",
+            "retry_interval_seconds": "30",
+            "has_autorotation": "1",
+            "is_active": "1",
+            "comment": "autorotation table mapping",
+        })
+        captured, _ = self.request("/companies/create", method="POST", body=body)
+        self.assertEqual(captured["status"], "303 See Other")
+
+        captured, content = self.request("/admin/company-routing-settings?company_id_external=1234")
+        self.assertEqual(captured["status"], "200 OK")
+        rows = re.findall(r"<tr>.*?</tr>", content, flags=re.S)
+        row_html = next(row for row in rows if "CC Mexico Demo 22" in row)
+
+        expected_cells = {
+            "server": "EU1",
+            "geo": "Мексика",
+            "company_id": "1234",
+            "company_name": "CC Mexico Demo 22",
+            "routing_mode": "Авторотация",
+            "autorotation": "Да",
+            "route": "—",
+            "active": "Да",
+            "comment": "Начальная авторотация при создании кампании",
+        }
+        for data_col, expected in expected_cells.items():
+            with self.subTest(data_col=data_col):
+                self.assertIn(f"<td data-col='{data_col}'>{expected}</td>", row_html)
+        self.assertNotIn("<td data-col='route'>Да</td>", row_html)
+        self.assertNotIn("<td data-col='route'>Нет</td>", row_html)
 
     def test_company_routing_history_hidden_by_default_and_visible_when_enabled(self):
         self.request("/routes")

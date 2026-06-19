@@ -2287,11 +2287,15 @@ def build_route_name(repo: Repository, country_id: int, provider_id: int, projec
 
 
 ROUTING_MODE_LABELS = {
-    "server_priority": "server_priority",
-    "campaign_route": "campaign_route",
-    "autorotation": "autorotation",
-    "mixed": "mixed",
+    "server_priority": "Приоритет серверов",
+    "campaign_route": "Ручной маршрут",
+    "autorotation": "Авторотация",
+    "mixed": "Смешанный",
 }
+
+
+def routing_mode_label(value: object) -> str:
+    return ROUTING_MODE_LABELS.get(str(value), "—" if value in (None, "") else str(value))
 
 
 def routing_mode_options(selected: str | None = None, empty: str | None = None) -> str:
@@ -3258,6 +3262,23 @@ def server_priorities_page(repo: Repository, q: dict[str, str] | None = None) ->
 
 
 
+COMPANY_ROUTING_SETTINGS_COLUMN_LABELS = [
+    ("server", "Сервер"),
+    ("geo", "GEO"),
+    ("company_id", "ID кампании"),
+    ("company_name", "Название кампании"),
+    ("routing_mode", "Режим маршрутизации"),
+    ("autorotation", "Авторотация"),
+    ("route", "Маршрут кампании"),
+    ("active", "Активна"),
+    ("valid_from", "Действует с"),
+    ("valid_to", "Действует до"),
+    ("comment", "Комментарий"),
+    ("history", "Ист."),
+    ("actions", "Действия"),
+]
+COMPANY_ROUTING_SETTINGS_COLUMNS = [key for key, _label in COMPANY_ROUTING_SETTINGS_COLUMN_LABELS]
+
 def company_routing_settings_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
     q = q or {}
     show_history = q.get("show_history") == "1"
@@ -3299,13 +3320,25 @@ def company_routing_settings_page(repo: Repository, q: dict[str, str] | None = N
               </form>
             </details>
             """
+        row = {
+            "server": esc(setting["server_name"]),
+            "geo": esc(setting["country_name"]),
+            "company_id": esc(setting["company_id_external"]),
+            "company_name": esc(setting["company_name"]),
+            "routing_mode": esc(routing_mode_label(setting["routing_mode"])),
+            "autorotation": "Да" if setting["has_autorotation"] else "Нет",
+            "route": f"{esc(route_label)}{provider_label}",
+            "active": active_badge,
+            "valid_from": esc(setting["valid_from"]),
+            "valid_to": esc(setting["valid_to"] or "—"),
+            "comment": esc(setting["comment"]),
+            "history": "",
+            "actions": actions,
+        }
         rows.append(
-            f"<tr><td data-col='geo'>{esc(setting['country_name'])}</td><td data-col='server'>{esc(setting['server_name'])}</td>"
-            f"<td data-col='company_id'>{esc(setting['company_id_external'])}</td><td data-col='company_name'>{esc(setting['company_name'])}</td>"
-            f"<td data-col='routing_mode'>{esc(setting['routing_mode'])}</td><td data-col='autorotation'>{'Да' if setting['has_autorotation'] else 'Нет'}</td>"
-            f"<td data-col='route'>{esc(route_label)}{provider_label}</td><td data-col='active'>{active_badge}</td>"
-            f"<td data-col='valid_from'>{esc(setting['valid_from'])}</td><td data-col='valid_to'>{esc(setting['valid_to'])}</td>"
-            f"<td data-col='comment'>{esc(setting['comment'])}</td><td data-col='actions'>{actions}</td></tr>"
+            "<tr>"
+            + "".join(f"<td data-col='{key}'>{row[key]}</td>" for key in COMPANY_ROUTING_SETTINGS_COLUMNS)
+            + "</tr>"
         )
     filters_html = f"""<form class="filter-grid" method="get" action="/admin/company-routing-settings">
 <label>GEO <select name="country_id">{options(repo, 'countries', selected=q.get('country_id'), empty='Все')}</select></label>
@@ -3326,7 +3359,7 @@ def company_routing_settings_page(repo: Repository, q: dict[str, str] | None = N
   <label>Комментарий <input name="comment"></label>
   <button>Создать</button>
 </form>"""
-    table_html = f"""{data_table('company_routing_settings', [('geo', 'GEO'), ('server', 'Сервер'), ('company_id', 'ID кампании'), ('company_name', 'Название кампании'), ('routing_mode', 'Режим маршрутизации'), ('autorotation', 'Авторотация'), ('route', 'Маршрут кампании'), ('active', 'Активна'), ('valid_from', 'Действует с'), ('valid_to', 'Действует до'), ('comment', 'Комментарий'), ('history', 'Ист.'), ('actions', 'Действия')], ''.join(rows))}"""
+    table_html = f"""{data_table('company_routing_settings', COMPANY_ROUTING_SETTINGS_COLUMN_LABELS, ''.join(rows))}"""
     body = f"""
 <h1>Администрирование → Схема маршрутизации кампаний</h1>
 {filter_card(filters_html, q, ('country_id', 'server_id', 'company_id_external', 'routing_mode', 'is_active', 'show_history'))}
@@ -3342,7 +3375,7 @@ document.querySelectorAll('form').forEach(form => {{
 }});
 </script>
 {table_card(table_html)}
-{table_footer(pagination_html, export_link('/admin/company-routing-settings', q) + column_settings('company_routing_settings', [('geo', 'GEO'), ('server', 'Сервер'), ('company_id', 'ID кампании'), ('company_name', 'Название кампании'), ('routing_mode', 'Режим маршрутизации'), ('autorotation', 'Авторотация'), ('route', 'Маршрут кампании'), ('active', 'Активна'), ('valid_from', 'Действует с'), ('valid_to', 'Действует до'), ('comment', 'Комментарий'), ('actions', 'Действия')]))}
+{table_footer(pagination_html, export_link('/admin/company-routing-settings', q) + column_settings('company_routing_settings', COMPANY_ROUTING_SETTINGS_COLUMN_LABELS))}
 """
     return page("Схема маршрутизации кампаний", body)
 
