@@ -535,6 +535,31 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
         self.conn.commit()
         return int(cur.lastrowid), server_id
 
+    def test_calling_company_creation_and_edits_write_readable_history(self):
+        server_id = self.repo.create_server("IT1")
+        company_id = self.repo.create_calling_company(server_id=server_id, country_id=self.country_id, company_name="Mexico_old", company_id_external="cmp-1", has_autorotation=False, created_by=self.admin_id, comment="initial", is_active=False, line_count=10, dial_set_count=5, retry_interval_seconds=30)
+        created = self.repo.list_calling_company_history(company_id)[0]
+        self.assertIn("Компания создана", created["comment"])
+        self.assertIn("Название: Mexico_old", created["new_value"])
+        self.repo.update_calling_company(company_id, server_id=server_id, country_id=self.country_id, company_name="Mexico_new", line_count=10, dial_set_count=7, has_autorotation=False, retry_interval_seconds=45, is_active=False, comment="new comment", updated_by=self.admin_id)
+        changed = self.repo.list_calling_company_history(company_id)[0]
+        self.assertIn("Компания изменена", changed["comment"])
+        self.assertIn("Название: Mexico_old → Mexico_new", changed["new_value"])
+        self.assertIn("Количество наборов: 5 → 7", changed["new_value"])
+        self.assertIn("Интервал, сек.: 30 → 45", changed["new_value"])
+        self.assertIn("Комментарий: initial → new comment", changed["new_value"])
+
+    def test_calling_company_activation_deactivation_and_journal_search(self):
+        server_id = self.repo.create_server("IT1")
+        company_id = self.repo.create_calling_company(server_id=server_id, country_id=self.country_id, company_name="Searchable", company_id_external="cmp-search", has_autorotation=False, created_by=self.admin_id, is_active=False)
+        self.repo.update_calling_company(company_id, server_id=server_id, country_id=self.country_id, company_name="Searchable", line_count=0, dial_set_count=0, has_autorotation=False, retry_interval_seconds=0, is_active=True, comment=None, updated_by=self.admin_id)
+        self.assertEqual(self.repo.list_calling_company_history(company_id)[0]["comment"], "Компания активирована")
+        self.repo.update_calling_company(company_id, server_id=server_id, country_id=self.country_id, company_name="Searchable", line_count=0, dial_set_count=0, has_autorotation=False, retry_interval_seconds=0, is_active=False, comment=None, updated_by=self.admin_id)
+        self.assertEqual(self.repo.list_calling_company_history(company_id)[0]["comment"], "Компания деактивирована")
+        events = self.repo.list_calling_company_events(search="cmp-search", limit=50, offset=0)
+        self.assertGreaterEqual(len(events), 1)
+        self.assertEqual(events[0]["company_id_external"], "cmp-search")
+
     def test_manual_server_priority_route_change_moves_current_to_previous_and_logs_event(self):
         priority_id, _ = self.create_priority()
         alt_provider_id = self.repo.create_provider("Sancom", "voip", self.currency_id)

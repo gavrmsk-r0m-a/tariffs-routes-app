@@ -1359,6 +1359,39 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertIn("Fixed Line", content)
         self.assertNotIn("name='phone_type' value", content)
 
+    def test_calling_company_history_pages_links_and_export(self):
+        captured, content = self.request("/companies")
+        self.assertEqual(captured["status"].split()[0], "200")
+        self.assertIn("data-col='history'", content)
+        self.assertRegex(content, r"href='/calling-companies/\d+/history'.*ⓘ")
+        self.assertIn("Журнал событий", content)
+        captured, history = self.request("/calling-companies/1/history")
+        self.assertEqual(captured["status"].split()[0], "200")
+        self.assertIn("История компании прозвона", history)
+        self.assertIn("ID компании", history)
+        captured, csv = self.request("/companies?export=csv")
+        self.assertNotIn("history", csv.lower())
+        self.assertNotIn("Журнал событий", csv)
+
+    def test_global_calling_company_journal_searches_old_names(self):
+        body = urlencode({"server_id": "1", "country_id": "1", "company_id_external": "history-search-id", "company_name": "HistoryOld", "line_count": "1", "dial_set_count": "2", "has_autorotation": "0", "retry_interval_seconds": "30", "is_active": "1", "comment": "old comment"})
+        self.request("/companies/create", method="POST", body=body)
+        conn = server.connect(server.DB_PATH)
+        try:
+            company_id = conn.execute("SELECT id FROM calling_companies WHERE company_id_external = 'history-search-id'").fetchone()["id"]
+        finally:
+            conn.close()
+        body = urlencode({"server_id": "1", "country_id": "1", "company_name": "HistoryNew", "line_count": "1", "dial_set_count": "2", "has_autorotation": "0", "retry_interval_seconds": "30", "is_active": "1", "comment": "find this comment"})
+        self.request(f"/companies/{company_id}/update", method="POST", body=body)
+        captured, content = self.request("/calling-companies/history?search=HistoryOld")
+        self.assertEqual(captured["status"].split()[0], "200")
+        self.assertIn("Журнал событий компаний прозвона", content)
+        self.assertIn("Поиск по журналу", content)
+        self.assertIn("HistoryOld", content)
+        self.assertIn("HistoryNew", content)
+        self.assertIn("history-search-id", content)
+        self.assertIn(f"/calling-companies/{company_id}/history", content)
+
     def test_provider_change_can_create_none_scope_event(self):
         self.request("/routes")
         body = urlencode({"apply_scope": "none", "event_at": "2026-06-10T10:00", "provider_id": "1", "reason": "Другое", "comment": "Провайдер сообщил о работах"})

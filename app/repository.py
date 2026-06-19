@@ -71,6 +71,33 @@ def _truncate_history_text(value: object, limit: int = 100) -> str:
     return text if len(text) <= limit else text[:limit].rstrip() + "…"
 
 
+def _clean_number_label(value: object) -> str:
+    if value is None or str(value).strip() == "":
+        return "—"
+    dec = _normalize_decimal_value(value)
+    if dec is None:
+        return "—"
+    text = format(dec, "f")
+    if "." in text:
+        text = text.rstrip("0").rstrip(".")
+    return text or "0"
+
+def _company_history_value(value: object, kind: str = "text") -> str:
+    if kind == "bool":
+        return _bool_label(value)
+    if kind == "number":
+        return _clean_number_label(value)
+    return _empty_label(value)
+
+def _company_history_change(label: str, old: object, new: object, kind: str = "text") -> str | None:
+    compare_kind = "money" if kind == "number" else ("bool" if kind == "bool" else "optional_text")
+    if _values_equal(old, new, compare_kind):
+        return None
+    old_label = _truncate_history_text(_company_history_value(old, kind), 120)
+    new_label = _truncate_history_text(_company_history_value(new, kind), 120)
+    return f"{label}: {old_label} → {new_label}"
+
+
 NO_PREFIX_LABELS = {"без префикса", "no prefix", "—", "-"}
 
 
@@ -473,15 +500,81 @@ class Repository:
             ),
         )
         company_id = int(cur.lastrowid)
+        details = [
+            f"Название: {_company_history_value(company_name)}",
+            f"Активна: {_company_history_value(is_active, 'bool')}",
+            f"Количество наборов: {_company_history_value(dial_set_count, 'number')}",
+            f"Интервал, сек.: {_company_history_value(retry_interval_seconds, 'number')}",
+            f"Количество линий: {_company_history_value(line_count, 'number')}",
+            f"Комментарий: {_truncate_history_text(_company_history_value(comment), 120)}",
+        ]
         self._change_log(
             "calling_company",
             company_id,
             "calling_company.created",
             created_by,
-            new_values={"company_id_external": company_id_external.strip(), "company_name": company_name},
+            new_values={
+                "event": "Компания создана",
+                "description": "Компания создана",
+                "details": "; ".join(details),
+                "search_text": "; ".join([_company_history_value(comment), company_name, company_id_external.strip()]),
+            },
+            summary="Компания создана",
         )
         self.conn.commit()
         return company_id
+
+    def get_calling_company(self, company_id: int) -> sqlite3.Row | None:
+        return self.conn.execute(
+            """
+            SELECT cc.*, s.name AS server_name, c.name AS country_name
+            FROM calling_companies cc
+            JOIN servers s ON s.id = cc.server_id
+            JOIN countries c ON c.id = cc.country_id
+            WHERE cc.id = ?
+            """,
+            (company_id,),
+        ).fetchone()
+
+    def update_calling_company(self, company_id: int, *, server_id: int, country_id: int, company_name: str, line_count: int, dial_set_count: int, has_autorotation: bool, retry_interval_seconds: int, is_active: bool, comment: str | None, updated_by: int) -> None:
+        old = self.conn.execute("SELECT * FROM calling_companies WHERE id = ?", (company_id,)).fetchone()
+        if old is None:
+            raise BusinessRuleError("Calling company not found")
+        changes = []
+        specs = [
+            ("Название", old["company_name"], company_name, "text"),
+            ("Активна", old["is_active"], 1 if is_active else 0, "bool"),
+            ("Количество наборов", old["dial_set_count"], dial_set_count, "number"),
+            ("Интервал, сек.", old["retry_interval_seconds"], retry_interval_seconds, "number"),
+            ("Количество линий", old["line_count"], line_count, "number"),
+            ("Комментарий", old["comment"], comment, "text"),
+        ]
+        for label, old_value, new_value, kind in specs:
+            change = _company_history_change(label, old_value, new_value, kind)
+            if change:
+                changes.append(change)
+        self.conn.execute("""UPDATE calling_companies SET server_id = ?, country_id = ?, company_name = ?, line_count = ?, dial_set_count = ?, has_autorotation = ?, retry_interval_seconds = ?, is_active = ?, comment = ?, updated_by = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?""",
+                          (server_id, country_id, company_name, int(line_count), int(dial_set_count), 1 if has_autorotation else 0, int(retry_interval_seconds), 1 if is_active else 0, comment, updated_by, company_id))
+        if changes:
+            only_active = len(changes) == 1 and changes[0].startswith("Активна:")
+            if only_active and int(old["is_active"] or 0) == 0 and is_active:
+                event = description = "Компания активирована"
+            elif only_active and int(old["is_active"] or 0) == 1 and not is_active:
+                event = description = "Компания деактивирована"
+            else:
+                event = "Компания изменена"
+                description = f"Изменено полей: {len(changes)}"
+            details = "; ".join(changes)
+            self._change_log(
+                "calling_company",
+                company_id,
+                "calling_company.updated",
+                updated_by,
+                old_values={"company_name": old["company_name"], "comment": old["comment"]},
+                new_values={"event": event, "description": description, "details": details, "search_text": f"{old['company_name']} {company_name} {old['comment'] or ''} {comment or ''} {details}"},
+                summary=event,
+            )
+        self.conn.commit()
 
     def create_server(self, name: str, comment: str | None = None) -> int:
         cur = self.conn.execute(
@@ -1068,6 +1161,53 @@ class Repository:
                 params,
             )
         )
+
+    def list_calling_company_history(self, company_id: int) -> list[sqlite3.Row]:
+        return list(self.conn.execute(
+            """
+            SELECT cl.changed_at, u.display_name AS user_name, cl.change_type AS action,
+                   cl.old_values AS old_value, cl.new_values AS new_value, cl.summary AS comment,
+                   cc.company_name AS current_company_name, cc.company_id_external
+            FROM change_log cl
+            LEFT JOIN users u ON u.id = cl.changed_by
+            LEFT JOIN calling_companies cc ON cc.id = cl.entity_id
+            WHERE cl.entity_type = 'calling_company' AND cl.entity_id = ?
+            ORDER BY cl.changed_at DESC, cl.id DESC
+            """,
+            (company_id,),
+        ))
+
+    def list_calling_company_events(self, *, search: str | None = None, limit: int = 50, offset: int = 0) -> list[sqlite3.Row]:
+        where = "WHERE cl.entity_type = 'calling_company'"
+        params: list[object] = []
+        if search and search.strip():
+            like = f"%{search.strip()}%"
+            where += " AND (CAST(cl.entity_id AS TEXT) LIKE ? OR cc.company_id_external LIKE ? OR cc.company_name LIKE ? OR cl.summary LIKE ? OR cl.old_values LIKE ? OR cl.new_values LIKE ?)"
+            params.extend([like, like, like, like, like, like])
+        params.extend([limit, offset])
+        return list(self.conn.execute(
+            f"""
+            SELECT cl.id, cl.entity_id AS company_id, cl.changed_at, u.display_name AS user_name,
+                   cl.change_type AS action, cl.old_values AS old_value, cl.new_values AS new_value,
+                   cl.summary AS comment, cc.company_name AS current_company_name, cc.company_id_external
+            FROM change_log cl
+            LEFT JOIN users u ON u.id = cl.changed_by
+            LEFT JOIN calling_companies cc ON cc.id = cl.entity_id
+            {where}
+            ORDER BY cl.changed_at DESC, cl.id DESC
+            LIMIT ? OFFSET ?
+            """,
+            params,
+        ))
+
+    def count_calling_company_events(self, *, search: str | None = None) -> int:
+        where = "WHERE cl.entity_type = 'calling_company'"
+        params: list[object] = []
+        if search and search.strip():
+            like = f"%{search.strip()}%"
+            where += " AND (CAST(cl.entity_id AS TEXT) LIKE ? OR cc.company_id_external LIKE ? OR cc.company_name LIKE ? OR cl.summary LIKE ? OR cl.old_values LIKE ? OR cl.new_values LIKE ?)"
+            params.extend([like, like, like, like, like, like])
+        return int(self.conn.execute(f"SELECT COUNT(*) FROM change_log cl LEFT JOIN calling_companies cc ON cc.id = cl.entity_id {where}", params).fetchone()[0])
 
     def _validate_company_routing_values(
         self,

@@ -1556,7 +1556,7 @@ def section_for_get_path(path: str) -> str | None:
         return "tariffs"
     if path == "/phones" or (path.startswith("/phones/") and path.endswith("/history")):
         return "phones"
-    if path == "/companies":
+    if path == "/companies" or path == "/calling-companies/history" or (path.startswith("/calling-companies/") and path.endswith("/history")) or (path.startswith("/companies/") and path.endswith("/history")):
         return "companies"
     if path == "/provider-changes":
         return "provider_changes"
@@ -2405,6 +2405,13 @@ def readable_bool(value: object) -> str:
     return "Да" if str(value) in {"1", "true", "True", "yes", "Да"} else "Нет"
 
 
+def readable_company_history_event(row: sqlite3.Row) -> tuple[str, str, str]:
+    new_values = _json_dict(row["new_value"])
+    event = str(new_values.get("event") or row["comment"] or "Компания изменена")
+    description = str(new_values.get("description") or event)
+    details = str(new_values.get("details") or "—")
+    return event, description, details
+
 def readable_history_event(row: sqlite3.Row, *, subject: str) -> tuple[str, str, str]:
     source = row["source"]
     action = row["action"]
@@ -2475,6 +2482,51 @@ def phone_history_page(repo: Repository, phone_id: int) -> bytes:
 """
     return page("История номера", body)
 
+
+def company_history_page(repo: Repository, company_id: int) -> bytes:
+    company = repo.get_calling_company(company_id)
+    if company is None:
+        return page("Не найдено", "<h1>Компания прозвона не найдена</h1>")
+    body = f"""
+<h1>История компании прозвона</h1>
+<section class='card'><h2>{esc(company['company_name'])}</h2><p class='muted'>ID компании: {esc(company['company_id_external'])} · Внутренний ID: {company_id}</p><p><a href='/companies'>← Назад к компаниям прозвона</a>{" · <a href='/companies/" + str(company_id) + "/edit'>Редактировать компанию</a>" if can_write("companies") else ""}</p></section>
+{company_history_table(repo.list_calling_company_history(company_id))}
+"""
+    return page("История компании прозвона", body)
+
+def company_history_table(rows: list[sqlite3.Row]) -> str:
+    if not rows:
+        return "<div class='empty-state'>История пока пустая</div>"
+    html_rows = []
+    for row in rows:
+        event, description, details = readable_company_history_event(row)
+        html_rows.append(f"<tr><td>{esc(row['changed_at'])}</td><td>{esc(row['user_name'] or '—')}</td><td>{esc(event)}</td>{clamp_cell('details', esc(description), description)}{clamp_cell('comment', esc(details or '—'), details or '—', classes='comment-cell')}</tr>")
+    return "<section class='journal-card'><div class='table-scroll'><table><thead><tr><th>Дата</th><th>Пользователь</th><th>Событие</th><th>Описание</th><th>Детали</th></tr></thead><tbody>" + "".join(html_rows) + "</tbody></table></div></section>"
+
+def company_events_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
+    q = q or {}
+    search = q.get("search") or ""
+    current = parse_page(q)
+    total = repo.count_calling_company_events(search=search)
+    page_count = max(1, (total + PAGE_SIZE - 1) // PAGE_SIZE)
+    if current > page_count:
+        current = 1
+    records = repo.list_calling_company_events(search=search, limit=PAGE_SIZE, offset=(current - 1) * PAGE_SIZE)
+    rows = []
+    for row in records:
+        event, description, details = readable_company_history_event(row)
+        rows.append(f"<tr><td data-col='date'>{esc(row['changed_at'])}</td><td data-col='user'>{esc(row['user_name'] or '—')}</td><td data-col='company_id'>{esc(row['company_id_external'] or row['company_id'])}</td><td data-col='current_name'>{esc(row['current_company_name'] or '—')}</td><td data-col='event'>{esc(event)}</td>{clamp_cell('description', esc(description), description)}{clamp_cell('details', esc(details), details, classes='comment-cell')}<td data-col='actions'><a class='button' href='/calling-companies/{row['company_id']}/history'>История</a></td></tr>")
+    def page_href(page_number: int) -> str:
+        params = {key: value for key, value in q.items() if key not in {"page", "limit", "export"} and value not in (None, "")}
+        params["page"] = str(page_number)
+        return "/calling-companies/history?" + urlencode(params)
+    previous_link = f"<a class='button' href='{esc(page_href(current - 1))}'>← Назад</a>" if current > 1 else ""
+    next_link = f"<a class='button' href='{esc(page_href(current + 1))}'>Вперёд →</a>" if current < page_count else ""
+    pagination_html = f"<nav class='pagination' aria-label='Пагинация'><span class='muted'>Всего записей: {total}. Страница {current} из {page_count}</span> {previous_link} {next_link}</nav>"
+    search_html = f"<form class='filter-grid' method='get' action='/calling-companies/history'><label>Поиск по журналу <input name='search' value='{esc(search)}'></label><button>Найти</button></form>"
+    table_html = data_table('company_events', [('date','Дата'),('user','Пользователь'),('company_id','ID компании'),('current_name','Текущее название компании'),('event','Событие'),('description','Описание'),('details','Детали'),('actions','Действия')], ''.join(rows))
+    body = f"""<h1>Журнал событий компаний прозвона</h1><p><a href='/companies'>← Назад к компаниям прозвона</a></p>{filter_card(search_html, q, ('search',))}{table_card(table_html)}{table_footer(pagination_html, '')}"""
+    return page("Журнал событий компаний прозвона", table_page_container(body))
 
 def route_history_page(repo: Repository, route_id: int) -> bytes:
     route = repo.get_route(route_id)
@@ -2668,17 +2720,18 @@ def companies_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
     rows = []
     for cc in records:
         actions = f"<a class='button edit-action' href='/companies/{cc['id']}/edit' title='Редактировать' aria-label='Редактировать' data-tooltip='Редактировать'>Редактировать</a>" if can_write("companies") else ""
-        rows.append(f"<tr><td data-col='server'>{esc(cc['server_name'])}</td><td data-col='geo'>{esc(cc['country_name'])}</td>{clamp_cell('company_name', esc(cc['company_name']), cc['company_name'])}<td data-col='company_id'>{esc(cc['company_id_external'])}</td><td data-col='lines'>{esc(cc['line_count'])}</td><td data-col='dial_sets'>{esc(cc['dial_set_count'])}</td><td data-col='autorotation'>{'Да' if cc['has_autorotation'] else 'Нет'}</td><td data-col='retry_interval'>{esc(cc['retry_interval_seconds'])}</td><td data-col='active'>{'Активна' if cc['is_active'] else 'Неактивна'}</td>{clamp_cell('comment', esc(cc['comment']), cc['comment'], classes='comment-cell')}<td data-col='actions'>{actions}</td></tr>")
+        history = history_icon_link(f"/calling-companies/{cc['id']}/history")
+        rows.append(f"<tr><td data-col='server'>{esc(cc['server_name'])}</td><td data-col='geo'>{esc(cc['country_name'])}</td>{clamp_cell('company_name', esc(cc['company_name']), cc['company_name'])}<td data-col='company_id'>{esc(cc['company_id_external'])}</td><td data-col='lines'>{esc(cc['line_count'])}</td><td data-col='dial_sets'>{esc(cc['dial_set_count'])}</td><td data-col='autorotation'>{'Да' if cc['has_autorotation'] else 'Нет'}</td><td data-col='retry_interval'>{esc(cc['retry_interval_seconds'])}</td><td data-col='active'>{'Активна' if cc['is_active'] else 'Неактивна'}</td>{clamp_cell('comment', esc(cc['comment']), cc['comment'], classes='comment-cell')}<td data-col='history' class='history-cell'>{history}</td><td data-col='actions'>{actions}</td></tr>")
     filters_html = f"""<form class="filter-grid" method="get" action="/companies">
 <label>Сервер <select name="server_id">{options(repo, 'servers', selected=q.get('server_id'), empty='Все')}</select></label><label>ГЕО <select name="country_id">{options(repo, 'countries', selected=q.get('country_id'), empty='Все')}</select></label><label>Название кампании <input name="company" value="{esc(q.get('company'))}"></label><label>ID кампании <input name="external_id" value="{esc(q.get('external_id'))}"></label><label>Авторотация <select name="has_autorotation"><option value="">Все</option><option value="1" {'selected' if q.get('has_autorotation')=='1' else ''}>Да</option><option value="0" {'selected' if q.get('has_autorotation')=='0' else ''}>Нет</option></select></label><label>Активность <select name="is_active"><option value="">Все</option><option value="1" {'selected' if q.get('is_active')=='1' else ''}>Активна</option><option value="0" {'selected' if q.get('is_active')=='0' else ''}>Неактивна</option></select></label><button>Найти</button></form>"""
     create_html = f"""<form class="form-grid" method="post" action="/companies/create"><label>Сервер <span class="required">*</span><select name="server_id">{active_options(repo, 'servers')}</select></label><label>ГЕО <span class="required">*</span><select name="country_id">{active_options(repo, 'countries')}</select></label><label>ID кампании <span class="required">*</span><input name="company_id_external"></label><label>Название кампании <span class="required">*</span><input name="company_name"></label><label>Количество линий <span class="required">*</span><input name="line_count" value="0"></label><label>Количество наборов <span class="required">*</span><input name="dial_set_count" value="0"></label><label>Авторотация <span class="required">*</span><select name="has_autorotation"><option value="1">Да</option><option value="0">Нет</option></select></label><label>Интервал дозвона, сек. <span class="required">*</span><input name="retry_interval_seconds" value="0"></label><label>Активна <span class="required">*</span><select name="is_active"><option value="1">Да</option><option value="0">Нет</option></select></label><label>Комментарий <input name="comment"></label><button>Сохранить</button></form>"""
-    table_html = f"{data_table('companies', [('server', 'Сервер'), ('geo', 'ГЕО'), ('company_name', 'Название кампании'), ('company_id', 'ID кампании'), ('lines', 'Количество линий'), ('dial_sets', 'Количество наборов'), ('autorotation', 'Авторотация'), ('retry_interval', 'Интервал между попытками дозвона (сек.)'), ('active', 'Активна'), ('comment', 'Комментарий'), ('actions', 'Действия')], ''.join(rows))}"
+    table_html = f"{data_table('companies', [('server', 'Сервер'), ('geo', 'ГЕО'), ('company_name', 'Название кампании'), ('company_id', 'ID кампании'), ('lines', 'Количество линий'), ('dial_sets', 'Количество наборов'), ('autorotation', 'Авторотация'), ('retry_interval', 'Интервал между попытками дозвона (сек.)'), ('active', 'Активна'), ('comment', 'Комментарий'), ('history', 'Ист.'), ('actions', 'Действия')], ''.join(rows))}"
     body = f"""
 <h1>Кампании прозвона</h1>
 {filter_card(filters_html, q, ('server_id', 'country_id', 'company', 'external_id', 'has_autorotation', 'is_active'))}
 {form_card('+ Добавить кампанию <span class="muted">Admin</span>', create_html) if can_write("companies") else ""}
 {table_card(table_html)}
-{table_footer(pagination_html, export_link('/companies', q) + column_settings('companies', [('server', 'Сервер'), ('geo', 'ГЕО'), ('company_name', 'Название кампании'), ('company_id', 'ID кампании'), ('lines', 'Количество линий'), ('dial_sets', 'Количество наборов'), ('autorotation', 'Авторотация'), ('retry_interval', 'Интервал дозвона'), ('active', 'Активна'), ('comment', 'Комментарий'), ('actions', 'Действия')]))}"""
+{table_footer(pagination_html, export_link('/companies', q) + "<a class='button table-utility-button' href='/calling-companies/history' target='_blank' rel='noopener'>Журнал событий</a>" + column_settings('companies', [('server', 'Сервер'), ('geo', 'ГЕО'), ('company_name', 'Название кампании'), ('company_id', 'ID кампании'), ('lines', 'Количество линий'), ('dial_sets', 'Количество наборов'), ('autorotation', 'Авторотация'), ('retry_interval', 'Интервал дозвона'), ('active', 'Активна'), ('comment', 'Комментарий'), ('actions', 'Действия')]))}"""
     return page("Кампании прозвона", table_page_container(body))
 
 def routing_reason_options(selected: str | None = None) -> str:
@@ -3703,10 +3756,8 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
         return "/companies"
     if path.startswith("/companies/") and path.endswith("/update"):
         company_id = int(path.strip("/").split("/")[1])
-        repo.conn.execute("""UPDATE calling_companies SET server_id = ?, country_id = ?, company_name = ?, line_count = ?, dial_set_count = ?, has_autorotation = ?, retry_interval_seconds = ?, is_active = ?, comment = ?, updated_by = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?""",
-                          (int(data["server_id"]), int(data["country_id"]), data["company_name"], int(data.get("line_count") or 0), int(data.get("dial_set_count") or 0), 1 if data.get("has_autorotation") == "1" else 0, int(data.get("retry_interval_seconds") or 0), 1 if data.get("is_active") == "1" else 0, data.get("comment"), actor_id, company_id))
-        repo._change_log("calling_company", company_id, "calling_company.updated", actor_id, new_values={"company_name": data["company_name"]})
-        repo.conn.commit(); return "/companies"
+        repo.update_calling_company(company_id, server_id=int(data["server_id"]), country_id=int(data["country_id"]), company_name=data["company_name"], line_count=int(data.get("line_count") or 0), dial_set_count=int(data.get("dial_set_count") or 0), has_autorotation=data.get("has_autorotation") == "1", retry_interval_seconds=int(data.get("retry_interval_seconds") or 0), is_active=data.get("is_active") == "1", comment=data.get("comment"), updated_by=actor_id)
+        return "/companies"
     if path == "/provider-changes/create":
         apply_scope = data.get("apply_scope")
         provider_id = parse_int(data.get("campaign_provider_id")) if apply_scope == "campaign_setting" else parse_int(data.get("provider_id"))
@@ -4058,6 +4109,7 @@ def app(environ, start_response):
         elif path == "/tariffs": response = tariffs_page(repo, q)
         elif path == "/phones": response = phones_page(repo, q)
         elif path == "/companies": response = companies_page(repo, q)
+        elif path == "/calling-companies/history": response = company_events_page(repo, q)
         elif path == "/provider-changes": response = provider_changes_page(repo, q)
         elif path == "/admin": response = admin_page(repo)
         elif path == "/admin/server-priorities": response = server_priorities_page(repo, q)
@@ -4072,6 +4124,8 @@ def app(environ, start_response):
         elif path == "/admin/change-log": response = change_log_page(repo)
         elif path.startswith("/routes/") and path.endswith("/history"): response = route_history_page(repo, int(path.strip("/").split("/")[1]))
         elif path.startswith("/phones/") and path.endswith("/history"): response = phone_history_page(repo, int(path.strip("/").split("/")[1]))
+        elif path.startswith("/calling-companies/") and path.endswith("/history"): response = company_history_page(repo, int(path.strip("/").split("/")[1]))
+        elif path.startswith("/companies/") and path.endswith("/history"): response = company_history_page(repo, int(path.strip("/").split("/")[1]))
         elif path.startswith("/routes/") and path.endswith("/edit"): response = route_edit_page(repo, int(path.strip("/").split("/")[1]))
         elif path.startswith("/phones/") and path.endswith("/edit"): response = phone_edit_page(repo, int(path.strip("/").split("/")[1]))
         elif path.startswith("/companies/") and path.endswith("/edit"): response = company_edit_page(repo, int(path.strip("/").split("/")[1]))
