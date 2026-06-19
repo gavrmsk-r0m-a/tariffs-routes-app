@@ -71,6 +71,24 @@ def _truncate_history_text(value: object, limit: int = 100) -> str:
     return text if len(text) <= limit else text[:limit].rstrip() + "…"
 
 
+NO_PREFIX_LABELS = {"без префикса", "no prefix", "—", "-"}
+
+
+def is_no_prefix_text(value: object) -> bool:
+    if value is None:
+        return True
+    text = str(value).strip()
+    return text == "" or text.lower() in NO_PREFIX_LABELS
+
+
+def normalize_real_prefix(value: object) -> str:
+    text = "" if value is None else str(value).strip()
+    if is_no_prefix_text(text):
+        raise BusinessRuleError("Префикс должен быть реальным кодом. Для отсутствия префикса используйте вариант Без префикса в формах маршрутов/тарифов")
+    if not text.isdigit():
+        raise BusinessRuleError("Префикс должен состоять только из цифр")
+    return text
+
 class BusinessRuleError(ValueError):
     """Raised when a confirmed MVP business rule is violated."""
 
@@ -234,6 +252,7 @@ class Repository:
         return int(cur.lastrowid)
 
     def create_prefix(self, provider_id: int, prefix: str | None, name: str | None = None) -> int:
+        prefix = normalize_real_prefix(prefix)
         cur = self.conn.execute(
             """
             INSERT INTO provider_prefixes(provider_id, prefix, name, is_active)
@@ -557,11 +576,13 @@ class Repository:
                 "search_like": "r.name",
             },
         )
-        if prefix_id not in (None, "", "all"):
-            prefix_row = self.conn.execute("SELECT prefix FROM provider_prefixes WHERE id = ?", (prefix_id,)).fetchone()
+        if prefix_id == "__none__":
+            if where:
+                where += " AND r.provider_prefix_id IS NULL"
+            else:
+                where = " WHERE r.provider_prefix_id IS NULL"
+        elif prefix_id not in (None, "", "all"):
             prefix_clause = "r.provider_prefix_id = ?"
-            if prefix_row and (prefix_row["prefix"] is None or str(prefix_row["prefix"]).strip() == ""):
-                prefix_clause = "(r.provider_prefix_id = ? OR r.provider_prefix_id IS NULL)"
             if where:
                 where += " AND " + prefix_clause
             else:
@@ -838,7 +859,7 @@ class Repository:
             ("name", "Название маршрута", _empty_label, "optional_text"),
             ("country_id", "GEO", lambda v: self._name_by_id("countries", v), "default"),
             ("provider_id", "Провайдер", lambda v: self._name_by_id("providers", v), "default"),
-            ("provider_prefix_id", "Префикс", lambda v: self._name_by_id("provider_prefixes", v, "prefix"), "default"),
+            ("provider_prefix_id", "Префикс", lambda v: self._name_by_id("provider_prefixes", v, "prefix"), "optional_text"),
             ("project_label", "Проект", _empty_label, "optional_text"),
             ("is_actual", "Активность маршрута", _bool_label, "bool"),
             ("priority_status", "Приоритет", lambda v: priority_labels.get(str(v), _empty_label(v)), "optional_text"),
@@ -2256,7 +2277,9 @@ class Repository:
         return int(row["id"]) if row else self.create_provider(name, default_currency_id=currency_id)
 
     def get_or_create_prefix(self, provider_id: int, prefix: str | None) -> int | None:
-        normalized_prefix = prefix or None
+        if is_no_prefix_text(prefix):
+            return None
+        normalized_prefix = normalize_real_prefix(prefix)
         row = self.conn.execute(
             "SELECT id FROM provider_prefixes WHERE provider_id = ? AND COALESCE(prefix, '') = COALESCE(?, '')",
             (provider_id, normalized_prefix),

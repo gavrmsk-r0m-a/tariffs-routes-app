@@ -365,6 +365,100 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertIn("Мексика/Sancom/Demo_0828@", content)
         self.assertIn("Мексика/Sancom/Demo_0827@", content)
 
+
+    def test_no_prefix_dictionary_rows_are_hidden_and_routes_use_null(self):
+        self.request("/routes")
+        conn = server.connect(server.DB_PATH)
+        try:
+            demotel_id = conn.execute("SELECT id FROM providers WHERE name = 'DemoTel'").fetchone()["id"]
+            legacy_id = conn.execute(
+                "INSERT INTO provider_prefixes(provider_id, prefix, name, is_active) VALUES (?, ?, ?, 1)",
+                (demotel_id, "Без префикса", "legacy no prefix"),
+            ).lastrowid
+            route_id = conn.execute(
+                "INSERT INTO routes(country_id, provider_id, provider_prefix_id, name, cli_source_type, cli_source_label, is_actual, created_by) VALUES (1, ?, ?, 'Legacy no prefix route', 'pool', 'Legacy', 1, 1)",
+                (demotel_id, legacy_id),
+            ).lastrowid
+            conn.commit()
+            server.init_db(conn)
+            route = conn.execute("SELECT provider_prefix_id FROM routes WHERE id = ?", (route_id,)).fetchone()
+            legacy = conn.execute("SELECT is_active FROM provider_prefixes WHERE id = ?", (legacy_id,)).fetchone()
+            self.assertIsNone(route["provider_prefix_id"])
+            self.assertEqual(legacy["is_active"], 0)
+        finally:
+            conn.close()
+
+        captured, content = self.request("/routes")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertNotIn(f"<option value='{legacy_id}'>Без префикса</option>", content)
+
+    def test_route_create_and_edit_save_no_prefix_as_null_and_table_shows_dash(self):
+        self.request("/routes")
+        body = urlencode({"country_id": "1", "provider_id": "2", "provider_prefix_id": "", "project_label": "", "cli_source_type": "pool", "cli_source_label": "NullPrefix", "is_actual": "1"})
+        captured, _ = self.request("/routes/create", method="POST", body=body)
+        self.assertEqual(captured["status"], "303 See Other")
+        conn = server.connect(server.DB_PATH)
+        try:
+            route = conn.execute("SELECT id, provider_prefix_id, name FROM routes WHERE cli_source_label = 'NullPrefix'").fetchone()
+            self.assertIsNone(route["provider_prefix_id"])
+            route_id = route["id"]
+        finally:
+            conn.close()
+
+        captured, content = self.request("/routes")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("<td data-col='prefix'>—</td>", content)
+
+        captured, _ = self.request(f"/routes/{route_id}/update", method="POST", body=urlencode({"name": route["name"], "provider_id": "2", "provider_prefix_id": "", "comment": "", "is_actual": "1", "priority_status": "unknown"}))
+        self.assertEqual(captured["status"], "303 See Other")
+        conn = server.connect(server.DB_PATH)
+        try:
+            self.assertIsNone(conn.execute("SELECT provider_prefix_id FROM routes WHERE id = ?", (route_id,)).fetchone()["provider_prefix_id"])
+        finally:
+            conn.close()
+
+    def test_routes_no_prefix_filter_is_single_and_provider_scoped(self):
+        captured, content = self.request("/routes")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertEqual(content.count("value='__none__'"), 1)
+
+        captured, content = self.request("/routes?prefix_id=__none__")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("Мексика/Miatel/Demo_A@", content)
+        self.assertIn("Мексика/DemoTel/Demo_A@", content)
+        self.assertNotIn("Мексика/Sancom/Demo_0827@", content)
+
+        captured, content = self.request("/routes?provider_id=2&prefix_id=__none__")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("Мексика/Miatel/Demo_A@", content)
+        self.assertNotIn("Мексика/DemoTel/Demo_A@", content)
+
+        captured, content = self.request("/routes?provider_id=3&prefix_id=__none__")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("Мексика/DemoTel/Demo_A@", content)
+        self.assertNotIn("Мексика/Miatel/Demo_A@", content)
+
+    def test_saved_no_prefix_filter_restores_and_reset_clears_it(self):
+        captured, _ = self.request("/routes?prefix_id=__none__")
+        self.assertEqual(captured["status"], "200 OK")
+        routes_cookie = dict(captured["headers"]).get("Set-Cookie", "")
+        self.assertIn("__none__", routes_cookie)
+
+        captured, _ = self.request("/routes", cookie=f"{self.user_cookie('admin')}; {routes_cookie}")
+        self.assertEqual(captured["status"], "303 See Other")
+        self.assertIn(("Location", "/routes?prefix_id=__none__&_filters_restored=1"), captured["headers"])
+
+        captured, content = self.request("/routes?reset_filters=1", cookie=f"{self.user_cookie('admin')}; {routes_cookie}")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertNotIn("__none__", dict(captured["headers"]).get("Set-Cookie", ""))
+
+    def test_prefix_dictionary_rejects_no_prefix_values(self):
+        self.request("/routes")
+        for value in ("", "   ", "Без префикса", "без префикса", "no prefix", "—"):
+            captured, content = self.request("/admin/dictionaries/prefixes/create", method="POST", body=urlencode({"provider_id": "1", "prefix": value, "name": "bad"}))
+            self.assertEqual(captured["status"], "400 Bad Request")
+            self.assertIn("Префикс должен быть реальным кодом", content)
+
     def test_routes_csv_export_respects_prefix_filter(self):
         prefix_id = self.route_prefix_id("0828")
         captured, content = self.request(f"/routes?prefix_id={prefix_id}&export=csv")
@@ -679,7 +773,7 @@ class ServerSmokeTest(unittest.TestCase):
             eur_id = repo.create_currency("EUR", "Euro", "€")
             miatel_id = repo.create_provider("Miatel", "voip", eur_id)
             sancom_id = repo.create_provider("Sancom", "voip", eur_id)
-            miatel_prefix = repo.create_prefix(miatel_id, None, "Без префикса")
+            miatel_prefix = conn.execute("INSERT INTO provider_prefixes(provider_id, prefix, name, is_active) VALUES (?, NULL, 'Без префикса', 1)", (miatel_id,)).lastrowid
             sancom_prefix = repo.create_prefix(sancom_id, "0827")
             old_route_id = repo.create_route(
                 country_id=country_id,
@@ -1189,7 +1283,7 @@ class ServerSmokeTest(unittest.TestCase):
 
     def test_duplicate_route_returns_user_message(self):
         self.request("/routes")
-        body = urlencode({"country_id": "1", "provider_id": "2", "provider_prefix_id": "3", "project_label": "", "cli_source_type": "pool", "cli_source_label": "Demo_A", "is_actual": "1"})
+        body = urlencode({"country_id": "1", "provider_id": "2", "provider_prefix_id": "", "project_label": "", "cli_source_type": "pool", "cli_source_label": "Demo_A", "is_actual": "1"})
         captured, content = self.request("/routes/create", method="POST", body=body)
         self.assertEqual(captured["status"], "400 Bad Request")
         self.assertIn("Маршрут уже существует", content)
