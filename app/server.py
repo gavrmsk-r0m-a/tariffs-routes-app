@@ -2823,6 +2823,49 @@ def campaign_metadata_json(repo: Repository) -> str:
 
 
 def routing_event_form(repo: Repository, event=None) -> str:
+    if event:
+        def one(sql, value):
+            if not value:
+                return "—"
+            row = repo.conn.execute(sql, (value,)).fetchone()
+            return row[0] if row else "—"
+        scope_labels = {"none": "Не меняли настройки в нашей системе", "server_priority": "Серверный приоритет", "campaign_setting": "Настройка кампании"}
+        change_type_labels = {"enable_autorotation": "Включили авторотацию", "disable_autorotation": "Выключили авторотацию", "set_campaign_route": "Прописали ручной маршрут", "remove_campaign_route": "Убрали ручной маршрут"}
+        mode_labels = {"server_priority": "Приоритет сервера", "autorotation": "Авторотация", "campaign_route": "Маршрут кампании", "mixed": "Смешанный"}
+        server_names = [row["name"] for row in repo.conn.execute("""
+            SELECT s.name FROM routing_event_servers res JOIN servers s ON s.id = res.server_id
+            WHERE res.routing_event_id = ? ORDER BY s.name
+        """, (event["id"],)).fetchall()]
+        if not server_names and event["server_id"]:
+            server_names = [one("SELECT name FROM servers WHERE id = ?", event["server_id"])]
+        readonly_rows = [
+            ("Дата события", event["event_at"]),
+            ("Область применения", scope_labels.get(event["apply_scope"], event["apply_scope"] or "—")),
+            ("GEO", one("SELECT name FROM countries WHERE id = ?", event["country_id"])),
+            ("Серверы", ", ".join(server_names) if server_names else "—"),
+            ("Провайдер", one("SELECT name FROM providers WHERE id = ?", event["provider_id"])),
+            ("Маршрут/префикс", one("SELECT name FROM routes WHERE id = ?", event["affected_route_id"])),
+            ("Старый маршрут", one("SELECT name FROM routes WHERE id = ?", event["old_route_id"])),
+            ("Новый маршрут", one("SELECT name FROM routes WHERE id = ?", event["new_route_id"])),
+            ("Кампания", one("SELECT company_id_external || ' / ' || company_name FROM calling_companies WHERE id = ?", event["calling_company_id"])),
+            ("Тип изменения кампании", change_type_labels.get(event["company_change_type"], event["company_change_type"] or "—")),
+            ("Режим маршрутизации", mode_labels.get(event["new_company_routing_mode"], event["new_company_routing_mode"] or "—")),
+            ("Маршрут кампании", one("SELECT name FROM routes WHERE id = ?", event["new_company_route_id"])),
+            ("Авторотация", "Да" if event["new_company_has_autorotation"] else ("Нет" if event["new_company_has_autorotation"] == 0 else "—")),
+            ("Активна", "Да" if event["is_active"] else "Нет"),
+            ("Причина", event["reason"]),
+        ]
+        readonly_html = "".join(f"<div><dt>{esc(label)}</dt><dd>{esc(value)}</dd></div>" for label, value in readonly_rows)
+        return f"""
+<details class='form-card' open><summary class='form-summary'>Редактировать комментарий</summary>
+<p class='muted wide'>Событие смены провайдеров является неизменяемым операционным событием. Для исправления типа, маршрута, кампании или авторотации создайте новое корректирующее событие.</p>
+<dl class='readonly-grid'>{readonly_html}</dl>
+<form method='post' action='/provider-changes/{event['id']}/update' class='form-grid' id='routing-event-form'>
+  <label class='wide'>Комментарий <span class='required'>*</span><textarea name='comment' rows='3' cols='60' required>{esc(event['comment'] if event else '')}</textarea></label>
+  <button>Сохранить комментарий</button>
+</form>
+</details>
+"""
     event_at = (event["event_at"] if event else datetime.now().strftime("%Y-%m-%d %H:%M")).replace(" ", "T")[:16]
     scope = event["apply_scope"] if event else "none"
     route_opts = route_options_for_dynamic_form(repo, selected=event["affected_route_id"] if event else None, empty="—")
@@ -3086,8 +3129,6 @@ def provider_changes_page(repo: Repository, q: dict[str, str] | None = None) -> 
     for ev in records:
         server_text, campaign_text, details_text = provider_event_details(ev)
         actions = f"<a class='button edit-action' href='/provider-changes/{ev['id']}/edit' title='Редактировать' aria-label='Редактировать' data-tooltip='Редактировать'>Редактировать</a>" if can_write("provider_changes") else ""
-        if ev["is_active"] and can_write("provider_changes"):
-            actions += f"<details><summary>Деактивировать</summary><form method='post' action='/provider-changes/{ev['id']}/deactivate'><label>Причина <span class='required'>*</span><input name='deactivation_reason' required></label><button>Деактивировать</button></form></details>"
         rows.append(f"<tr class='{'' if ev['is_active'] else 'inactive-row'}'><td data-col='event_at'>{esc(ev['event_at'])}</td><td data-col='scope'>{esc(ROUTING_SCOPE_LABELS.get(ev['apply_scope'], ev['apply_scope']))}</td><td data-col='geo'>{esc(ev['country_name'])}</td><td data-col='server'>{esc(server_text)}</td><td data-col='campaign'>{esc(campaign_text)}</td>{clamp_cell('details', details_text, details_text)}{clamp_cell('reason', esc(ev['reason']), ev['reason'])}{clamp_cell('comment', esc(ev['comment']), ev['comment'])}<td data-col='active'>{'Да' if ev['is_active'] else 'Нет'}</td><td data-col='actions' class='actions'>{actions}</td></tr>")
     if not rows:
         rows.append("<tr><td colspan='10'><div class='empty-state'>Событий пока нет</div></td></tr>")
@@ -3819,19 +3860,10 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
         return "/provider-changes"
     if path.startswith("/provider-changes/") and path.endswith("/update"):
         change_id = int(path.strip("/").split("/")[1])
-        repo.update_routing_event(
-            change_id, event_at=data.get("event_at"), reason=data.get("reason"), comment=data.get("comment"),
-            country_id=parse_int(data.get("country_id")), server_id=parse_int(data.get("server_id")), provider_id=parse_int(data.get("campaign_provider_id")) if data.get("apply_scope") == "campaign_setting" else parse_int(data.get("provider_id")),
-            affected_route_id=parse_int(data.get("affected_route_id")), old_route_id=parse_int(data.get("old_route_id")), new_route_id=parse_int(data.get("new_route_id")),
-            calling_company_id=parse_int(data.get("calling_company_id")), company_change_type=data.get("company_change_type") or None,
-            new_company_routing_mode=data.get("new_company_routing_mode") or None, new_company_route_id=parse_int(data.get("new_company_route_id")),
-            new_company_has_autorotation=parse_int(data.get("new_company_has_autorotation")), updated_by=actor_id,
-        )
+        repo.update_routing_event(change_id, comment=data.get("comment"), updated_by=actor_id)
         return "/provider-changes"
     if path.startswith("/provider-changes/") and path.endswith("/deactivate"):
-        change_id = int(path.strip("/").split("/")[1])
-        repo.deactivate_routing_event(change_id, reason=data.get("deactivation_reason"), deactivated_by=actor_id)
-        return "/provider-changes"
+        raise BusinessRuleError("События смены провайдеров нельзя деактивировать")
     if path in {"/admin/currency-rates/create", "/admin/currency-rates/upsert"}:
         currency_id = int(data["currency_id"])
         today = datetime.now().strftime("%Y-%m-%d")

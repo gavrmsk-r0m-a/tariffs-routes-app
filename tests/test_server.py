@@ -1967,7 +1967,7 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
         finally:
             conn.close()
 
-    def test_event_list_sorted_by_event_at_desc_and_inactive_filter(self):
+    def test_event_list_sorted_by_event_at_desc_and_does_not_render_deactivate(self):
         self.request("/routes")
         first = urlencode({"apply_scope": "none", "event_at": "2026-06-09T10:00", "provider_id": "1", "reason": "Другое", "comment": "старое событие"})
         second = urlencode({"apply_scope": "none", "event_at": "2026-06-10T10:00", "provider_id": "1", "reason": "Другое", "comment": "новое событие"})
@@ -1976,11 +1976,49 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
         captured, content = self.request("/provider-changes")
         self.assertEqual(captured["status"], "200 OK")
         self.assertLess(content.index("новое событие"), content.index("старое событие"))
-        self.request("/provider-changes/1/deactivate", method="POST", body=urlencode({"deactivation_reason": "архив"}))
+        self.assertNotIn("<summary>Деактивировать</summary>", content)
+        self.assertNotIn("action='/provider-changes/1/deactivate'", content)
+        captured, content = self.request("/provider-changes/1/deactivate", method="POST", body=urlencode({"deactivation_reason": "архив"}))
+        self.assertEqual(captured["status"], "400 Bad Request")
+        self.assertIn("нельзя деактивировать", content)
         _, content = self.request("/provider-changes")
-        self.assertNotIn("старое событие", content)
-        _, content = self.request("/provider-changes?include_inactive=1")
         self.assertIn("старое событие", content)
+
+    def test_provider_change_edit_form_allows_comment_only_and_does_not_reapply(self):
+        self.request("/routes")
+        body = urlencode({"apply_scope": "campaign_setting", "event_at": "2026-06-10T12:00", "calling_company_id": "2", "company_change_type": "enable_autorotation", "reason": "Тест нового маршрута", "comment": "исходный комментарий"})
+        self.request("/provider-changes/create", method="POST", body=body)
+
+        captured, content = self.request("/provider-changes/1/edit")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("Редактировать комментарий", content)
+        self.assertIn("name='comment'", content)
+        self.assertNotIn("name='company_change_type'", content)
+        self.assertNotIn("name='calling_company_id'", content)
+        self.assertNotIn("name='new_company_route_id'", content)
+        self.assertNotIn("name='apply_scope'", content)
+        self.assertIn("Включили авторотацию", content)
+
+        captured, _ = self.request("/provider-changes/1/update", method="POST", body=urlencode({
+            "comment": "только новый комментарий",
+            "company_change_type": "disable_autorotation",
+            "calling_company_id": "1",
+            "new_company_route_id": "1",
+        }))
+        self.assertEqual(captured["status"], "303 See Other")
+        conn = server.connect(server.DB_PATH)
+        try:
+            event = conn.execute("SELECT * FROM routing_events WHERE id = 1").fetchone()
+            self.assertEqual(event["comment"], "только новый комментарий")
+            self.assertEqual(event["company_change_type"], "enable_autorotation")
+            self.assertEqual(event["calling_company_id"], 2)
+            setting = conn.execute("SELECT * FROM company_routing_settings WHERE calling_company_id = 2 AND is_active = 1 AND valid_to IS NULL").fetchone()
+            self.assertEqual(setting["routing_mode"], "autorotation")
+            self.assertEqual(setting["has_autorotation"], 1)
+            routing_log_count = conn.execute("SELECT COUNT(*) FROM change_log WHERE entity_type = 'company_routing_setting'").fetchone()[0]
+            self.assertEqual(routing_log_count, 1)
+        finally:
+            conn.close()
 
     def add_extra_routes(self, count=55, prefix="BulkRoute"):
         self.request("/routes")

@@ -2034,42 +2034,22 @@ class Repository:
         existing = self.conn.execute("SELECT * FROM routing_events WHERE id = ?", (event_id,)).fetchone()
         if not existing:
             raise BusinessRuleError("Событие маршрутизации не найдено")
-        reason = self._require_text(kwargs.get("reason"), "Причина обязательна")
         comment = self._require_text(kwargs.get("comment"), "Комментарий обязателен")
-        new_values = {
-            "event_at": self._require_text(kwargs.get("event_at"), "Дата события обязательна").replace("T", " "),
-            "reason": reason,
-            "comment": comment,
-            "country_id": kwargs.get("country_id"),
-            "server_id": kwargs.get("server_id"),
-            "provider_id": kwargs.get("provider_id"),
-            "affected_route_id": kwargs.get("affected_route_id"),
-            "old_route_id": kwargs.get("old_route_id"),
-            "new_route_id": kwargs.get("new_route_id"),
-            "calling_company_id": kwargs.get("calling_company_id"),
-            "company_change_type": kwargs.get("company_change_type"),
-            "new_company_routing_mode": kwargs.get("new_company_routing_mode"),
-            "new_company_route_id": kwargs.get("new_company_route_id"),
-            "new_company_has_autorotation": kwargs.get("new_company_has_autorotation"),
-        }
+        if comment == existing["comment"]:
+            return
         self.conn.execute(
             """
             UPDATE routing_events
-            SET event_at = ?, reason = ?, comment = ?, country_id = ?, server_id = ?, provider_id = ?,
-                affected_route_id = ?, old_route_id = ?, new_route_id = ?, calling_company_id = ?,
-                company_change_type = ?, new_company_routing_mode = ?, new_company_route_id = ?,
-                new_company_has_autorotation = ?, updated_by = ?, updated_at = CURRENT_TIMESTAMP
+            SET comment = ?, updated_by = ?, updated_at = CURRENT_TIMESTAMP
             WHERE id = ?
             """,
-            (
-                new_values["event_at"], new_values["reason"], new_values["comment"], new_values["country_id"],
-                new_values["server_id"], new_values["provider_id"], new_values["affected_route_id"], new_values["old_route_id"],
-                new_values["new_route_id"], new_values["calling_company_id"], new_values["company_change_type"],
-                new_values["new_company_routing_mode"], new_values["new_company_route_id"], new_values["new_company_has_autorotation"],
-                updated_by, event_id,
-            ),
+            (comment, updated_by, event_id),
         )
-        self._change_log("routing_event", event_id, "routing_event.updated", updated_by, old_values=dict(existing), new_values=new_values, summary=self._routing_event_summary({**dict(existing), **new_values}))
+        self._change_log(
+            "routing_event", event_id, "routing_event.comment_updated", updated_by,
+            old_values={"comment": existing["comment"]}, new_values={"comment": comment},
+            summary="Комментарий события изменён",
+        )
         self.conn.commit()
 
     def deactivate_routing_event(self, event_id: int, *, reason: str, deactivated_by: int) -> None:

@@ -1186,12 +1186,15 @@ class RoutingEventsRepositoryTest(unittest.TestCase):
         self.assertEqual(priority["current_route_id"], self.route_id)
         self.assertEqual(self.conn.execute("SELECT is_active FROM routing_events WHERE id = ?", (event_id,)).fetchone()[0], 0)
 
-    def test_editing_event_does_not_reapply_server_priority(self):
+    def test_editing_event_updates_comment_only_and_does_not_reapply_server_priority(self):
         event_id = self.create_event(apply_scope="server_priority", country_id=self.country_id, server_id=self.server_id, new_route_id=self.route_id)
         self.repo.update_routing_event(event_id, event_at="2026-06-11 13:00", reason="Другое", comment="Исправили описание", country_id=self.country_id, server_id=self.server_id, provider_id=self.provider_id, affected_route_id=None, old_route_id=None, new_route_id=self.alt_route_id, calling_company_id=None, company_change_type=None, new_company_routing_mode=None, new_company_route_id=None, new_company_has_autorotation=None, updated_by=self.admin_id)
         priority = self.conn.execute("SELECT * FROM server_route_priorities WHERE country_id = ? AND server_id = ?", (self.country_id, self.server_id)).fetchone()
+        event = self.conn.execute("SELECT * FROM routing_events WHERE id = ?", (event_id,)).fetchone()
         self.assertEqual(priority["current_route_id"], self.route_id)
-        self.assertNotEqual(priority["current_route_id"], self.alt_route_id)
+        self.assertEqual(event["new_route_id"], self.route_id)
+        self.assertEqual(event["comment"], "Исправили описание")
+        self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM change_log WHERE change_type = 'routing_event.comment_updated'").fetchone()[0], 1)
 
     def test_snapshot_json_is_saved(self):
         event_id = self.create_event(apply_scope="server_priority", country_id=self.country_id, server_id=self.server_id, new_route_id=self.route_id)
