@@ -15,7 +15,7 @@ from wsgiref.simple_server import make_server
 
 from app.db import DEFAULT_DB_PATH, connect, init_db
 from app.importer import apply_import, preview_import
-from app.repository import BusinessRuleError, COMPANY_CHANGE_LABELS, ROUTING_SCOPE_LABELS, Repository, normalize_phone_status, normalize_provider_name, validate_phone_number
+from app.repository import BusinessRuleError, COMPANY_CHANGE_LABELS, ROUTING_SCOPE_LABELS, Repository, normalize_phone_status, normalize_provider_name, normalize_real_prefix, validate_phone_number
 
 DB_PATH = Path(os.environ.get("MVP_DB_PATH", DEFAULT_DB_PATH))
 ADMIN_ID = 1
@@ -1790,18 +1790,24 @@ def active_options(repo: Repository, table: str, label: str = "name", selected: 
 
 
 def prefix_options(repo: Repository, selected: object | None = None, empty: str | None = "Без префикса") -> str:
-    return select_options(
-        repo,
+    selected_text = "" if selected is None else str(selected)
+    opts = f"<option value='' {'selected' if selected_text == '' else ''}>{esc(empty)}</option>" if empty is not None else ""
+    if empty == "Все":
+        opts += f"<option value='__none__' {'selected' if selected_text == '__none__' else ''}>Без префикса</option>"
+    rows = repo.conn.execute(
         """
-        SELECT pp.id, COALESCE(NULLIF(pp.prefix, ''), 'Без префикса') AS label
+        SELECT pp.id, pp.prefix AS label
         FROM provider_prefixes pp JOIN providers p ON p.id = pp.provider_id
-        WHERE pp.is_active = 1 OR pp.id = ?
-        ORDER BY COALESCE(pp.prefix, ''), p.name
+        WHERE (pp.is_active = 1 OR pp.id = ?)
+          AND pp.prefix IS NOT NULL AND TRIM(pp.prefix) != ''
+          AND TRIM(pp.prefix) NOT IN ('Без префикса', 'без префикса', 'no prefix', '—', '-')
+        ORDER BY pp.prefix, p.name
         """,
         (selected or 0,),
-        selected=selected,
-        empty=empty,
     )
+    for row in rows:
+        opts += f"<option value='{row['id']}' {'selected' if str(row['id']) == selected_text else ''}>{esc(row['label'])}</option>"
+    return opts
 
 
 def phone_type_options(repo: Repository, selected: str | None = None, empty: str | None = None) -> str:
@@ -1987,7 +1993,9 @@ def ensure_seed(repo: Repository) -> None:
         )
         return provider_id
 
-    def ensure_prefix(provider_id: int, prefix: str | None, name: str) -> int:
+    def ensure_prefix(provider_id: int, prefix: str | None, name: str) -> int | None:
+        if prefix is None:
+            return None
         prefix_id = scalar_id(
             "SELECT id FROM provider_prefixes WHERE provider_id = ? AND COALESCE(prefix, '') = COALESCE(?, '')",
             (provider_id, prefix),
@@ -2189,8 +2197,8 @@ def ensure_seed(repo: Repository) -> None:
         demotel_id = ensure_provider("DemoTel", "voip", eur_id)
         sancom_0827_prefix = ensure_prefix(sancom_id, "0827", "Demo 0827")
         sancom_0828_prefix = ensure_prefix(sancom_id, "0828", "Demo 0828")
-        miatel_prefix = ensure_prefix(miatel_id, None, "Demo no prefix")
-        demotel_prefix = ensure_prefix(demotel_id, None, "Demo no prefix")
+        miatel_prefix = None
+        demotel_prefix = None
         repo.conn.execute("INSERT INTO currency_rates(currency_id, rate_to_eur, rate_date, updated_by, comment) SELECT ?, 1, '2026-06-07', ?, 'Demo EUR' WHERE NOT EXISTS (SELECT 1 FROM currency_rates WHERE currency_id = ? AND rate_date = '2026-06-07' AND comment = 'Demo EUR')", (eur_id, admin_id, eur_id))
         repo.conn.execute("INSERT INTO currency_rates(currency_id, rate_to_eur, rate_date, updated_by, comment) SELECT ?, 0.93, '2026-06-07', ?, 'Demo USDT' WHERE NOT EXISTS (SELECT 1 FROM currency_rates WHERE currency_id = ? AND rate_date = '2026-06-07' AND comment = 'Demo USDT')", (usdt_id, admin_id, usdt_id))
         for reason in ("Плохие показатели", "Провайдер починил", "Обновлен пул номеров"):
@@ -2488,7 +2496,7 @@ def routes_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
     records, pagination_html = paginate_rows(records, q, "/routes")
     rows = []
     for route in records:
-        prefix = route["prefix"] or "Без префикса"
+        prefix = route["prefix"] or "—"
         numbers_label = "RND провайдера" if route["cli_source_type"] == "rnd" else f'{route["phone_count"]} номеров'
         numbers = f'{numbers_label} <a class="button route-numbers-action" href="/routes/{route["id"]}/numbers">Показать номера</a>'
         edit = f"<a class='button edit-action' href='/routes/{route['id']}/edit' title='Редактировать' aria-label='Редактировать' data-tooltip='Редактировать'>Редактировать</a>" if can_write("routes") else ""
@@ -2589,7 +2597,7 @@ def tariffs_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
     records, pagination_html = paginate_rows(records, q, "/tariffs")
     rows = []
     for t in records:
-        prefix = t["prefix"] or "Без префикса"
+        prefix = t["prefix"] or "—"
         actions = f"""<form method='post' action='/tariffs/{t['id']}/deactivate'><button class='danger-action' title='Деактивировать' onclick="return confirm('Деактивировать тариф?')">Деактивировать</button></form>""" if can_write("tariffs") else ""
         rows.append(f"""<tr><td data-col='geo'>{esc(t['country_name'])}</td><td data-col='provider'>{esc(t['provider_name'])}</td><td data-col='prefix'>{esc(prefix)}</td><td data-col='provider_price'>{esc(t['price_in_provider_currency'])} {esc(t['currency_code'])}</td><td data-col='eur_price'>{esc(t['eur_price'])} EUR</td><td data-col='priority'>{esc(t['priority_status'])}</td><td data-col='active'>{'Да' if t['is_current'] else 'Нет'}</td>{clamp_cell('info', esc(t['comment']), t['comment'], classes='comment-cell')}<td data-col='actions'>{actions}</td></tr>""")
     filters_html = f"""<form class="filter-grid" method="get" action="/tariffs">
@@ -2600,7 +2608,7 @@ def tariffs_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
     create_html = f"""<form class="form-grid" method="post" action="/tariffs/create">
 <label>ГЕО <span class="required">*</span><select name="country_id">{active_options(repo, 'countries')}</select></label>
 <label>Провайдер <span class="required">*</span><select name="provider_id">{active_options(repo, 'providers')}</select></label>
-<label>Префикс <span class="required">*</span><select name="provider_prefix_id">{prefix_options(repo)}</select></label>
+<label>Префикс <select name="provider_prefix_id">{prefix_options(repo)}</select></label>
 <label>Валюта <span class="required">*</span><select name="currency_id">{active_options(repo, 'currencies', 'code')}</select></label>
 <label>Цена <span class="required">*</span><input name="price"></label>
 <label>Приоритет <span class="required">*</span><select name="priority_status"><option value="priority">priority</option><option value="alternative">alternative</option><option value="unknown">unknown</option></select></label>
@@ -3752,8 +3760,7 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
         repo.create_currency(code, code); return "/tariffs"
     if path == "/tariffs/prefixes/create":
         prefix = data.get("prefix") or None
-        if prefix is not None and not prefix.isdigit():
-            raise BusinessRuleError("Префикс должен быть пустым (Без префикса) или состоять только из цифр")
+        prefix = normalize_real_prefix(prefix)
         repo.create_prefix(int(data["provider_id"]), prefix); return "/tariffs"
     if path == "/admin/providers/create":
         repo.create_provider(data["name"], default_currency_id=parse_int(data.get("currency_id"))); return "/admin/dictionaries"
@@ -3761,8 +3768,7 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
         repo.create_country(data["name"], data.get("code") or None); return "/admin/dictionaries"
     if path == "/admin/prefixes/create":
         prefix = data.get("prefix") or None
-        if prefix is not None and not prefix.isdigit():
-            raise BusinessRuleError("Префикс должен быть пустым (Без префикса) или состоять только из цифр")
+        prefix = normalize_real_prefix(prefix)
         repo.create_prefix(int(data["provider_id"]), prefix, data.get("name") or None); return "/admin/dictionaries"
     if path.startswith("/admin/dictionaries/") and path.endswith("/create"):
         parts = path.strip("/").split("/")
@@ -3776,8 +3782,7 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
             repo.create_currency(code, data.get("name") or code)
         elif kind == "prefixes":
             prefix = data.get("prefix") or None
-            if prefix is not None and not prefix.isdigit():
-                raise BusinessRuleError("Префикс должен быть пустым (Без префикса) или состоять только из цифр")
+            prefix = normalize_real_prefix(prefix)
             repo.create_prefix(int(data["provider_id"]), prefix, data.get("name") or None)
         elif kind == "servers":
             repo.create_server(data["name"].strip(), data.get("comment") or None)
@@ -3809,8 +3814,7 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
             repo.conn.execute("UPDATE currencies SET code = ?, name = ?, is_active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (code, data.get("name") or code, is_active, entity_id))
         elif kind == "prefixes":
             prefix = data.get("prefix") or None
-            if prefix is not None and not prefix.isdigit():
-                raise BusinessRuleError("Префикс должен быть пустым (Без префикса) или состоять только из цифр")
+            prefix = normalize_real_prefix(prefix)
             repo.conn.execute("UPDATE provider_prefixes SET provider_id = ?, prefix = ?, name = ?, is_active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (int(data["provider_id"]), prefix, data.get("name") or None, is_active, entity_id))
         elif kind == "servers":
             repo.conn.execute("UPDATE servers SET name = ?, comment = ?, is_active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (data["name"].strip(), data.get("comment") or None, is_active, entity_id))

@@ -526,3 +526,31 @@ CREATE INDEX IF NOT EXISTS idx_server_route_priorities_country_id ON server_rout
 CREATE INDEX IF NOT EXISTS idx_server_route_priorities_server_id ON server_route_priorities(server_id);
 CREATE INDEX IF NOT EXISTS idx_change_log_changed_at ON change_log(changed_at);
 CREATE INDEX IF NOT EXISTS idx_change_log_entity ON change_log(entity_type, entity_id);
+
+-- Normalize legacy provider-specific "no prefix" dictionary rows to semantic NULL references.
+UPDATE routes
+SET provider_prefix_id = NULL
+WHERE provider_prefix_id IN (
+    SELECT id FROM provider_prefixes
+    WHERE prefix IS NULL
+       OR TRIM(prefix) = ''
+       OR TRIM(prefix) IN ('Без префикса', 'без префикса', 'no prefix')
+       OR TRIM(prefix) IN ('—', '-')
+);
+
+UPDATE tariffs
+SET provider_prefix_id = NULL
+WHERE provider_prefix_id IN (
+    SELECT id FROM provider_prefixes
+    WHERE prefix IS NULL
+       OR TRIM(prefix) = ''
+       OR TRIM(prefix) IN ('Без префикса', 'без префикса', 'no prefix')
+       OR TRIM(prefix) IN ('—', '-')
+);
+
+UPDATE provider_prefixes
+SET is_active = 0, updated_at = CURRENT_TIMESTAMP
+WHERE prefix IS NULL
+   OR TRIM(prefix) = ''
+   OR TRIM(prefix) IN ('Без префикса', 'без префикса', 'no prefix')
+   OR TRIM(prefix) IN ('—', '-');
