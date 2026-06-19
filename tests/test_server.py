@@ -1644,7 +1644,31 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertNotIn("<td data-col='route'>Да</td>", row_html)
         self.assertNotIn("<td data-col='route'>Нет</td>", row_html)
 
-    def test_company_routing_history_hidden_by_default_and_visible_when_enabled(self):
+    def test_company_routing_settings_edit_is_comment_only_and_no_deactivate_action(self):
+        self.request("/routes")
+        create_body = urlencode({
+            "calling_company_id": "1",
+            "country_id": "1",
+            "server_id": "1",
+            "routing_mode": "server_priority",
+            "route_id": "",
+            "is_active": "1",
+            "comment": "old routing state",
+        })
+        self.request("/admin/company-routing-settings/create", method="POST", body=create_body)
+
+        captured, content = self.request("/admin/company-routing-settings")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertNotIn("/admin/company-routing-settings/1/deactivate", content)
+        self.assertNotIn("Деактивировать схему маршрутизации", content)
+        self.assertIn("Редактировать комментарий", content)
+        self.assertIn("Здесь можно изменить только комментарий", content)
+        self.assertIn("readonly", content)
+        self.assertNotIn("<select name='routing_mode'", content)
+        self.assertNotIn("name='has_autorotation' value='1'", content)
+        self.assertNotIn("name='is_active' value='1'", content)
+
+    def test_company_routing_settings_update_ignores_malicious_business_fields(self):
         self.request("/routes")
         create_body = urlencode({
             "calling_company_id": "1",
@@ -1657,24 +1681,54 @@ class ServerSmokeTest(unittest.TestCase):
         })
         self.request("/admin/company-routing-settings/create", method="POST", body=create_body)
         update_body = urlencode({
-            "country_id": "1",
-            "server_id": "1",
+            "country_id": "2",
+            "server_id": "2",
             "routing_mode": "autorotation",
-            "route_id": "",
+            "route_id": "1",
             "has_autorotation": "1",
-            "is_active": "1",
+            "is_active": "0",
             "comment": "new routing state",
         })
         captured, _ = self.request("/admin/company-routing-settings/1/update", method="POST", body=update_body)
         self.assertEqual(captured["status"], "303 See Other")
-        captured, content = self.request("/admin/company-routing-settings")
-        self.assertEqual(captured["status"], "200 OK")
-        self.assertIn("new routing state", content)
-        self.assertNotIn("old routing state", content)
-        captured, content = self.request("/admin/company-routing-settings?show_history=1")
-        self.assertEqual(captured["status"], "200 OK")
-        self.assertIn("new routing state", content)
-        self.assertIn("old routing state", content)
+
+        conn = server.connect(server.DB_PATH)
+        try:
+            row = conn.execute("SELECT * FROM company_routing_settings WHERE id = 1").fetchone()
+            self.assertEqual(row["comment"], "new routing state")
+            self.assertEqual(row["country_id"], 1)
+            self.assertEqual(row["server_id"], 1)
+            self.assertEqual(row["routing_mode"], "server_priority")
+            self.assertEqual(row["has_autorotation"], 0)
+            self.assertEqual(row["is_active"], 1)
+            self.assertIsNone(row["valid_to"])
+            self.assertEqual(conn.execute("SELECT COUNT(*) FROM routing_events").fetchone()[0], 0)
+            self.assertEqual(conn.execute("SELECT COUNT(*) FROM company_routing_settings").fetchone()[0], 1)
+        finally:
+            conn.close()
+
+    def test_company_routing_settings_direct_deactivate_is_not_allowed(self):
+        self.request("/routes")
+        create_body = urlencode({
+            "calling_company_id": "1",
+            "country_id": "1",
+            "server_id": "1",
+            "routing_mode": "server_priority",
+            "route_id": "",
+            "is_active": "1",
+            "comment": "routing state",
+        })
+        self.request("/admin/company-routing-settings/create", method="POST", body=create_body)
+        captured, content = self.request("/admin/company-routing-settings/1/deactivate", method="POST", body=urlencode({}))
+        self.assertEqual(captured["status"], "400 Bad Request")
+        self.assertIn("деактивация выполняется через", content)
+        conn = server.connect(server.DB_PATH)
+        try:
+            row = conn.execute("SELECT is_active, valid_to FROM company_routing_settings WHERE id = 1").fetchone()
+            self.assertEqual(row["is_active"], 1)
+            self.assertIsNone(row["valid_to"])
+        finally:
+            conn.close()
 
 
 

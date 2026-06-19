@@ -872,6 +872,26 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
         event = self.conn.execute("SELECT * FROM change_log WHERE entity_type = 'company_routing_setting' AND entity_id = ? ORDER BY id DESC", (setting_id,)).fetchone()
         self.assertEqual(event["change_type"], "company_routing_setting.updated")
 
+    def test_company_routing_comment_update_method_changes_comment_only(self):
+        setting_id = self.create_routing_setting(comment="before", routing_mode="autorotation", has_autorotation=True)
+        before_events = self.conn.execute("SELECT COUNT(*) FROM routing_events").fetchone()[0]
+        before_company_history = self.conn.execute("SELECT COUNT(*) FROM change_log WHERE entity_type = 'routing_event'").fetchone()[0]
+
+        returned_id = self.repo.update_company_routing_setting_comment(setting_id=setting_id, comment="after", updated_by=self.admin_id)
+
+        self.assertEqual(returned_id, setting_id)
+        rows = self.conn.execute("SELECT * FROM company_routing_settings").fetchall()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["comment"], "after")
+        self.assertEqual(rows[0]["routing_mode"], "autorotation")
+        self.assertEqual(rows[0]["has_autorotation"], 1)
+        self.assertEqual(rows[0]["is_active"], 1)
+        self.assertIsNone(rows[0]["valid_to"])
+        self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM routing_events").fetchone()[0], before_events)
+        self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM change_log WHERE entity_type = 'routing_event'").fetchone()[0], before_company_history)
+        event = self.conn.execute("SELECT * FROM change_log WHERE entity_type = 'company_routing_setting' AND entity_id = ? ORDER BY id DESC", (setting_id,)).fetchone()
+        self.assertEqual(event["change_type"], "company_routing_setting.updated")
+
     def test_company_routing_deactivation_closes_active_version_without_new_version_and_logs(self):
         setting_id = self.create_routing_setting()
         self.repo.deactivate_company_routing_setting(setting_id=setting_id, updated_by=self.admin_id)

@@ -3346,21 +3346,24 @@ def company_routing_settings_page(repo: Repository, q: dict[str, str] | None = N
         active_badge = "Да" if setting["is_active"] else "Нет"
         actions = ""
         if can_write("admin_company_routing_settings") and setting["is_active"] and setting["valid_to"] is None:
+            immutable_help = "Маршрутизация кампании изменяется через ‘Смена провайдеров’. Здесь можно изменить только комментарий."
             actions = f"""
-            <details class='edit-details'><summary>Редактировать</summary>
+            <details class='edit-details'><summary>Редактировать комментарий</summary>
               <form method='post' action='/admin/company-routing-settings/{setting['id']}/update'>
-                <p class='muted'>Кампания: {esc(setting['company_id_external'])} — {esc(setting['company_name'])}</p>
-                <label>GEO <select name='country_id'>{options(repo, 'countries', selected=setting['country_id'])}</select></label>
-                <label>Сервер <select name='server_id'>{options(repo, 'servers', selected=setting['server_id'])}</select></label>
-                <label>Режим маршрутизации <select name='routing_mode'>{routing_mode_options(setting['routing_mode'])}</select></label>
-                <label>Маршрут кампании <select name='route_id'>{route_options_for_country(repo, setting['country_id'], selected=setting['route_id'])}</select></label>
-                <label>Авторотация <input type='checkbox' name='has_autorotation' value='1' {'checked' if setting['has_autorotation'] else ''}></label>
-                <label>Активна <input type='checkbox' name='is_active' value='1' checked></label>
+                <p class='muted'>{esc(immutable_help)}</p>
+                <label>Компания <input readonly value='{esc(setting['company_name'])}'></label>
+                <label>Сервер <input readonly value='{esc(setting['server_name'])}'></label>
+                <label>GEO <input readonly value='{esc(setting['country_name'])}'></label>
+                <label>ID кампании <input readonly value='{esc(setting['company_id_external'])}'></label>
+                <label>Название кампании <input readonly value='{esc(setting['company_name'])}'></label>
+                <label>Режим маршрутизации <input readonly value='{esc(routing_mode_label(setting['routing_mode']))}'></label>
+                <label>Авторотация <input readonly value='{'Да' if setting['has_autorotation'] else 'Нет'}'></label>
+                <label>Маршрут кампании <input readonly value='{esc(route_label)}'></label>
+                <label>Активна <input readonly value='{'Да' if setting['is_active'] else 'Нет'}'></label>
+                <label>Действует с <input readonly value='{esc(setting['valid_from'])}'></label>
+                <label>Действует до <input readonly value='{esc(setting['valid_to'] or '—')}'></label>
                 <label>Комментарий <input name='comment' value='{esc(setting['comment'])}'></label>
-                <button>Сохранить</button>
-              </form>
-              <form method='post' action='/admin/company-routing-settings/{setting['id']}/deactivate'>
-                <button onclick="return confirm('Деактивировать схему маршрутизации?')">Деактивировать</button>
+                <button>Сохранить комментарий</button>
               </form>
             </details>
             """
@@ -4006,24 +4009,14 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
         return "/admin/company-routing-settings"
     if path.startswith("/admin/company-routing-settings/") and path.endswith("/update"):
         setting_id = int(path.strip("/").split("/")[2])
-        if data.get("is_active") != "1":
-            repo.deactivate_company_routing_setting(setting_id=setting_id, updated_by=actor_id)
-        else:
-            repo.update_company_routing_setting(
-                setting_id=setting_id,
-                country_id=int(data["country_id"]),
-                server_id=int(data["server_id"]),
-                route_id=parse_int(data.get("route_id")),
-                routing_mode=data["routing_mode"],
-                has_autorotation=data.get("has_autorotation") == "1",
-                comment=data.get("comment"),
-                updated_by=actor_id,
-            )
+        repo.update_company_routing_setting_comment(
+            setting_id=setting_id,
+            comment=data.get("comment"),
+            updated_by=actor_id,
+        )
         return "/admin/company-routing-settings"
     if path.startswith("/admin/company-routing-settings/") and path.endswith("/deactivate"):
-        setting_id = int(path.strip("/").split("/")[2])
-        repo.deactivate_company_routing_setting(setting_id=setting_id, updated_by=actor_id)
-        return "/admin/company-routing-settings"
+        raise BusinessRuleError("Схема маршрутизации кампаний доступна только для просмотра текущего состояния; деактивация выполняется через ‘Смена провайдеров’")
     if path == "/admin/telegram/save":
         repo.conn.execute("INSERT INTO telegram_settings(is_enabled, chat_id, bot_token_secret_ref, message_template, updated_by) VALUES (?, ?, ?, ?, ?)", (1 if data.get("is_enabled") == "1" else 0, data.get("chat_id"), data.get("bot_token_secret_ref"), data.get("message_template"), actor_id)); repo.conn.commit(); return "/admin/telegram"
     if path == "/admin/telegram/test":
