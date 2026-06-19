@@ -1925,6 +1925,22 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
         self.assertIn("1002", content)
         self.assertIn("autorotation", content)
 
+
+    def test_duplicate_campaign_autorotation_error_stays_on_form_and_preserves_values(self):
+        self.request("/routes")
+        body = urlencode({"apply_scope": "campaign_setting", "event_at": "2026-06-10T12:00", "calling_company_id": "2", "company_change_type": "enable_autorotation", "reason": "Тест нового маршрута", "comment": "Повторное включение"})
+        captured, _ = self.request("/provider-changes/create", method="POST", body=body)
+        self.assertEqual(captured["status"], "303 See Other")
+
+        captured, content = self.request("/provider-changes/create", method="POST", body=body)
+        self.assertEqual(captured["status"], "400 Bad Request")
+        self.assertIn("В этой компании уже включена авторотация.", content)
+        self.assertIn("<form method='post' action='/provider-changes/create'", content)
+        self.assertIn("value='campaign_setting' checked", content)
+        self.assertIn("value='enable_autorotation' selected", content)
+        self.assertIn("Повторное включение", content)
+        self.assertNotIn("Вернуться и исправить", content)
+
     def test_campaign_setting_autorotation_change_updates_company_list_and_company_journals(self):
         self.request("/routes")
         body = urlencode({"server_id": "1", "country_id": "1", "company_name": "Journal Auto", "company_id_external": "journal-auto", "line_count": "1", "dial_set_count": "1", "retry_interval_seconds": "30", "has_autorotation": "0", "is_active": "1", "comment": ""})

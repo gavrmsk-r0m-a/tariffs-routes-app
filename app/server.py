@@ -2822,8 +2822,9 @@ def campaign_metadata_json(repo: Repository) -> str:
     return json.dumps({str(row["id"]): row["country_id"] for row in rows}, ensure_ascii=False)
 
 
-def routing_event_form(repo: Repository, event=None) -> str:
-    if event:
+def routing_event_form(repo: Repository, event=None, error_message: str | None = None) -> str:
+    is_existing_event = bool(event) and "id" in event.keys()
+    if is_existing_event:
         def one(sql, value):
             if not value:
                 return "—"
@@ -2874,14 +2875,16 @@ def routing_event_form(repo: Repository, event=None) -> str:
     company_opts = select_options(repo, "SELECT id, company_id_external || ' / ' || company_name AS label FROM calling_companies WHERE is_active = 1 OR id = ? ORDER BY company_id_external", (event["calling_company_id"] if event else 0,), selected=event["calling_company_id"] if event else None, empty="—")
     selected_server_ids = {str(event["server_id"])} if event and event["server_id"] else set()
     server_priority_server_boxes = active_server_priority_checkboxes(repo, selected_server_ids, event["country_id"] if event else None)
-    action = f"/provider-changes/{event['id']}/update" if event else "/provider-changes/create"
-    submit = "Сохранить изменения" if event else "Создать событие"
-    inactive_note = "<p class='muted'>Редактирование события не применяет повторно server_route_priorities. Для исправления текущего приоритета создайте новое событие.</p>" if event else ""
-    old_route_field = f"<label class='scope-field' data-scopes='server_priority'>Старый маршрут (только описание при редактировании) <select name='old_route_id'>{route_options_for_dynamic_form(repo, selected=event['old_route_id'] if event else None, empty='—')}</select></label>" if event else ""
+    action = f"/provider-changes/{event['id']}/update" if is_existing_event else "/provider-changes/create"
+    submit = "Сохранить изменения" if is_existing_event else "Создать событие"
+    inactive_note = "<p class='muted'>Редактирование события не применяет повторно server_route_priorities. Для исправления текущего приоритета создайте новое событие.</p>" if is_existing_event else ""
+    old_route_field = f"<label class='scope-field' data-scopes='server_priority'>Старый маршрут (только описание при редактировании) <select name='old_route_id'>{route_options_for_dynamic_form(repo, selected=event['old_route_id'] if event else None, empty='—')}</select></label>" if is_existing_event else ""
     provider_selected = event["provider_id"] if event else None
+    error_html = f"<div class='error wide'>{esc(error_message)}</div>" if error_message else ""
     return f"""
-<details class='form-card' {'open' if event else ''}><summary class='form-summary'>{'Редактировать событие' if event else '+ Добавить событие'}</summary>
+<details class='form-card' {'open' if is_existing_event or error_message else ''}><summary class='form-summary'>{'Редактировать событие' if is_existing_event else '+ Добавить событие'}</summary>
 <form method='post' action='{action}' class='form-grid' id='routing-event-form' data-default-country-id='{esc(active_country_id_if_single(repo) or '')}'>
+  {error_html}
   <fieldset><legend>Область применения</legend>
     <div class='scope-cards'>
       <label class='card scope-card'><input type='radio' name='apply_scope' value='none' {'checked' if scope == 'none' else ''}><span class='scope-card-indicator' aria-hidden='true'></span><span class='scope-card-text'>Не меняли настройки в нашей системе</span></label>
@@ -3113,7 +3116,7 @@ def provider_event_details(ev) -> tuple[str, str, str]:
     return "—", campaign, "; ".join(details) or "—"
 
 
-def provider_changes_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
+def provider_changes_page(repo: Repository, q: dict[str, str] | None = None, form_error: str | None = None, form_data: dict | None = None) -> bytes:
     q = q or {}
     filters = {"country_id": q.get("country_id"), "apply_scope": q.get("apply_scope"), "server_id": q.get("server_id"), "campaign_id": q.get("campaign_id"), "provider_id": q.get("provider_id"), "include_inactive": q.get("include_inactive") == "1"}
     records = list(repo.list_routing_events(filters))
@@ -3143,7 +3146,7 @@ def provider_changes_page(repo: Repository, q: dict[str, str] | None = None) -> 
     journal_html = f"{data_table('provider_changes', [('event_at', 'Дата события'), ('scope', 'Область применения'), ('geo', 'GEO'), ('server', 'Сервер'), ('campaign', 'Кампания'), ('details', 'Детали'), ('reason', 'Причина'), ('comment', 'Комментарий'), ('active', 'Активна'), ('actions', 'Действия')], ''.join(rows))}"
     body = f"""
 <h1>Смена провайдеров</h1>
-{routing_event_form(repo) if can_write("provider_changes") else ""}
+{routing_event_form(repo, form_data, form_error) if can_write("provider_changes") else ""}
 {filter_card(filters_html, q, ('country_id', 'apply_scope', 'server_id', 'campaign_id', 'provider_id', 'include_inactive'))}
 {table_card(journal_html, title='Журнал событий', extra_class='journal-card')}
 {table_footer(pagination_html, export_link('/provider-changes', q) + column_settings('provider_changes', [('event_at', 'Дата события'), ('scope', 'Область применения'), ('geo', 'GEO'), ('server', 'Сервер'), ('campaign', 'Кампания'), ('details', 'Детали'), ('reason', 'Причина'), ('comment', 'Комментарий'), ('active', 'Активна'), ('actions', 'Действия')]))}
@@ -4229,6 +4232,23 @@ def app(environ, start_response):
         if return_path.startswith("/routes/") and return_path.endswith("/numbers/manage"):
             route_id = int(return_path.strip("/").split("/")[1])
             return [route_numbers_manage_page(repo, route_id, {"notice": user_error(exc), "notice_type": "error"})]
+        if path == "/provider-changes/create":
+            form_data = {
+                "event_at": parsed.get("event_at") or datetime.now().strftime("%Y-%m-%d %H:%M"),
+                "apply_scope": parsed.get("apply_scope") or "none",
+                "country_id": parse_int(parsed.get("country_id")),
+                "server_id": parse_int(parsed.get("server_id")),
+                "provider_id": parse_int(parsed.get("campaign_provider_id")) if parsed.get("apply_scope") == "campaign_setting" else parse_int(parsed.get("provider_id")),
+                "affected_route_id": parse_int(parsed.get("affected_route_id")),
+                "old_route_id": parse_int(parsed.get("old_route_id")),
+                "new_route_id": parse_int(parsed.get("new_route_id")),
+                "calling_company_id": parse_int(parsed.get("calling_company_id")),
+                "company_change_type": parsed.get("company_change_type") or None,
+                "new_company_route_id": parse_int(parsed.get("new_company_route_id")),
+                "reason": parsed.get("reason"),
+                "comment": parsed.get("comment"),
+            }
+            return [provider_changes_page(repo, {}, form_error=user_error(exc), form_data=form_data)]
         return [validation_error_page(return_path, user_error(exc))]
     finally:
         _REQUEST_CONTEXT.clear()
