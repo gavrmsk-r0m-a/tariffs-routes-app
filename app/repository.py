@@ -500,12 +500,25 @@ class Repository:
             ),
         )
         company_id = int(cur.lastrowid)
+        if has_autorotation:
+            self.create_company_routing_setting(
+                calling_company_id=company_id,
+                country_id=country_id,
+                server_id=server_id,
+                route_id=None,
+                routing_mode="autorotation",
+                has_autorotation=True,
+                comment="Начальная авторотация при создании кампании",
+                created_by=created_by,
+            )
         details = [
             f"Название: {_company_history_value(company_name)}",
+            f"ID кампании: {_company_history_value(company_id_external.strip())}",
             f"Активна: {_company_history_value(is_active, 'bool')}",
+            f"Количество линий: {_company_history_value(line_count, 'number')}",
             f"Количество наборов: {_company_history_value(dial_set_count, 'number')}",
             f"Интервал, сек.: {_company_history_value(retry_interval_seconds, 'number')}",
-            f"Количество линий: {_company_history_value(line_count, 'number')}",
+            f"Авторотация: {_company_history_value(has_autorotation, 'bool')}",
             f"Комментарий: {_truncate_history_text(_company_history_value(comment), 120)}",
         ]
         self._change_log(
@@ -553,8 +566,8 @@ class Repository:
             change = _company_history_change(label, old_value, new_value, kind)
             if change:
                 changes.append(change)
-        self.conn.execute("""UPDATE calling_companies SET server_id = ?, country_id = ?, company_name = ?, line_count = ?, dial_set_count = ?, has_autorotation = ?, retry_interval_seconds = ?, is_active = ?, comment = ?, updated_by = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?""",
-                          (server_id, country_id, company_name, int(line_count), int(dial_set_count), 1 if has_autorotation else 0, int(retry_interval_seconds), 1 if is_active else 0, comment, updated_by, company_id))
+        self.conn.execute("""UPDATE calling_companies SET server_id = ?, country_id = ?, company_name = ?, line_count = ?, dial_set_count = ?, retry_interval_seconds = ?, is_active = ?, comment = ?, updated_by = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?""",
+                          (server_id, country_id, company_name, int(line_count), int(dial_set_count), int(retry_interval_seconds), 1 if is_active else 0, comment, updated_by, company_id))
         if changes:
             only_active = len(changes) == 1 and changes[0].startswith("Активна:")
             if only_active and int(old["is_active"] or 0) == 0 and is_active:
@@ -1144,17 +1157,23 @@ class Repository:
                 "country_id": "cc.country_id",
                 "company_like": "cc.company_name",
                 "external_id_like": "cc.company_id_external",
-                "has_autorotation": "cc.has_autorotation",
+                "has_autorotation": "CAST(COALESCE(active_crs.has_autorotation, 0) AS TEXT)",
                 "is_active": "cc.is_active",
             },
         )
         return list(
             self.conn.execute(
                 f"""
-                SELECT cc.*, s.name AS server_name, c.name AS country_name
+                SELECT cc.*, s.name AS server_name, c.name AS country_name,
+                       COALESCE(active_crs.has_autorotation, 0) AS current_has_autorotation,
+                       active_crs.routing_mode AS current_routing_mode, active_crs.route_id AS current_route_id
                 FROM calling_companies cc
                 JOIN servers s ON s.id = cc.server_id
                 JOIN countries c ON c.id = cc.country_id
+                LEFT JOIN company_routing_settings active_crs
+                  ON active_crs.calling_company_id = cc.id
+                 AND active_crs.is_active = 1
+                 AND active_crs.valid_to IS NULL
                 {where}
                 ORDER BY c.name, s.name, cc.company_name
                 """,
@@ -1170,19 +1189,19 @@ class Repository:
                    cc.company_name AS current_company_name, cc.company_id_external
             FROM change_log cl
             LEFT JOIN users u ON u.id = cl.changed_by
-            LEFT JOIN calling_companies cc ON cc.id = cl.entity_id
-            WHERE cl.entity_type = 'calling_company' AND cl.entity_id = ?
+            LEFT JOIN calling_companies cc ON cc.id = CASE WHEN cl.entity_type = 'calling_company' THEN cl.entity_id ELSE json_extract(cl.new_values, '$.calling_company_id') END
+            WHERE (cl.entity_type = 'calling_company' AND cl.entity_id = ?) OR (cl.entity_type = 'routing_event' AND json_extract(cl.new_values, '$.calling_company_id') = ?)
             ORDER BY cl.changed_at DESC, cl.id DESC
             """,
-            (company_id,),
+            (company_id, company_id),
         ))
 
     def list_calling_company_events(self, *, search: str | None = None, limit: int = 50, offset: int = 0) -> list[sqlite3.Row]:
-        where = "WHERE cl.entity_type = 'calling_company'"
+        where = "WHERE (cl.entity_type = 'calling_company' OR (cl.entity_type = 'routing_event' AND json_extract(cl.new_values, '$.calling_company_id') IS NOT NULL))"
         params: list[object] = []
         if search and search.strip():
             like = f"%{search.strip()}%"
-            where += " AND (CAST(cl.entity_id AS TEXT) LIKE ? OR cc.company_id_external LIKE ? OR cc.company_name LIKE ? OR cl.summary LIKE ? OR cl.old_values LIKE ? OR cl.new_values LIKE ?)"
+            where += " AND (CAST(COALESCE(cc.id, json_extract(cl.new_values, '$.calling_company_id'), cl.entity_id) AS TEXT) LIKE ? OR cc.company_id_external LIKE ? OR cc.company_name LIKE ? OR cl.summary LIKE ? OR cl.old_values LIKE ? OR cl.new_values LIKE ?)"
             params.extend([like, like, like, like, like, like])
         params.extend([limit, offset])
         return list(self.conn.execute(
@@ -1192,7 +1211,7 @@ class Repository:
                    cl.summary AS comment, cc.company_name AS current_company_name, cc.company_id_external
             FROM change_log cl
             LEFT JOIN users u ON u.id = cl.changed_by
-            LEFT JOIN calling_companies cc ON cc.id = cl.entity_id
+            LEFT JOIN calling_companies cc ON cc.id = CASE WHEN cl.entity_type = 'calling_company' THEN cl.entity_id ELSE json_extract(cl.new_values, '$.calling_company_id') END
             {where}
             ORDER BY cl.changed_at DESC, cl.id DESC
             LIMIT ? OFFSET ?
@@ -1201,13 +1220,13 @@ class Repository:
         ))
 
     def count_calling_company_events(self, *, search: str | None = None) -> int:
-        where = "WHERE cl.entity_type = 'calling_company'"
+        where = "WHERE (cl.entity_type = 'calling_company' OR (cl.entity_type = 'routing_event' AND json_extract(cl.new_values, '$.calling_company_id') IS NOT NULL))"
         params: list[object] = []
         if search and search.strip():
             like = f"%{search.strip()}%"
-            where += " AND (CAST(cl.entity_id AS TEXT) LIKE ? OR cc.company_id_external LIKE ? OR cc.company_name LIKE ? OR cl.summary LIKE ? OR cl.old_values LIKE ? OR cl.new_values LIKE ?)"
+            where += " AND (CAST(COALESCE(cc.id, json_extract(cl.new_values, '$.calling_company_id'), cl.entity_id) AS TEXT) LIKE ? OR cc.company_id_external LIKE ? OR cc.company_name LIKE ? OR cl.summary LIKE ? OR cl.old_values LIKE ? OR cl.new_values LIKE ?)"
             params.extend([like, like, like, like, like, like])
-        return int(self.conn.execute(f"SELECT COUNT(*) FROM change_log cl LEFT JOIN calling_companies cc ON cc.id = cl.entity_id {where}", params).fetchone()[0])
+        return int(self.conn.execute(f"SELECT COUNT(*) FROM change_log cl LEFT JOIN calling_companies cc ON cc.id = CASE WHEN cl.entity_type = 'calling_company' THEN cl.entity_id ELSE json_extract(cl.new_values, '$.calling_company_id') END {where}", params).fetchone()[0])
 
     def _validate_company_routing_values(
         self,

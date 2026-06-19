@@ -549,6 +549,52 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
         self.assertIn("Интервал, сек.: 30 → 45", changed["new_value"])
         self.assertIn("Комментарий: initial → new comment", changed["new_value"])
 
+    def test_calling_company_creation_autorotation_creates_routing_source_of_truth(self):
+        server_id = self.repo.create_server("IT-auto")
+        company_id = self.repo.create_calling_company(
+            server_id=server_id,
+            country_id=self.country_id,
+            company_name="Auto company",
+            company_id_external="auto-1",
+            has_autorotation=True,
+            created_by=self.admin_id,
+            is_active=True,
+            line_count=3,
+            dial_set_count=4,
+            retry_interval_seconds=20,
+        )
+
+        setting = self.conn.execute("SELECT * FROM company_routing_settings WHERE calling_company_id = ? AND is_active = 1 AND valid_to IS NULL", (company_id,)).fetchone()
+        self.assertIsNotNone(setting)
+        self.assertEqual(setting["routing_mode"], "autorotation")
+        self.assertEqual(setting["has_autorotation"], 1)
+        self.assertIsNone(setting["route_id"])
+        listed = self.repo.list_calling_companies({"has_autorotation": "1"})
+        self.assertTrue(any(row["id"] == company_id and row["current_has_autorotation"] == 1 for row in listed))
+        created = self.repo.list_calling_company_history(company_id)[0]
+        self.assertIn("Компания создана", created["comment"])
+        self.assertIn("ID кампании: auto-1", created["new_value"])
+        self.assertIn("Авторотация: Да", created["new_value"])
+
+    def test_calling_company_list_autorotation_ignores_stale_company_field(self):
+        server_id = self.repo.create_server("IT-stale")
+        company_id = self.repo.create_calling_company(
+            server_id=server_id,
+            country_id=self.country_id,
+            company_name="Stale company",
+            company_id_external="stale-1",
+            has_autorotation=True,
+            created_by=self.admin_id,
+        )
+        active = self.conn.execute("SELECT id FROM company_routing_settings WHERE calling_company_id = ? AND is_active = 1 AND valid_to IS NULL", (company_id,)).fetchone()
+        self.repo.deactivate_company_routing_setting(setting_id=active["id"], updated_by=self.admin_id)
+
+        row = next(row for row in self.repo.list_calling_companies({}) if row["id"] == company_id)
+        self.assertEqual(row["has_autorotation"], 1)
+        self.assertEqual(row["current_has_autorotation"], 0)
+        filtered = self.repo.list_calling_companies({"has_autorotation": "0"})
+        self.assertTrue(any(row["id"] == company_id for row in filtered))
+
     def test_calling_company_activation_deactivation_and_journal_search(self):
         server_id = self.repo.create_server("IT1")
         company_id = self.repo.create_calling_company(server_id=server_id, country_id=self.country_id, company_name="Searchable", company_id_external="cmp-search", has_autorotation=False, created_by=self.admin_id, is_active=False)
