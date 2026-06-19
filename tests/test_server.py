@@ -1373,6 +1373,31 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertNotIn("history", csv.lower())
         self.assertNotIn("Журнал событий", csv)
 
+    def test_company_edit_shows_autorotation_read_only_from_routing_settings(self):
+        body = urlencode({"server_id": "1", "country_id": "1", "company_id_external": "readonly-auto", "company_name": "Readonly Auto", "line_count": "1", "dial_set_count": "2", "has_autorotation": "1", "retry_interval_seconds": "30", "is_active": "1", "comment": ""})
+        self.request("/companies/create", method="POST", body=body)
+        conn = server.connect(server.DB_PATH)
+        try:
+            company_id = conn.execute("SELECT id FROM calling_companies WHERE company_id_external = 'readonly-auto'").fetchone()["id"]
+        finally:
+            conn.close()
+
+        captured, content = self.request(f"/companies/{company_id}/edit")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("Авторотация: Да", content)
+        self.assertIn("Маршрутизация компании изменяется через ‘Смена провайдеров’.", content)
+        self.assertNotIn("name='has_autorotation'", content)
+
+        update = urlencode({"server_id": "1", "country_id": "1", "company_name": "Readonly Auto Updated", "line_count": "5", "dial_set_count": "6", "retry_interval_seconds": "45", "is_active": "1", "comment": "base fields changed"})
+        captured, _ = self.request(f"/companies/{company_id}/update", method="POST", body=update)
+        self.assertEqual(captured["status"], "303 See Other")
+        conn = server.connect(server.DB_PATH)
+        try:
+            setting = conn.execute("SELECT * FROM company_routing_settings WHERE calling_company_id = ? AND is_active = 1 AND valid_to IS NULL", (company_id,)).fetchone()
+            self.assertEqual(setting["has_autorotation"], 1)
+        finally:
+            conn.close()
+
     def test_global_calling_company_journal_searches_old_names(self):
         body = urlencode({"server_id": "1", "country_id": "1", "company_id_external": "history-search-id", "company_name": "HistoryOld", "line_count": "1", "dial_set_count": "2", "has_autorotation": "0", "retry_interval_seconds": "30", "is_active": "1", "comment": "old comment"})
         self.request("/companies/create", method="POST", body=body)
@@ -1856,6 +1881,31 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
         self.assertEqual(captured["status"], "200 OK")
         self.assertIn("1002", content)
         self.assertIn("autorotation", content)
+
+    def test_campaign_setting_autorotation_change_updates_company_list_and_company_journals(self):
+        self.request("/routes")
+        body = urlencode({"server_id": "1", "country_id": "1", "company_name": "Journal Auto", "company_id_external": "journal-auto", "line_count": "1", "dial_set_count": "1", "retry_interval_seconds": "30", "has_autorotation": "0", "is_active": "1", "comment": ""})
+        self.request("/companies/create", method="POST", body=body)
+        conn = server.connect(server.DB_PATH)
+        try:
+            company_id = conn.execute("SELECT id FROM calling_companies WHERE company_id_external = 'journal-auto'").fetchone()["id"]
+        finally:
+            conn.close()
+
+        body = urlencode({"apply_scope": "campaign_setting", "event_at": "2026-06-10T12:00", "calling_company_id": str(company_id), "company_change_type": "enable_autorotation", "reason": "Тест нового маршрута", "comment": "Журнальное включение авторотации"})
+        captured, _ = self.request("/provider-changes/create", method="POST", body=body)
+        self.assertEqual(captured["status"], "303 See Other")
+
+        captured, content = self.request("/companies?has_autorotation=1")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("journal-auto", content)
+        self.assertIn("<td data-col='autorotation'>Да</td>", content)
+        captured, history = self.request(f"/calling-companies/{company_id}/history")
+        self.assertIn("Журнальное включение авторотации", history)
+        self.assertIn("Авторотация: Нет → Да", history)
+        captured, journal = self.request("/calling-companies/history?search=Журнальное")
+        self.assertIn("journal-auto", journal)
+        self.assertIn("Журнальное включение авторотации", journal)
 
     def test_campaign_setting_event_for_company_without_settings(self):
         self.request("/routes")

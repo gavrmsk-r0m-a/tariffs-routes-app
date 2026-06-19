@@ -2721,7 +2721,7 @@ def companies_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
     for cc in records:
         actions = f"<a class='button edit-action' href='/companies/{cc['id']}/edit' title='Редактировать' aria-label='Редактировать' data-tooltip='Редактировать'>Редактировать</a>" if can_write("companies") else ""
         history = history_icon_link(f"/calling-companies/{cc['id']}/history")
-        rows.append(f"<tr><td data-col='server'>{esc(cc['server_name'])}</td><td data-col='geo'>{esc(cc['country_name'])}</td>{clamp_cell('company_name', esc(cc['company_name']), cc['company_name'])}<td data-col='company_id'>{esc(cc['company_id_external'])}</td><td data-col='lines'>{esc(cc['line_count'])}</td><td data-col='dial_sets'>{esc(cc['dial_set_count'])}</td><td data-col='autorotation'>{'Да' if cc['has_autorotation'] else 'Нет'}</td><td data-col='retry_interval'>{esc(cc['retry_interval_seconds'])}</td><td data-col='active'>{'Активна' if cc['is_active'] else 'Неактивна'}</td>{clamp_cell('comment', esc(cc['comment']), cc['comment'], classes='comment-cell')}<td data-col='history' class='history-cell'>{history}</td><td data-col='actions'>{actions}</td></tr>")
+        rows.append(f"<tr><td data-col='server'>{esc(cc['server_name'])}</td><td data-col='geo'>{esc(cc['country_name'])}</td>{clamp_cell('company_name', esc(cc['company_name']), cc['company_name'])}<td data-col='company_id'>{esc(cc['company_id_external'])}</td><td data-col='lines'>{esc(cc['line_count'])}</td><td data-col='dial_sets'>{esc(cc['dial_set_count'])}</td><td data-col='autorotation'>{'Да' if cc['current_has_autorotation'] else 'Нет'}</td><td data-col='retry_interval'>{esc(cc['retry_interval_seconds'])}</td><td data-col='active'>{'Активна' if cc['is_active'] else 'Неактивна'}</td>{clamp_cell('comment', esc(cc['comment']), cc['comment'], classes='comment-cell')}<td data-col='history' class='history-cell'>{history}</td><td data-col='actions'>{actions}</td></tr>")
     filters_html = f"""<form class="filter-grid" method="get" action="/companies">
 <label>Сервер <select name="server_id">{options(repo, 'servers', selected=q.get('server_id'), empty='Все')}</select></label><label>ГЕО <select name="country_id">{options(repo, 'countries', selected=q.get('country_id'), empty='Все')}</select></label><label>Название кампании <input name="company" value="{esc(q.get('company'))}"></label><label>ID кампании <input name="external_id" value="{esc(q.get('external_id'))}"></label><label>Авторотация <select name="has_autorotation"><option value="">Все</option><option value="1" {'selected' if q.get('has_autorotation')=='1' else ''}>Да</option><option value="0" {'selected' if q.get('has_autorotation')=='0' else ''}>Нет</option></select></label><label>Активность <select name="is_active"><option value="">Все</option><option value="1" {'selected' if q.get('is_active')=='1' else ''}>Активна</option><option value="0" {'selected' if q.get('is_active')=='0' else ''}>Неактивна</option></select></label><button>Найти</button></form>"""
     create_html = f"""<form class="form-grid" method="post" action="/companies/create"><label>Сервер <span class="required">*</span><select name="server_id">{active_options(repo, 'servers')}</select></label><label>ГЕО <span class="required">*</span><select name="country_id">{active_options(repo, 'countries')}</select></label><label>ID кампании <span class="required">*</span><input name="company_id_external"></label><label>Название кампании <span class="required">*</span><input name="company_name"></label><label>Количество линий <span class="required">*</span><input name="line_count" value="0"></label><label>Количество наборов <span class="required">*</span><input name="dial_set_count" value="0"></label><label>Авторотация <span class="required">*</span><select name="has_autorotation"><option value="1">Да</option><option value="0">Нет</option></select></label><label>Интервал дозвона, сек. <span class="required">*</span><input name="retry_interval_seconds" value="0"></label><label>Активна <span class="required">*</span><select name="is_active"><option value="1">Да</option><option value="0">Нет</option></select></label><label>Комментарий <input name="comment"></label><button>Сохранить</button></form>"""
@@ -3599,7 +3599,18 @@ def phone_edit_page(repo: Repository, phone_id: int) -> bytes:
 
 
 def company_edit_page(repo: Repository, company_id: int) -> bytes:
-    cc = repo.conn.execute("SELECT * FROM calling_companies WHERE id = ?", (company_id,)).fetchone()
+    cc = repo.conn.execute(
+        """
+        SELECT cc.*, COALESCE(active_crs.has_autorotation, 0) AS current_has_autorotation
+        FROM calling_companies cc
+        LEFT JOIN company_routing_settings active_crs
+          ON active_crs.calling_company_id = cc.id
+         AND active_crs.is_active = 1
+         AND active_crs.valid_to IS NULL
+        WHERE cc.id = ?
+        """,
+        (company_id,),
+    ).fetchone()
     if cc is None:
         return page("Кампания не найдена", "<h1>Кампания не найдена</h1>")
     body = f"""<h1>Редактировать кампанию</h1><p><a href='/companies'>← Назад</a></p>
@@ -3610,7 +3621,8 @@ def company_edit_page(repo: Repository, company_id: int) -> bytes:
 <label>Название кампании <span class='required'>*</span><input name='company_name' value='{esc(cc['company_name'])}'></label>
 <label>Количество линий <span class='required'>*</span><input name='line_count' value='{esc(cc['line_count'])}'></label>
 <label>Количество наборов <span class='required'>*</span><input name='dial_set_count' value='{esc(cc['dial_set_count'])}'></label>
-<label>Авторотация <select name='has_autorotation'><option value='1' {'selected' if cc['has_autorotation'] else ''}>Да</option><option value='0' {'selected' if not cc['has_autorotation'] else ''}>Нет</option></select></label>
+<div class='muted'>Авторотация: {'Да' if cc['current_has_autorotation'] else 'Нет'}</div>
+<p class='muted'>Маршрутизация компании изменяется через ‘Смена провайдеров’.</p>
 <label>Интервал дозвона, сек. <input name='retry_interval_seconds' value='{esc(cc['retry_interval_seconds'])}'></label>
 <label>Активна <select name='is_active'><option value='1' {'selected' if cc['is_active'] else ''}>Да</option><option value='0' {'selected' if not cc['is_active'] else ''}>Нет</option></select></label>
 <label>Комментарий <input name='comment' value='{esc(cc['comment'])}'></label>
@@ -3756,7 +3768,8 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
         return "/companies"
     if path.startswith("/companies/") and path.endswith("/update"):
         company_id = int(path.strip("/").split("/")[1])
-        repo.update_calling_company(company_id, server_id=int(data["server_id"]), country_id=int(data["country_id"]), company_name=data["company_name"], line_count=int(data.get("line_count") or 0), dial_set_count=int(data.get("dial_set_count") or 0), has_autorotation=data.get("has_autorotation") == "1", retry_interval_seconds=int(data.get("retry_interval_seconds") or 0), is_active=data.get("is_active") == "1", comment=data.get("comment"), updated_by=actor_id)
+        existing = repo.get_calling_company(company_id)
+        repo.update_calling_company(company_id, server_id=int(data["server_id"]), country_id=int(data["country_id"]), company_name=data["company_name"], line_count=int(data.get("line_count") or 0), dial_set_count=int(data.get("dial_set_count") or 0), has_autorotation=bool(existing["has_autorotation"]) if existing else False, retry_interval_seconds=int(data.get("retry_interval_seconds") or 0), is_active=data.get("is_active") == "1", comment=data.get("comment"), updated_by=actor_id)
         return "/companies"
     if path == "/provider-changes/create":
         apply_scope = data.get("apply_scope")
