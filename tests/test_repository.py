@@ -1096,6 +1096,28 @@ class RoutingEventsRepositoryTest(unittest.TestCase):
         self.assertEqual(active["has_autorotation"], 1)
         self.assertEqual(active["route_id"], self.route_id)
 
+
+    def test_campaign_setting_duplicate_enable_autorotation_is_blocked_without_logs(self):
+        self.repo.create_company_routing_setting(calling_company_id=self.company_id, country_id=self.country_id, server_id=self.server_id, route_id=None, routing_mode="autorotation", has_autorotation=True, comment="old", created_by=self.admin_id)
+        before_events = self.conn.execute("SELECT COUNT(*) FROM routing_events").fetchone()[0]
+        before_settings = self.conn.execute("SELECT COUNT(*) FROM company_routing_settings WHERE calling_company_id = ?", (self.company_id,)).fetchone()[0]
+        before_setting_logs = self.conn.execute("SELECT COUNT(*) FROM change_log WHERE entity_type = 'company_routing_setting'").fetchone()[0]
+        before_company_journal = self.conn.execute("SELECT COUNT(*) FROM change_log WHERE entity_type = 'routing_event' AND json_extract(new_values, '$.calling_company_id') = ?", (self.company_id,)).fetchone()[0]
+
+        with self.assertRaisesRegex(BusinessRuleError, "В этой компании уже включена авторотация"):
+            self.create_event(apply_scope="campaign_setting", calling_company_id=self.company_id, company_change_type="enable_autorotation", provider_id=None)
+
+        self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM routing_events").fetchone()[0], before_events)
+        self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM company_routing_settings WHERE calling_company_id = ?", (self.company_id,)).fetchone()[0], before_settings)
+        self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM change_log WHERE entity_type = 'company_routing_setting'").fetchone()[0], before_setting_logs)
+        self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM change_log WHERE entity_type = 'routing_event' AND json_extract(new_values, '$.calling_company_id') = ?", (self.company_id,)).fetchone()[0], before_company_journal)
+
+    def test_campaign_setting_duplicate_disable_autorotation_is_blocked(self):
+        with self.assertRaisesRegex(BusinessRuleError, "авторотация уже выключена"):
+            self.create_event(apply_scope="campaign_setting", calling_company_id=self.company_id, company_change_type="disable_autorotation", provider_id=None)
+        self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM routing_events").fetchone()[0], 0)
+        self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM company_routing_settings WHERE calling_company_id = ?", (self.company_id,)).fetchone()[0], 0)
+
     def test_campaign_setting_set_campaign_route_requires_valid_geo_and_creates_setting(self):
         with self.assertRaisesRegex(BusinessRuleError, "обязателен"):
             self.create_event(apply_scope="campaign_setting", calling_company_id=self.company_id, company_change_type="set_campaign_route", provider_id=None, new_company_route_id=None)
@@ -1156,7 +1178,7 @@ class RoutingEventsRepositoryTest(unittest.TestCase):
 
     def test_campaign_setting_set_campaign_route_rejects_same_active_route(self):
         self.repo.create_company_routing_setting(calling_company_id=self.company_id, country_id=self.country_id, server_id=self.server_id, route_id=self.route_id, routing_mode="campaign_route", has_autorotation=False, comment="old", created_by=self.admin_id)
-        with self.assertRaisesRegex(BusinessRuleError, "отличаться от текущего"):
+        with self.assertRaisesRegex(BusinessRuleError, "уже прописан"):
             self.create_event(apply_scope="campaign_setting", calling_company_id=self.company_id, company_change_type="set_campaign_route", provider_id=self.provider_id, new_company_route_id=self.route_id)
         self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM company_routing_settings WHERE calling_company_id = ?", (self.company_id,)).fetchone()[0], 1)
 

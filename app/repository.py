@@ -1872,9 +1872,13 @@ class Repository:
             values["old_company_has_autorotation"] = 1 if old_state["has_autorotation"] else 0
             ctype = values["company_change_type"]
             if ctype == "enable_autorotation":
+                if old_state["has_autorotation"]:
+                    raise BusinessRuleError("В этой компании уже включена авторотация.")
                 values["new_company_route_id"] = old_state["route_id"]
                 values["new_company_has_autorotation"] = 1
             elif ctype == "disable_autorotation":
+                if not old_state["has_autorotation"]:
+                    raise BusinessRuleError("В этой компании авторотация уже выключена.")
                 values["new_company_route_id"] = old_state["route_id"]
                 values["new_company_has_autorotation"] = 0
             elif ctype == "set_campaign_route":
@@ -1886,7 +1890,7 @@ class Repository:
                 if values["provider_id"] and int(route["provider_id"]) != int(values["provider_id"]):
                     raise BusinessRuleError("Маршрут кампании должен относиться к выбранному провайдеру")
                 if old_state["route_id"] and int(values["new_company_route_id"]) == int(old_state["route_id"]):
-                    raise BusinessRuleError("Новый маршрут кампании должен отличаться от текущего")
+                    raise BusinessRuleError("Этот маршрут уже прописан для выбранной компании.")
                 if not values["provider_id"]:
                     values["provider_id"] = route["provider_id"]
                 values["new_company_has_autorotation"] = values["old_company_has_autorotation"]
