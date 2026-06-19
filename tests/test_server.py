@@ -1574,14 +1574,19 @@ class ServerSmokeTest(unittest.TestCase):
         captured, content = self.request("/admin/company-routing-settings")
         self.assertEqual(captured["status"], "200 OK")
         self.assertIn("Администрирование → Схема маршрутизации кампаний", content)
-        self.assertIn("+ Добавить схему маршрутизации кампании", content)
-        self.assertIn('name="calling_company_id"', content)
+        self.assertIn("Схема маршрутизации кампаний показывает текущие исключения", content)
         self.assertIn('name="company_id_external"', content)
         self.assertIn('name="routing_mode"', content)
         self.assertIn('name="show_history"', content)
-        self.assertIn("syncAutorotation", content)
+        self.assertNotIn("+ Добавить схему маршрутизации кампании", content)
+        self.assertNotIn('name="calling_company_id"', content)
+        self.assertNotIn("syncAutorotation", content)
+        self.assertNotIn("Действия", content)
+        self.assertNotIn("Редактировать комментарий", content)
+        self.assertNotIn("/admin/company-routing-settings/1/deactivate", content)
+        self.assertNotIn("/admin/company-routing-settings/1/delete", content)
 
-    def test_company_routing_setting_create_visible_and_filters_render(self):
+    def test_company_routing_setting_create_endpoint_blocked_and_filters_render(self):
         self.request("/routes")
         body = urlencode({
             "calling_company_id": "1",
@@ -1593,17 +1598,31 @@ class ServerSmokeTest(unittest.TestCase):
             "is_active": "1",
             "comment": "manual routing note",
         })
-        captured, _ = self.request("/admin/company-routing-settings/create", method="POST", body=body)
-        self.assertEqual(captured["status"], "303 See Other")
-        captured, content = self.request("/admin/company-routing-settings?country_id=1&server_id=1&routing_mode=server_priority&company_id_external=1001&is_active=1")
+        captured, content = self.request("/admin/company-routing-settings/create", method="POST", body=body)
+        self.assertEqual(captured["status"], "400 Bad Request")
+        self.assertIn("создание выполняется через", content)
+
+        company_body = urlencode({
+            "server_id": "1",
+            "country_id": "1",
+            "company_id_external": "1235",
+            "company_name": "CC Mexico Filter Demo",
+            "line_count": "1",
+            "dial_set_count": "1",
+            "retry_interval_seconds": "30",
+            "has_autorotation": "1",
+            "is_active": "1",
+            "comment": "autorotation filter mapping",
+        })
+        self.request("/companies/create", method="POST", body=company_body)
+        captured, content = self.request("/admin/company-routing-settings?country_id=1&server_id=1&routing_mode=autorotation&company_id_external=1235&is_active=1")
         self.assertEqual(captured["status"], "200 OK")
-        self.assertIn("CC Mexico Demo", content)
-        self.assertIn("1001", content)
-        self.assertIn("server_priority", content)
-        self.assertIn("manual routing note", content)
+        self.assertIn("CC Mexico Filter Demo", content)
+        self.assertIn("1235", content)
+        self.assertIn("Авторотация", content)
         captured, content = self.request("/admin/company-routing-settings?company_id_external=no-match")
         self.assertEqual(captured["status"], "200 OK")
-        self.assertNotIn("manual routing note", content)
+        self.assertNotIn("CC Mexico Filter Demo", content)
 
     def test_company_routing_settings_table_maps_autorotation_company_columns(self):
         self.request("/routes")
@@ -1644,42 +1663,38 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertNotIn("<td data-col='route'>Да</td>", row_html)
         self.assertNotIn("<td data-col='route'>Нет</td>", row_html)
 
-    def test_company_routing_settings_edit_is_comment_only_and_no_deactivate_action(self):
+    def test_company_routing_settings_page_has_no_edit_create_or_deactivate_actions(self):
         self.request("/routes")
-        create_body = urlencode({
-            "calling_company_id": "1",
-            "country_id": "1",
+        company_body = urlencode({
             "server_id": "1",
-            "routing_mode": "server_priority",
-            "route_id": "",
+            "country_id": "1",
+            "company_id_external": "1236",
+            "company_name": "CC Readonly Demo",
+            "line_count": "1",
+            "dial_set_count": "1",
+            "retry_interval_seconds": "30",
+            "has_autorotation": "1",
             "is_active": "1",
-            "comment": "old routing state",
+            "comment": "readonly mapping",
         })
-        self.request("/admin/company-routing-settings/create", method="POST", body=create_body)
+        self.request("/companies/create", method="POST", body=company_body)
 
         captured, content = self.request("/admin/company-routing-settings")
         self.assertEqual(captured["status"], "200 OK")
+        self.assertNotIn("/admin/company-routing-settings/create", content)
+        self.assertNotIn("/admin/company-routing-settings/1/update", content)
         self.assertNotIn("/admin/company-routing-settings/1/deactivate", content)
         self.assertNotIn("Деактивировать схему маршрутизации", content)
-        self.assertIn("Редактировать комментарий", content)
-        self.assertIn("Здесь можно изменить только комментарий", content)
-        self.assertIn("readonly", content)
+        self.assertNotIn("Редактировать комментарий", content)
+        self.assertNotIn("<th data-col='actions'>Действия</th>", content)
+        self.assertNotIn("<td data-col='actions'", content)
         self.assertNotIn("<select name='routing_mode'", content)
         self.assertNotIn("name='has_autorotation' value='1'", content)
         self.assertNotIn("name='is_active' value='1'", content)
 
     def test_company_routing_settings_update_ignores_malicious_business_fields(self):
         self.request("/routes")
-        create_body = urlencode({
-            "calling_company_id": "1",
-            "country_id": "1",
-            "server_id": "1",
-            "routing_mode": "server_priority",
-            "route_id": "",
-            "is_active": "1",
-            "comment": "old routing state",
-        })
-        self.request("/admin/company-routing-settings/create", method="POST", body=create_body)
+        self.request("/companies/create", method="POST", body=urlencode({"server_id": "1", "country_id": "1", "company_id_external": "1237", "company_name": "CC Update Block Demo", "line_count": "1", "dial_set_count": "1", "retry_interval_seconds": "30", "has_autorotation": "1", "is_active": "1", "comment": "old routing state"}))
         update_body = urlencode({
             "country_id": "2",
             "server_id": "2",
@@ -1689,17 +1704,18 @@ class ServerSmokeTest(unittest.TestCase):
             "is_active": "0",
             "comment": "new routing state",
         })
-        captured, _ = self.request("/admin/company-routing-settings/1/update", method="POST", body=update_body)
-        self.assertEqual(captured["status"], "303 See Other")
+        captured, content = self.request("/admin/company-routing-settings/1/update", method="POST", body=update_body)
+        self.assertEqual(captured["status"], "400 Bad Request")
+        self.assertIn("изменения выполняются через", content)
 
         conn = server.connect(server.DB_PATH)
         try:
             row = conn.execute("SELECT * FROM company_routing_settings WHERE id = 1").fetchone()
-            self.assertEqual(row["comment"], "new routing state")
+            self.assertEqual(row["comment"], "Начальная авторотация при создании кампании")
             self.assertEqual(row["country_id"], 1)
             self.assertEqual(row["server_id"], 1)
-            self.assertEqual(row["routing_mode"], "server_priority")
-            self.assertEqual(row["has_autorotation"], 0)
+            self.assertEqual(row["routing_mode"], "autorotation")
+            self.assertEqual(row["has_autorotation"], 1)
             self.assertEqual(row["is_active"], 1)
             self.assertIsNone(row["valid_to"])
             self.assertEqual(conn.execute("SELECT COUNT(*) FROM routing_events").fetchone()[0], 0)
@@ -1709,19 +1725,10 @@ class ServerSmokeTest(unittest.TestCase):
 
     def test_company_routing_settings_direct_deactivate_is_not_allowed(self):
         self.request("/routes")
-        create_body = urlencode({
-            "calling_company_id": "1",
-            "country_id": "1",
-            "server_id": "1",
-            "routing_mode": "server_priority",
-            "route_id": "",
-            "is_active": "1",
-            "comment": "routing state",
-        })
-        self.request("/admin/company-routing-settings/create", method="POST", body=create_body)
+        self.request("/companies/create", method="POST", body=urlencode({"server_id": "1", "country_id": "1", "company_id_external": "1238", "company_name": "CC Deactivate Block Demo", "line_count": "1", "dial_set_count": "1", "retry_interval_seconds": "30", "has_autorotation": "1", "is_active": "1", "comment": "routing state"}))
         captured, content = self.request("/admin/company-routing-settings/1/deactivate", method="POST", body=urlencode({}))
         self.assertEqual(captured["status"], "400 Bad Request")
-        self.assertIn("деактивация выполняется через", content)
+        self.assertIn("деактивация и удаление выполняются через", content)
         conn = server.connect(server.DB_PATH)
         try:
             row = conn.execute("SELECT is_active, valid_to FROM company_routing_settings WHERE id = 1").fetchone()
@@ -1730,6 +1737,17 @@ class ServerSmokeTest(unittest.TestCase):
         finally:
             conn.close()
 
+    def test_company_routing_settings_direct_delete_is_not_allowed(self):
+        self.request("/routes")
+        self.request("/companies/create", method="POST", body=urlencode({"server_id": "1", "country_id": "1", "company_id_external": "1239", "company_name": "CC Delete Block Demo", "line_count": "1", "dial_set_count": "1", "retry_interval_seconds": "30", "has_autorotation": "1", "is_active": "1", "comment": "routing state"}))
+        captured, content = self.request("/admin/company-routing-settings/1/delete", method="POST", body=urlencode({}))
+        self.assertEqual(captured["status"], "400 Bad Request")
+        self.assertIn("деактивация и удаление выполняются через", content)
+        conn = server.connect(server.DB_PATH)
+        try:
+            self.assertEqual(conn.execute("SELECT COUNT(*) FROM company_routing_settings WHERE id = 1 AND is_active = 1 AND valid_to IS NULL").fetchone()[0], 1)
+        finally:
+            conn.close()
 
 
 class RoutingEventsServerSmokeTest(unittest.TestCase):

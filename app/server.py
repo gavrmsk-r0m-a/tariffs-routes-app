@@ -3318,8 +3318,6 @@ COMPANY_ROUTING_SETTINGS_COLUMN_LABELS = [
     ("valid_from", "Действует с"),
     ("valid_to", "Действует до"),
     ("comment", "Комментарий"),
-    ("history", "Ист."),
-    ("actions", "Действия"),
 ]
 COMPANY_ROUTING_SETTINGS_COLUMNS = [key for key, _label in COMPANY_ROUTING_SETTINGS_COLUMN_LABELS]
 
@@ -3334,7 +3332,6 @@ def company_routing_settings_page(repo: Repository, q: dict[str, str] | None = N
         "is_active": q.get("is_active"),
         "show_history": show_history,
     }
-    create_country_id = q.get("country_id") or None
     records = list(repo.list_company_routing_settings(filters))
     if q.get("export") == "csv":
         return csv_response("company_routing_settings_export.csv", ["Кампания", "GEO", "Маршрут", "Авторотация", "Активен", "Комментарий"], [[f"{r['company_id_external']} — {r['company_name']}", r["country_name"], r["route_name"] or "—", "Да" if r["has_autorotation"] else "Нет", "Да" if r["is_active"] else "Нет", r["comment"]] for r in records])
@@ -3344,29 +3341,6 @@ def company_routing_settings_page(repo: Repository, q: dict[str, str] | None = N
         route_label = setting["route_name"] or "—"
         provider_label = f"<br><span class='muted'>Провайдер: {esc(setting['provider_name'])}</span>" if setting["provider_name"] else ""
         active_badge = "Да" if setting["is_active"] else "Нет"
-        actions = ""
-        if can_write("admin_company_routing_settings") and setting["is_active"] and setting["valid_to"] is None:
-            immutable_help = "Маршрутизация кампании изменяется через ‘Смена провайдеров’. Здесь можно изменить только комментарий."
-            actions = f"""
-            <details class='edit-details'><summary>Редактировать комментарий</summary>
-              <form method='post' action='/admin/company-routing-settings/{setting['id']}/update'>
-                <p class='muted'>{esc(immutable_help)}</p>
-                <label>Компания <input readonly value='{esc(setting['company_name'])}'></label>
-                <label>Сервер <input readonly value='{esc(setting['server_name'])}'></label>
-                <label>GEO <input readonly value='{esc(setting['country_name'])}'></label>
-                <label>ID кампании <input readonly value='{esc(setting['company_id_external'])}'></label>
-                <label>Название кампании <input readonly value='{esc(setting['company_name'])}'></label>
-                <label>Режим маршрутизации <input readonly value='{esc(routing_mode_label(setting['routing_mode']))}'></label>
-                <label>Авторотация <input readonly value='{'Да' if setting['has_autorotation'] else 'Нет'}'></label>
-                <label>Маршрут кампании <input readonly value='{esc(route_label)}'></label>
-                <label>Активна <input readonly value='{'Да' if setting['is_active'] else 'Нет'}'></label>
-                <label>Действует с <input readonly value='{esc(setting['valid_from'])}'></label>
-                <label>Действует до <input readonly value='{esc(setting['valid_to'] or '—')}'></label>
-                <label>Комментарий <input name='comment' value='{esc(setting['comment'])}'></label>
-                <button>Сохранить комментарий</button>
-              </form>
-            </details>
-            """
         row = {
             "server": esc(setting["server_name"]),
             "geo": esc(setting["country_name"]),
@@ -3379,8 +3353,6 @@ def company_routing_settings_page(repo: Repository, q: dict[str, str] | None = N
             "valid_from": esc(setting["valid_from"]),
             "valid_to": esc(setting["valid_to"] or "—"),
             "comment": esc(setting["comment"]),
-            "history": "",
-            "actions": actions,
         }
         rows.append(
             "<tr>"
@@ -3395,32 +3367,11 @@ def company_routing_settings_page(repo: Repository, q: dict[str, str] | None = N
 <label>Активность <select name="is_active"><option value="" {'selected' if not q.get('is_active') else ''}>Все</option><option value="1" {'selected' if q.get('is_active')=='1' else ''}>Активна</option><option value="0" {'selected' if q.get('is_active')=='0' else ''}>Неактивна</option></select></label>
 <label class="checkbox-inline"><input type="checkbox" name="show_history" value="1" {'checked' if show_history else ''}> Показывать историю</label>
 <button>Найти</button></form>"""
-    create_html = f"""<form class="form-grid" method="post" action="/admin/company-routing-settings/create">
-  <label>Кампания <span class="required">*</span><select name="calling_company_id">{company_options(repo)}</select></label>
-  <label>GEO <span class="required">*</span><select name="country_id">{options(repo, 'countries', selected=create_country_id)}</select></label>
-  <label>Сервер <span class="required">*</span><select name="server_id">{options(repo, 'servers', selected=q.get('server_id'))}</select></label>
-  <label>Режим маршрутизации <span class="required">*</span><select name="routing_mode">{routing_mode_options(q.get('routing_mode') or 'server_priority')}</select></label>
-  <label>Маршрут кампании <select name="route_id">{route_options_for_country(repo, create_country_id)}</select></label>
-  <label>Авторотация <input type="checkbox" name="has_autorotation" value="1"></label>
-  <label>Активна <input type="checkbox" name="is_active" value="1" checked></label>
-  <label>Комментарий <input name="comment"></label>
-  <button>Создать</button>
-</form>"""
     table_html = f"""{data_table('company_routing_settings', COMPANY_ROUTING_SETTINGS_COLUMN_LABELS, ''.join(rows))}"""
     body = f"""
 <h1>Администрирование → Схема маршрутизации кампаний</h1>
+<p class='muted'>Схема маршрутизации кампаний показывает текущие исключения из стандартных правил прозвона. Изменения маршрутизации выполняются через раздел ‘Смена провайдеров’.</p>
 {filter_card(filters_html, q, ('country_id', 'server_id', 'company_id_external', 'routing_mode', 'is_active', 'show_history'))}
-{form_card('+ Добавить схему маршрутизации кампании', create_html) if can_write("admin_company_routing_settings") else ""}
-<script>
-document.querySelectorAll('form').forEach(form => {{
-  const mode = form.querySelector('select[name="routing_mode"]');
-  const autorotation = form.querySelector('input[name="has_autorotation"]');
-  if (!mode || !autorotation) return;
-  function syncAutorotation() {{ if (mode.value === 'autorotation') autorotation.checked = true; }}
-  mode.addEventListener('change', syncAutorotation);
-  syncAutorotation();
-}});
-</script>
 {table_card(table_html)}
 {table_footer(pagination_html, export_link('/admin/company-routing-settings', q) + column_settings('company_routing_settings', COMPANY_ROUTING_SETTINGS_COLUMN_LABELS))}
 """
@@ -3994,29 +3945,11 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
         )
         return "/admin/server-priorities"
     if path == "/admin/company-routing-settings/create":
-        setting_id = repo.create_company_routing_setting(
-            calling_company_id=int(data["calling_company_id"]),
-            country_id=int(data["country_id"]),
-            server_id=int(data["server_id"]),
-            route_id=parse_int(data.get("route_id")),
-            routing_mode=data["routing_mode"],
-            has_autorotation=data.get("has_autorotation") == "1",
-            comment=data.get("comment"),
-            created_by=actor_id,
-        )
-        if data.get("is_active") != "1":
-            repo.deactivate_company_routing_setting(setting_id=setting_id, updated_by=actor_id)
-        return "/admin/company-routing-settings"
+        raise BusinessRuleError("Схема маршрутизации кампаний доступна только для просмотра текущего состояния; создание выполняется через ‘Смена провайдеров’")
     if path.startswith("/admin/company-routing-settings/") and path.endswith("/update"):
-        setting_id = int(path.strip("/").split("/")[2])
-        repo.update_company_routing_setting_comment(
-            setting_id=setting_id,
-            comment=data.get("comment"),
-            updated_by=actor_id,
-        )
-        return "/admin/company-routing-settings"
-    if path.startswith("/admin/company-routing-settings/") and path.endswith("/deactivate"):
-        raise BusinessRuleError("Схема маршрутизации кампаний доступна только для просмотра текущего состояния; деактивация выполняется через ‘Смена провайдеров’")
+        raise BusinessRuleError("Схема маршрутизации кампаний доступна только для просмотра текущего состояния; изменения выполняются через ‘Смена провайдеров’")
+    if path.startswith("/admin/company-routing-settings/") and (path.endswith("/deactivate") or path.endswith("/delete")):
+        raise BusinessRuleError("Схема маршрутизации кампаний доступна только для просмотра текущего состояния; деактивация и удаление выполняются через ‘Смена провайдеров’")
     if path == "/admin/telegram/save":
         repo.conn.execute("INSERT INTO telegram_settings(is_enabled, chat_id, bot_token_secret_ref, message_template, updated_by) VALUES (?, ?, ?, ?, ?)", (1 if data.get("is_enabled") == "1" else 0, data.get("chat_id"), data.get("bot_token_secret_ref"), data.get("message_template"), actor_id)); repo.conn.commit(); return "/admin/telegram"
     if path == "/admin/telegram/test":
