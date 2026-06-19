@@ -1409,6 +1409,43 @@ class Repository:
         self.conn.commit()
         return setting_id
 
+    def update_company_routing_setting_comment(self, *, setting_id: int, comment: str | None, updated_by: int) -> int:
+        existing = self.conn.execute("SELECT * FROM company_routing_settings WHERE id = ?", (setting_id,)).fetchone()
+        if not existing:
+            raise BusinessRuleError("Схема маршрутизации кампании не найдена")
+        if not existing["is_active"] or existing["valid_to"] is not None:
+            raise BusinessRuleError("Можно редактировать только активную схему маршрутизации")
+        old_values = {
+            "routing_mode": existing["routing_mode"],
+            "route_id": existing["route_id"],
+            "has_autorotation": existing["has_autorotation"],
+            "country_id": existing["country_id"],
+            "server_id": existing["server_id"],
+            "comment": existing["comment"],
+        }
+        new_values = {**old_values, "comment": comment}
+        self.conn.execute(
+            "UPDATE company_routing_settings SET comment = ?, updated_at = CURRENT_TIMESTAMP, updated_by = ? WHERE id = ?",
+            (comment, updated_by, setting_id),
+        )
+        self._change_log(
+            "company_routing_setting",
+            setting_id,
+            "company_routing_setting.updated",
+            updated_by,
+            old_values=old_values,
+            new_values=new_values,
+            summary=self._company_routing_summary(
+                calling_company_id=existing["calling_company_id"],
+                country_id=existing["country_id"],
+                server_id=existing["server_id"],
+                old_values=old_values,
+                new_values=new_values,
+            ),
+        )
+        self.conn.commit()
+        return setting_id
+
     def update_company_routing_setting(
         self,
         *,
