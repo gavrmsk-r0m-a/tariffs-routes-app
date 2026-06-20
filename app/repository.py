@@ -566,8 +566,10 @@ class Repository:
             change = _company_history_change(label, old_value, new_value, kind)
             if change:
                 changes.append(change)
-        self.conn.execute("""UPDATE calling_companies SET server_id = ?, country_id = ?, company_name = ?, line_count = ?, dial_set_count = ?, retry_interval_seconds = ?, is_active = ?, comment = ?, updated_by = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?""",
-                          (server_id, country_id, company_name, int(line_count), int(dial_set_count), int(retry_interval_seconds), 1 if is_active else 0, comment, updated_by, company_id))
+        if int(server_id) != int(old["server_id"]):
+            raise BusinessRuleError("Сервер кампании нельзя изменить после создания")
+        self.conn.execute("""UPDATE calling_companies SET country_id = ?, company_name = ?, line_count = ?, dial_set_count = ?, retry_interval_seconds = ?, is_active = ?, comment = ?, updated_by = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?""",
+                          (country_id, company_name, int(line_count), int(dial_set_count), int(retry_interval_seconds), 1 if is_active else 0, comment, updated_by, company_id))
         if changes:
             only_active = len(changes) == 1 and changes[0].startswith("Активна:")
             if only_active and int(old["is_active"] or 0) == 0 and is_active:
@@ -1680,7 +1682,7 @@ class Repository:
             ).fetchone()
         snapshot = {
             "country_name": self._name_by_id("countries", values.get("country_id")),
-            "server_name": self._name_by_id("servers", values.get("server_id")),
+            "server_name": None if values.get("apply_scope") == "campaign_setting" else self._name_by_id("servers", values.get("server_id")),
             "provider_name": self._name_by_id("providers", values.get("provider_id")),
             "affected_route_name": self._route_label(values.get("affected_route_id")),
             "old_route_name": self._route_label(values.get("old_route_id")),
@@ -1902,7 +1904,8 @@ class Repository:
             if not company:
                 raise BusinessRuleError("Кампания прозвона не найдена")
             values["country_id"] = values["country_id"] or company["country_id"]
-            values["server_id"] = values["server_id"] or company["server_id"]
+            company_server_id = company["server_id"]
+            values["server_id"] = company_server_id
             old_state = self._company_old_state(values["calling_company_id"])
             values["old_company_routing_mode"] = old_state["routing_mode"]
             values["old_company_route_id"] = old_state["route_id"]
@@ -1954,7 +1957,7 @@ class Repository:
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
-                values["event_at"], values["apply_scope"], values["reason"], values["country_id"], values["server_id"],
+                values["event_at"], values["apply_scope"], values["reason"], values["country_id"], None if values["apply_scope"] == "campaign_setting" else values["server_id"],
                 values["provider_id"], values["affected_route_id"], values["old_route_id"], values["new_route_id"],
                 values["calling_company_id"], values["company_change_type"], values["old_company_routing_mode"],
                 values["new_company_routing_mode"], values["old_company_route_id"], values["new_company_route_id"],
@@ -2032,19 +2035,24 @@ class Repository:
         if filters.get("server_id"):
             clauses.append(
                 """
-                re.apply_scope = 'server_priority'
-                AND (
-                    re.server_id = ?
-                    OR EXISTS (
-                        SELECT 1
-                        FROM routing_event_servers res
-                        WHERE res.routing_event_id = re.id
-                          AND res.server_id = ?
+                (
+                    (
+                        re.apply_scope = 'server_priority'
+                        AND (
+                            re.server_id = ?
+                            OR EXISTS (
+                                SELECT 1
+                                FROM routing_event_servers res
+                                WHERE res.routing_event_id = re.id
+                                  AND res.server_id = ?
+                            )
+                        )
                     )
+                    OR (re.apply_scope = 'campaign_setting' AND cc.server_id = ?)
                 )
                 """
             )
-            params.extend([filters["server_id"], filters["server_id"]])
+            params.extend([filters["server_id"], filters["server_id"], filters["server_id"]])
         if filters.get("campaign_id"):
             clauses.append("cc.company_id_external LIKE ?")
             params.append(f"%{filters['campaign_id']}%")
@@ -2054,7 +2062,7 @@ class Repository:
                    ar.name AS affected_route_name, nr.name AS new_route_name, oldr.name AS old_route_name,
                    oldcr.name AS old_company_route_name, newcr.name AS new_company_route_name,
                    oldcp.name AS old_company_route_provider_name, newcp.name AS new_company_route_provider_name,
-                   cc.company_id_external, cc.company_name
+                   cc.company_id_external, cc.company_name, cs.name AS company_server_name
             FROM routing_events re
             LEFT JOIN countries c ON c.id = re.country_id
             LEFT JOIN servers s ON s.id = re.server_id
@@ -2067,6 +2075,7 @@ class Repository:
             LEFT JOIN providers oldcp ON oldcp.id = oldcr.provider_id
             LEFT JOIN providers newcp ON newcp.id = newcr.provider_id
             LEFT JOIN calling_companies cc ON cc.id = re.calling_company_id
+            LEFT JOIN servers cs ON cs.id = cc.server_id
             {where}
             ORDER BY re.event_at DESC, re.id DESC
         """, params))

@@ -978,6 +978,53 @@ class RoutingEventsRepositoryTest(unittest.TestCase):
         self.assertIsNone(new_values["server_ids"])
         self.assertIsNone(new_values["affected_servers"])
 
+    def test_campaign_setting_event_uses_company_id_server_for_journal_and_filter(self):
+        event_id = self.create_event(
+            apply_scope="campaign_setting",
+            calling_company_id=self.company_id,
+            company_change_type="enable_autorotation",
+            provider_id=self.provider_id,
+            server_id=None,
+        )
+        stored = self.conn.execute("SELECT server_id, snapshot_json FROM routing_events WHERE id = ?", (event_id,)).fetchone()
+        self.assertIsNone(stored["server_id"])
+        self.assertIsNone(json.loads(stored["snapshot_json"])["server_name"])
+
+        rows = self.repo.list_routing_events({"server_id": self.server_id})
+        self.assertEqual([row["id"] for row in rows], [event_id])
+        self.assertEqual(rows[0]["company_server_name"], "EU1")
+
+        other_server_id = self.repo.create_server("EU3")
+        self.repo.create_calling_company(
+            server_id=other_server_id,
+            country_id=self.country_id,
+            company_name="CC Mexico",
+            company_id_external="1003",
+            has_autorotation=False,
+            created_by=self.admin_id,
+        )
+        rows = self.repo.list_routing_events({"server_id": self.server_id})
+        self.assertEqual([row["id"] for row in rows], [event_id])
+        self.assertEqual(rows[0]["company_server_name"], "EU1")
+        self.assertEqual(self.repo.list_routing_events({"server_id": other_server_id}), [])
+
+    def test_calling_company_server_cannot_be_changed_after_creation(self):
+        other_server_id = self.repo.create_server("EU3")
+        with self.assertRaisesRegex(BusinessRuleError, "Сервер кампании нельзя изменить"):
+            self.repo.update_calling_company(
+                self.company_id,
+                server_id=other_server_id,
+                country_id=self.country_id,
+                company_name="CC Mexico",
+                line_count=0,
+                dial_set_count=0,
+                has_autorotation=False,
+                retry_interval_seconds=0,
+                is_active=True,
+                comment=None,
+                updated_by=self.admin_id,
+            )
+
     def test_server_priority_new_route_must_belong_to_provider(self):
         with self.assertRaisesRegex(BusinessRuleError, "новому провайдеру"):
             self.create_event(apply_scope="server_priority", country_id=self.country_id, server_id=self.server_id, provider_id=self.provider_id, new_route_id=self.alt_route_id)

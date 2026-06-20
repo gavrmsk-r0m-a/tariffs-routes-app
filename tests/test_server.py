@@ -2073,7 +2073,7 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
 
         rows = self.provider_changes_csv_rows()
 
-        self.assertEqual(["Дата", "GEO", "Старый провайдер", "Новый провайдер", "Причина", "Scope", "Статус", "Комментарий", "Детали"], list(rows[0].keys()))
+        self.assertEqual(["Дата", "GEO", "Сервер", "Старый провайдер", "Новый провайдер", "Причина", "Scope", "Статус", "Комментарий", "Детали"], list(rows[0].keys()))
         self.assertEqual("тест на коммент", rows[0]["Комментарий"])
         self.assertIn("Включили авторотацию", rows[0]["Детали"])
         self.assertIn("Авторотация: Нет → Да", rows[0]["Детали"])
