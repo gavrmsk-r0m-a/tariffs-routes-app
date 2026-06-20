@@ -501,7 +501,7 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
             has_autorotation=True,
             created_by=self.admin_id,
         )
-        with self.assertRaises(sqlite3.IntegrityError):
+        with self.assertRaisesRegex(BusinessRuleError, "Кампания с ID 123 уже существует: CC Italy / EU1"):
             self.repo.create_calling_company(
                 server_id=server_id,
                 country_id=self.country_id,
@@ -510,6 +510,43 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
                 has_autorotation=False,
                 created_by=self.admin_id,
             )
+
+    def test_calling_company_external_id_is_globally_unique_across_servers_and_inactive(self):
+        eu1_id = self.repo.create_server("EU1-global")
+        eu2_id = self.repo.create_server("EU2-global")
+        self.repo.create_calling_company(
+            server_id=eu1_id,
+            country_id=self.country_id,
+            company_name="CC Mexico Demo 1",
+            company_id_external="1001",
+            has_autorotation=False,
+            created_by=self.admin_id,
+            is_active=False,
+        )
+
+        before_companies = self.conn.execute("SELECT COUNT(*) FROM calling_companies").fetchone()[0]
+        before_history = self.conn.execute("SELECT COUNT(*) FROM change_log WHERE entity_type = 'calling_company'").fetchone()[0]
+        before_settings = self.conn.execute("SELECT COUNT(*) FROM company_routing_settings").fetchone()[0]
+        with self.assertRaisesRegex(BusinessRuleError, "Кампания с ID 1001 уже существует: CC Mexico Demo 1 / EU1-global"):
+            self.repo.create_calling_company(
+                server_id=eu2_id,
+                country_id=self.country_id,
+                company_name="CC Mexico Demo 1",
+                company_id_external="1001",
+                has_autorotation=True,
+                created_by=self.admin_id,
+            )
+
+        self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM calling_companies").fetchone()[0], before_companies)
+        self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM change_log WHERE entity_type = 'calling_company'").fetchone()[0], before_history)
+        self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM company_routing_settings").fetchone()[0], before_settings)
+
+    def test_calling_company_same_name_different_external_id_is_allowed(self):
+        eu1_id = self.repo.create_server("EU1-name")
+        eu2_id = self.repo.create_server("EU2-name")
+        self.repo.create_calling_company(server_id=eu1_id, country_id=self.country_id, company_name="CC Mexico Demo 1", company_id_external="1001-name", has_autorotation=False, created_by=self.admin_id)
+        company_id = self.repo.create_calling_company(server_id=eu2_id, country_id=self.country_id, company_name="CC Mexico Demo 1", company_id_external="1002-name", has_autorotation=False, created_by=self.admin_id)
+        self.assertIsNotNone(self.repo.get_calling_company(company_id))
 
     def test_route_unique_by_country_and_name(self):
         with self.assertRaises(sqlite3.IntegrityError):
@@ -1008,22 +1045,24 @@ class RoutingEventsRepositoryTest(unittest.TestCase):
         self.assertEqual(rows[0]["company_server_name"], "EU1")
         self.assertEqual(self.repo.list_routing_events({"server_id": other_server_id}), [])
 
-    def test_calling_company_server_cannot_be_changed_after_creation(self):
+    def test_calling_company_server_can_be_changed_on_edit(self):
         other_server_id = self.repo.create_server("EU3")
-        with self.assertRaisesRegex(BusinessRuleError, "Сервер кампании нельзя изменить"):
-            self.repo.update_calling_company(
-                self.company_id,
-                server_id=other_server_id,
-                country_id=self.country_id,
-                company_name="CC Mexico",
-                line_count=0,
-                dial_set_count=0,
-                has_autorotation=False,
-                retry_interval_seconds=0,
-                is_active=True,
-                comment=None,
-                updated_by=self.admin_id,
-            )
+        self.repo.update_calling_company(
+            self.company_id,
+            server_id=other_server_id,
+            country_id=self.country_id,
+            company_name="CC Mexico",
+            line_count=0,
+            dial_set_count=0,
+            has_autorotation=False,
+            retry_interval_seconds=0,
+            is_active=True,
+            comment=None,
+            updated_by=self.admin_id,
+        )
+        updated = self.repo.get_calling_company(self.company_id)
+        self.assertEqual(updated["server_id"], other_server_id)
+        self.assertIn("Сервер: EU1 → EU3", self.repo.list_calling_company_history(self.company_id)[0]["new_value"])
 
     def test_server_priority_new_route_must_belong_to_provider(self):
         with self.assertRaisesRegex(BusinessRuleError, "новому провайдеру"):

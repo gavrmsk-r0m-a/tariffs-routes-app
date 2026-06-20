@@ -474,8 +474,21 @@ class Repository:
         dial_set_count: int = 0,
         retry_interval_seconds: int = 0,
     ) -> int:
-        if not company_id_external.strip():
+        normalized_external_id = company_id_external.strip()
+        if not normalized_external_id:
             raise BusinessRuleError("Company external ID is required")
+        duplicate = self.conn.execute(
+            """
+            SELECT cc.company_name, cc.company_id_external, s.name AS server_name
+            FROM calling_companies cc
+            JOIN servers s ON s.id = cc.server_id
+            WHERE cc.company_id_external = ?
+            LIMIT 1
+            """,
+            (normalized_external_id,),
+        ).fetchone()
+        if duplicate is not None:
+            raise BusinessRuleError(f"Кампания с ID {normalized_external_id} уже существует: {duplicate['company_name']} / {duplicate['server_name']}")
         cur = self.conn.execute(
             """
             INSERT INTO calling_companies(
@@ -489,7 +502,7 @@ class Repository:
                 server_id,
                 country_id,
                 company_name,
-                company_id_external.strip(),
+                normalized_external_id,
                 1 if has_autorotation else 0,
                 int(line_count),
                 int(dial_set_count),
@@ -513,7 +526,7 @@ class Repository:
             )
         details = [
             f"Название: {_company_history_value(company_name)}",
-            f"ID кампании: {_company_history_value(company_id_external.strip())}",
+            f"ID кампании: {_company_history_value(normalized_external_id)}",
             f"Активна: {_company_history_value(is_active, 'bool')}",
             f"Количество линий: {_company_history_value(line_count, 'number')}",
             f"Количество наборов: {_company_history_value(dial_set_count, 'number')}",
@@ -530,7 +543,7 @@ class Repository:
                 "event": "Компания создана",
                 "description": "Компания создана",
                 "details": "; ".join(details),
-                "search_text": "; ".join([_company_history_value(comment), company_name, company_id_external.strip()]),
+                "search_text": "; ".join([_company_history_value(comment), company_name, normalized_external_id]),
             },
             summary="Компания создана",
         )
@@ -554,7 +567,10 @@ class Repository:
         if old is None:
             raise BusinessRuleError("Calling company not found")
         changes = []
+        new_server = self.conn.execute("SELECT name FROM servers WHERE id = ?", (server_id,)).fetchone()
+        old_server = self.conn.execute("SELECT name FROM servers WHERE id = ?", (old["server_id"],)).fetchone()
         specs = [
+            ("Сервер", old_server["name"] if old_server else old["server_id"], new_server["name"] if new_server else server_id, "text"),
             ("Название", old["company_name"], company_name, "text"),
             ("Активна", old["is_active"], 1 if is_active else 0, "bool"),
             ("Количество наборов", old["dial_set_count"], dial_set_count, "number"),
@@ -566,10 +582,8 @@ class Repository:
             change = _company_history_change(label, old_value, new_value, kind)
             if change:
                 changes.append(change)
-        if int(server_id) != int(old["server_id"]):
-            raise BusinessRuleError("Сервер кампании нельзя изменить после создания")
-        self.conn.execute("""UPDATE calling_companies SET country_id = ?, company_name = ?, line_count = ?, dial_set_count = ?, retry_interval_seconds = ?, is_active = ?, comment = ?, updated_by = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?""",
-                          (country_id, company_name, int(line_count), int(dial_set_count), int(retry_interval_seconds), 1 if is_active else 0, comment, updated_by, company_id))
+        self.conn.execute("""UPDATE calling_companies SET server_id = ?, country_id = ?, company_name = ?, line_count = ?, dial_set_count = ?, retry_interval_seconds = ?, is_active = ?, comment = ?, updated_by = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?""",
+                          (server_id, country_id, company_name, int(line_count), int(dial_set_count), int(retry_interval_seconds), 1 if is_active else 0, comment, updated_by, company_id))
         if changes:
             only_active = len(changes) == 1 and changes[0].startswith("Активна:")
             if only_active and int(old["is_active"] or 0) == 0 and is_active:

@@ -2141,9 +2141,11 @@ def ensure_seed(repo: Repository) -> None:
         company_id = scalar_id(
             """
             SELECT id FROM calling_companies
-            WHERE server_id = ? AND country_id = ? AND company_id_external = ?
+            WHERE company_id_external = ?
+            ORDER BY CASE WHEN server_id = ? AND country_id = ? THEN 0 ELSE 1 END, id
+            LIMIT 1
             """,
-            (server_id, country_id, company_id_external),
+            (company_id_external, server_id, country_id),
         )
         if company_id is None:
             company_id = repo.create_calling_company(
@@ -2163,19 +2165,19 @@ def ensure_seed(repo: Repository) -> None:
             repo.conn.execute(
                 """
                 UPDATE calling_companies
-                SET company_name = ?, has_autorotation = 0, line_count = 10, dial_set_count = 2,
+                SET server_id = ?, country_id = ?, company_name = ?, has_autorotation = 0, line_count = 10, dial_set_count = 2,
                     retry_interval_seconds = 60, comment = ?, is_active = 1, updated_by = ?, updated_at = CURRENT_TIMESTAMP
                 WHERE id = ?
                 """,
-                (company_name, "Demo calling campaign for MVP testing", admin_id, company_id),
+                (server_id, country_id, company_name, "Demo calling campaign for MVP testing", admin_id, company_id),
             )
         repo.conn.execute(
             """
             UPDATE calling_companies
             SET is_active = 0, updated_by = ?, updated_at = CURRENT_TIMESTAMP
-            WHERE country_id = ? AND company_id_external = ? AND id <> ?
+            WHERE company_id_external = ? AND id <> ?
             """,
-            (admin_id, country_id, company_id_external, company_id),
+            (admin_id, company_id_external, company_id),
         )
         return company_id
 
@@ -3662,7 +3664,7 @@ def company_edit_page(repo: Repository, company_id: int) -> bytes:
     body = f"""<h1>Редактировать кампанию</h1><p><a href='/companies'>← Назад</a></p>
 <form method='post' action='/companies/{company_id}/update'>
 <label>ID кампании <input value='{esc(cc['company_id_external'])}' readonly></label>
-<label>Сервер <input value='{esc(cc['server_name'])}' readonly></label>
+<label>Сервер <span class='required'>*</span><select name='server_id'>{active_options(repo, 'servers', selected=cc['server_id'])}</select></label>
 <label>ГЕО <span class='required'>*</span><select name='country_id'>{active_options(repo, 'countries', selected=cc['country_id'])}</select></label>
 <label>Название кампании <span class='required'>*</span><input name='company_name' value='{esc(cc['company_name'])}'></label>
 <label>Количество линий <span class='required'>*</span><input name='line_count' value='{esc(cc['line_count'])}'></label>
@@ -3815,7 +3817,7 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
     if path.startswith("/companies/") and path.endswith("/update"):
         company_id = int(path.strip("/").split("/")[1])
         existing = repo.get_calling_company(company_id)
-        repo.update_calling_company(company_id, server_id=int(existing["server_id"]) if existing else int(data["server_id"]), country_id=int(data["country_id"]), company_name=data["company_name"], line_count=int(data.get("line_count") or 0), dial_set_count=int(data.get("dial_set_count") or 0), has_autorotation=bool(existing["has_autorotation"]) if existing else False, retry_interval_seconds=int(data.get("retry_interval_seconds") or 0), is_active=data.get("is_active") == "1", comment=data.get("comment"), updated_by=actor_id)
+        repo.update_calling_company(company_id, server_id=int(data["server_id"]), country_id=int(data["country_id"]), company_name=data["company_name"], line_count=int(data.get("line_count") or 0), dial_set_count=int(data.get("dial_set_count") or 0), has_autorotation=bool(existing["has_autorotation"]) if existing else False, retry_interval_seconds=int(data.get("retry_interval_seconds") or 0), is_active=data.get("is_active") == "1", comment=data.get("comment"), updated_by=actor_id)
         return "/companies"
     if path == "/provider-changes/create":
         apply_scope = data.get("apply_scope")
