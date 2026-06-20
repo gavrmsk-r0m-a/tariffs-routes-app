@@ -3265,48 +3265,20 @@ def server_priorities_page(repo: Repository, q: dict[str, str] | None = None) ->
         return csv_response("server_priorities_export.csv", ["GEO", "Сервер", "Провайдер/маршрут", "Приоритет", "Активен", "Комментарий"], [[row["country_name"], row["server_name"], f"{row['current_provider_name'] or '—'} / {row['current_route_name'] or '—'}", row["current_route_name"] or "—", "Да" if row["is_active"] else "Нет", row["comment"]] for row in priority_records])
     priority_records, pagination_html = paginate_rows(priority_records, q, "/admin/server-priorities")
     for row in priority_records:
-        route_opts = select_options(repo, """
-            SELECT r.id, r.name || ' — ' || p.name AS label
-            FROM routes r
-            JOIN providers p ON p.id = r.provider_id
-            WHERE r.country_id = ?
-            ORDER BY r.name
-        """, (row["country_id"],), selected=row["current_route_id"])
         current_provider = row["current_provider_name"] or "—"
         current_route = row["current_route_name"] or "—"
         previous_provider = row["previous_provider_name"] or "—"
         previous_route = row["previous_route_name"] or "—"
         current_priority = "—" if not row["current_route_id"] else f"{esc(current_provider)} / {esc(current_route)}"
         previous_priority = "—" if not row["previous_route_id"] else f"{esc(previous_provider)} / {esc(previous_route)}"
-        actions = ""
-        if can_write("admin_server_priorities"):
-            actions = f"""
-        <details class='edit-details'><summary>Редактировать</summary>
-          <div class='card'>
-            ГЕО: {esc(row['country_name'])}<br>
-            Сервер: {esc(row['server_name'])}<br>
-            Текущий провайдер: {esc(current_provider)}<br>
-            Текущий маршрут: {esc(current_route)}<br>
-            Предыдущий провайдер: {esc(previous_provider)}<br>
-            Предыдущий маршрут: {esc(previous_route)}<br>
-            Комментарий: {esc(row['comment'])}<br>
-            Дата изменения: {esc(row['changed_at'])}<br>
-            Пользователь: {esc(row['changed_by_username'])}
-            <form method='post' action='/admin/server-priorities/{row['id']}/update'>
-              <label>Текущий маршрут <span class='required'>*</span><select name='current_route_id'>{route_opts}</select></label>
-              <label>Комментарий <input name='comment' value='{esc(row['comment'])}'></label>
-              <button>Сохранить текущий маршрут</button>
-            </form>
-          </div>
-        </details>"""
         if row["server_id"] in server_rows:
             server_rows[row["server_id"]].append(
-                f"<tr><td data-col='geo'>{esc(row['country_name'])}</td><td data-col='current_priority'>{current_priority}</td><td data-col='previous_priority'>{previous_priority}</td><td data-col='actions' class='actions'>{actions}</td></tr>"
+                f"<tr><td data-col='geo'>{esc(row['country_name'])}</td><td data-col='current_priority'>{current_priority}</td><td data-col='previous_priority'>{previous_priority}</td></tr>"
             )
     blocks = []
     for server_id in server_names:
-        rows = server_rows[server_id] or ["<tr><td colspan='4' class='muted'>Нет настроенных приоритетов</td></tr>"]
-        table_html = f"{data_table('server_priorities', [('geo', 'GEO'), ('current_priority', 'Текущий приоритет'), ('previous_priority', 'Предыдущий приоритет'), ('actions', 'Действия')], ''.join(rows))}"
+        rows = server_rows[server_id] or ["<tr><td colspan='3' class='muted'>Нет настроенных приоритетов</td></tr>"]
+        table_html = f"{data_table('server_priorities', [('geo', 'GEO'), ('current_priority', 'Текущий приоритет'), ('previous_priority', 'Предыдущий приоритет')], ''.join(rows))}"
         blocks.append(f"""
 <section class='server-priority-block'>
   <h2>Сервер: {esc(server_names[server_id])}</h2>
@@ -3317,7 +3289,7 @@ def server_priorities_page(repo: Repository, q: dict[str, str] | None = None) ->
 <h1>Администрирование → Приоритет по серверам</h1>
 {filter_card(filters_html, q, ('country_id', 'server_id'))}
 {''.join(blocks)}
-{table_footer(pagination_html, export_link('/admin/server-priorities', q) + column_settings('server_priorities', [('geo', 'GEO'), ('current_priority', 'Текущий приоритет'), ('previous_priority', 'Предыдущий приоритет'), ('actions', 'Действия')]))}"""
+{table_footer(pagination_html, export_link('/admin/server-priorities', q) + column_settings('server_priorities', [('geo', 'GEO'), ('current_priority', 'Текущий приоритет'), ('previous_priority', 'Предыдущий приоритет')]))}"""
     return page("Приоритет по серверам", body)
 
 
@@ -3940,27 +3912,12 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
         repo._change_log(kind, entity_id, "dictionary.updated", actor_id, new_values={"is_active": is_active})
         repo.conn.commit()
         return "/admin/dictionaries"
-    if path.startswith("/admin/server-priorities/") and path.endswith("/update"):
-        priority_id = int(path.strip("/").split("/")[2])
-        repo.update_server_route_priority(
-            priority_id=priority_id,
-            current_route_id=int(data["current_route_id"]),
-            comment=data.get("comment"),
-            changed_by=actor_id,
-        )
-        return "/admin/server-priorities"
-    if path.startswith("/admin/server-priorities/") and path.endswith("/comment"):
-        priority_id = int(path.strip("/").split("/")[2])
-        current = repo.conn.execute("SELECT current_route_id FROM server_route_priorities WHERE id = ?", (priority_id,)).fetchone()
-        if not current:
-            raise BusinessRuleError("Приоритет по серверу не найден")
-        repo.update_server_route_priority(
-            priority_id=priority_id,
-            current_route_id=int(current["current_route_id"]),
-            comment=data.get("comment"),
-            changed_by=actor_id,
-        )
-        return "/admin/server-priorities"
+    if path == "/admin/server-priorities/create":
+        raise ForbiddenError()
+    if path.startswith("/admin/server-priorities/") and (
+        path.endswith("/update") or path.endswith("/comment") or path.endswith("/deactivate") or path.endswith("/delete")
+    ):
+        raise ForbiddenError()
     if path == "/admin/company-routing-settings/create":
         raise BusinessRuleError("Схема маршрутизации кампаний доступна только для просмотра текущего состояния; создание выполняется через ‘Смена провайдеров’")
     if path.startswith("/admin/company-routing-settings/") and path.endswith("/update"):

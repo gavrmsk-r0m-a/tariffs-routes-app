@@ -1495,19 +1495,17 @@ class ServerSmokeTest(unittest.TestCase):
             self.assertIn(f"Сервер: {server_name}", content)
         self.assertLess(content.index("Сервер: EU1"), content.index("Сервер: EU2"))
         self.assertLess(content.index("Сервер: EU2"), content.index("Сервер: EU3"))
-        self.assertIn("<th data-col='geo' title='GEO'>GEO</th><th data-col='current_priority' title='Текущий приоритет'>Текущий приоритет</th><th data-col='previous_priority' title='Предыдущий приоритет'>Предыдущий приоритет</th><th data-col='actions' title='Действия'>Действия</th>", content)
+        self.assertIn("<th data-col='geo' title='GEO'>GEO</th><th data-col='current_priority' title='Текущий приоритет'>Текущий приоритет</th><th data-col='previous_priority' title='Предыдущий приоритет'>Предыдущий приоритет</th>", content)
+        self.assertNotIn("<th data-col='actions' title='Действия'>Действия</th>", content)
         self.assertIn("Нет настроенных приоритетов", content)
         eu3_block = content.split("Сервер: EU3", 1)[1].split("</section>", 1)[0]
         self.assertIn("Нет настроенных приоритетов", eu3_block)
         eu1_block = content.split("Сервер: EU1", 1)[1].split("</section>", 1)[0]
         self.assertIn("<td data-col='geo'>Мексика</td><td data-col='current_priority'>Miatel / Мексика/Miatel/Demo_A@</td><td data-col='previous_priority'>—</td>", eu1_block)
-        self.assertIn("<summary>Редактировать</summary>", eu1_block)
-        self.assertIn("Текущий провайдер: Miatel", eu1_block)
-        self.assertIn("Текущий маршрут: Мексика/Miatel/Demo_A@", eu1_block)
-        self.assertIn("Предыдущий провайдер: —", eu1_block)
-        self.assertIn("Предыдущий маршрут: —", eu1_block)
-        self.assertIn("name='current_route_id'", eu1_block)
-        self.assertIn("Сохранить текущий маршрут", eu1_block)
+        self.assertNotIn("<summary>Редактировать</summary>", eu1_block)
+        self.assertNotIn("name='current_route_id'", eu1_block)
+        self.assertNotIn("Сохранить текущий маршрут", eu1_block)
+        self.assertNotIn("/admin/server-priorities/1/update", eu1_block)
 
     def test_server_priorities_server_filter_keeps_empty_selected_server_block(self):
         self.request("/routes")
@@ -1535,30 +1533,40 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertIn("Нет настроенных приоритетов", eu3_block)
         self.assertIn("<td data-col='geo'>Мексика</td><td data-col='current_priority'>Miatel / Мексика/Miatel/Demo_A@</td>", eu1_block)
 
-    def test_server_priority_manual_route_update_changes_current_previous_and_logs_event(self):
+    def test_server_priority_direct_update_is_not_allowed(self):
         self.request("/routes")
         body = urlencode({"current_route_id": "1", "comment": "manual admin update"})
-        captured, _ = self.request("/admin/server-priorities/1/update", method="POST", body=body)
-        self.assertEqual(captured["status"], "303 See Other")
+        captured, content = self.request("/admin/server-priorities/1/update", method="POST", body=body)
+        self.assertEqual(captured["status"], "403 Forbidden")
+        self.assertIn("Нет доступа", content)
         conn = server.connect(server.DB_PATH)
         try:
             row = conn.execute("SELECT current_route_id, previous_route_id, comment FROM server_route_priorities WHERE id = 1").fetchone()
-            self.assertEqual(row["current_route_id"], 1)
-            self.assertEqual(row["previous_route_id"], 2)
-            self.assertEqual(row["comment"], "manual admin update")
-            event = conn.execute("""
-                SELECT * FROM change_log
+            self.assertEqual(row["current_route_id"], 2)
+            self.assertIsNone(row["previous_route_id"])
+            self.assertEqual(row["comment"], "Demo initial priority")
+            event_count = conn.execute("""
+                SELECT COUNT(*) FROM change_log
                 WHERE entity_type = 'server_route_priority'
                   AND entity_id = 1
                   AND change_type = 'server_route_priority.current_route_updated'
-            """).fetchone()
-            self.assertIsNotNone(event)
-            self.assertTrue(event["summary"])
+            """).fetchone()[0]
+            self.assertEqual(event_count, 0)
         finally:
             conn.close()
-        captured, content = self.request("/admin/server-priorities")
-        self.assertEqual(captured["status"], "200 OK")
-        self.assertIn("<td data-col='geo'>Мексика</td><td data-col='current_priority'>Sancom / Мексика/Sancom/Demo_0827@</td><td data-col='previous_priority'>Miatel / Мексика/Miatel/Demo_A@</td>", content)
+
+    def test_server_priority_direct_create_comment_deactivate_and_delete_are_not_allowed(self):
+        self.request("/routes")
+        for path in (
+            "/admin/server-priorities/create",
+            "/admin/server-priorities/1/comment",
+            "/admin/server-priorities/1/deactivate",
+            "/admin/server-priorities/1/delete",
+        ):
+            with self.subTest(path=path):
+                captured, content = self.request(path, method="POST", body=urlencode({"comment": "blocked", "current_route_id": "1"}))
+                self.assertEqual(captured["status"], "403 Forbidden")
+                self.assertIn("Нет доступа", content)
 
 
 
