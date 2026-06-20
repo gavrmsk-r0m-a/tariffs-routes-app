@@ -3127,7 +3127,7 @@ def provider_event_details(ev) -> tuple[str, str, str]:
         old_auto = 'Да' if ev["old_company_has_autorotation"] else 'Нет'
         new_auto = 'Да' if ev["new_company_has_autorotation"] else 'Нет'
         details.append(f"Авторотация: {old_auto} → {new_auto}")
-    return "—", campaign, "; ".join(details) or "—"
+    return ev["company_server_name"] or "—", campaign, "; ".join(details) or "—"
 
 
 def provider_changes_page(repo: Repository, q: dict[str, str] | None = None, form_error: str | None = None, form_data: dict | None = None) -> bytes:
@@ -3137,10 +3137,10 @@ def provider_changes_page(repo: Repository, q: dict[str, str] | None = None, for
     if q.get("export") == "csv":
         export_rows = []
         for ev in records:
-            _, _, details_text = provider_event_details(ev)
+            server_text, _, details_text = provider_event_details(ev)
             details_plain = html_to_csv_text(details_text)
-            export_rows.append([ev["event_at"], ev["country_name"], ev["old_route_name"] or "—", ev["new_route_name"] or ev["new_company_route_name"] or "—", ev["reason"], ROUTING_SCOPE_LABELS.get(ev["apply_scope"], ev["apply_scope"]), "Активна" if ev["is_active"] else "Неактивна", ev["comment"], details_plain])
-        return csv_response("provider_changes_export.csv", ["Дата", "GEO", "Старый провайдер", "Новый провайдер", "Причина", "Scope", "Статус", "Комментарий", "Детали"], export_rows)
+            export_rows.append([ev["event_at"], ev["country_name"], server_text, ev["old_route_name"] or "—", ev["new_route_name"] or ev["new_company_route_name"] or "—", ev["reason"], ROUTING_SCOPE_LABELS.get(ev["apply_scope"], ev["apply_scope"]), "Активна" if ev["is_active"] else "Неактивна", ev["comment"], details_plain])
+        return csv_response("provider_changes_export.csv", ["Дата", "GEO", "Сервер", "Старый провайдер", "Новый провайдер", "Причина", "Scope", "Статус", "Комментарий", "Детали"], export_rows)
     records, pagination_html = paginate_rows(records, q, "/provider-changes")
     rows = []
     for ev in records:
@@ -3646,8 +3646,9 @@ def phone_edit_page(repo: Repository, phone_id: int) -> bytes:
 def company_edit_page(repo: Repository, company_id: int) -> bytes:
     cc = repo.conn.execute(
         """
-        SELECT cc.*, COALESCE(active_crs.has_autorotation, 0) AS current_has_autorotation
+        SELECT cc.*, s.name AS server_name, COALESCE(active_crs.has_autorotation, 0) AS current_has_autorotation
         FROM calling_companies cc
+        JOIN servers s ON s.id = cc.server_id
         LEFT JOIN company_routing_settings active_crs
           ON active_crs.calling_company_id = cc.id
          AND active_crs.is_active = 1
@@ -3661,7 +3662,7 @@ def company_edit_page(repo: Repository, company_id: int) -> bytes:
     body = f"""<h1>Редактировать кампанию</h1><p><a href='/companies'>← Назад</a></p>
 <form method='post' action='/companies/{company_id}/update'>
 <label>ID кампании <input value='{esc(cc['company_id_external'])}' readonly></label>
-<label>Сервер <span class='required'>*</span><select name='server_id'>{active_options(repo, 'servers', selected=cc['server_id'])}</select></label>
+<label>Сервер <input value='{esc(cc['server_name'])}' readonly></label>
 <label>ГЕО <span class='required'>*</span><select name='country_id'>{active_options(repo, 'countries', selected=cc['country_id'])}</select></label>
 <label>Название кампании <span class='required'>*</span><input name='company_name' value='{esc(cc['company_name'])}'></label>
 <label>Количество линий <span class='required'>*</span><input name='line_count' value='{esc(cc['line_count'])}'></label>
@@ -3814,7 +3815,7 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
     if path.startswith("/companies/") and path.endswith("/update"):
         company_id = int(path.strip("/").split("/")[1])
         existing = repo.get_calling_company(company_id)
-        repo.update_calling_company(company_id, server_id=int(data["server_id"]), country_id=int(data["country_id"]), company_name=data["company_name"], line_count=int(data.get("line_count") or 0), dial_set_count=int(data.get("dial_set_count") or 0), has_autorotation=bool(existing["has_autorotation"]) if existing else False, retry_interval_seconds=int(data.get("retry_interval_seconds") or 0), is_active=data.get("is_active") == "1", comment=data.get("comment"), updated_by=actor_id)
+        repo.update_calling_company(company_id, server_id=int(existing["server_id"]) if existing else int(data["server_id"]), country_id=int(data["country_id"]), company_name=data["company_name"], line_count=int(data.get("line_count") or 0), dial_set_count=int(data.get("dial_set_count") or 0), has_autorotation=bool(existing["has_autorotation"]) if existing else False, retry_interval_seconds=int(data.get("retry_interval_seconds") or 0), is_active=data.get("is_active") == "1", comment=data.get("comment"), updated_by=actor_id)
         return "/companies"
     if path == "/provider-changes/create":
         apply_scope = data.get("apply_scope")
