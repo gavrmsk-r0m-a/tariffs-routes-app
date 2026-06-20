@@ -1238,6 +1238,70 @@ class RoutingEventsRepositoryTest(unittest.TestCase):
         self.assertEqual(event["comment"], "Исправили описание")
         self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM change_log WHERE change_type = 'routing_event.comment_updated'").fetchone()[0], 1)
 
+    def test_editing_campaign_setting_event_syncs_active_routing_comment_only(self):
+        event_id = self.create_event(
+            apply_scope="campaign_setting",
+            calling_company_id=self.company_id,
+            company_change_type="set_campaign_route",
+            provider_id=self.alt_provider_id,
+            new_company_route_id=self.alt_route_id,
+            comment="старый комментарий маршрута",
+        )
+        active_before = self.conn.execute(
+            "SELECT * FROM company_routing_settings WHERE calling_company_id = ? AND is_active = 1 AND valid_to IS NULL",
+            (self.company_id,),
+        ).fetchone()
+        before_event_count = self.conn.execute("SELECT COUNT(*) FROM routing_events").fetchone()[0]
+        before_routing_log_count = self.conn.execute("SELECT COUNT(*) FROM change_log WHERE entity_type = 'company_routing_setting'").fetchone()[0]
+
+        self.repo.update_routing_event(event_id, comment="новый комментарий маршрута", updated_by=self.admin_id)
+
+        active_after = self.conn.execute(
+            "SELECT * FROM company_routing_settings WHERE calling_company_id = ? AND is_active = 1 AND valid_to IS NULL",
+            (self.company_id,),
+        ).fetchone()
+        event = self.conn.execute("SELECT * FROM routing_events WHERE id = ?", (event_id,)).fetchone()
+        self.assertEqual(event["comment"], "новый комментарий маршрута")
+        self.assertEqual(active_after["comment"], "новый комментарий маршрута")
+        self.assertEqual(active_after["id"], active_before["id"])
+        self.assertEqual(active_after["routing_mode"], active_before["routing_mode"])
+        self.assertEqual(active_after["has_autorotation"], active_before["has_autorotation"])
+        self.assertEqual(active_after["route_id"], active_before["route_id"])
+        self.assertEqual(active_after["valid_from"], active_before["valid_from"])
+        self.assertEqual(active_after["valid_to"], active_before["valid_to"])
+        self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM routing_events").fetchone()[0], before_event_count)
+        self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM change_log WHERE entity_type = 'company_routing_setting'").fetchone()[0], before_routing_log_count)
+        self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM change_log WHERE change_type = 'routing_event.comment_updated'").fetchone()[0], 1)
+
+    def test_editing_older_campaign_setting_event_does_not_overwrite_newer_setting_comment(self):
+        first_event_id = self.create_event(
+            apply_scope="campaign_setting",
+            calling_company_id=self.company_id,
+            company_change_type="enable_autorotation",
+            provider_id=None,
+            comment="первый комментарий",
+        )
+        self.create_event(
+            event_at="2026-06-11 12:00",
+            apply_scope="campaign_setting",
+            calling_company_id=self.company_id,
+            company_change_type="set_campaign_route",
+            provider_id=self.alt_provider_id,
+            new_company_route_id=self.alt_route_id,
+            comment="последний комментарий",
+        )
+
+        self.repo.update_routing_event(first_event_id, comment="обновили старое событие", updated_by=self.admin_id)
+
+        active = self.conn.execute(
+            "SELECT * FROM company_routing_settings WHERE calling_company_id = ? AND is_active = 1 AND valid_to IS NULL",
+            (self.company_id,),
+        ).fetchone()
+        self.assertEqual(active["comment"], "последний комментарий")
+        self.assertEqual(active["routing_mode"], "mixed")
+        self.assertEqual(active["has_autorotation"], 1)
+        self.assertEqual(active["route_id"], self.alt_route_id)
+
     def test_snapshot_json_is_saved(self):
         event_id = self.create_event(apply_scope="server_priority", country_id=self.country_id, server_id=self.server_id, new_route_id=self.route_id)
         snapshot = self.conn.execute("SELECT snapshot_json FROM routing_events WHERE id = ?", (event_id,)).fetchone()[0]
