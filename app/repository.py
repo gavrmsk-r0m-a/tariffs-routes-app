@@ -2091,7 +2091,43 @@ class Repository:
             old_values={"comment": existing["comment"]}, new_values={"comment": comment},
             summary="Комментарий события изменён",
         )
+        self._sync_company_routing_comment_from_event(existing, comment=comment, updated_by=updated_by)
         self.conn.commit()
+
+    def _sync_company_routing_comment_from_event(self, event: sqlite3.Row, *, comment: str, updated_by: int) -> None:
+        if event["apply_scope"] != "campaign_setting" or event["calling_company_id"] is None:
+            return
+        active = self._active_company_routing_setting(event["calling_company_id"])
+        if active is None:
+            return
+        later_event = self.conn.execute(
+            """
+            SELECT id
+            FROM routing_events
+            WHERE apply_scope = 'campaign_setting'
+              AND calling_company_id = ?
+              AND is_active = 1
+              AND (event_at > ? OR (event_at = ? AND id > ?))
+            LIMIT 1
+            """,
+            (event["calling_company_id"], event["event_at"], event["event_at"], event["id"]),
+        ).fetchone()
+        if later_event is not None:
+            return
+        if (
+            active["routing_mode"] != event["new_company_routing_mode"]
+            or active["route_id"] != event["new_company_route_id"]
+            or active["has_autorotation"] != event["new_company_has_autorotation"]
+        ):
+            return
+        self.conn.execute(
+            """
+            UPDATE company_routing_settings
+            SET comment = ?, updated_by = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            """,
+            (comment, updated_by, active["id"]),
+        )
 
     def deactivate_routing_event(self, event_id: int, *, reason: str, deactivated_by: int) -> None:
         existing = self.conn.execute("SELECT * FROM routing_events WHERE id = ?", (event_id,)).fetchone()

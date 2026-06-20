@@ -2106,6 +2106,7 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
             setting = conn.execute("SELECT * FROM company_routing_settings WHERE calling_company_id = 2 AND is_active = 1 AND valid_to IS NULL").fetchone()
             self.assertEqual(setting["routing_mode"], "autorotation")
             self.assertEqual(setting["has_autorotation"], 1)
+            self.assertEqual(setting["comment"], "только новый комментарий")
             routing_log_count = conn.execute("SELECT COUNT(*) FROM change_log WHERE entity_type = 'company_routing_setting'").fetchone()[0]
             self.assertEqual(routing_log_count, 1)
         finally:
