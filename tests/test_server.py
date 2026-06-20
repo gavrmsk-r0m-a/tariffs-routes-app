@@ -1,3 +1,5 @@
+import csv
+import io
 import os
 import re
 import tempfile
@@ -2057,6 +2059,87 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
             self.assertIsNone(setting["route_id"])
         finally:
             conn.close()
+
+    def provider_changes_csv_rows(self):
+        captured, content = self.request("/provider-changes?export=csv")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn(("Content-Type", "text/csv; charset=utf-8"), captured["headers"])
+        return list(csv.DictReader(io.StringIO(content.lstrip("\ufeff")), delimiter=";"))
+
+    def test_provider_changes_csv_export_includes_details_column_and_no_actions(self):
+        self.request("/routes")
+        body = urlencode({"apply_scope": "campaign_setting", "event_at": "2026-06-10T12:00", "calling_company_id": "2", "company_change_type": "enable_autorotation", "reason": "Тест нового маршрута", "comment": "тест на коммент"})
+        self.request("/provider-changes/create", method="POST", body=body)
+
+        rows = self.provider_changes_csv_rows()
+
+        self.assertEqual(["Дата", "GEO", "Старый провайдер", "Новый провайдер", "Причина", "Scope", "Статус", "Комментарий", "Детали"], list(rows[0].keys()))
+        self.assertEqual("тест на коммент", rows[0]["Комментарий"])
+        self.assertIn("Включили авторотацию", rows[0]["Детали"])
+        self.assertIn("Авторотация: Нет → Да", rows[0]["Детали"])
+        self.assertNotIn("/provider-changes/", rows[0]["Детали"])
+        self.assertNotIn("Редактировать", rows[0]["Детали"])
+        self.assertNotIn("<", rows[0]["Детали"])
+        self.assertNotIn(">", rows[0]["Детали"])
+
+    def test_provider_changes_csv_export_includes_autorotation_disabled_details(self):
+        self.request("/routes")
+        enable = urlencode({"apply_scope": "campaign_setting", "event_at": "2026-06-10T12:00", "calling_company_id": "2", "company_change_type": "enable_autorotation", "reason": "Тест нового маршрута", "comment": "enable"})
+        disable = urlencode({"apply_scope": "campaign_setting", "event_at": "2026-06-10T13:00", "calling_company_id": "2", "company_change_type": "disable_autorotation", "reason": "Тест нового маршрута", "comment": "disable"})
+        self.request("/provider-changes/create", method="POST", body=enable)
+        self.request("/provider-changes/create", method="POST", body=disable)
+
+        rows = self.provider_changes_csv_rows()
+
+        self.assertIn("Выключили авторотацию", rows[0]["Детали"])
+        self.assertIn("Авторотация: Да → Нет", rows[0]["Детали"])
+
+    def test_provider_changes_csv_export_includes_manual_route_details(self):
+        self.request("/routes")
+        conn = server.connect(server.DB_PATH)
+        try:
+            route_id = conn.execute("SELECT id FROM routes WHERE name = 'Мексика/Sancom/Demo_0827@'").fetchone()[0]
+        finally:
+            conn.close()
+        body = urlencode({"apply_scope": "campaign_setting", "event_at": "2026-06-10T12:00", "calling_company_id": "2", "company_change_type": "set_campaign_route", "new_company_route_id": str(route_id), "reason": "Тест нового маршрута", "comment": "manual"})
+        self.request("/provider-changes/create", method="POST", body=body)
+
+        rows = self.provider_changes_csv_rows()
+
+        self.assertIn("Прописали ручной маршрут", rows[0]["Детали"])
+        self.assertIn("Маршрут: — → Sancom / Мексика/Sancom/Demo_0827@", rows[0]["Детали"])
+
+    def test_provider_changes_csv_export_includes_server_priority_details_without_html(self):
+        self.request("/routes")
+        conn = server.connect(server.DB_PATH)
+        try:
+            target = conn.execute("SELECT id, provider_id FROM routes WHERE name = 'Мексика/Sancom/Demo_0827@'").fetchone()
+        finally:
+            conn.close()
+        body = urlencode([
+            ("apply_scope", "server_priority"),
+            ("event_at", "2026-06-10T11:45"),
+            ("country_id", "1"),
+            ("server_ids", "1"),
+            ("server_ids", "2"),
+            ("server_ids", "3"),
+            ("provider_id", str(target["provider_id"])),
+            ("new_route_id", str(target["id"])),
+            ("reason", "Плановое переключение"),
+            ("comment", "server details"),
+        ])
+        self.request("/provider-changes/create", method="POST", body=body)
+
+        rows = self.provider_changes_csv_rows()
+
+        self.assertIn("Серверы:", rows[0]["Детали"])
+        self.assertIn("EU1", rows[0]["Детали"])
+        self.assertIn("EU2", rows[0]["Детали"])
+        self.assertIn("EU3", rows[0]["Детали"])
+        self.assertIn("Miatel / Мексика/Miatel/Demo_A@ → Sancom / Мексика/Sancom/Demo_0827@", rows[0]["Детали"])
+        self.assertIn("пропущено: уже был выбран этот маршрут", rows[0]["Детали"])
+        self.assertNotIn("<ul", rows[0]["Детали"])
+        self.assertNotIn("<li", rows[0]["Детали"])
 
     def test_event_list_sorted_by_event_at_desc_and_does_not_render_deactivate(self):
         self.request("/routes")

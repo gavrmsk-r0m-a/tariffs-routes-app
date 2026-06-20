@@ -116,6 +116,20 @@ def csv_response(filename: str, headers: list[str], rows: list[list[object]]) ->
     writer.writerows([["" if value is None else value for value in row] for row in rows])
     return ("\ufeff" + output.getvalue()).encode("utf-8")
 
+
+def html_to_csv_text(value: object) -> str:
+    text = "" if value is None else str(value)
+    text = re.sub(r"</li>\s*<li[^>]*>", "; ", text)
+    text = re.sub(r"<br\s*/?>", "; ", text, flags=re.IGNORECASE)
+    text = re.sub(r"</?(?:ul|ol)[^>]*>", " ", text, flags=re.IGNORECASE)
+    text = re.sub(r"</?li[^>]*>", " ", text, flags=re.IGNORECASE)
+    text = re.sub(r"<[^>]+>", " ", text)
+    text = html.unescape(text)
+    text = re.sub(r"[\r\n\t]+", " ", text)
+    text = re.sub(r" {2,}", " ", text)
+    text = re.sub(r"\s*;\s*", "; ", text)
+    return text.strip(" ;")
+
 ASSIGNMENT_LABELS = {
     "pool_number": "Номер из пула",
     "outgoing_cli": "АОН",
@@ -3123,10 +3137,10 @@ def provider_changes_page(repo: Repository, q: dict[str, str] | None = None, for
     if q.get("export") == "csv":
         export_rows = []
         for ev in records:
-            server_text, campaign_text, details_text = provider_event_details(ev)
-            details_plain = re.sub(r"<[^>]+>", " ", details_text)
-            export_rows.append([ev["event_at"], ev["country_name"], ev["old_route_name"] or "—", ev["new_route_name"] or ev["new_company_route_name"] or "—", ev["reason"], ROUTING_SCOPE_LABELS.get(ev["apply_scope"], ev["apply_scope"]), "Активна" if ev["is_active"] else "Неактивна", ev["comment"] or details_plain])
-        return csv_response("provider_changes_export.csv", ["Дата", "GEO", "Старый провайдер", "Новый провайдер", "Причина", "Scope", "Статус", "Комментарий"], export_rows)
+            _, _, details_text = provider_event_details(ev)
+            details_plain = html_to_csv_text(details_text)
+            export_rows.append([ev["event_at"], ev["country_name"], ev["old_route_name"] or "—", ev["new_route_name"] or ev["new_company_route_name"] or "—", ev["reason"], ROUTING_SCOPE_LABELS.get(ev["apply_scope"], ev["apply_scope"]), "Активна" if ev["is_active"] else "Неактивна", ev["comment"], details_plain])
+        return csv_response("provider_changes_export.csv", ["Дата", "GEO", "Старый провайдер", "Новый провайдер", "Причина", "Scope", "Статус", "Комментарий", "Детали"], export_rows)
     records, pagination_html = paginate_rows(records, q, "/provider-changes")
     rows = []
     for ev in records:
