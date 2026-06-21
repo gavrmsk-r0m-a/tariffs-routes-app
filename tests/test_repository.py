@@ -4,7 +4,7 @@ import unittest
 from decimal import Decimal
 
 from app.db import init_db, run_lightweight_migrations
-from app.repository import BusinessRuleError, Repository, _values_equal
+from app.repository import hash_password, verify_password, BusinessRuleError, Repository, _values_equal
 
 
 class RepositoryBusinessRulesTest(unittest.TestCase):
@@ -41,6 +41,45 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
             currency_id=self.currency_id,
             is_active=is_active,
         )
+
+    def test_existing_admin_without_password_gets_default_hashed_password(self):
+        conn = sqlite3.connect(":memory:")
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys = ON")
+        init_db(conn)
+        conn.execute("UPDATE users SET password_hash = NULL, password_salt = NULL WHERE username = 'admin'")
+        run_lightweight_migrations(conn)
+        row = conn.execute("SELECT password_hash, password_salt FROM users WHERE username = 'admin'").fetchone()
+        self.assertIsNotNone(row["password_hash"])
+        self.assertIsNotNone(row["password_salt"])
+        self.assertNotEqual(row["password_hash"], "admin")
+        self.assertNotEqual(row["password_salt"], "admin")
+        self.assertTrue(verify_password("admin", row["password_hash"], row["password_salt"]))
+        conn.close()
+
+    def test_existing_admin_password_is_not_overwritten_by_fallback(self):
+        conn = sqlite3.connect(":memory:")
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys = ON")
+        init_db(conn)
+        password_hash, password_salt = hash_password("custom123")
+        conn.execute("UPDATE users SET password_hash = ?, password_salt = ? WHERE username = 'admin'", (password_hash, password_salt))
+        run_lightweight_migrations(conn)
+        row = conn.execute("SELECT password_hash, password_salt FROM users WHERE username = 'admin'").fetchone()
+        self.assertEqual(row["password_hash"], password_hash)
+        self.assertEqual(row["password_salt"], password_salt)
+        self.assertTrue(verify_password("custom123", row["password_hash"], row["password_salt"]))
+        self.assertFalse(verify_password("admin", row["password_hash"], row["password_salt"]))
+        conn.close()
+
+    def test_user_password_is_hashed_and_salted(self):
+        user_id = self.repo.create_user("operator2", "operator", "Operator", password="test123")
+        row = self.conn.execute("SELECT password_hash, password_salt FROM users WHERE id = ?", (user_id,)).fetchone()
+        self.assertIsNotNone(row["password_hash"])
+        self.assertIsNotNone(row["password_salt"])
+        self.assertNotEqual(row["password_hash"], "test123")
+        self.assertNotEqual(row["password_salt"], "test123")
+        self.assertTrue(verify_password("test123", row["password_hash"], row["password_salt"]))
 
     def test_valid_phone_can_be_added_to_route(self):
         phone_id = self.create_phone()

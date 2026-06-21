@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import hashlib
+import hmac
+import os
 import re
 import sqlite3
 import json
@@ -9,6 +12,23 @@ from decimal import Decimal, ROUND_HALF_UP
 
 PHONE_RE = re.compile(r"^[1-9][0-9]{6,20}$")
 VALID_PHONE_STATUSES = {"used", "free", "problem", "unknown"}
+
+
+def hash_password(password: str, salt: bytes | None = None) -> tuple[str, str]:
+    if salt is None:
+        salt = os.urandom(16)
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, 200_000)
+    return digest.hex(), salt.hex()
+
+
+def verify_password(password: str, password_hash: str | None, password_salt: str | None) -> bool:
+    if not password_hash or not password_salt:
+        return False
+    try:
+        expected, _ = hash_password(password, bytes.fromhex(password_salt))
+    except ValueError:
+        return False
+    return hmac.compare_digest(expected, password_hash)
 OLD_PHONE_STATUS_MAP = {"reserved": "free", "blocked": "problem", "disabled": "problem"}
 
 
@@ -176,7 +196,7 @@ class Repository:
             return "operator"
         return normalized or "operator"
 
-    def create_user(self, username: str, role: str = "admin", display_name: str | None = None) -> int:
+    def create_user(self, username: str, role: str = "admin", display_name: str | None = None, password: str | None = None) -> int:
         username = username.strip()
         existing = self.conn.execute("SELECT id FROM users WHERE username = ?", (username,)).fetchone()
         if existing:
@@ -191,9 +211,13 @@ class Repository:
         if "role" in columns:
             insert_columns.append("role")
             values.append("Admin" if role_key == "admin" else "User")
-        if "password_hash" in columns:
+        if "password_hash" in columns and "password_salt" in columns:
+            password_hash, password_salt = hash_password(password) if password is not None else (None, None)
+            insert_columns.extend(["password_hash", "password_salt"])
+            values.extend([password_hash, password_salt])
+        elif "password_hash" in columns:
             insert_columns.append("password_hash")
-            values.append("")
+            values.append(hash_password(password)[0] if password is not None else None)
         if "auth_provider" in columns:
             insert_columns.append("auth_provider")
             values.append("local")
@@ -229,6 +253,38 @@ class Repository:
             """,
             (user_id,),
         ).fetchone()
+
+    def get_user_by_username(self, username: str) -> sqlite3.Row | None:
+        columns = self._user_columns()
+        role_expr = "role_key" if "role_key" in columns else "LOWER(role)"
+        password_cols = ", password_hash, password_salt" if {"password_hash", "password_salt"}.issubset(columns) else ""
+        return self.conn.execute(
+            f"""
+            SELECT id, username, COALESCE(NULLIF(display_name, ''), username) AS display_name,
+                   {role_expr} AS role_key, is_active, created_at, updated_at{password_cols}
+            FROM users
+            WHERE username = ?
+            """,
+            (username.strip(),),
+        ).fetchone()
+
+    def authenticate_user(self, username: str, password: str) -> sqlite3.Row | None:
+        user = self.get_user_by_username(username)
+        if not user or not user["is_active"]:
+            return None
+        try:
+            ok = verify_password(password, user["password_hash"], user["password_salt"])
+        except (KeyError, IndexError):
+            ok = False
+        return user if ok else None
+
+    def update_user_password(self, user_id: int, password: str) -> None:
+        columns = self._user_columns()
+        if not {"password_hash", "password_salt"}.issubset(columns):
+            return
+        password_hash, password_salt = hash_password(password)
+        self.conn.execute("UPDATE users SET password_hash = ?, password_salt = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (password_hash, password_salt, user_id))
+        self.conn.commit()
 
     def update_user(self, user_id: int, *, display_name: str, role_key: str, is_active: bool) -> None:
         columns = self._user_columns()

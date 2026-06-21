@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import csv
+import hashlib
+import hmac
 import html
 import io
 import json
@@ -19,8 +21,17 @@ from app.repository import BusinessRuleError, COMPANY_CHANGE_LABELS, ROUTING_SCO
 
 DB_PATH = Path(os.environ.get("MVP_DB_PATH", DEFAULT_DB_PATH))
 ADMIN_ID = 1
-CURRENT_USER_COOKIE = "mvp_current_user_id"
+CURRENT_USER_COOKIE = "mvp_auth"
 FILTER_STATE_COOKIE = "mvp_filter_state"
+AUTH_COOKIE_SECRET = os.environ.get("MVP_AUTH_SECRET", "dev-mvp-auth-secret-change-me")
+
+def sign_user_id(user_id: int) -> str:
+    value = str(user_id)
+    sig = hmac.new(AUTH_COOKIE_SECRET.encode("utf-8"), value.encode("utf-8"), hashlib.sha256).hexdigest()
+    return f"{value}.{sig}"
+
+def auth_cookie_header(user_id: int) -> tuple[str, str]:
+    return ("Set-Cookie", f"{CURRENT_USER_COOKIE}={sign_user_id(user_id)}; Path=/; HttpOnly; SameSite=Lax")
 FILTER_SECTIONS = {
     "/routes": ("routes", ("country_id", "provider_id", "prefix_id", "is_actual", "search")),
     "/tariffs": ("tariffs", ("country_id", "provider_id", "priority_status", "status")),
@@ -348,7 +359,7 @@ def sidebar(title: str) -> str:
 
 def role_label(role_key: str | None) -> str:
     return {
-        "admin": "Admin",
+        "admin": "Админ",
         "operator": "Дежурный",
         "guest": "Гость",
         "user": "Пользователь",
@@ -365,16 +376,11 @@ def current_user_selector() -> str:
         return ""
     current_label = f"{current['display_name']} · {role_label(current['role_key'])}"
     return f"""
-        <details class="current-user-selector" data-tooltip="{esc(current_label)}">
-          <summary>
-            <span class="side-icon user-icon" aria-hidden="true">{user_icon_svg()}</span>
-            <span class="user-copy"><strong>{esc(current_label)}</strong><small>Текущий пользователь</small></span>
-          </summary>
-          <div class="current-user-menu">
-            <a href="/login">Сменить пользователя</a>
-            <a class="logout-link" href="/logout">Выход</a>
-          </div>
-        </details>
+        <div class="current-user-selector" data-tooltip="{esc(current_label)}">
+          <span class="side-icon user-icon" aria-hidden="true">{user_icon_svg()}</span>
+          <span class="user-copy"><strong>{esc(current_label)}</strong><small>Текущий пользователь</small></span>
+          <a class="logout-link" href="/logout">Выйти</a>
+        </div>
     """
 
 def theme_selector() -> str:
@@ -1501,10 +1507,11 @@ def cookie_user_id(environ) -> int | None:
     if not morsel:
         return None
     try:
-        return int(morsel.value)
-    except ValueError:
+        value, sig = morsel.value.split(".", 1)
+        expected = sign_user_id(int(value)).split(".", 1)[1]
+    except (ValueError, IndexError):
         return None
-
+    return int(value) if hmac.compare_digest(sig, expected) else None
 
 def resolve_current_user_id(repo: Repository, requested_id: int | None = None) -> int | None:
     if requested_id is None:
@@ -1532,7 +1539,7 @@ def current_actor_id() -> int:
 
 
 def clear_current_user_cookie() -> tuple[str, str]:
-    return ("Set-Cookie", f"{CURRENT_USER_COOKIE}=; Path=/; Max-Age=0; SameSite=Lax")
+    return ("Set-Cookie", f"{CURRENT_USER_COOKIE}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax")
 
 
 def is_public_path(path: str) -> bool:
@@ -1540,36 +1547,26 @@ def is_public_path(path: str) -> bool:
 
 
 def login_page(repo: Repository, message: str | None = None) -> bytes:
-    users = repo.list_users(active_only=True)
-    cards = []
-    for user in users:
-        cards.append(
-            f"<label class='login-user-card'><input type='radio' name='user_id' value='{user['id']}' required>"
-            f"<span><strong>{esc(user['display_name'])}</strong><small>{esc(role_label(user['role_key']))}</small></span></label>"
-        )
     notice = f"<div class='login-error'>{esc(message)}</div>" if message else ""
-    options = "".join(cards) or "<p>Нет активных пользователей.</p>"
-    button = "<button class='button hero-action' type='submit'>Войти</button>" if users else ""
     html = f"""<!doctype html>
 <html lang='ru' data-theme='calm-blue'>
-<head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'><title>Вход · TeleRoute</title><style>body{{font-family:Arial,sans-serif;background:#eef2f7;color:#172554}}.login-body{{min-height:100vh;display:grid;place-items:center;padding:24px}}.login-card{{max-width:560px;padding:28px;border:1px solid #e3eaf7;border-radius:18px;background:white;box-shadow:0 10px 24px rgba(32,50,90,.08)}}.brand-block{{display:flex;gap:12px;align-items:center}}.brand-mark{{display:grid;place-items:center;width:36px;height:36px;border-radius:11px;background:#4f46e5;color:white;font-weight:900}}.brand-copy strong,.brand-copy span,.login-user-card span strong,.login-user-card span small{{display:block}}.brand-copy span,.login-user-card span small,.muted{{color:#7180a4}}.login-users{{display:grid;gap:10px;margin:20px 0}}.login-user-card{{display:flex;gap:12px;align-items:center;padding:12px;border:1px solid #e3eaf7;border-radius:12px;cursor:pointer}}.login-user-card:hover{{border-color:#4661f2;background:#eef1ff}}.button{{border:0;border-radius:10px;background:#2547e8;color:white;font-weight:800;padding:10px 18px}}.login-error{{padding:10px 12px;border-radius:10px;background:#fff0f0;color:#b42318;font-weight:700}}</style></head>
+<head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'><title>Вход · TeleRoute</title><style>body{{font-family:Arial,sans-serif;background:#eef2f7;color:#172554}}.login-body{{min-height:100vh;display:grid;place-items:center;padding:24px}}.login-card{{width:min(420px,100%);padding:28px;border:1px solid #e3eaf7;border-radius:18px;background:white;box-shadow:0 10px 24px rgba(32,50,90,.08)}}.brand-block{{display:flex;gap:12px;align-items:center}}.brand-mark{{display:grid;place-items:center;width:36px;height:36px;border-radius:11px;background:#4f46e5;color:white;font-weight:900}}.brand-copy strong,.brand-copy span{{display:block}}.brand-copy span,.muted{{color:#7180a4}}.login-form{{display:grid;gap:14px;margin-top:18px}}label{{display:grid;gap:6px;font-weight:700}}input{{border:1px solid #cdd6e8;border-radius:10px;padding:10px 12px;font:inherit}}.button{{border:0;border-radius:10px;background:#2547e8;color:white;font-weight:800;padding:10px 18px}}.login-error{{padding:10px 12px;border-radius:10px;background:#fff0f0;color:#b42318;font-weight:700}}</style></head>
 <body class='login-body'>
   <main class='login-shell'>
     <section class='login-card'>
-      <div class='brand-block'><div class='brand-mark'>⌁</div><div class='brand-copy'><strong>TeleRoute</strong><span>MVP выбор пользователя</span></div></div>
-      <h1>Выберите пользователя</h1>
-      <p class='muted'>Это не аутентификация: выберите активного пользователя для корректной истории и прав.</p>
+      <div class='brand-block'><div class='brand-mark'>⌁</div><div class='brand-copy'><strong>TeleRoute</strong><span>Вход в систему</span></div></div>
+      <h1>Вход</h1>
       {notice}
       <form method='post' action='/login' class='login-form'>
-        <div class='login-users'>{options}</div>
-        {button}
+        <label>Логин <input name='username' autocomplete='username' required autofocus></label>
+        <label>Пароль <input name='password' type='password' autocomplete='current-password' required></label>
+        <button class='button hero-action' type='submit'>Войти</button>
       </form>
     </section>
   </main>
-  <script>const savedTheme = localStorage.getItem("mvp-theme") || "calm-blue"; document.documentElement.dataset.theme = savedTheme;</script>
-</body></html>"""
+</body>
+</html>"""
     return html.encode("utf-8")
-
 
 def section_for_get_path(path: str) -> str | None:
     if path in {"/", "/dashboard"}:
@@ -3280,7 +3277,7 @@ def admin_page(repo: Repository) -> bytes:
 
 def role_options(selected: str | None = None) -> str:
     opts = ""
-    for value, label in (("admin", "Admin"), ("operator", "Дежурный"), ("guest", "Гость")):
+    for value, label in (("admin", "Админ"), ("operator", "Дежурный"), ("guest", "Гость")):
         opts += f"<option value='{value}' {'selected' if value == selected else ''}>{esc(label)}</option>"
     return opts
 
@@ -3301,23 +3298,26 @@ def users_page(repo: Repository) -> bytes:
     <details class='edit-details'><summary>Редактировать</summary>
       <form class='form-grid' method='post' action='/admin/users/{user['id']}/update'>
         <label>Отображаемое имя <input name='display_name' value='{esc(user['display_name'])}' required></label>
-        <label>Роль-метка <select name='role_key'>{role_options(user['role_key'])}</select></label>
+        <label>Роль <select name='role_key'>{role_options(user['role_key'])}</select></label>
         <label>Активен <select name='is_active'><option value='1' {'selected' if user['is_active'] else ''}>Да</option><option value='0' {'selected' if not user['is_active'] else ''}>Нет</option></select></label>
+        <label>Новый пароль <input name='password' type='password' minlength='6' autocomplete='new-password'></label>
+        <label>Повторите пароль <input name='password_confirm' type='password' minlength='6' autocomplete='new-password'></label>
         <button>Сохранить</button>
       </form>
     </details>
   </td>
 </tr>""")
     create_html = f"""<form class='form-grid' method='post' action='/admin/users/create'>
-<label>Код пользователя <span class='required'>*</span><input name='username' placeholder='operator2' required></label>
+<label>Логин <span class='required'>*</span><input name='username' placeholder='operator2' required></label>
 <label>Отображаемое имя <span class='required'>*</span><input name='display_name' placeholder='Оператор' required></label>
-<label>Роль-метка <select name='role_key'>{role_options('operator')}</select></label>
-<p class='muted wide'>Пароли не используются. Доступ определяется ролью: admin, operator или guest.</p>
+<label>Роль <select name='role_key'>{role_options('operator')}</select></label>
+<label>Пароль <span class='required'>*</span><input name='password' type='password' minlength='6' required autocomplete='new-password'></label>
+<label>Повторите пароль <span class='required'>*</span><input name='password_confirm' type='password' minlength='6' required autocomplete='new-password'></label>
 <button>Создать</button></form>"""
-    table_html = f"<table><thead><tr><th>ID</th><th>Код</th><th>Имя</th><th>Роль-метка</th><th>Активен</th><th>Создан</th><th>Обновлён</th><th data-col='actions'>Действия</th></tr></thead><tbody>{''.join(rows)}</tbody></table>"
+    table_html = f"<table><thead><tr><th>ID</th><th>Логин</th><th>Отображаемое имя</th><th>Роль</th><th>Активен</th><th>Создан</th><th>Обновлён</th><th data-col='actions'>Действия</th></tr></thead><tbody>{''.join(rows)}</tbody></table>"
     body = f"""
 <h1>Пользователи</h1>
-<p class='muted'>Это лёгкий выбор текущего пользователя для MVP, без паролей. Права доступа зависят от роли. Индивидуальные права по разделам для отдельных пользователей пока не реализованы.</p>
+<p class='muted'>Пользователи входят по логину и паролю. Права доступа зависят от роли; индивидуальные права по разделам пока не реализованы.</p>
 {form_card('+ Создать пользователя', create_html)}
 {table_card(table_html)}"""
     return page("Пользователи", body)
@@ -3763,9 +3763,15 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
     if path == "/admin/users/create":
         username = data["username"].strip()
         display_name = data["display_name"].strip()
+        password = data.get("password", "")
+        password_confirm = data.get("password_confirm", "")
         if not username or not display_name:
-            raise BusinessRuleError("Код пользователя и имя обязательны")
-        repo.create_user(username, data.get("role_key") or "operator", display_name)
+            raise BusinessRuleError("Логин и отображаемое имя обязательны")
+        if len(password) < 6:
+            raise BusinessRuleError("Пароль обязателен и должен быть не короче 6 символов")
+        if password != password_confirm:
+            raise BusinessRuleError("Пароли не совпадают")
+        repo.create_user(username, data.get("role_key") or "operator", display_name, password=password)
         return "/admin/users"
     if path.startswith("/admin/users/") and path.endswith("/update"):
         user_id = int(path.strip("/").split("/")[2])
@@ -3778,6 +3784,14 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
             role_key=data.get("role_key") or "operator",
             is_active=data.get("is_active") == "1",
         )
+        password = data.get("password", "")
+        password_confirm = data.get("password_confirm", "")
+        if password or password_confirm:
+            if len(password) < 6:
+                raise BusinessRuleError("Новый пароль должен быть не короче 6 символов")
+            if password != password_confirm:
+                raise BusinessRuleError("Пароли не совпадают")
+            repo.update_user_password(user_id, password)
         return "/admin/users"
     if path == "/routes/create":
         country_id = int(data["country_id"]); provider_id = int(data["provider_id"]); prefix_id = parse_int(data.get("provider_prefix_id"))
@@ -4147,11 +4161,11 @@ def app(environ, start_response):
             raw_size = int(environ.get("CONTENT_LENGTH") or "0")
             raw_body = environ["wsgi.input"].read(raw_size).decode("utf-8")
             parsed = {key: values[-1] for key, values in parse_qs(raw_body, keep_blank_values=True).items()}
-            selected_user_id = resolve_current_user_id(repo, parse_int(parsed.get("user_id")))
-            if selected_user_id is None:
-                start_response("400 Bad Request", [("Content-Type", "text/html; charset=utf-8"), clear_current_user_cookie()])
-                return [login_page(repo, "Выберите активного пользователя")]
-            return redirect(start_response, safe_redirect_target(parsed.get("redirect_to") or "/routes"), [("Set-Cookie", f"{CURRENT_USER_COOKIE}={selected_user_id}; Path=/; SameSite=Lax")])
+            user = repo.authenticate_user(parsed.get("username", ""), parsed.get("password", ""))
+            if user is None:
+                start_response("401 Unauthorized", [("Content-Type", "text/html; charset=utf-8"), clear_current_user_cookie()])
+                return [login_page(repo, "Неверный логин или пароль")]
+            return redirect(start_response, safe_redirect_target(parsed.get("redirect_to") or "/routes"), [auth_cookie_header(int(user["id"]))])
         if not is_public_path(path) and current_user_id is None:
             return redirect(start_response, "/login", [clear_current_user_cookie()] if cookie_id is not None else None)
         if method == "POST":
@@ -4159,8 +4173,7 @@ def app(environ, start_response):
             raw_body = environ["wsgi.input"].read(raw_size).decode("utf-8")
             parsed = {key: values[-1] for key, values in parse_qs(raw_body, keep_blank_values=True).items()}
             parsed["_raw"] = raw_body
-            if path != "/users/select":
-                require_permission("write", section_for_write_path(path))
+            require_permission("write", section_for_write_path(path))
             if path == "/admin/import/preview":
                 if parsed["entity_type"] == "tariffs" and parsed.get("mode") == "replace_section":
                     raise BusinessRuleError("Для тарифов доступен только режим Дополнить / обновить")
@@ -4174,16 +4187,6 @@ def app(environ, start_response):
                 notice = f"<h2>Импорт завершён</h2><ul><li>создано {result.created_rows}</li><li>обновлено {result.updated_rows}</li><li>пропущено {result.skipped_rows}</li><li>ошибок {result.error_rows}</li></ul>"
                 start_response("200 OK", [("Content-Type", "text/html; charset=utf-8")])
                 return [import_page(repo, notice, selected_entity=parsed["entity_type"], selected_mode=parsed.get("mode", "append_update"), csv_data=parsed.get("csv_data", ""))]
-            if path == "/users/select":
-                selected_user_id = resolve_current_user_id(repo, parse_int(parsed.get("user_id")))
-                if selected_user_id is None:
-                    return redirect(start_response, "/login", [clear_current_user_cookie()])
-                location = safe_redirect_target(parsed.get("redirect_to") or "/routes")
-                return redirect(
-                    start_response,
-                    location,
-                    [("Set-Cookie", f"{CURRENT_USER_COOKIE}={selected_user_id}; Path=/; SameSite=Lax")],
-                )
             location = handle_post(repo, path, parsed)
             return redirect(start_response, location)
         require_permission("read", section_for_get_path(path))
