@@ -1953,6 +1953,102 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
         self.assertIn("data-scopes='campaign_setting'", content)
         self.assertIn("Событие будет сохранено в журнале и применено", content)
 
+
+    def test_provider_change_company_setting_form_renders_campaign_helper_filters(self):
+        self.request("/routes")
+        captured, content = self.request("/provider-changes")
+        self.assertEqual(captured["status"], "200 OK")
+        create_form = content.split("<form method='post' action='/provider-changes/create'", 1)[1].split("</form>", 1)[0]
+        self.assertIn("id='campaign-server-filter'", create_form)
+        self.assertIn("Сервер <select name='server_id' id='campaign-server-filter'", create_form)
+        self.assertIn("ID кампании", create_form)
+        self.assertIn("id='campaign-id-search'", create_form)
+        self.assertIn("id='campaign-id-search-button'", create_form)
+        self.assertLess(create_form.index("id='campaign-server-filter'"), create_form.index("id='event-company'"))
+
+    def test_provider_change_company_dropdown_has_server_filter_metadata(self):
+        self.request("/routes")
+        captured, content = self.request("/provider-changes")
+        self.assertEqual(captured["status"], "200 OK")
+        create_form = content.split("<form method='post' action='/provider-changes/create'", 1)[1].split("</form>", 1)[0]
+        self.assertIn("data-server-id=", create_form)
+        self.assertIn("data-campaign-id=", create_form)
+        self.assertIn("function filterCompanyOptions()", content)
+        self.assertIn("!selectedServerId || String(option.dataset.serverId) === String(selectedServerId)", content)
+        self.assertIn("Кампания с таким ID не найдена", content)
+        self.assertIn("находится на сервере", content)
+
+    def test_provider_change_campaign_id_search_post_selects_external_id_company(self):
+        self.request("/routes")
+        conn = server.connect(server.DB_PATH)
+        try:
+            eu1_id = conn.execute("SELECT id FROM servers WHERE name = 'EU1'").fetchone()["id"]
+            country_id = conn.execute("SELECT id FROM countries WHERE name = 'Мексика'").fetchone()["id"]
+            repo = server.Repository(conn)
+            repo.create_calling_company(server_id=eu1_id, country_id=country_id, company_name="Search Select Demo", company_id_external="search-select", has_autorotation=False, created_by=server.ADMIN_ID, is_active=True)
+        finally:
+            conn.close()
+        body = urlencode({
+            "apply_scope": "campaign_setting",
+            "event_at": "2026-06-10T12:00",
+            "server_id": "",
+            "campaign_id_search": "search-select",
+            "company_change_type": "enable_autorotation",
+            "reason": "Тест нового маршрута",
+            "comment": "Нашли кампанию по видимому ID",
+        })
+        captured, _ = self.request("/provider-changes/create", method="POST", body=body)
+        self.assertEqual(captured["status"], "303 See Other")
+        captured, content = self.request("/provider-changes")
+        self.assertIn("search-select / Search Select Demo", content)
+        self.assertIn("Нашли кампанию по видимому ID", content)
+
+    def test_provider_change_campaign_id_search_post_ignores_internal_id(self):
+        self.request("/routes")
+        conn = server.connect(server.DB_PATH)
+        try:
+            eu1_id = conn.execute("SELECT id FROM servers WHERE name = 'EU1'").fetchone()["id"]
+            country_id = conn.execute("SELECT id FROM countries WHERE name = 'Мексика'").fetchone()["id"]
+            repo = server.Repository(conn)
+            company_id = repo.create_calling_company(server_id=eu1_id, country_id=country_id, company_name="Internal ID Search Guard", company_id_external="visible-guard", has_autorotation=False, created_by=server.ADMIN_ID, is_active=True)
+        finally:
+            conn.close()
+        body = urlencode({
+            "apply_scope": "campaign_setting",
+            "event_at": "2026-06-10T12:00",
+            "campaign_id_search": str(company_id),
+            "company_change_type": "enable_autorotation",
+            "reason": "Тест нового маршрута",
+            "comment": "Не искать по внутреннему ID",
+        })
+        captured, content = self.request("/provider-changes/create", method="POST", body=body)
+        self.assertEqual(captured["status"], "400 Bad Request")
+        self.assertIn("Кампания с таким ID не найдена", content)
+
+    def test_provider_change_campaign_id_search_post_reports_server_conflict(self):
+        self.request("/routes")
+        conn = server.connect(server.DB_PATH)
+        try:
+            eu1_id = conn.execute("SELECT id FROM servers WHERE name = 'EU1'").fetchone()["id"]
+            eu3_id = conn.execute("SELECT id FROM servers WHERE name = 'EU3'").fetchone()["id"]
+            country_id = conn.execute("SELECT id FROM countries WHERE name = 'Мексика'").fetchone()["id"]
+            repo = server.Repository(conn)
+            repo.create_calling_company(server_id=eu3_id, country_id=country_id, company_name="EU3 Conflict", company_id_external="eu3-conflict", has_autorotation=False, created_by=server.ADMIN_ID, is_active=True)
+        finally:
+            conn.close()
+        body = urlencode({
+            "apply_scope": "campaign_setting",
+            "event_at": "2026-06-10T12:00",
+            "server_id": str(eu1_id),
+            "campaign_id_search": "eu3-conflict",
+            "company_change_type": "enable_autorotation",
+            "reason": "Тест нового маршрута",
+            "comment": "Конфликт сервера",
+        })
+        captured, content = self.request("/provider-changes/create", method="POST", body=body)
+        self.assertEqual(captured["status"], "400 Bad Request")
+        self.assertIn("Кампания с ID eu3-conflict находится на сервере EU3, а выбран сервер EU1", content)
+
     def test_campaign_setting_route_is_preserved_when_toggling_autorotation(self):
         self.request("/routes")
         conn = server.connect(server.DB_PATH)

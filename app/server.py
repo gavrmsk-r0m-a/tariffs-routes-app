@@ -2834,8 +2834,24 @@ def current_priorities_json(repo: Repository) -> str:
 
 
 def campaign_metadata_json(repo: Repository) -> str:
-    rows = repo.conn.execute("SELECT id, country_id FROM calling_companies ORDER BY id").fetchall()
-    return json.dumps({str(row["id"]): row["country_id"] for row in rows}, ensure_ascii=False)
+    rows = repo.conn.execute("""
+        SELECT cc.id, cc.country_id, cc.server_id, cc.company_id_external, cc.company_name, s.name AS server_name
+        FROM calling_companies cc
+        JOIN servers s ON s.id = cc.server_id
+        WHERE cc.is_active = 1
+        ORDER BY cc.company_id_external
+        """).fetchall()
+    return json.dumps([
+        {
+            "id": row["id"],
+            "country_id": row["country_id"],
+            "server_id": row["server_id"],
+            "server_name": row["server_name"],
+            "external_id": row["company_id_external"],
+            "label": f"{row['company_id_external']} / {row['company_name']}",
+        }
+        for row in rows
+    ], ensure_ascii=False)
 
 
 def routing_event_form(repo: Repository, event=None, error_message: str | None = None) -> str:
@@ -2888,7 +2904,20 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
     route_opts = route_options_for_dynamic_form(repo, selected=event["affected_route_id"] if event else None, empty="—")
     new_route_opts = route_options_for_dynamic_form(repo, selected=event["new_route_id"] if event else None, empty="—")
     company_route_opts = route_options_for_dynamic_form(repo, selected=event["new_company_route_id"] if event else None, empty="—")
-    company_opts = select_options(repo, "SELECT id, company_id_external || ' / ' || company_name AS label FROM calling_companies WHERE is_active = 1 OR id = ? ORDER BY company_id_external", (event["calling_company_id"] if event else 0,), selected=event["calling_company_id"] if event else None, empty="—")
+    company_opts = "<option value=''>—</option>"
+    for company in repo.conn.execute("""
+        SELECT cc.id, cc.server_id, cc.company_id_external, cc.company_name, s.name AS server_name
+        FROM calling_companies cc
+        JOIN servers s ON s.id = cc.server_id
+        WHERE cc.is_active = 1 OR cc.id = ?
+        ORDER BY cc.company_id_external
+        """, (event["calling_company_id"] if event else 0,)):
+        label = f"{company['company_id_external']} / {company['company_name']}"
+        company_opts += (
+            f"<option value='{company['id']}' data-server-id='{company['server_id']}' "
+            f"data-campaign-id='{esc(company['company_id_external'])}' data-server-name='{esc(company['server_name'])}' "
+            f"title='{esc(label)}' {'selected' if event and str(company['id']) == str(event['calling_company_id']) else ''}>{esc(label)}</option>"
+        )
     selected_server_ids = {str(event["server_id"])} if event and event["server_id"] else set()
     server_priority_server_boxes = active_server_priority_checkboxes(repo, selected_server_ids, event["country_id"] if event else None)
     action = f"/provider-changes/{event['id']}/update" if is_existing_event else "/provider-changes/create"
@@ -2910,6 +2939,8 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
   </fieldset>
   {inactive_note}
   <label>Дата события <span class='required'>*</span><input type='datetime-local' name='event_at' value='{esc(event_at)}' required></label>
+  <label class='scope-field campaign-helper-field' data-scopes='campaign_setting'>Сервер <select name='server_id' id='campaign-server-filter'>{options(repo, 'servers', selected=event['server_id'] if event else None, empty='—')}</select></label>
+  <label class='scope-field campaign-helper-field' data-scopes='campaign_setting'>ID кампании <span class='inline-input'><input name='campaign_id_search' id='campaign-id-search' value='{esc(event['campaign_id_search'] if event and 'campaign_id_search' in event.keys() else '')}'><button type='button' id='campaign-id-search-button' class='small-button'>OK</button></span><span class='field-error' id='campaign-id-search-error' aria-live='polite'></span></label>
   <label class='scope-field' data-scopes='none server_priority'>GEO <select name='country_id' id='event-country'>{active_options(repo, 'countries', selected=event['country_id'] if event else None, empty='—')}</select></label>
   <fieldset class='scope-field' data-scopes='server_priority'><legend>Серверы <span class='required'>*</span></legend>{server_priority_server_boxes}</fieldset>
   <label class='scope-field routing-provider-field' data-scopes='none server_priority'>Провайдер <span class='required provider-required'>*</span><select name='provider_id' id='event-provider'>{active_options(repo, 'providers', selected=provider_selected, empty='—')}</select></label>
@@ -2917,11 +2948,11 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
   {old_route_field}
   <label class='scope-field route-select-field' data-scopes='server_priority'>Новый маршрут <span class='required'>*</span><select name='new_route_id' id='new-route' class='route-select'>{new_route_opts}</select></label>
   <span class='scope-field route-empty-message muted' data-scopes='server_priority' id='new-route-empty' hidden>Нет маршрутов для выбранного провайдера и GEO</span>
-  <label class='scope-field' data-scopes='campaign_setting'>Кампания <span class='required'>*</span><select name='calling_company_id' id='event-company'>{company_opts}</select></label>
   <label class='scope-field' data-scopes='campaign_setting'>Тип изменения кампании <span class='required'>*</span><select name='company_change_type' id='company-change-type'>
     <option value=''>—</option>
     {''.join(f"<option value='{v}' {'selected' if event and event['company_change_type'] == v else ''}>{label}</option>" for v, label in [('enable_autorotation','Включили авторотацию'),('disable_autorotation','Выключили авторотацию'),('set_campaign_route','Прописали ручной маршрут'),('remove_campaign_route','Убрали ручной маршрут')])}
   </select></label>
+  <label class='scope-field' data-scopes='campaign_setting'>Кампания <span class='required'>*</span><select name='calling_company_id' id='event-company'>{company_opts}</select></label>
   <label class='scope-field conditional-field' data-scopes='campaign_setting' data-campaign-route-field='1'>Новый провайдер кампании <span class='required'>*</span><select name='campaign_provider_id' id='campaign-provider'>{active_options(repo, 'providers', selected=provider_selected, empty='—')}</select></label>
   <label class='scope-field conditional-field' data-scopes='campaign_setting' data-campaign-route-field='1'>Новый маршрут кампании <span class='required'>*</span><select name='new_company_route_id' id='company-route'>{company_route_opts}</select></label>
   <span class='scope-field route-empty-message muted' data-scopes='campaign_setting' id='company-route-empty' hidden>Нет маршрутов для выбранного провайдера и GEO кампании</span>
@@ -2937,7 +2968,8 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
   if (!form) return;
   const routes = {route_metadata_json(repo)};
   const priorities = {current_priorities_json(repo)};
-  const campaignCountries = {campaign_metadata_json(repo)};
+  const campaigns = {campaign_metadata_json(repo)};
+  const campaignCountries = Object.fromEntries(campaigns.map((company) => [String(company.id), company.country_id]));
   const routeNeeds = new Set(['set_campaign_route']);
   function selectedScope() {{ return (form.querySelector('input[name="apply_scope"]:checked') || {{value: 'none'}}).value; }}
   function setRequired(el, required) {{ if (el) el.required = !!required; }}
@@ -2965,6 +2997,49 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
     const selected = select.options[select.selectedIndex];
     select.title = selected ? selected.textContent : '';
   }}
+  function setCampaignSearchError(message) {{
+    const error = document.getElementById('campaign-id-search-error');
+    if (error) error.textContent = message || '';
+  }}
+  function filterCompanyOptions() {{
+    const select = document.getElementById('event-company');
+    const server = document.getElementById('campaign-server-filter');
+    if (!select || !server) return;
+    const selectedServerId = server.value;
+    Array.from(select.options).forEach((option) => {{
+      if (!option.value) return;
+      const show = !selectedServerId || String(option.dataset.serverId) === String(selectedServerId);
+      option.hidden = !show;
+      option.disabled = !show;
+    }});
+    if (select.value) {{
+      const current = select.options[select.selectedIndex];
+      if (current && current.disabled) select.value = '';
+    }}
+    updateSelectTitle(select);
+  }}
+  function findCampaignByVisibleId() {{
+    const input = document.getElementById('campaign-id-search');
+    const select = document.getElementById('event-company');
+    const server = document.getElementById('campaign-server-filter');
+    if (!input || !select || !server) return;
+    const campaignId = input.value.trim();
+    setCampaignSearchError('');
+    if (!campaignId) return;
+    const found = campaigns.find((company) => String(company.external_id) === campaignId);
+    if (!found) {{
+      setCampaignSearchError('Кампания с таким ID не найдена');
+      return;
+    }}
+    if (server.value && String(found.server_id) !== String(server.value)) {{
+      const selectedServerName = (server.options[server.selectedIndex] && server.options[server.selectedIndex].textContent) || server.value;
+      setCampaignSearchError(`Кампания с ID ${{campaignId}} находится на сервере ${{found.server_name}}, а выбран сервер ${{selectedServerName}}`);
+      return;
+    }}
+    select.value = String(found.id);
+    updateSelectTitle(select);
+    sync();
+  }}
   function sync() {{
     const scope = selectedScope();
     form.querySelectorAll('.scope-card').forEach((card) => card.classList.toggle('selected', card.querySelector('input').checked));
@@ -2989,6 +3064,7 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
     renderCurrentRoutes();
     rebuildRouteSelect(document.getElementById('affected-route'), country && country.value, provider && provider.value, null);
     rebuildRouteSelect(document.getElementById('new-route'), country && country.value, provider && provider.value, document.getElementById('new-route-empty'));
+    filterCompanyOptions();
     const company = document.getElementById('event-company');
     const campaignProvider = document.getElementById('campaign-provider');
     const companyCountry = company ? campaignCountries[company.value] : '';
@@ -3048,7 +3124,9 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
   }}));
   form.querySelectorAll('input[name="server_ids"]').forEach((box) => box.addEventListener('change', updateServerSelectionCount));
   updateServerSelectionCount();
-  form.querySelectorAll('input[name="apply_scope"], #event-country, #event-provider, #event-company, #campaign-provider, #company-change-type').forEach((el) => el.addEventListener('change', sync));
+  form.querySelectorAll('input[name="apply_scope"], #event-country, #event-provider, #event-company, #campaign-provider, #company-change-type, #campaign-server-filter').forEach((el) => el.addEventListener('change', sync));
+  const campaignSearchButton = document.getElementById('campaign-id-search-button');
+  if (campaignSearchButton) campaignSearchButton.addEventListener('click', findCampaignByVisibleId);
   form.querySelectorAll('.route-select').forEach((el) => el.addEventListener('change', () => updateSelectTitle(el)));
   sync();
 }})();
@@ -3795,11 +3873,28 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
         apply_scope = data.get("apply_scope")
         provider_id = parse_int(data.get("campaign_provider_id")) if apply_scope == "campaign_setting" else parse_int(data.get("provider_id"))
         selected_server_ids = parse_qs(data.get("_raw", ""), keep_blank_values=True).get("server_ids") if apply_scope == "server_priority" else None
+        calling_company_id = parse_int(data.get("calling_company_id"))
+        if apply_scope == "campaign_setting" and (data.get("campaign_id_search") or "").strip():
+            campaign_id_search = (data.get("campaign_id_search") or "").strip()
+            found_company = repo.conn.execute("""
+                SELECT cc.id, cc.server_id, cc.company_id_external, s.name AS server_name
+                FROM calling_companies cc
+                JOIN servers s ON s.id = cc.server_id
+                WHERE cc.company_id_external = ? AND cc.is_active = 1
+                """, (campaign_id_search,)).fetchone()
+            if not found_company:
+                raise BusinessRuleError("Кампания с таким ID не найдена")
+            helper_server_id = parse_int(data.get("server_id"))
+            if helper_server_id and int(found_company["server_id"]) != helper_server_id:
+                selected_server = repo.conn.execute("SELECT name FROM servers WHERE id = ?", (helper_server_id,)).fetchone()
+                selected_server_name = selected_server["name"] if selected_server else str(helper_server_id)
+                raise BusinessRuleError(f"Кампания с ID {campaign_id_search} находится на сервере {found_company['server_name']}, а выбран сервер {selected_server_name}")
+            calling_company_id = int(found_company["id"])
         repo.create_routing_event(
             event_at=data.get("event_at"), apply_scope=apply_scope, reason=data.get("reason"), comment=data.get("comment"),
             country_id=parse_int(data.get("country_id")), server_id=parse_int(data.get("server_id")), server_ids=selected_server_ids, provider_id=provider_id,
             affected_route_id=parse_int(data.get("affected_route_id")), old_route_id=parse_int(data.get("old_route_id")), new_route_id=parse_int(data.get("new_route_id")),
-            calling_company_id=parse_int(data.get("calling_company_id")), company_change_type=data.get("company_change_type") or None,
+            calling_company_id=calling_company_id, company_change_type=data.get("company_change_type") or None,
             new_company_routing_mode=data.get("new_company_routing_mode") or None, new_company_route_id=parse_int(data.get("new_company_route_id")),
             new_company_has_autorotation=parse_int(data.get("new_company_has_autorotation")), created_by=actor_id,
         )
@@ -4147,6 +4242,7 @@ def app(environ, start_response):
                 "new_company_route_id": parse_int(parsed.get("new_company_route_id")),
                 "reason": parsed.get("reason"),
                 "comment": parsed.get("comment"),
+                "campaign_id_search": parsed.get("campaign_id_search"),
             }
             return [provider_changes_page(repo, {}, form_error=user_error(exc), form_data=form_data)]
         return [validation_error_page(return_path, user_error(exc))]
