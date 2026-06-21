@@ -650,14 +650,14 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     #routing-event-form .routing-provider-field {{ width: 175px; }}
     #routing-event-form .route-select-field {{ grid-column: auto; min-width: min(360px, 100%); width: clamp(360px, 38vw, 520px); }}
     #routing-event-form .routing-reason-field {{ width: 190px; }}
-    #routing-event-form[data-current-scope='campaign_setting'] {{ grid-template-columns: minmax(170px, 190px) 92px minmax(210px, 240px) minmax(210px, 250px); }}
-    #routing-event-form .campaign-server-field {{ min-width: 92px; width: 92px; }}
-    #routing-event-form .campaign-id-field {{ min-width: 210px; width: 240px; }}
-    #routing-event-form .campaign-change-type-field {{ min-width: 210px; width: 250px; }}
+    #routing-event-form[data-current-scope='campaign_setting'] {{ grid-template-columns: 180px 130px 290px 270px; column-gap: 10px; }}
+    #routing-event-form .campaign-server-field {{ min-width: 110px; width: 130px; }}
+    #routing-event-form .campaign-id-field {{ min-width: 270px; width: 290px; }}
+    #routing-event-form .campaign-change-type-field {{ min-width: 240px; width: 270px; }}
     #routing-event-form .campaign-company-field {{ min-width: 360px; width: min(520px, 100%); }}
-    #routing-event-form .inline-input {{ display: flex; align-items: center; gap: 6px; width: 100%; }}
-    #routing-event-form .inline-input input {{ flex: 1 1 auto; min-width: 0; }}
-    #routing-event-form .inline-input .small-button {{ flex: 0 0 auto; min-height: 34px; padding: 5px 10px; }}
+    #routing-event-form .inline-input {{ display: flex; align-items: stretch; gap: 6px; width: 100%; flex-wrap: nowrap; }}
+    #routing-event-form .inline-input input {{ flex: 1 1 200px; min-width: 0; }}
+    #routing-event-form .inline-input .small-button {{ flex: 0 0 56px; min-height: 34px; padding: 5px 10px; align-self: stretch; }}
     #routing-event-form .field-error {{ display: block; min-height: 16px; color: var(--danger); font-size: 12px; font-weight: 600; }}
     @media (max-width: 1020px) {{ #routing-event-form, #routing-event-form[data-current-scope='campaign_setting'] {{ grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }} #routing-event-form .routing-provider-field, #routing-event-form .routing-reason-field, #routing-event-form .route-select-field, #routing-event-form .campaign-server-field, #routing-event-form .campaign-id-field, #routing-event-form .campaign-change-type-field, #routing-event-form .campaign-company-field {{ width: 100%; min-width: 0; }} }}
     @media (max-width: 720px) {{ .form-grid .route-select-field {{ grid-column: 1 / -1; width: 100%; min-width: 0; }} }}
