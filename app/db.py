@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+from app.repository import hash_password
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -9,9 +10,10 @@ DEFAULT_DB_PATH = ROOT / "mvp.sqlite3"
 
 
 DEFAULT_USERS = (
-    ("roman", "Roman", "admin"),
-    ("duty", "Дежурный", "operator"),
-    ("guest", "Гость", "guest"),
+    ("admin", "Admin", "admin", "admin"),
+    ("roman", "Roman", "admin", "roman"),
+    ("duty", "Дежурный", "operator", "duty123"),
+    ("guest", "Гость", "guest", "guest123"),
 )
 
 PHONE_STATUS_SQL = "status TEXT NOT NULL DEFAULT 'unknown' CHECK (status IN ('used', 'free', 'problem', 'unknown'))"
@@ -114,7 +116,7 @@ def _seed_default_users_if_empty(conn: sqlite3.Connection) -> None:
     if conn.execute("SELECT COUNT(*) FROM users").fetchone()[0] != 0:
         return
     columns = _column_names(conn, "users")
-    for username, display_name, role_key in DEFAULT_USERS:
+    for username, display_name, role_key, password in DEFAULT_USERS:
         insert_columns = ["username", "display_name", "is_active"]
         values: list[object] = [username, display_name, 1]
         if "role_key" in columns:
@@ -123,9 +125,10 @@ def _seed_default_users_if_empty(conn: sqlite3.Connection) -> None:
         if "role" in columns:
             insert_columns.append("role")
             values.append("Admin" if role_key == "admin" else "User")
-        if "password_hash" in columns:
-            insert_columns.append("password_hash")
-            values.append("")
+        if "password_hash" in columns and "password_salt" in columns:
+            password_hash, password_salt = hash_password(password)
+            insert_columns.extend(["password_hash", "password_salt"])
+            values.extend([password_hash, password_salt])
         if "auth_provider" in columns:
             insert_columns.append("auth_provider")
             values.append("local")
@@ -146,7 +149,9 @@ def run_lightweight_migrations(conn: sqlite3.Connection) -> None:
             role_key TEXT NOT NULL DEFAULT 'operator',
             is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            password_hash TEXT,
+            password_salt TEXT
         )
     """)
     _add_column_if_missing(conn, "users", "role_key", "TEXT NOT NULL DEFAULT 'operator'")
@@ -154,10 +159,17 @@ def run_lightweight_migrations(conn: sqlite3.Connection) -> None:
     _add_column_if_missing(conn, "users", "is_active", "INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1))")
     _add_column_if_missing(conn, "users", "created_at", "TEXT")
     _add_column_if_missing(conn, "users", "updated_at", "TEXT")
+    _add_column_if_missing(conn, "users", "password_hash", "TEXT")
+    _add_column_if_missing(conn, "users", "password_salt", "TEXT")
     conn.execute("UPDATE users SET display_name = username WHERE display_name IS NULL OR TRIM(display_name) = ''")
     if "role" in _column_names(conn, "users"):
         conn.execute("UPDATE users SET role_key = CASE WHEN role = 'Admin' THEN 'admin' ELSE 'operator' END WHERE role_key IS NULL OR role_key = ''")
     _seed_default_users_if_empty(conn)
+    for username, _display_name, _role_key, password in DEFAULT_USERS:
+        row = conn.execute("SELECT id, password_hash, password_salt FROM users WHERE username = ?", (username,)).fetchone()
+        if row and (not row["password_hash"] or not row["password_salt"]):
+            password_hash, password_salt = hash_password(password)
+            conn.execute("UPDATE users SET password_hash = ?, password_salt = ? WHERE id = ?", (password_hash, password_salt, row["id"]))
     _add_column_if_missing(conn, "calling_companies", "line_count", "INTEGER NOT NULL DEFAULT 0 CHECK (line_count >= 0)")
     _add_column_if_missing(conn, "calling_companies", "dial_set_count", "INTEGER NOT NULL DEFAULT 0 CHECK (dial_set_count >= 0)")
     _add_column_if_missing(conn, "calling_companies", "retry_interval_seconds", "INTEGER NOT NULL DEFAULT 0 CHECK (retry_interval_seconds >= 0)")

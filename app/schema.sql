@@ -6,6 +6,8 @@ CREATE TABLE IF NOT EXISTS users (
     display_name TEXT NOT NULL,
     role_key TEXT NOT NULL DEFAULT 'operator',
     is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
+    password_hash TEXT,
+    password_salt TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );

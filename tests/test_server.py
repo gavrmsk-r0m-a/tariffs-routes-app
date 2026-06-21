@@ -48,7 +48,7 @@ class ServerSmokeTest(unittest.TestCase):
             finally:
                 conn.close()
             if row:
-                environ["HTTP_COOKIE"] = f"mvp_current_user_id={row['id']}"
+                environ["HTTP_COOKIE"] = f"{server.CURRENT_USER_COOKIE}={server.sign_user_id(row['id'])}"
         content = b"".join(server.app(environ, start_response)).decode("utf-8")
         return captured, content
 
@@ -59,7 +59,7 @@ class ServerSmokeTest(unittest.TestCase):
             user_id = conn.execute("SELECT id FROM users WHERE username = ?", (username,)).fetchone()["id"]
         finally:
             conn.close()
-        return f"mvp_current_user_id={user_id}"
+        return f"{server.CURRENT_USER_COOKIE}={server.sign_user_id(user_id)}"
 
 
     def test_phone_status_options_expose_only_simplified_statuses(self):
@@ -96,17 +96,15 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertIn("Roman", content)
         self.assertIn("Дежурный", content)
         self.assertIn("Гость", content)
-        self.assertIn("без паролей", content)
+        self.assertIn("Логин", content)
 
     def test_login_page_returns_user_selection_and_active_users(self):
         captured, content = self.request("/login")
         self.assertEqual(captured["status"], "200 OK")
-        self.assertIn("Выберите пользователя", content)
-        self.assertIn("Admin", content)
-        self.assertIn("Roman", content)
-        self.assertIn("Дежурный", content)
-        self.assertIn("Гость", content)
+        self.assertIn("Логин", content)
+        self.assertIn("Пароль", content)
         self.assertIn("Войти", content)
+        self.assertNotIn("Выберите пользователя", content)
 
     def test_current_user_card_appears_in_layout(self):
         captured, content = self.request("/routes")
@@ -114,32 +112,97 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertIn('class="current-user-selector"', content)
         self.assertIn('href="/logout"', content)
         self.assertIn("Текущий пользователь", content)
-        self.assertIn("Admin · Admin", content)
+        self.assertIn("Admin · Админ", content)
 
-    def test_selecting_user_persists_cookie_and_redirects(self):
-        self.request("/login")
-        conn = server.connect(server.DB_PATH)
-        try:
-            duty_id = conn.execute("SELECT id FROM users WHERE username = 'duty'").fetchone()["id"]
-        finally:
-            conn.close()
-        body = urlencode({"user_id": str(duty_id), "redirect_to": "/phones"})
+    def test_login_with_password_persists_cookie_and_redirects(self):
+        body = urlencode({"username": "duty", "password": "duty123", "redirect_to": "/phones"})
         captured, content = self.request("/login", method="POST", body=body)
         self.assertEqual(captured["status"], "303 See Other")
         self.assertIn(("Location", "/phones"), captured["headers"])
         set_cookie = dict(captured["headers"]).get("Set-Cookie", "")
-        self.assertIn(f"mvp_current_user_id={duty_id}", set_cookie)
+        self.assertIn(f"{server.CURRENT_USER_COOKIE}=", set_cookie)
+        self.assertIn("HttpOnly", set_cookie)
 
-        captured, content = self.request("/routes", cookie=f"mvp_current_user_id={duty_id}")
+        captured, content = self.request("/routes", cookie=set_cookie)
         self.assertEqual(captured["status"], "200 OK")
         self.assertIn("Дежурный · Дежурный", content)
+
+    def test_wrong_password_does_not_authenticate(self):
+        body = urlencode({"username": "duty", "password": "wrong"})
+        captured, content = self.request("/login", method="POST", body=body)
+        self.assertEqual(captured["status"], "401 Unauthorized")
+        self.assertIn("Неверный логин или пароль", content)
+
+    def test_admin_default_fallback_login_opens_user_management_without_exposing_password(self):
+        body = urlencode({"username": "admin", "password": "admin"})
+        captured, _ = self.request("/login", method="POST", body=body)
+        self.assertEqual(captured["status"], "303 See Other")
+        set_cookie = dict(captured["headers"]).get("Set-Cookie", "")
+        captured, content = self.request("/admin/users", cookie=set_cookie)
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("Пользователи", content)
+        self.assertNotIn("admin/admin", content)
+
+    def test_admin_can_create_user_with_password_and_no_password_leak(self):
+        body = urlencode({
+            "username": "operator2",
+            "display_name": "Оператор",
+            "role_key": "operator",
+            "password": "test123",
+            "password_confirm": "test123",
+        })
+        captured, _ = self.request("/admin/users/create", method="POST", body=body)
+        self.assertEqual(captured["status"], "303 See Other")
+        conn = server.connect(server.DB_PATH)
+        try:
+            row = conn.execute("SELECT password_hash, password_salt FROM users WHERE username = 'operator2'").fetchone()
+        finally:
+            conn.close()
+        self.assertIsNotNone(row)
+        self.assertNotEqual(row["password_hash"], "test123")
+        captured, content = self.request("/admin/users")
+        self.assertNotIn("test123", content)
+        body = urlencode({"username": "operator2", "password": "test123"})
+        captured, _ = self.request("/login", method="POST", body=body)
+        self.assertEqual(captured["status"], "303 See Other")
+
+    def test_password_confirmation_mismatch_blocks_user_creation(self):
+        body = urlencode({
+            "username": "operator3",
+            "display_name": "Оператор",
+            "role_key": "operator",
+            "password": "test123",
+            "password_confirm": "test124",
+        })
+        captured, content = self.request("/admin/users/create", method="POST", body=body)
+        self.assertEqual(captured["status"], "400 Bad Request")
+        self.assertIn("Пароли не совпадают", content)
+
+    def test_admin_can_reset_user_password(self):
+        conn = server.connect(server.DB_PATH)
+        try:
+            server.init_db(conn)
+            user_id = server.Repository(conn).create_user("operator4", "operator", "Оператор", password="old123")
+        finally:
+            conn.close()
+        body = urlencode({
+            "display_name": "Оператор",
+            "role_key": "operator",
+            "is_active": "1",
+            "password": "new123",
+            "password_confirm": "new123",
+        })
+        captured, _ = self.request(f"/admin/users/{user_id}/update", method="POST", body=body)
+        self.assertEqual(captured["status"], "303 See Other")
+        captured, _ = self.request("/login", method="POST", body=urlencode({"username": "operator4", "password": "new123"}))
+        self.assertEqual(captured["status"], "303 See Other")
 
 
     def test_sidebar_displays_selected_user_and_selector_is_single_source(self):
         cookie = self.user_cookie("duty")
         captured, content = self.request("/routes", cookie=cookie)
         self.assertEqual(captured["status"], "200 OK")
-        selector = content.split('<details class="current-user-selector"', 1)[1].split("</details>", 1)[0]
+        selector = content.split('<div class="current-user-selector"', 1)[1].split("</div>", 1)[0]
         self.assertIn("Дежурный · Дежурный", selector)
         self.assertIn("<small>Текущий пользователь</small>", selector)
         self.assertEqual(content.count('href="/logout"'), 1)
@@ -2374,7 +2437,7 @@ class RolePermissionTest(ServerSmokeTest):
             user_id = conn.execute("SELECT id FROM users WHERE username = ?", (username,)).fetchone()["id"]
         finally:
             conn.close()
-        return f"mvp_current_user_id={user_id}"
+        return f"{server.CURRENT_USER_COOKIE}={server.sign_user_id(user_id)}"
 
     def test_admin_sees_all_main_navigation_and_admin_navigation(self):
         captured, content = self.request("/routes")
