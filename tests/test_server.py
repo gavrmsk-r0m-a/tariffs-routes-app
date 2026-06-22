@@ -2559,6 +2559,69 @@ class RolePermissionTest(ServerSmokeTest):
         captured, content = self.request("/routes/1/update", method="POST", body=urlencode({"name": "Blocked"}), cookie=cookie)
         self.assertEqual(captured["status"], "403 Forbidden")
 
+    def _valid_tariff_body(self, price="2.5"):
+        return urlencode({
+            "country_id": "1",
+            "provider_id": "1",
+            "provider_prefix_id": "",
+            "currency_id": "1",
+            "price": price,
+            "priority_status": "unknown",
+            "is_current": "1",
+            "comment": "validation test",
+        })
+
+    def _tariff_audit_counts(self):
+        conn = server.connect(server.DB_PATH)
+        try:
+            server.init_db(conn)
+            server.ensure_seed(server.Repository(conn))
+            return {
+                "tariffs": conn.execute("SELECT COUNT(*) FROM tariffs").fetchone()[0],
+                "history": conn.execute("SELECT COUNT(*) FROM tariff_change_history").fetchone()[0],
+                "change_log": conn.execute("SELECT COUNT(*) FROM change_log WHERE entity_type = 'tariff'").fetchone()[0],
+            }
+        finally:
+            conn.close()
+
+    def test_tariff_create_empty_price_shows_validation_error_without_audit(self):
+        before = self._tariff_audit_counts()
+        captured, content = self.request("/tariffs/create", method="POST", body=self._valid_tariff_body(price=""))
+        self.assertEqual(captured["status"], "400 Bad Request")
+        self.assertIn("Цена обязательна", content)
+        self.assertNotIn("A server error occurred", content)
+        self.assertEqual(self._tariff_audit_counts(), before)
+
+    def test_tariff_create_invalid_price_shows_validation_error_without_audit(self):
+        before = self._tariff_audit_counts()
+        captured, content = self.request("/tariffs/create", method="POST", body=self._valid_tariff_body(price="abc"))
+        self.assertEqual(captured["status"], "400 Bad Request")
+        self.assertIn("Цена должна быть числом", content)
+        self.assertNotIn("A server error occurred", content)
+        self.assertEqual(self._tariff_audit_counts(), before)
+
+    def test_tariff_create_zero_or_negative_price_shows_validation_error_without_audit(self):
+        for price in ("0", "-1"):
+            with self.subTest(price=price):
+                before = self._tariff_audit_counts()
+                captured, content = self.request("/tariffs/create", method="POST", body=self._valid_tariff_body(price=price))
+                self.assertEqual(captured["status"], "400 Bad Request")
+                self.assertIn("Цена должна быть больше 0", content)
+                self.assertNotIn("A server error occurred", content)
+                self.assertEqual(self._tariff_audit_counts(), before)
+
+    def test_tariff_create_valid_price_still_creates_tariff(self):
+        before = self._tariff_audit_counts()
+        captured, _ = self.request("/tariffs/create", method="POST", body=self._valid_tariff_body(price="2.5"))
+        self.assertEqual(captured["status"], "303 See Other")
+        after = self._tariff_audit_counts()
+        self.assertEqual(after["tariffs"], before["tariffs"] + 1)
+        self.assertEqual(after["history"], before["history"] + 1)
+        self.assertEqual(after["change_log"], before["change_log"] + 1)
+        captured, content = self.request("/tariffs")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("2.5 EUR", content)
+
     def test_operator_can_post_provider_change_create(self):
         body = urlencode({
             "event_at": "2026-06-14T10:00",

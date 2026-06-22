@@ -57,6 +57,38 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
         self.assertTrue(verify_password("admin", row["password_hash"], row["password_salt"]))
         conn.close()
 
+    def _tariff_counts(self):
+        return {
+            "tariffs": self.conn.execute("SELECT COUNT(*) FROM tariffs").fetchone()[0],
+            "history": self.conn.execute("SELECT COUNT(*) FROM tariff_change_history").fetchone()[0],
+            "change_log": self.conn.execute("SELECT COUNT(*) FROM change_log WHERE entity_type = 'tariff'").fetchone()[0],
+        }
+
+    def _create_tariff(self, price):
+        return self.repo.create_tariff(
+            country_id=self.country_id,
+            provider_id=self.provider_id,
+            provider_currency_id=self.currency_id,
+            price_in_provider_currency=price,
+            conversion_rate_to_eur="1",
+            conversion_rate_date="2026-06-22",
+            created_by=self.admin_id,
+        )
+
+    def test_create_tariff_rejects_invalid_prices_without_audit(self):
+        for price, message in (("", "Цена обязательна"), ("   ", "Цена обязательна"), ("abc", "Цена должна быть числом"), ("0", "Цена должна быть больше 0"), ("-1", "Цена должна быть больше 0")):
+            with self.subTest(price=price):
+                before = self._tariff_counts()
+                with self.assertRaisesRegex(BusinessRuleError, message):
+                    self._create_tariff(price)
+                self.assertEqual(self._tariff_counts(), before)
+
+    def test_create_tariff_accepts_positive_comma_decimal_price(self):
+        tariff_id = self._create_tariff("2,5")
+        tariff = self.conn.execute("SELECT price_in_provider_currency, eur_price FROM tariffs WHERE id = ?", (tariff_id,)).fetchone()
+        self.assertEqual(str(tariff["price_in_provider_currency"]), "2.5")
+        self.assertEqual(str(tariff["eur_price"]), "2.5")
+
     def test_existing_admin_password_is_not_overwritten_by_fallback(self):
         conn = sqlite3.connect(":memory:")
         conn.row_factory = sqlite3.Row
