@@ -8,7 +8,7 @@ import sqlite3
 import json
 from dataclasses import dataclass
 from datetime import datetime
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
 PHONE_RE = re.compile(r"^[1-9][0-9]{6,20}$")
 VALID_PHONE_STATUSES = {"used", "free", "problem", "unknown"}
@@ -156,6 +156,22 @@ def validate_phone_number(number: str) -> str:
             "Phone number must be in international format without +, 00, spaces, brackets, or other symbols"
         )
     return number
+
+
+def validate_tariff_price(price: object) -> Decimal:
+    text = "" if price is None else str(price).strip()
+    if text == "":
+        raise BusinessRuleError("Цена обязательна")
+    normalized = text.replace(",", ".")
+    try:
+        value = Decimal(normalized)
+    except InvalidOperation as exc:
+        raise BusinessRuleError("Цена должна быть числом") from exc
+    if not value.is_finite():
+        raise BusinessRuleError("Цена должна быть числом")
+    if value <= 0:
+        raise BusinessRuleError("Цена должна быть больше 0")
+    return value
 
 
 def eur_price(price: str | Decimal, rate: str | Decimal) -> Decimal:
@@ -1110,7 +1126,8 @@ class Repository:
         is_estimated: bool = False,
         comment: str | None = None,
     ) -> int:
-        price_eur = eur_price(price_in_provider_currency, conversion_rate_to_eur)
+        price_value = validate_tariff_price(price_in_provider_currency)
+        price_eur = eur_price(price_value, conversion_rate_to_eur)
         cur = self.conn.execute(
             """
             INSERT INTO tariffs(
@@ -1126,7 +1143,7 @@ class Repository:
                 provider_id,
                 provider_prefix_id,
                 provider_currency_id,
-                str(price_in_provider_currency),
+                str(price_value),
                 str(conversion_rate_to_eur),
                 conversion_rate_date,
                 currency_rate_id,
@@ -1163,7 +1180,7 @@ class Repository:
                 provider_prefix_id,
                 prefix["prefix"] if prefix else None,
                 provider_currency_id,
-                str(price_in_provider_currency),
+                str(price_value),
                 str(conversion_rate_to_eur),
                 conversion_rate_date,
                 str(price_eur),
