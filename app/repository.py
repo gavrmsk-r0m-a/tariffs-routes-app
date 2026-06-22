@@ -29,6 +29,23 @@ def verify_password(password: str, password_hash: str | None, password_salt: str
     except ValueError:
         return False
     return hmac.compare_digest(expected, password_hash)
+
+
+def normalize_search_text(value: object) -> str | None:
+    """Return a trimmed, Unicode-casefolded search string or None for empty input."""
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text.casefold() if text else None
+
+
+def search_text_matches(value: object, search: object) -> int:
+    """SQLite helper for Unicode-aware, case-insensitive partial text search."""
+    needle = normalize_search_text(search)
+    if needle is None:
+        return 1
+    haystack = "" if value is None else str(value)
+    return 1 if needle in haystack.casefold() else 0
 OLD_PHONE_STATUS_MAP = {"reserved": "free", "blocked": "problem", "disabled": "problem"}
 
 
@@ -189,8 +206,11 @@ def query_filters(filters: dict | None, mapping: dict[str, str]) -> tuple[str, l
         if value in (None, "", "all"):
             continue
         if key.endswith("_like"):
-            clauses.append(f"{column} LIKE ?")
-            params.append(f"%{value}%")
+            normalized = normalize_search_text(value)
+            if normalized is None:
+                continue
+            clauses.append(f"search_text_matches({column}, ?) = 1")
+            params.append(normalized)
         else:
             clauses.append(f"{column} = ?")
             params.append(value)
@@ -200,6 +220,7 @@ def query_filters(filters: dict | None, mapping: dict[str, str]) -> tuple[str, l
 class Repository:
     def __init__(self, conn: sqlite3.Connection):
         self.conn = conn
+        self.conn.create_function("search_text_matches", 2, search_text_matches)
 
     def _user_columns(self) -> set[str]:
         return {row[1] for row in self.conn.execute("PRAGMA table_info(users)")}
@@ -1288,10 +1309,10 @@ class Repository:
     def list_calling_company_events(self, *, search: str | None = None, limit: int = 50, offset: int = 0) -> list[sqlite3.Row]:
         where = "WHERE (cl.entity_type = 'calling_company' OR (cl.entity_type = 'routing_event' AND json_extract(cl.new_values, '$.calling_company_id') IS NOT NULL))"
         params: list[object] = []
-        if search and search.strip():
-            like = f"%{search.strip()}%"
-            where += " AND (CAST(COALESCE(cc.id, json_extract(cl.new_values, '$.calling_company_id'), cl.entity_id) AS TEXT) LIKE ? OR cc.company_id_external LIKE ? OR cc.company_name LIKE ? OR cl.summary LIKE ? OR cl.old_values LIKE ? OR cl.new_values LIKE ?)"
-            params.extend([like, like, like, like, like, like])
+        normalized_search = normalize_search_text(search)
+        if normalized_search is not None:
+            where += " AND (search_text_matches(CAST(COALESCE(cc.id, json_extract(cl.new_values, '$.calling_company_id'), cl.entity_id) AS TEXT), ?) = 1 OR search_text_matches(cc.company_id_external, ?) = 1 OR search_text_matches(cc.company_name, ?) = 1 OR search_text_matches(cl.summary, ?) = 1 OR search_text_matches(cl.old_values, ?) = 1 OR search_text_matches(cl.new_values, ?) = 1)"
+            params.extend([normalized_search] * 6)
         params.extend([limit, offset])
         return list(self.conn.execute(
             f"""
@@ -1311,10 +1332,10 @@ class Repository:
     def count_calling_company_events(self, *, search: str | None = None) -> int:
         where = "WHERE (cl.entity_type = 'calling_company' OR (cl.entity_type = 'routing_event' AND json_extract(cl.new_values, '$.calling_company_id') IS NOT NULL))"
         params: list[object] = []
-        if search and search.strip():
-            like = f"%{search.strip()}%"
-            where += " AND (CAST(COALESCE(cc.id, json_extract(cl.new_values, '$.calling_company_id'), cl.entity_id) AS TEXT) LIKE ? OR cc.company_id_external LIKE ? OR cc.company_name LIKE ? OR cl.summary LIKE ? OR cl.old_values LIKE ? OR cl.new_values LIKE ?)"
-            params.extend([like, like, like, like, like, like])
+        normalized_search = normalize_search_text(search)
+        if normalized_search is not None:
+            where += " AND (search_text_matches(CAST(COALESCE(cc.id, json_extract(cl.new_values, '$.calling_company_id'), cl.entity_id) AS TEXT), ?) = 1 OR search_text_matches(cc.company_id_external, ?) = 1 OR search_text_matches(cc.company_name, ?) = 1 OR search_text_matches(cl.summary, ?) = 1 OR search_text_matches(cl.old_values, ?) = 1 OR search_text_matches(cl.new_values, ?) = 1)"
+            params.extend([normalized_search] * 6)
         return int(self.conn.execute(f"SELECT COUNT(*) FROM change_log cl LEFT JOIN calling_companies cc ON cc.id = CASE WHEN cl.entity_type = 'calling_company' THEN cl.entity_id ELSE json_extract(cl.new_values, '$.calling_company_id') END {where}", params).fetchone()[0])
 
     def _validate_company_routing_values(
@@ -1412,8 +1433,11 @@ class Repository:
             if value in (None, "", "all"):
                 continue
             if key == "company_id_external":
-                clauses.append(f"{column} LIKE ?")
-                params.append(f"%{value}%")
+                normalized = normalize_search_text(value)
+                if normalized is None:
+                    continue
+                clauses.append(f"search_text_matches({column}, ?) = 1")
+                params.append(normalized)
             else:
                 clauses.append(f"{column} = ?")
                 params.append(value)
@@ -2140,9 +2164,10 @@ class Repository:
                 """
             )
             params.extend([filters["server_id"], filters["server_id"], filters["server_id"]])
-        if filters.get("campaign_id"):
-            clauses.append("cc.company_id_external LIKE ?")
-            params.append(f"%{filters['campaign_id']}%")
+        campaign_id_search = normalize_search_text(filters.get("campaign_id"))
+        if campaign_id_search is not None:
+            clauses.append("search_text_matches(cc.company_id_external, ?) = 1")
+            params.append(campaign_id_search)
         where = " WHERE " + " AND ".join(clauses) if clauses else ""
         return list(self.conn.execute(f"""
             SELECT re.*, c.name AS country_name, s.name AS server_name, p.name AS provider_name,
@@ -2260,12 +2285,14 @@ class Repository:
         if filters.get("provider_id"):
             clauses.append("(pcl.provider_before_id = ? OR pcl.provider_after_id = ?)")
             params.extend([filters["provider_id"], filters["provider_id"]])
-        if filters.get("route_like"):
-            clauses.append("(rb.name LIKE ? OR ra.name LIKE ?)")
-            params.extend([f"%{filters['route_like']}%", f"%{filters['route_like']}%"])
-        if filters.get("reason_like"):
-            clauses.append("pcl.reason_text LIKE ?")
-            params.append(f"%{filters['reason_like']}%")
+        route_search = normalize_search_text(filters.get("route_like"))
+        if route_search is not None:
+            clauses.append("(search_text_matches(rb.name, ?) = 1 OR search_text_matches(ra.name, ?) = 1)")
+            params.extend([route_search, route_search])
+        reason_search = normalize_search_text(filters.get("reason_like"))
+        if reason_search is not None:
+            clauses.append("search_text_matches(pcl.reason_text, ?) = 1")
+            params.append(reason_search)
         if filters.get("user_id"):
             clauses.append("pcl.created_by = ?")
             params.append(filters["user_id"])

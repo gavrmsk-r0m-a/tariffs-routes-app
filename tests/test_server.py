@@ -384,6 +384,50 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertIn("Серверный приоритет", content)
         self.assertIn("Настройка кампании", content)
 
+    def test_routes_search_is_unicode_case_insensitive_with_filters_and_counts(self):
+        captured, content = self.request("/routes?search=мекс")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("Мексика/Sancom/Demo_0828@", content)
+        self.assertIn("Всего записей", content)
+
+        captured, upper_content = self.request("/routes?search=МЕКС")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("Мексика/Sancom/Demo_0828@", upper_content)
+
+        captured, filtered = self.request("/routes?provider_id=1&search=мекс")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("Мексика/Sancom/Demo_0828@", filtered)
+        self.assertNotIn("Мексика/Miatel/Demo_A@", filtered)
+
+        captured, blank = self.request("/routes?search=+++")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("Мексика/Sancom/Demo_0828@", blank)
+
+    def test_routes_search_pagination_count_uses_case_insensitive_filter(self):
+        self.request("/routes")
+        conn = server.connect(server.DB_PATH)
+        try:
+            country_id = conn.execute("SELECT id FROM countries WHERE code = 'MEX'").fetchone()["id"]
+            provider_id = conn.execute("SELECT id FROM providers WHERE name = 'DemoTel'").fetchone()["id"]
+            admin_id = conn.execute("SELECT id FROM users WHERE username = 'admin'").fetchone()["id"]
+            for index in range(55):
+                conn.execute(
+                    """
+                    INSERT INTO routes(country_id, provider_id, name, cli_source_type, cli_source_label, is_actual, priority_status, comment, created_by)
+                    VALUES (?, ?, ?, 'rnd', ?, 1, 'normal', ?, ?)
+                    """,
+                    (country_id, provider_id, f"CASEDEMO {index:03d}", f"CASEDEMO{index:03d}", "bulk export row", admin_id),
+                )
+            conn.commit()
+        finally:
+            conn.close()
+        captured, content = self.request("/routes?search=casedemo&limit=50")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("Всего записей: 55", content)
+        self.assertEqual(content.count("bulk export row"), 50)
+        self.assertIn("page=2", content)
+        self.assertIn("search=casedemo", content)
+
     def test_routes_filters_are_collapsible_and_keep_field_names(self):
         self.request("/routes")
         captured, content = self.request("/routes")
