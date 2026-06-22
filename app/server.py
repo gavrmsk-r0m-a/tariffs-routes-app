@@ -1093,9 +1093,20 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
       stroke-linecap: round;
       stroke-linejoin: round;
     }}
+
+    .connection-status {{ position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%); z-index: 10001; display: none; align-items: center; gap: 10px; max-width: min(560px, calc(100vw - 24px)); padding: 10px 12px; border: 1px solid var(--border-strong); border-radius: 12px; background: var(--surface); color: var(--text-strong); box-shadow: var(--shadow-card); font-weight: 720; }}
+    .connection-status.is-visible {{ display: flex; }}
+    .connection-status.is-offline {{ border-color: var(--danger); background: var(--danger-soft); color: var(--danger); }}
+    .connection-status.is-online {{ border-color: var(--accent); background: var(--success-soft); }}
+    .connection-status button {{ min-height: 28px; padding: 4px 10px; }}
+    .form-submit-error {{ flex-basis: 100%; border: 1px solid var(--danger); border-radius: 10px; background: var(--danger-soft); color: var(--danger); padding: 8px 10px; font-weight: 700; }}
   </style>
 </head>
 <body>
+  <div class="connection-status" data-connection-status role="status" aria-live="polite">
+    <span data-connection-message></span>
+    <button type="button" data-connection-reload>Обновить</button>
+  </div>
   <div class="app-shell">
     {sidebar(title)}
     <main class="workspace">
@@ -1108,6 +1119,67 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     </main>
   </div>
   <script>
+
+    const connectionStatus = document.querySelector("[data-connection-status]");
+    const connectionMessage = document.querySelector("[data-connection-message]");
+    const connectionReload = document.querySelector("[data-connection-reload]");
+    function setConnectionStatus(state) {{
+      if (!connectionStatus || !connectionMessage) return;
+      connectionStatus.classList.remove("is-offline", "is-online", "is-visible");
+      if (state === "offline") {{
+        connectionMessage.textContent = "Нет соединения с интернетом. Проверьте подключение.";
+        connectionStatus.classList.add("is-visible", "is-offline");
+      }} else if (state === "online") {{
+        connectionMessage.textContent = "Соединение восстановлено. Обновите страницу.";
+        connectionStatus.classList.add("is-visible", "is-online");
+      }}
+    }}
+    if (connectionReload) connectionReload.addEventListener("click", () => window.location.reload());
+    window.addEventListener("offline", () => setConnectionStatus("offline"));
+    window.addEventListener("online", () => setConnectionStatus("online"));
+    if (navigator.onLine === false) setConnectionStatus("offline");
+
+    function showFormSubmitError(form) {{
+      let message = form.querySelector(".form-submit-error");
+      if (!message) {{
+        message = document.createElement("div");
+        message.className = "form-submit-error";
+        form.appendChild(message);
+      }}
+      message.textContent = "Не удалось отправить данные. Проверьте подключение и попробуйте ещё раз.";
+    }}
+    document.querySelectorAll("form").forEach((form) => {{
+      form.addEventListener("submit", (event) => {{
+        form.querySelectorAll(".form-submit-error").forEach((message) => message.remove());
+        form.querySelectorAll("[data-submit-disabled-by-recovery]").forEach((element) => {{
+          element.disabled = false;
+          element.removeAttribute("data-submit-disabled-by-recovery");
+        }});
+        if (navigator.onLine === false) {{
+          event.preventDefault();
+          showFormSubmitError(form);
+          return;
+        }}
+        const submitter = event.submitter;
+        if (submitter && !submitter.disabled && submitter.matches('button[type="submit"], button:not([type]), input[type="submit"]')) {{
+          submitter.disabled = true;
+          submitter.setAttribute("data-submit-disabled-by-recovery", "true");
+        }}
+      }});
+    }});
+    window.addEventListener("pageshow", () => {{
+      document.querySelectorAll("[data-submit-disabled-by-recovery]").forEach((element) => {{
+        element.disabled = false;
+        element.removeAttribute("data-submit-disabled-by-recovery");
+      }});
+    }});
+    window.addEventListener("offline", () => {{
+      document.querySelectorAll("[data-submit-disabled-by-recovery]").forEach((element) => {{
+        element.disabled = false;
+        element.removeAttribute("data-submit-disabled-by-recovery");
+      }});
+      document.querySelectorAll("form").forEach(showFormSubmitError);
+    }});
     const themeSelect = document.querySelector("[data-theme-select]");
     const savedTheme = localStorage.getItem("mvp-theme") || "calm-blue";
     document.documentElement.dataset.theme = savedTheme;
@@ -1492,8 +1564,24 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
 </body>
 </html>""".encode("utf-8")
 
+def no_store_headers() -> list[tuple[str, str]]:
+    return [
+        ("Cache-Control", "no-store, max-age=0"),
+        ("Pragma", "no-cache"),
+        ("Expires", "0"),
+    ]
+
+
+def html_headers() -> list[tuple[str, str]]:
+    return [("Content-Type", "text/html; charset=utf-8"), *no_store_headers()]
+
+
+def csv_headers(filename: str) -> list[tuple[str, str]]:
+    return [("Content-Type", "text/csv; charset=utf-8"), ("Content-Disposition", f"attachment; filename={filename}"), *no_store_headers()]
+
+
 def redirect(start_response, location: str, headers: list[tuple[str, str]] | None = None):
-    response_headers = [("Location", location)]
+    response_headers = [("Location", location), *no_store_headers()]
     if headers:
         response_headers.extend(headers)
     start_response("303 See Other", response_headers)
@@ -4155,7 +4243,7 @@ def app(environ, start_response):
         if path == "/logout":
             return redirect(start_response, "/login", [clear_current_user_cookie()])
         if method == "GET" and path == "/login":
-            start_response("200 OK", [("Content-Type", "text/html; charset=utf-8")])
+            start_response("200 OK", html_headers())
             return [login_page(repo)]
         if method == "POST" and path == "/login":
             raw_size = int(environ.get("CONTENT_LENGTH") or "0")
@@ -4163,7 +4251,7 @@ def app(environ, start_response):
             parsed = {key: values[-1] for key, values in parse_qs(raw_body, keep_blank_values=True).items()}
             user = repo.authenticate_user(parsed.get("username", ""), parsed.get("password", ""))
             if user is None:
-                start_response("401 Unauthorized", [("Content-Type", "text/html; charset=utf-8"), clear_current_user_cookie()])
+                start_response("401 Unauthorized", [*html_headers(), clear_current_user_cookie()])
                 return [login_page(repo, "Неверный логин или пароль")]
             return redirect(start_response, safe_redirect_target(parsed.get("redirect_to") or "/routes"), [auth_cookie_header(int(user["id"]))])
         if not is_public_path(path) and current_user_id is None:
@@ -4180,12 +4268,12 @@ def app(environ, start_response):
                 preview = preview_import(conn, parsed["entity_type"], parsed.get("csv_data", ""))
                 rows = "".join(f"<tr><td>{r['line']}</td><td>{esc(r['status'])}</td><td>{esc(r['action'])}</td><td>{esc(r['message'])}</td></tr>" for r in preview.rows)
                 html_preview = f"<h2>Предпросмотр</h2><p>Всего: {preview.total_rows}, новых: {preview.new_rows}, дублей: {preview.duplicate_rows}, ошибок: {preview.error_rows}</p><table><tr><th>Строка</th><th>Статус</th><th>Действие</th><th>Комментарий</th></tr>{rows}</table>"
-                start_response("200 OK", [("Content-Type", "text/html; charset=utf-8")])
+                start_response("200 OK", html_headers())
                 return [import_page(repo, html_preview, selected_entity=parsed["entity_type"], selected_mode=parsed.get("mode", "append_update"), csv_data=parsed.get("csv_data", ""))]
             if path == "/admin/import/apply":
                 result = apply_import(conn, parsed["entity_type"], parsed.get("csv_data", ""), user_id=current_actor_id(), mode=parsed.get("mode", "append_update"))
                 notice = f"<h2>Импорт завершён</h2><ul><li>создано {result.created_rows}</li><li>обновлено {result.updated_rows}</li><li>пропущено {result.skipped_rows}</li><li>ошибок {result.error_rows}</li></ul>"
-                start_response("200 OK", [("Content-Type", "text/html; charset=utf-8")])
+                start_response("200 OK", html_headers())
                 return [import_page(repo, notice, selected_entity=parsed["entity_type"], selected_mode=parsed.get("mode", "append_update"), csv_data=parsed.get("csv_data", ""))]
             location = handle_post(repo, path, parsed)
             return redirect(start_response, location)
@@ -4230,18 +4318,18 @@ def app(environ, start_response):
             response = route_numbers_manage_page(repo, int(path.strip("/").split("/")[1]), q)
         elif path.startswith("/routes/") and path.endswith("/numbers"): response = route_numbers_page(repo, int(path.strip("/").split("/")[1]), q)
         else:
-            start_response("404 Not Found", [("Content-Type", "text/html; charset=utf-8")]); return [page("404", "<h1>404</h1>")]
+            start_response("404 Not Found", html_headers()); return [page("404", "<h1>404</h1>")]
         extra_headers = [filter_cookie] if filter_cookie else []
         if q.get("export") == "csv" and path in EXPORT_FILENAMES:
-            start_response("200 OK", [("Content-Type", "text/csv; charset=utf-8"), ("Content-Disposition", f"attachment; filename={EXPORT_FILENAMES[path]}")] + extra_headers)
+            start_response("200 OK", csv_headers(EXPORT_FILENAMES[path]) + extra_headers)
         else:
-            start_response("200 OK", [("Content-Type", "text/html; charset=utf-8")] + extra_headers)
+            start_response("200 OK", html_headers() + extra_headers)
         return [response]
     except ForbiddenError:
-        start_response("403 Forbidden", [("Content-Type", "text/html; charset=utf-8")])
+        start_response("403 Forbidden", html_headers())
         return [forbidden_page()]
     except (BusinessRuleError, ValueError, sqlite3.IntegrityError) as exc:
-        start_response("400 Bad Request", [("Content-Type", "text/html; charset=utf-8")])
+        start_response("400 Bad Request", html_headers())
         return_path = error_return_path(path)
         if return_path.startswith("/routes/") and return_path.endswith("/numbers/manage"):
             route_id = int(return_path.strip("/").split("/")[1])

@@ -114,6 +114,25 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertIn("Текущий пользователь", content)
         self.assertIn("Admin · Админ", content)
 
+    def test_app_pages_are_not_cached_and_include_connection_recovery_ui(self):
+        captured, content = self.request("/routes")
+        self.assertEqual(captured["status"], "200 OK")
+        headers = dict(captured["headers"])
+        self.assertEqual(headers.get("Cache-Control"), "no-store, max-age=0")
+        self.assertEqual(headers.get("Pragma"), "no-cache")
+        self.assertEqual(headers.get("Expires"), "0")
+        self.assertIn('data-connection-status', content)
+        self.assertIn("Нет соединения с интернетом. Проверьте подключение.", content)
+        self.assertIn("Соединение восстановлено. Обновите страницу.", content)
+        self.assertIn("window.location.reload()", content)
+
+    def test_form_submit_recovery_script_reenables_failed_submits(self):
+        captured, content = self.request("/provider-changes")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn('data-submit-disabled-by-recovery', content)
+        self.assertIn("Не удалось отправить данные. Проверьте подключение и попробуйте ещё раз.", content)
+        self.assertIn('window.addEventListener("pageshow"', content)
+
     def test_login_with_password_persists_cookie_and_redirects(self):
         body = urlencode({"username": "duty", "password": "duty123", "redirect_to": "/phones"})
         captured, content = self.request("/login", method="POST", body=body)
