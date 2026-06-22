@@ -2296,6 +2296,15 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
         self.assertIn(("Content-Type", "text/csv; charset=utf-8"), captured["headers"])
         return list(csv.DictReader(io.StringIO(content.lstrip("\ufeff")), delimiter=";"))
 
+
+    def test_provider_changes_journal_does_not_render_active_column(self):
+        captured, content = self.request("/provider-changes")
+
+        self.assertEqual(captured["status"], "200 OK")
+        journal = content.split("<h2>Журнал событий</h2>", 1)[1].split("<div class='table-footer'>", 1)[0]
+        self.assertNotIn("Активна", journal)
+        self.assertNotIn("data-col='active'", journal)
+
     def test_provider_changes_csv_export_includes_details_column_and_no_actions(self):
         self.request("/routes")
         body = urlencode({"apply_scope": "campaign_setting", "event_at": "2026-06-10T12:00", "calling_company_id": "2", "company_change_type": "enable_autorotation", "reason": "Тест нового маршрута", "comment": "тест на коммент"})
@@ -2303,7 +2312,9 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
 
         rows = self.provider_changes_csv_rows()
 
-        self.assertEqual(["Дата", "GEO", "Сервер", "Старый провайдер", "Новый провайдер", "Причина", "Scope", "Статус", "Комментарий", "Детали"], list(rows[0].keys()))
+        self.assertEqual(["Дата события", "Область применения", "GEO", "Сервер", "Кампания", "Детали", "Причина", "Комментарий", "Пользователь / Автор"], list(rows[0].keys()))
+        self.assertNotIn("Активна", rows[0].keys())
+        self.assertNotIn("Статус", rows[0].keys())
         self.assertEqual("тест на коммент", rows[0]["Комментарий"])
         self.assertIn("Включили авторотацию", rows[0]["Детали"])
         self.assertIn("Авторотация: Нет → Да", rows[0]["Детали"])

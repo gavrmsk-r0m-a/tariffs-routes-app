@@ -3320,16 +3320,16 @@ def provider_changes_page(repo: Repository, q: dict[str, str] | None = None, for
         for ev in records:
             server_text, _, details_text = provider_event_details(ev)
             details_plain = html_to_csv_text(details_text)
-            export_rows.append([ev["event_at"], ev["country_name"], server_text, ev["old_route_name"] or "—", ev["new_route_name"] or ev["new_company_route_name"] or "—", ev["reason"], ROUTING_SCOPE_LABELS.get(ev["apply_scope"], ev["apply_scope"]), "Активна" if ev["is_active"] else "Неактивна", ev["comment"], details_plain])
-        return csv_response("provider_changes_export.csv", ["Дата", "GEO", "Сервер", "Старый провайдер", "Новый провайдер", "Причина", "Scope", "Статус", "Комментарий", "Детали"], export_rows)
+            export_rows.append([ev["event_at"], ROUTING_SCOPE_LABELS.get(ev["apply_scope"], ev["apply_scope"]), ev["country_name"], server_text, ev["company_id_external"] or ev["company_name"] or "—", details_plain, ev["reason"], ev["comment"], ev["author_name"] or "—"])
+        return csv_response("provider_changes_export.csv", ["Дата события", "Область применения", "GEO", "Сервер", "Кампания", "Детали", "Причина", "Комментарий", "Пользователь / Автор"], export_rows)
     records, pagination_html = paginate_rows(records, q, "/provider-changes")
     rows = []
     for ev in records:
         server_text, campaign_text, details_text = provider_event_details(ev)
         actions = f"<a class='button edit-action' href='/provider-changes/{ev['id']}/edit' title='Редактировать' aria-label='Редактировать' data-tooltip='Редактировать'>Редактировать</a>" if can_write("provider_changes") else ""
-        rows.append(f"<tr class='{'' if ev['is_active'] else 'inactive-row'}'><td data-col='event_at'>{esc(ev['event_at'])}</td><td data-col='scope'>{esc(ROUTING_SCOPE_LABELS.get(ev['apply_scope'], ev['apply_scope']))}</td><td data-col='geo'>{esc(ev['country_name'])}</td><td data-col='server'>{esc(server_text)}</td><td data-col='campaign'>{esc(campaign_text)}</td>{clamp_cell('details', details_text, details_text)}{clamp_cell('reason', esc(ev['reason']), ev['reason'])}{clamp_cell('comment', esc(ev['comment']), ev['comment'])}<td data-col='active'>{'Да' if ev['is_active'] else 'Нет'}</td><td data-col='actions' class='actions'>{actions}</td></tr>")
+        rows.append(f"<tr class='{'' if ev['is_active'] else 'inactive-row'}'><td data-col='event_at'>{esc(ev['event_at'])}</td><td data-col='scope'>{esc(ROUTING_SCOPE_LABELS.get(ev['apply_scope'], ev['apply_scope']))}</td><td data-col='geo'>{esc(ev['country_name'])}</td><td data-col='server'>{esc(server_text)}</td><td data-col='campaign'>{esc(campaign_text)}</td>{clamp_cell('details', details_text, details_text)}{clamp_cell('reason', esc(ev['reason']), ev['reason'])}{clamp_cell('comment', esc(ev['comment']), ev['comment'])}<td data-col='actions' class='actions'>{actions}</td></tr>")
     if not rows:
-        rows.append("<tr><td colspan='10'><div class='empty-state'>Событий пока нет</div></td></tr>")
+        rows.append("<tr><td colspan='9'><div class='empty-state'>Событий пока нет</div></td></tr>")
     filters_html = f"""<form class='filter-grid' method='get' action='/provider-changes'>
 <label>GEO <select name='country_id'>{options(repo, 'countries', selected=q.get('country_id'), empty='Все')}</select></label>
 <label>Область применения <select name='apply_scope'>{routing_scope_options(q.get('apply_scope'))}</select></label>
@@ -3338,13 +3338,13 @@ def provider_changes_page(repo: Repository, q: dict[str, str] | None = None, for
 <label>Провайдер <select name='provider_id'>{options(repo, 'providers', selected=q.get('provider_id'), empty='Все')}</select></label>
 <label class='checkbox-inline'><input type='checkbox' name='include_inactive' value='1' {'checked' if q.get('include_inactive') == '1' else ''}> Показывать архив/неактивные</label>
 <button>Найти</button></form>"""
-    journal_html = f"{data_table('provider_changes', [('event_at', 'Дата события'), ('scope', 'Область применения'), ('geo', 'GEO'), ('server', 'Сервер'), ('campaign', 'Кампания'), ('details', 'Детали'), ('reason', 'Причина'), ('comment', 'Комментарий'), ('active', 'Активна'), ('actions', 'Действия')], ''.join(rows))}"
+    journal_html = f"{data_table('provider_changes', [('event_at', 'Дата события'), ('scope', 'Область применения'), ('geo', 'GEO'), ('server', 'Сервер'), ('campaign', 'Кампания'), ('details', 'Детали'), ('reason', 'Причина'), ('comment', 'Комментарий'), ('actions', 'Действия')], ''.join(rows))}"
     body = f"""
 <h1>Смена провайдеров</h1>
 {routing_event_form(repo, form_data, form_error) if can_write("provider_changes") else ""}
 {filter_card(filters_html, q, ('country_id', 'apply_scope', 'server_id', 'campaign_id', 'provider_id', 'include_inactive'))}
 {table_card(journal_html, title='Журнал событий', extra_class='journal-card')}
-{table_footer(pagination_html, export_link('/provider-changes', q) + column_settings('provider_changes', [('event_at', 'Дата события'), ('scope', 'Область применения'), ('geo', 'GEO'), ('server', 'Сервер'), ('campaign', 'Кампания'), ('details', 'Детали'), ('reason', 'Причина'), ('comment', 'Комментарий'), ('active', 'Активна'), ('actions', 'Действия')]))}
+{table_footer(pagination_html, export_link('/provider-changes', q) + column_settings('provider_changes', [('event_at', 'Дата события'), ('scope', 'Область применения'), ('geo', 'GEO'), ('server', 'Сервер'), ('campaign', 'Кампания'), ('details', 'Детали'), ('reason', 'Причина'), ('comment', 'Комментарий'), ('actions', 'Действия')]))}
 """
     return page("Смена провайдеров", table_page_container(body))
 

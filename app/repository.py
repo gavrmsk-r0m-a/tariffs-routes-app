@@ -2174,7 +2174,8 @@ class Repository:
                    ar.name AS affected_route_name, nr.name AS new_route_name, oldr.name AS old_route_name,
                    oldcr.name AS old_company_route_name, newcr.name AS new_company_route_name,
                    oldcp.name AS old_company_route_provider_name, newcp.name AS new_company_route_provider_name,
-                   cc.company_id_external, cc.company_name, cs.name AS company_server_name
+                   cc.company_id_external, cc.company_name, cs.name AS company_server_name,
+                   COALESCE(u.display_name, u.username) AS author_name
             FROM routing_events re
             LEFT JOIN countries c ON c.id = re.country_id
             LEFT JOIN servers s ON s.id = re.server_id
@@ -2188,6 +2189,7 @@ class Repository:
             LEFT JOIN providers newcp ON newcp.id = newcr.provider_id
             LEFT JOIN calling_companies cc ON cc.id = re.calling_company_id
             LEFT JOIN servers cs ON cs.id = cc.server_id
+            LEFT JOIN users u ON u.id = re.created_by
             {where}
             ORDER BY re.event_at DESC, re.id DESC
         """, params))
