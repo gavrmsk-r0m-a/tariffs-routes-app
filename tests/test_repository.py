@@ -127,6 +127,60 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
         self.assertEqual(str(tariff["price_in_provider_currency"]), "2.5")
         self.assertEqual(str(tariff["eur_price"]), "2.5")
 
+    def test_tariff_duplicate_identity_checks_active_and_inactive_records(self):
+        self._create_tariff("2.5")
+        before = self._tariff_counts()
+        with self.assertRaisesRegex(BusinessRuleError, "Такой тариф уже существует"):
+            self._create_tariff("2.9")
+        self.assertEqual(self._tariff_counts(), before)
+
+        tariff_id = self.conn.execute("SELECT id FROM tariffs").fetchone()["id"]
+        self.repo.set_tariff_active(tariff_id, is_current=False, changed_by=self.admin_id)
+        before = self._tariff_counts()
+        with self.assertRaisesRegex(BusinessRuleError, "уже существует, но неактивен"):
+            self._create_tariff("2.9")
+        self.assertEqual(self._tariff_counts(), before)
+
+    def test_tariff_prefix_and_no_prefix_identities_can_coexist(self):
+        prefix_id = self.repo.create_prefix(self.provider_id, "0333")
+        no_prefix_id = self._create_tariff("2.5")
+        prefixed_id = self.repo.create_tariff(
+            country_id=self.country_id, provider_id=self.provider_id, provider_prefix_id=prefix_id,
+            provider_currency_id=self.currency_id, price_in_provider_currency="2.5", conversion_rate_to_eur="1",
+            conversion_rate_date="2026-06-22", created_by=self.admin_id,
+        )
+        self.assertNotEqual(no_prefix_id, prefixed_id)
+        with self.assertRaisesRegex(BusinessRuleError, "Такой тариф уже существует"):
+            self._create_tariff("3.0")
+
+    def test_tariff_update_and_activation_history(self):
+        usd_id = self.repo.create_currency("USD", "US Dollar", "$")
+        tariff_id = self._create_tariff("2.5")
+        self.repo.update_tariff(
+            tariff_id, provider_currency_id=usd_id, price_in_provider_currency="3.1",
+            conversion_rate_to_eur="0.9", conversion_rate_date="2026-06-22", currency_rate_id=None,
+            comment="new terms", updated_by=self.admin_id,
+        )
+        row = self.conn.execute("SELECT reason, comment FROM tariff_change_history WHERE tariff_id = ? ORDER BY id DESC LIMIT 1", (tariff_id,)).fetchone()
+        self.assertEqual(row["reason"], "tariff.changed")
+        self.assertIn("Цена провайдера: 2.5 → 3.1", row["comment"])
+        self.assertIn("Валюта: EUR → USD", row["comment"])
+        self.assertIn("Комментарий: — → new terms", row["comment"])
+
+        history_count = self.conn.execute("SELECT COUNT(*) FROM tariff_change_history WHERE tariff_id = ?", (tariff_id,)).fetchone()[0]
+        self.assertFalse(self.repo.update_tariff(
+            tariff_id, provider_currency_id=usd_id, price_in_provider_currency="3.1",
+            conversion_rate_to_eur="0.9", conversion_rate_date="2026-06-22", currency_rate_id=None,
+            comment="new terms", updated_by=self.admin_id,
+        ))
+        self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM tariff_change_history WHERE tariff_id = ?", (tariff_id,)).fetchone()[0], history_count)
+
+        self.repo.set_tariff_active(tariff_id, is_current=False, changed_by=self.admin_id)
+        self.repo.set_tariff_active(tariff_id, is_current=True, changed_by=self.admin_id)
+        reasons = [r["reason"] for r in self.conn.execute("SELECT reason FROM tariff_change_history WHERE tariff_id = ? ORDER BY id", (tariff_id,))]
+        self.assertIn("tariff.deactivated", reasons)
+        self.assertIn("tariff.activated", reasons)
+
     def test_existing_admin_password_is_not_overwritten_by_fallback(self):
         conn = sqlite3.connect(":memory:")
         conn.row_factory = sqlite3.Row

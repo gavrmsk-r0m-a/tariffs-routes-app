@@ -1661,7 +1661,7 @@ def section_for_get_path(path: str) -> str | None:
         return "dashboard"
     if path == "/routes" or (path.startswith("/routes/") and (path.endswith("/numbers") or path.endswith("/numbers/manage") or path.endswith("/history"))):
         return "routes"
-    if path == "/tariffs":
+    if path == "/tariffs" or (path.startswith("/tariffs/") and (path.endswith("/history") or path.endswith("/edit"))):
         return "tariffs"
     if path == "/phones" or (path.startswith("/phones/") and path.endswith("/history")):
         return "phones"
@@ -2586,6 +2586,36 @@ def history_table(rows: list[sqlite3.Row], *, subject: str) -> str:
     return "<section class='journal-card'><div class='table-scroll'><table><thead><tr><th>Дата</th><th>Пользователь</th><th>Событие</th><th>Описание</th><th>Детали</th></tr></thead><tbody>" + "".join(html_rows) + "</tbody></table></div></section>"
 
 
+def readable_tariff_history_event(row: sqlite3.Row) -> tuple[str, str, str]:
+    reason = row["reason"] or ""
+    details = row["comment"] or "—"
+    if reason == "tariff.activated":
+        return "Тариф активирован", "Тариф активирован", details
+    if reason == "tariff.deactivated":
+        return "Тариф деактивирован", "Тариф деактивирован", details
+    if reason == "tariff.changed":
+        return "Тариф изменён", details, details
+    return "Тариф создан", "Тариф создан", row["comment"] or "—"
+
+def tariff_history_table(rows: list[sqlite3.Row]) -> str:
+    if not rows:
+        return "<div class='empty-state'>История пока пустая</div>"
+    html_rows = []
+    for row in rows:
+        event, description, details = readable_tariff_history_event(row)
+        html_rows.append(f"<tr><td>{esc(row['changed_at'])}</td><td>{esc(row['user_name'] or '—')}</td><td>{esc(event)}</td>{clamp_cell('description', esc(description), description)}{clamp_cell('details', esc(details), details, classes='comment-cell')}</tr>")
+    return "<section class='journal-card'><div class='table-scroll'><table><thead><tr><th>Дата</th><th>Пользователь</th><th>Событие</th><th>Описание</th><th>Детали</th></tr></thead><tbody>" + "".join(html_rows) + "</tbody></table></div></section>"
+
+def tariff_history_page(repo: Repository, tariff_id: int) -> bytes:
+    tariff = repo.get_tariff(tariff_id)
+    if tariff is None:
+        return page("Тариф не найден", "<h1>Тариф не найден</h1>")
+    prefix = tariff["prefix"] or "—"
+    body = f"""<h1>История тарифа</h1>
+<section class='card'><h2>{esc(tariff['country_name'])} / {esc(tariff['provider_name'])} / {esc(prefix)}</h2><p class='muted'>{esc(tariff['price_in_provider_currency'])} {esc(tariff['currency_code'])} · {'Активный' if tariff['is_current'] else 'Неактивный'}</p><p><a href='/tariffs'>← Назад к тарифам</a>{' · <a href="/tariffs/' + str(tariff_id) + '/edit">Редактировать тариф</a>' if can_write('tariffs') else ''}</p></section>
+{tariff_history_table(repo.list_tariff_history(tariff_id))}"""
+    return page("История тарифа", body)
+
 def phone_history_page(repo: Repository, phone_id: int) -> bytes:
     phone = repo.get_phone_number(phone_id)
     if phone is None:
@@ -2757,37 +2787,40 @@ def route_numbers_manage_page(repo: Repository, route_id: int, q: dict[str, str]
 
 def tariffs_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
     q = q or {}
-    filters = {"country_id": q.get("country_id"), "provider_id": q.get("provider_id"), "priority_status": q.get("priority_status"), "status": q.get("status", "active")}
+    filters = {"country_id": q.get("country_id"), "provider_id": q.get("provider_id"), "status": q.get("status", "active")}
     records = list(repo.list_tariffs(filters))
     if q.get("export") == "csv":
-        return csv_response("tariffs_export.csv", ["GEO", "Валюта", "Цена/Тариф", "Название", "Активен", "Комментарий"], [[t["country_name"], t["currency_code"], t["price_in_provider_currency"], f"{t['provider_name']} / {t['prefix'] or 'Без префикса'}", "Да" if t["is_current"] else "Нет", t["comment"]] for t in records])
+        return csv_response("tariffs_export.csv", ["GEO", "Provider", "Prefix", "Provider price", "Currency", "Price EUR", "Active", "Comment"], [[t["country_name"], t["provider_name"], t["prefix"] or "—", t["price_in_provider_currency"], t["currency_code"], t["eur_price"], "Да" if t["is_current"] else "Нет", t["comment"]] for t in records])
     records, pagination_html = paginate_rows(records, q, "/tariffs")
     rows = []
     for t in records:
         prefix = t["prefix"] or "—"
-        actions = f"""<form method='post' action='/tariffs/{t['id']}/deactivate'><button class='danger-action' title='Деактивировать' onclick="return confirm('Деактивировать тариф?')">Деактивировать</button></form>""" if can_write("tariffs") else ""
-        rows.append(f"""<tr><td data-col='geo'>{esc(t['country_name'])}</td><td data-col='provider'>{esc(t['provider_name'])}</td><td data-col='prefix'>{esc(prefix)}</td><td data-col='provider_price'>{esc(t['price_in_provider_currency'])} {esc(t['currency_code'])}</td><td data-col='eur_price'>{esc(t['eur_price'])} EUR</td><td data-col='priority'>{esc(t['priority_status'])}</td><td data-col='active'>{'Да' if t['is_current'] else 'Нет'}</td>{clamp_cell('info', esc(t['comment']), t['comment'], classes='comment-cell')}<td data-col='actions'>{actions}</td></tr>""")
+        toggle = "deactivate" if t["is_current"] else "activate"
+        label = "Деактивировать" if t["is_current"] else "Активировать"
+        cls = "danger-action" if t["is_current"] else ""
+        actions = f"<a class='button edit-action' href='/tariffs/{t['id']}/edit' title='Редактировать' aria-label='Редактировать' data-tooltip='Редактировать'>Редактировать</a> <form method='post' action='/tariffs/{t['id']}/{toggle}'><button class='{cls}' title='{label}'>{label}</button></form>" if can_write("tariffs") else ""
+        history = history_icon_link(f"/tariffs/{t['id']}/history")
+        rows.append(f"""<tr><td data-col='history' class='history-cell'>{history}</td><td data-col='actions' class='actions'>{actions}</td><td data-col='geo'>{esc(t['country_name'])}</td><td data-col='provider'>{esc(t['provider_name'])}</td><td data-col='prefix'>{esc(prefix)}</td><td data-col='provider_price'>{esc(t['price_in_provider_currency'])} {esc(t['currency_code'])}</td><td data-col='eur_price'>{esc(t['eur_price'])} EUR</td><td data-col='active'>{'Да' if t['is_current'] else 'Нет'}</td>{clamp_cell('comment', esc(t['comment']), t['comment'], classes='comment-cell')}</tr>""")
     filters_html = f"""<form class="filter-grid" method="get" action="/tariffs">
 <label>ГЕО <select name="country_id">{options(repo, 'countries', selected=q.get('country_id'), empty='Все')}</select></label>
 <label>Провайдер <select name="provider_id">{options(repo, 'providers', selected=q.get('provider_id'), empty='Все')}</select></label>
-<label>Приоритет <select name="priority_status"><option value="">Все</option><option value="priority" {'selected' if q.get('priority_status')=='priority' else ''}>priority</option><option value="alternative" {'selected' if q.get('priority_status')=='alternative' else ''}>alternative</option><option value="unknown" {'selected' if q.get('priority_status')=='unknown' else ''}>unknown</option></select></label>
 <label>Статус <select name="status"><option value="all" {'selected' if q.get('status')=='all' else ''}>Все</option><option value="active" {'selected' if q.get('status','active')=='active' else ''}>Активные</option><option value="inactive" {'selected' if q.get('status')=='inactive' else ''}>Неактивные</option></select></label><button>Найти</button></form>"""
     create_html = f"""<form class="form-grid" method="post" action="/tariffs/create">
 <label>ГЕО <span class="required">*</span><select name="country_id">{active_options(repo, 'countries')}</select></label>
 <label>Провайдер <span class="required">*</span><select name="provider_id">{active_options(repo, 'providers')}</select></label>
 <label>Префикс <select name="provider_prefix_id">{prefix_options(repo)}</select></label>
 <label>Валюта <span class="required">*</span><select name="currency_id">{active_options(repo, 'currencies', 'code')}</select></label>
-<label>Цена <span class="required">*</span><input name="price"></label>
-<label>Приоритет <span class="required">*</span><select name="priority_status"><option value="priority">priority</option><option value="alternative">alternative</option><option value="unknown">unknown</option></select></label>
+<label>Цена провайдера <span class="required">*</span><input name="price"></label>
 <label>Активный <span class="required">*</span><select name="is_current"><option value="1">Да</option><option value="0">Нет</option></select></label>
 <label>Комментарий <input name="comment"></label><p class="muted wide">Курс к EUR и дата курса берутся из Администрирование → Курсы валют.</p><button>Сохранить</button></form>"""
-    table_html = f"{data_table('tariffs', [('geo', 'ГЕО'), ('provider', 'Провайдер'), ('prefix', 'Префикс'), ('provider_price', 'Цена провайдера'), ('eur_price', 'Цена EUR'), ('priority', 'Приоритет'), ('active', 'Активный'), ('info', 'Инфо'), ('actions', 'Действия')], ''.join(rows))}"
+    columns = [('history', 'Инфо'), ('actions', 'Действия'), ('geo', 'ГЕО'), ('provider', 'Провайдер'), ('prefix', 'Префикс'), ('provider_price', 'Цена провайдера'), ('eur_price', 'Цена EUR'), ('active', 'Активный'), ('comment', 'Комментарий')]
+    table_html = f"{data_table('tariffs', columns, ''.join(rows))}"
     body = f"""
 <h1>Тарифы</h1>
-{filter_card(filters_html, q, ('country_id', 'provider_id', 'priority_status', 'status'))}
+{filter_card(filters_html, q, ('country_id', 'provider_id', 'status'))}
 {form_card('+ Добавить тариф <span class="muted">Admin</span>', create_html) if can_write("tariffs") else ""}
 {table_card(table_html)}
-{table_footer(pagination_html, export_link('/tariffs', q) + column_settings('tariffs', [('geo', 'ГЕО'), ('provider', 'Провайдер'), ('prefix', 'Префикс'), ('provider_price', 'Цена провайдера'), ('eur_price', 'Цена EUR'), ('priority', 'Приоритет'), ('active', 'Активный'), ('info', 'Инфо'), ('actions', 'Действия')]))}"""
+{table_footer(pagination_html, export_link('/tariffs', q) + column_settings('tariffs', columns))}"""
     return page("Тарифы", table_page_container(body))
 
 
@@ -3757,6 +3790,31 @@ def yes_no(value: object) -> str:
     return "1" if str(value) in {"1", "True", "true"} else "0"
 
 
+def tariff_edit_page(repo: Repository, tariff_id: int) -> bytes:
+    tariff = repo.get_tariff(tariff_id)
+    if tariff is None:
+        return page("Тариф не найден", "<h1>Тариф не найден</h1>")
+    prefix = tariff["prefix"] or "—"
+    body = f"""<h1>Редактировать тариф</h1><p><a href='/tariffs'>← Назад</a></p>
+<form method='post' action='/tariffs/{tariff_id}/update'>
+<label>ГЕО <input value='{esc(tariff['country_name'])}' readonly></label>
+<label>Провайдер <input value='{esc(tariff['provider_name'])}' readonly></label>
+<label>Префикс <input value='{esc(prefix)}' readonly></label>
+<label>Цена провайдера <span class='required'>*</span><input name='price' value='{esc(tariff['price_in_provider_currency'])}'></label>
+<label>Валюта <span class='required'>*</span><select name='currency_id' id='tariff-currency' data-original-currency='{esc(tariff['provider_currency_id'])}'>{active_options(repo, 'currencies', 'code', selected=tariff['provider_currency_id'])}</select></label>
+<p class='muted wide' id='currency-warning' hidden>Вы меняете валюту тарифа. Проверьте, что цена указана в новой валюте.</p>
+<label>Комментарий <input name='comment' value='{esc(tariff['comment'])}'></label>
+<p class='muted wide'>GEO, провайдер и префикс задают идентичность тарифа и не редактируются.</p>
+<button onclick="return confirm('Сохранить изменения?')">Сохранить</button></form>
+<script>
+const currencySelect = document.getElementById('tariff-currency');
+const currencyWarning = document.getElementById('currency-warning');
+function updateCurrencyWarning() {{ currencyWarning.hidden = currencySelect.value === currencySelect.dataset.originalCurrency; }}
+currencySelect.addEventListener('change', updateCurrencyWarning);
+updateCurrencyWarning();
+</script>"""
+    return page("Редактировать тариф", body)
+
 def route_edit_page(repo: Repository, route_id: int) -> bytes:
     route = repo.conn.execute("SELECT * FROM routes WHERE id = ?", (route_id,)).fetchone()
     if route is None:
@@ -3972,13 +4030,24 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
         if rate is None:
             raise BusinessRuleError("Для выбранной валюты нет курса к EUR. Добавьте курс в Администрирование → Курсы валют")
         prefix_id = parse_int(data.get("provider_prefix_id"))
-        tariff_id = repo.create_tariff(country_id=int(data["country_id"]), provider_id=int(data["provider_id"]), provider_prefix_id=prefix_id, provider_currency_id=currency_id, price_in_provider_currency=data["price"], conversion_rate_to_eur=rate["rate_to_eur"], conversion_rate_date=rate["rate_date"], currency_rate_id=rate["id"], created_by=actor_id, priority_status=data["priority_status"], comment=data.get("comment"))
+        tariff_id = repo.create_tariff(country_id=int(data["country_id"]), provider_id=int(data["provider_id"]), provider_prefix_id=prefix_id, provider_currency_id=currency_id, price_in_provider_currency=data["price"], conversion_rate_to_eur=rate["rate_to_eur"], conversion_rate_date=rate["rate_date"], currency_rate_id=rate["id"], created_by=actor_id, comment=data.get("comment"))
         if data.get("is_current") == "0":
-            repo.conn.execute("UPDATE tariffs SET is_current = 0 WHERE id = ?", (tariff_id,)); repo.conn.commit()
+            repo.set_tariff_active(tariff_id, is_current=False, changed_by=actor_id)
         return "/tariffs"
+    if path.startswith("/tariffs/") and path.endswith("/update"):
+        tariff_id = int(path.strip("/").split("/")[1])
+        currency_id = int(data["currency_id"])
+        rate = repo.latest_currency_rate(currency_id)
+        if rate is None:
+            raise BusinessRuleError("Для выбранной валюты нет курса к EUR. Добавьте курс в Администрирование → Курсы валют")
+        repo.update_tariff(tariff_id, provider_currency_id=currency_id, price_in_provider_currency=data["price"], conversion_rate_to_eur=rate["rate_to_eur"], conversion_rate_date=rate["rate_date"], currency_rate_id=rate["id"], comment=data.get("comment"), updated_by=actor_id)
+        return f"/tariffs/{tariff_id}/edit"
     if path.startswith("/tariffs/") and path.endswith("/deactivate"):
         tariff_id = int(path.strip("/").split("/")[1])
-        repo.conn.execute("UPDATE tariffs SET is_current = 0, updated_by = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (actor_id, tariff_id)); repo.conn.commit(); return "/tariffs"
+        repo.set_tariff_active(tariff_id, is_current=False, changed_by=actor_id); return "/tariffs"
+    if path.startswith("/tariffs/") and path.endswith("/activate"):
+        tariff_id = int(path.strip("/").split("/")[1])
+        repo.set_tariff_active(tariff_id, is_current=True, changed_by=actor_id); return "/tariffs"
     if path == "/companies/create":
         repo.create_calling_company(server_id=int(data["server_id"]), country_id=int(data["country_id"]), company_name=data["company_name"], company_id_external=data["company_id_external"], has_autorotation=data.get("has_autorotation") == "1", created_by=actor_id, comment=data.get("comment"), is_active=data.get("is_active") == "1", line_count=int(data.get("line_count") or 0), dial_set_count=int(data.get("dial_set_count") or 0), retry_interval_seconds=int(data.get("retry_interval_seconds") or 0))
         return "/companies"
@@ -4167,6 +4236,8 @@ def error_return_path(path: str) -> str:
         return "/provider-changes/" + path.strip("/").split("/")[1] + "/edit"
     if path.startswith("/provider-changes/") or path == "/provider-changes/create":
         return "/provider-changes"
+    if path.startswith("/tariffs/") and path.endswith("/update"):
+        return "/tariffs/" + path.strip("/").split("/")[1] + "/edit"
     if path.startswith("/tariffs/") or path == "/tariffs/create":
         return "/tariffs"
     if path.startswith("/admin/server-priorities/"):
@@ -4278,7 +4349,7 @@ def app(environ, start_response):
             location = handle_post(repo, path, parsed)
             return redirect(start_response, location)
         require_permission("read", section_for_get_path(path))
-        if path.startswith(("/routes/", "/phones/", "/companies/")) and path.endswith("/edit"):
+        if path.startswith(("/routes/", "/phones/", "/companies/", "/tariffs/")) and path.endswith("/edit"):
             require_permission("write", section_for_write_path(path.replace("/edit", "/update")))
         if path.startswith("/provider-changes/") and path.endswith("/edit"):
             require_permission("write", "provider_changes")
@@ -4307,10 +4378,12 @@ def app(environ, start_response):
         elif path == "/admin/change-log": response = change_log_page(repo)
         elif path.startswith("/routes/") and path.endswith("/history"): response = route_history_page(repo, int(path.strip("/").split("/")[1]))
         elif path.startswith("/phones/") and path.endswith("/history"): response = phone_history_page(repo, int(path.strip("/").split("/")[1]))
+        elif path.startswith("/tariffs/") and path.endswith("/history"): response = tariff_history_page(repo, int(path.strip("/").split("/")[1]))
         elif path.startswith("/calling-companies/") and path.endswith("/history"): response = company_history_page(repo, int(path.strip("/").split("/")[1]))
         elif path.startswith("/companies/") and path.endswith("/history"): response = company_history_page(repo, int(path.strip("/").split("/")[1]))
         elif path.startswith("/routes/") and path.endswith("/edit"): response = route_edit_page(repo, int(path.strip("/").split("/")[1]))
         elif path.startswith("/phones/") and path.endswith("/edit"): response = phone_edit_page(repo, int(path.strip("/").split("/")[1]))
+        elif path.startswith("/tariffs/") and path.endswith("/edit"): response = tariff_edit_page(repo, int(path.strip("/").split("/")[1]))
         elif path.startswith("/companies/") and path.endswith("/edit"): response = company_edit_page(repo, int(path.strip("/").split("/")[1]))
         elif path.startswith("/provider-changes/") and path.endswith("/edit"): response = provider_change_edit_page(repo, int(path.strip("/").split("/")[1]))
         elif path.startswith("/routes/") and path.endswith("/numbers/manage"):
