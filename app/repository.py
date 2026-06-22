@@ -1131,6 +1131,27 @@ class Repository:
             )
         self.conn.commit()
 
+    def find_tariff_by_identity(self, country_id: int, provider_id: int, provider_prefix_id: int | None) -> sqlite3.Row | None:
+        return self.conn.execute(
+            """
+            SELECT t.*, c.name AS country_name, p.name AS provider_name, pp.prefix AS prefix
+            FROM tariffs t
+            JOIN countries c ON c.id = t.country_id
+            JOIN providers p ON p.id = t.provider_id
+            LEFT JOIN provider_prefixes pp ON pp.id = t.provider_prefix_id
+            WHERE t.country_id = ? AND t.provider_id = ? AND COALESCE(t.provider_prefix_id, 0) = COALESCE(?, 0)
+            ORDER BY t.id DESC
+            LIMIT 1
+            """,
+            (country_id, provider_id, provider_prefix_id),
+        ).fetchone()
+
+    def _duplicate_tariff_message(self, tariff: sqlite3.Row) -> str:
+        if tariff["is_current"]:
+            return "Такой тариф уже существует"
+        prefix = tariff["prefix"] or "без префикса"
+        return f"Тариф {tariff['country_name']} / {tariff['provider_name']} / {prefix} уже существует, но неактивен. Активируйте его и обновите цену."
+
     def create_tariff(
         self,
         *,
@@ -1148,6 +1169,9 @@ class Repository:
         comment: str | None = None,
     ) -> int:
         price_value = validate_tariff_price(price_in_provider_currency)
+        duplicate = self.find_tariff_by_identity(country_id, provider_id, provider_prefix_id)
+        if duplicate is not None:
+            raise BusinessRuleError(self._duplicate_tariff_message(duplicate))
         price_eur = eur_price(price_value, conversion_rate_to_eur)
         cur = self.conn.execute(
             """
@@ -1212,6 +1236,84 @@ class Repository:
         self.conn.commit()
         return tariff_id
 
+    def get_tariff(self, tariff_id: int) -> sqlite3.Row | None:
+        return self.conn.execute(
+            """
+            SELECT t.*, c.name AS country_name, p.name AS provider_name, pp.prefix AS prefix, cur.code AS currency_code
+            FROM tariffs t
+            JOIN countries c ON c.id = t.country_id
+            JOIN providers p ON p.id = t.provider_id
+            LEFT JOIN provider_prefixes pp ON pp.id = t.provider_prefix_id
+            JOIN currencies cur ON cur.id = t.provider_currency_id
+            WHERE t.id = ?
+            """,
+            (tariff_id,),
+        ).fetchone()
+
+    def _insert_tariff_history(self, tariff: sqlite3.Row, changed_by: int, reason: str, details: str | None = None, *, old_currency_id: int | None = None, old_price: object | None = None, old_rate: object | None = None, old_rate_date: str | None = None, old_eur_price: object | None = None) -> None:
+        self.conn.execute(
+            """
+            INSERT INTO tariff_change_history(
+                tariff_id, changed_by, country_id, country_name_snapshot, provider_id, provider_name_snapshot, provider_prefix_id, prefix_snapshot,
+                old_provider_currency_id, new_provider_currency_id, old_price_in_provider_currency, new_price_in_provider_currency,
+                old_conversion_rate_to_eur, new_conversion_rate_to_eur, old_conversion_rate_date, new_conversion_rate_date, old_eur_price, new_eur_price, reason, comment
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (tariff["id"], changed_by, tariff["country_id"], tariff["country_name"], tariff["provider_id"], tariff["provider_name"], tariff["provider_prefix_id"], tariff["prefix"], old_currency_id, tariff["provider_currency_id"], old_price, tariff["price_in_provider_currency"], old_rate, tariff["conversion_rate_to_eur"], old_rate_date, tariff["conversion_rate_date"], old_eur_price, tariff["eur_price"], reason, details),
+        )
+
+    def update_tariff(self, tariff_id: int, *, provider_currency_id: int, price_in_provider_currency: str, conversion_rate_to_eur: str, conversion_rate_date: str, currency_rate_id: int | None, comment: str | None, updated_by: int) -> bool:
+        old = self.get_tariff(tariff_id)
+        if old is None:
+            raise BusinessRuleError("Тариф не найден")
+        price_value = validate_tariff_price(price_in_provider_currency)
+        price_eur = eur_price(price_value, conversion_rate_to_eur)
+        changes = []
+        if Decimal(str(old["price_in_provider_currency"])) != price_value:
+            changes.append(f"Цена провайдера: {old['price_in_provider_currency']} → {price_value}")
+        if int(old["provider_currency_id"]) != int(provider_currency_id):
+            old_code = old["currency_code"]
+            new_code_row = self.conn.execute("SELECT code FROM currencies WHERE id = ?", (provider_currency_id,)).fetchone()
+            changes.append(f"Валюта: {old_code} → {new_code_row['code'] if new_code_row else provider_currency_id}")
+        if (old["comment"] or "") != (comment or ""):
+            changes.append(f"Комментарий: {old['comment'] or '—'} → {comment or '—'}")
+        if not changes:
+            return False
+        self.conn.execute(
+            """UPDATE tariffs SET provider_currency_id = ?, price_in_provider_currency = ?, conversion_rate_to_eur = ?, conversion_rate_date = ?, currency_rate_id = ?, eur_price = ?, comment = ?, updated_by = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?""",
+            (provider_currency_id, str(price_value), str(conversion_rate_to_eur), conversion_rate_date, currency_rate_id, str(price_eur), comment, updated_by, tariff_id),
+        )
+        new = self.get_tariff(tariff_id)
+        self._insert_tariff_history(new, updated_by, "tariff.changed", "; ".join(changes), old_currency_id=old["provider_currency_id"], old_price=old["price_in_provider_currency"], old_rate=old["conversion_rate_to_eur"], old_rate_date=old["conversion_rate_date"], old_eur_price=old["eur_price"])
+        self._change_log("tariff", tariff_id, "tariff.changed", updated_by, old_values={"price": str(old["price_in_provider_currency"]), "currency_id": old["provider_currency_id"], "comment": old["comment"]}, new_values={"price": str(price_value), "currency_id": provider_currency_id, "comment": comment}, summary="; ".join(changes))
+        self.conn.commit()
+        return True
+
+    def set_tariff_active(self, tariff_id: int, *, is_current: bool, changed_by: int) -> None:
+        tariff = self.get_tariff(tariff_id)
+        if tariff is None:
+            raise BusinessRuleError("Тариф не найден")
+        if bool(tariff["is_current"]) == is_current:
+            return
+        self.conn.execute("UPDATE tariffs SET is_current = ?, updated_by = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (1 if is_current else 0, changed_by, tariff_id))
+        updated = self.get_tariff(tariff_id)
+        reason = "tariff.activated" if is_current else "tariff.deactivated"
+        self._insert_tariff_history(updated, changed_by, reason)
+        self._change_log("tariff", tariff_id, reason, changed_by, old_values={"is_current": tariff["is_current"]}, new_values={"is_current": 1 if is_current else 0})
+        self.conn.commit()
+
+    def list_tariff_history(self, tariff_id: int) -> list[sqlite3.Row]:
+        return list(self.conn.execute(
+            """
+            SELECT tch.*, u.display_name AS user_name
+            FROM tariff_change_history tch
+            LEFT JOIN users u ON u.id = tch.changed_by
+            WHERE tch.tariff_id = ?
+            ORDER BY tch.changed_at DESC, tch.id DESC
+            """,
+            (tariff_id,),
+        ))
+
     def latest_currency_rate(self, currency_id: int) -> sqlite3.Row | None:
         return self.conn.execute(
             """
@@ -1231,7 +1333,6 @@ class Repository:
             {
                 "country_id": "t.country_id",
                 "provider_id": "t.provider_id",
-                "priority_status": "t.priority_status",
             },
         )
         clauses = []

@@ -69,6 +69,43 @@ class ServerSmokeTest(unittest.TestCase):
         for old_value in ("reserved", "blocked", "disabled"):
             self.assertNotIn(f"value='{old_value}'", html)
 
+    def test_tariffs_page_omits_priority_and_export_excludes_priority(self):
+        captured, content = self.request("/tariffs")
+        self.assertEqual(captured["status"], "200 OK")
+        table_fragment = content.split('<table', 1)[1].split('</table>', 1)[0]
+        self.assertNotIn("Приоритет", table_fragment)
+        self.assertIn("Цена провайдера", table_fragment)
+        self.assertIn("Инфо", table_fragment)
+
+        captured, csv_content = self.request("/tariffs?export=csv")
+        self.assertEqual(captured["status"], "200 OK")
+        header = csv_content.splitlines()[0]
+        self.assertNotIn("Priority", header)
+        self.assertNotIn("Приоритет", header)
+
+    def test_tariff_edit_form_locks_identity_and_warns_on_currency_change(self):
+        self.request("/tariffs")
+        conn = server.connect(server.DB_PATH)
+        try:
+            repo = server.Repository(conn)
+            admin_id = conn.execute("SELECT id FROM users WHERE username = 'admin'").fetchone()["id"]
+            country_id = conn.execute("SELECT id FROM countries LIMIT 1").fetchone()["id"]
+            provider_id = conn.execute("SELECT id FROM providers LIMIT 1").fetchone()["id"]
+            currency_id = conn.execute("SELECT id FROM currencies WHERE code = 'EUR' LIMIT 1").fetchone()["id"]
+            existing = repo.find_tariff_by_identity(country_id, provider_id, None)
+            tariff_id = existing["id"] if existing else repo.create_tariff(country_id=country_id, provider_id=provider_id, provider_currency_id=currency_id, price_in_provider_currency="2.5", conversion_rate_to_eur="1", conversion_rate_date="2026-06-22", created_by=admin_id)
+        finally:
+            conn.close()
+        captured, content = self.request(f"/tariffs/{tariff_id}/edit")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("name='price'", content)
+        self.assertIn("name='currency_id'", content)
+        self.assertIn("name='comment'", content)
+        self.assertNotIn("name='country_id'", content)
+        self.assertNotIn("name='provider_id'", content)
+        self.assertNotIn("name='provider_prefix_id'", content)
+        self.assertIn("Вы меняете валюту тарифа", content)
+
     def test_main_screens_render(self):
         for path, marker in [
             ("/routes", "Маршруты"),
@@ -2637,7 +2674,7 @@ class RolePermissionTest(ServerSmokeTest):
         return urlencode({
             "country_id": "1",
             "provider_id": "1",
-            "provider_prefix_id": "",
+            "provider_prefix_id": "2",
             "currency_id": "1",
             "price": price,
             "priority_status": "unknown",
