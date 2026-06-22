@@ -75,6 +75,44 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
             created_by=self.admin_id,
         )
 
+    def test_text_search_filters_are_unicode_case_insensitive_and_partial(self):
+        mexico_id = self.repo.create_country("Мексика", "MEX")
+        demotel_id = self.repo.create_provider("DemoTel", "voip", self.currency_id)
+        cyrillic_route_id = self.repo.create_route(
+            country_id=mexico_id,
+            provider_id=demotel_id,
+            name="Мексика/DemoTel/Pool@",
+            cli_source_type="pool",
+            cli_source_label="Pool",
+            created_by=self.admin_id,
+        )
+        latin_route_id = self.repo.create_route(
+            country_id=mexico_id,
+            provider_id=demotel_id,
+            name="CC Mexico Demo",
+            cli_source_type="pool",
+            cli_source_label="Pool",
+            created_by=self.admin_id,
+        )
+
+        for search in ("Мексика", "мексика", "МЕКС", "  мекс  "):
+            with self.subTest(search=search):
+                route_ids = {row["id"] for row in self.repo.list_routes({"search_like": search})}
+                self.assertIn(cyrillic_route_id, route_ids)
+
+        for search in ("Mexico", "mexico", "MEXICO", "cc mexico demo", "DEMO"):
+            with self.subTest(search=search):
+                route_ids = {row["id"] for row in self.repo.list_routes({"search_like": search})}
+                self.assertIn(latin_route_id, route_ids)
+
+        filtered_ids = {row["id"] for row in self.repo.list_routes({"country_id": mexico_id, "provider_id": demotel_id, "search_like": "мекс"})}
+        self.assertIn(cyrillic_route_id, filtered_ids)
+        self.assertNotIn(self.route_id, filtered_ids)
+
+        blank_search_ids = {row["id"] for row in self.repo.list_routes({"search_like": "   "})}
+        self.assertIn(cyrillic_route_id, blank_search_ids)
+        self.assertIn(latin_route_id, blank_search_ids)
+
     def test_create_tariff_rejects_invalid_prices_without_audit(self):
         for price, message in (("", "Цена обязательна"), ("   ", "Цена обязательна"), ("abc", "Цена должна быть числом"), ("0", "Цена должна быть больше 0"), ("-1", "Цена должна быть больше 0")):
             with self.subTest(price=price):
@@ -710,9 +748,10 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
         self.assertEqual(self.repo.list_calling_company_history(company_id)[0]["comment"], "Компания активирована")
         self.repo.update_calling_company(company_id, server_id=server_id, country_id=self.country_id, company_name="Searchable", line_count=0, dial_set_count=0, has_autorotation=False, retry_interval_seconds=0, is_active=False, comment=None, updated_by=self.admin_id)
         self.assertEqual(self.repo.list_calling_company_history(company_id)[0]["comment"], "Компания деактивирована")
-        events = self.repo.list_calling_company_events(search="cmp-search", limit=50, offset=0)
+        events = self.repo.list_calling_company_events(search="CMP-SEARCH", limit=50, offset=0)
         self.assertGreaterEqual(len(events), 1)
         self.assertEqual(events[0]["company_id_external"], "cmp-search")
+        self.assertEqual(self.repo.count_calling_company_events(search="searchable"), self.repo.count_calling_company_events(search="SEARCHABLE"))
 
     def test_manual_server_priority_route_change_moves_current_to_previous_and_logs_event(self):
         priority_id, _ = self.create_priority()
