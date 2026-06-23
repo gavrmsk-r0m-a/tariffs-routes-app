@@ -35,7 +35,7 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
             country_id=self.country_id,
             provider_id=self.provider_id,
             number=number,
-            assignment_type="pool_number",
+            assignment_type="gl",
             status=status,
             created_by=self.admin_id,
             currency_id=self.currency_id,
@@ -71,7 +71,7 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
         assignments = [tuple(row) for row in self.conn.execute(
             """
             SELECT code, name, is_active, sort_order FROM phone_assignment_types
-            WHERE is_active = 1 AND code IN ('gl', 'aon', 'scratchcards', 'competitors', 'sms', 'corporate_telephony', 'dozhim', 'ivr')
+            WHERE is_active = 1
             ORDER BY sort_order
             """
         )]
@@ -85,6 +85,14 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
             ("dozhim", "Дожим", 1, 7),
             ("ivr", "IVR", 1, 8),
         ])
+        obsolete_count = self.conn.execute(
+            """
+            SELECT COUNT(*) FROM phone_assignment_types
+            WHERE code IN ('outgoing_cli', 'inbound_line', 'office_phone', 'sim_card', 'pool_number', 'other')
+               OR name IN ('SIM-карта', 'Входящая линия', 'Горячая линия', 'Другое', 'Номер из пула')
+            """
+        ).fetchone()[0]
+        self.assertEqual(obsolete_count, 0)
 
     def test_init_db_can_be_called_multiple_times_without_resetting_data(self):
         user_id = self.repo.create_user("repeat_init_user", "Repeat Init User")
@@ -335,7 +343,7 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
             country_id=self.country_id,
             provider_id=self.provider_id,
             number="393331234590",
-            assignment_type="pool_number",
+            assignment_type="gl",
             status="used",
             is_active=False,
             updated_by=self.admin_id,
@@ -365,7 +373,7 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
             country_id=self.country_id,
             provider_id=self.provider_id,
             number="393331234591",
-            assignment_type="pool_number",
+            assignment_type="gl",
             status="free",
             is_active=True,
             updated_by=self.admin_id,
@@ -388,7 +396,7 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
             country_id=self.country_id,
             provider_id=new_provider_id,
             number="393331234593",
-            assignment_type="pool_number",
+            assignment_type="gl",
             status="problem",
             is_active=True,
             updated_by=self.admin_id,
@@ -418,7 +426,7 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
             country_id=self.country_id,
             provider_id=self.provider_id,
             number="393331234594",
-            assignment_type="pool_number",
+            assignment_type="gl",
             status="free",
             is_active=True,
             updated_by=self.admin_id,
@@ -511,13 +519,13 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
     def test_phone_money_history_ignores_unchanged_numeric_equivalents(self):
         phone_id = self.repo.create_phone_number(
             country_id=self.country_id, provider_id=self.provider_id, number="393331234596",
-            assignment_type="pool_number", status="used", created_by=self.admin_id,
+            assignment_type="gl", status="used", created_by=self.admin_id,
             connection_cost="50", monthly_fee="50.00", currency_id=self.currency_id,
         )
 
         self.repo.update_phone_number(
             phone_id, country_id=self.country_id, provider_id=self.provider_id, number="393331234596",
-            assignment_type="pool_number", status="used", is_active=True, updated_by=self.admin_id,
+            assignment_type="gl", status="used", is_active=True, updated_by=self.admin_id,
             connection_cost="50.0", monthly_fee="50.000000", currency_id=self.currency_id, comment="real change",
         )
 
@@ -530,13 +538,13 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
     def test_phone_monthly_fee_only_logs_monthly_fee(self):
         phone_id = self.repo.create_phone_number(
             country_id=self.country_id, provider_id=self.provider_id, number="393331234597",
-            assignment_type="pool_number", status="used", created_by=self.admin_id,
+            assignment_type="gl", status="used", created_by=self.admin_id,
             connection_cost="50", monthly_fee="50", currency_id=self.currency_id,
         )
 
         self.repo.update_phone_number(
             phone_id, country_id=self.country_id, provider_id=self.provider_id, number="393331234597",
-            assignment_type="pool_number", status="used", is_active=True, updated_by=self.admin_id,
+            assignment_type="gl", status="used", is_active=True, updated_by=self.admin_id,
             connection_cost="50.00", monthly_fee="60", currency_id=self.currency_id,
         )
 
@@ -547,13 +555,13 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
     def test_phone_connection_cost_only_logs_connection_cost(self):
         phone_id = self.repo.create_phone_number(
             country_id=self.country_id, provider_id=self.provider_id, number="393331234598",
-            assignment_type="pool_number", status="used", created_by=self.admin_id,
+            assignment_type="gl", status="used", created_by=self.admin_id,
             connection_cost="50", monthly_fee="50", currency_id=self.currency_id,
         )
 
         self.repo.update_phone_number(
             phone_id, country_id=self.country_id, provider_id=self.provider_id, number="393331234598",
-            assignment_type="pool_number", status="used", is_active=True, updated_by=self.admin_id,
+            assignment_type="gl", status="used", is_active=True, updated_by=self.admin_id,
             connection_cost="60", monthly_fee="50.00", currency_id=self.currency_id,
         )
 
@@ -565,7 +573,7 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
         phone_id = self.create_phone(status="problem", is_active=False, number="393331234589")
         self.repo.update_phone_number(
             phone_id, country_id=self.country_id, provider_id=self.provider_id, number="393331234589",
-            assignment_type="pool_number", status="used", is_active=True, updated_by=self.admin_id,
+            assignment_type="gl", status="used", is_active=True, updated_by=self.admin_id,
             connection_cost="50", monthly_fee="50", currency_id=self.currency_id, review_required=False,
         )
         first_details = self._latest_phone_update_details(phone_id)
@@ -574,7 +582,7 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
 
         self.repo.update_phone_number(
             phone_id, country_id=self.country_id, provider_id=self.provider_id, number="393331234589",
-            assignment_type="pool_number", status="used", is_active=True, updated_by=self.admin_id,
+            assignment_type="gl", status="used", is_active=True, updated_by=self.admin_id,
             connection_cost="50.00", monthly_fee="50.000000", currency_id=self.currency_id, review_required=False,
         )
 
@@ -589,14 +597,14 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
     def test_review_required_clear_is_rejected_without_provider(self):
         phone_id = self.repo.create_phone_number(
             country_id=self.country_id, provider_id=None, number="393331234588",
-            assignment_type="pool_number", status="unknown", created_by=self.admin_id,
+            assignment_type="gl", status="unknown", created_by=self.admin_id,
             review_required=True,
         )
 
         with self.assertRaisesRegex(BusinessRuleError, "Нельзя снять флаг проверки"):
             self.repo.update_phone_number(
                 phone_id, country_id=self.country_id, provider_id=None, number="393331234588",
-                assignment_type="pool_number", status="unknown", is_active=True,
+                assignment_type="gl", status="unknown", is_active=True,
                 updated_by=self.admin_id, review_required=False,
             )
 
@@ -607,17 +615,17 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
         phone_id = self.create_phone(status="problem", is_active=False, number="393331234587")
         self.repo.update_phone_number(
             phone_id, country_id=self.country_id, provider_id=self.provider_id, number="393331234587",
-            assignment_type="pool_number", status="used", is_active=True, updated_by=self.admin_id,
+            assignment_type="gl", status="used", is_active=True, updated_by=self.admin_id,
             currency_id=self.currency_id, review_required=False,
         )
         self.repo.update_phone_number(
             phone_id, country_id=self.country_id, provider_id=self.provider_id, number="393331234587",
-            assignment_type="pool_number", status="used", is_active=True, updated_by=self.admin_id,
+            assignment_type="gl", status="used", is_active=True, updated_by=self.admin_id,
             currency_id=self.currency_id, review_required=False,
         )
         self.repo.update_phone_number(
             phone_id, country_id=self.country_id, provider_id=self.provider_id, number="393331234587",
-            assignment_type="pool_number", status="used", is_active=True, updated_by=self.admin_id,
+            assignment_type="gl", status="used", is_active=True, updated_by=self.admin_id,
             currency_id=self.currency_id, comment="verified", review_required=False,
         )
 
@@ -677,7 +685,7 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
             country_id=self.country_id,
             provider_id=self.provider_id,
             number="393331234592",
-            assignment_type="pool_number",
+            assignment_type="gl",
             status="free",
             is_active=True,
             updated_by=self.admin_id,
@@ -691,7 +699,7 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
             country_id=self.country_id,
             provider_id=self.provider_id,
             number="393331234592",
-            assignment_type="pool_number",
+            assignment_type="gl",
             status="used",
             is_active=True,
             updated_by=self.admin_id,

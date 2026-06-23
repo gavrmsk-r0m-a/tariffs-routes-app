@@ -170,7 +170,7 @@ def _active_name_exists(conn: sqlite3.Connection, table: str, name: str) -> bool
 def _resolve_assignment_code(conn: sqlite3.Connection, value: str) -> str:
     value = value.strip()
     if not value:
-        value = "other"
+        value = "gl"
     row = conn.execute(
         """
         SELECT code FROM phone_assignment_types
