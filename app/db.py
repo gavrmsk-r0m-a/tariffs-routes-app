@@ -367,7 +367,7 @@ def run_lightweight_migrations(conn: sqlite3.Connection) -> None:
             (code, name, sort_order, include_in_route_name),
         )
     conn.execute(
-        "UPDATE phone_assignment_types SET is_active = 0 WHERE code IN ('outgoing_cli', 'inbound_line', 'office_phone', 'sim_card', 'pool_number', 'other')"
+        "DELETE FROM phone_assignment_types WHERE code IN ('outgoing_cli', 'inbound_line', 'office_phone', 'sim_card', 'pool_number', 'other')"
     )
     for code, name, sort_order in DEFAULT_PHONE_ASSIGNMENTS:
         conn.execute(
@@ -379,15 +379,6 @@ def run_lightweight_migrations(conn: sqlite3.Connection) -> None:
             """,
             (code, name, sort_order),
         )
-    for code, name in (
-        ("outgoing_cli", "АОН"),
-        ("inbound_line", "Входящая линия"),
-        ("office_phone", "Горячая линия"),
-        ("sim_card", "SIM-карта"),
-        ("pool_number", "Номер из пула"),
-        ("other", "Другое"),
-    ):
-        conn.execute("INSERT OR IGNORE INTO phone_assignment_types(code, name, is_active) VALUES (?, ?, 1)", (code, name))
 
 
 def init_db(conn: sqlite3.Connection) -> None:

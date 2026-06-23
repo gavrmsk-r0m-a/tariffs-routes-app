@@ -41,7 +41,7 @@ class ImporterTest(unittest.TestCase):
     def test_phone_import_rejects_invalid_numbers_and_imports_valid(self):
         self.conn.execute("INSERT INTO projects(name, is_active) VALUES ('Competitors', 1)")
         self.conn.commit()
-        csv_text = "country,project,number,assignment_type,status\nИталия,Competitors,+393331234567,pool_number,used\nИталия,Competitors,393331234568,pool_number,used\n"
+        csv_text = "country,project,number,assignment_type,status\nИталия,Competitors,+393331234567,gl,used\nИталия,Competitors,393331234568,gl,used\n"
         preview = preview_import(self.conn, "phone_numbers", csv_text)
         self.assertEqual(preview.error_rows, 1)
         self.assertEqual(preview.new_rows, 1)
@@ -62,14 +62,14 @@ class ImporterTest(unittest.TestCase):
         self.conn.execute("INSERT INTO projects(name, is_active) VALUES ('Competitors', 1)")
         self.conn.execute("INSERT INTO phone_number_types(name, is_active) VALUES ('Mobile', 1)")
         self.conn.commit()
-        csv_text = "number;country;provider;project;assignment_type;status;is_active;connection_fee;monthly_fee;currency;phone_type;tariff_label;comment;created_at\n393331234567;Италия;Miatel;Competitors;Номер из пула;used;нет;12.50;3.25;USD;Mobile;Tariff A;Imported;2026-06-01 10:00:00\n"
+        csv_text = "number;country;provider;project;assignment_type;status;is_active;connection_fee;monthly_fee;currency;phone_type;tariff_label;comment;created_at\n393331234567;Италия;Miatel;Competitors;ГЛ;used;нет;12.50;3.25;USD;Mobile;Tariff A;Imported;2026-06-01 10:00:00\n"
         preview = preview_import(self.conn, "phone_numbers", csv_text)
         self.assertEqual(preview.error_rows, 0)
         result = apply_import(self.conn, "phone_numbers", csv_text, user_id=self.admin_id)
         self.assertEqual(result.created_rows, 1)
         row = self.conn.execute("SELECT * FROM phone_numbers WHERE number = '393331234567'").fetchone()
         self.assertEqual(row["project_label"], "Competitors")
-        self.assertEqual(row["assignment_type"], "pool_number")
+        self.assertEqual(row["assignment_type"], "gl")
         self.assertEqual(str(row["connection_cost"]), "12.5")
         self.assertEqual(str(row["monthly_fee"]), "3.25")
         self.assertEqual(row["phone_type"], "Mobile")
@@ -77,7 +77,7 @@ class ImporterTest(unittest.TestCase):
         self.assertEqual(row["created_at"], "2026-06-01 10:00:00")
         self.assertIsNotNone(row["deactivated_at"])
 
-        bad_preview = preview_import(self.conn, "phone_numbers", "number;country;project;assignment_type\n393331234568;Италия;NoSuchProject;Номер из пула\n")
+        bad_preview = preview_import(self.conn, "phone_numbers", "number;country;project;assignment_type\n393331234568;Италия;NoSuchProject;ГЛ\n")
         self.assertEqual(bad_preview.error_rows, 1)
 
 
@@ -105,7 +105,7 @@ class ImporterTest(unittest.TestCase):
         row = self.conn.execute("SELECT provider_id, review_required, assignment_type, status, is_active FROM phone_numbers WHERE number = '393331234570'").fetchone()
         self.assertIsNone(row["provider_id"])
         self.assertEqual(row["review_required"], 1)
-        self.assertEqual(row["assignment_type"], "other")
+        self.assertEqual(row["assignment_type"], "gl")
         self.assertEqual(row["status"], "unknown")
         self.assertEqual(row["is_active"], 1)
 
@@ -127,7 +127,7 @@ class ImporterTest(unittest.TestCase):
     def test_phone_import_maps_old_statuses_to_new_statuses(self):
         self.conn.execute("INSERT INTO projects(name, is_active) VALUES ('Competitors', 1)")
         self.conn.commit()
-        csv_text = "country,project,number,assignment_type,status\nИталия,Competitors,393331234573,pool_number,reserved\nИталия,Competitors,393331234574,pool_number,blocked\nИталия,Competitors,393331234575,pool_number,disabled\n"
+        csv_text = "country,project,number,assignment_type,status\nИталия,Competitors,393331234573,gl,reserved\nИталия,Competitors,393331234574,gl,blocked\nИталия,Competitors,393331234575,gl,disabled\n"
         result = apply_import(self.conn, "phone_numbers", csv_text, user_id=self.admin_id)
         self.assertEqual(result.created_rows, 3)
         rows = self.conn.execute("SELECT number, status FROM phone_numbers WHERE number IN ('393331234573', '393331234574', '393331234575') ORDER BY number").fetchall()
@@ -163,7 +163,7 @@ class ImportReplaceModeTest(unittest.TestCase):
         self.conn.close()
 
     def test_replace_phone_numbers_clears_only_phone_section(self):
-        apply_import(self.conn, "phone_numbers", "country,project,number,assignment_type,status\nA,Alpha,1111111,pool_number,used\n", user_id=self.admin_id)
-        apply_import(self.conn, "phone_numbers", "country,project,number,assignment_type,status\nB,Alpha,2222222,pool_number,used\n", user_id=self.admin_id, mode="replace_section")
+        apply_import(self.conn, "phone_numbers", "country,project,number,assignment_type,status\nA,Alpha,1111111,gl,used\n", user_id=self.admin_id)
+        apply_import(self.conn, "phone_numbers", "country,project,number,assignment_type,status\nB,Alpha,2222222,gl,used\n", user_id=self.admin_id, mode="replace_section")
         rows = self.conn.execute("SELECT number FROM phone_numbers ORDER BY number").fetchall()
         self.assertEqual([row["number"] for row in rows], ["2222222"])

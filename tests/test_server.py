@@ -309,7 +309,7 @@ class ServerSmokeTest(unittest.TestCase):
     def test_selected_user_records_route_and_phone_history_actor(self):
         self.request("/routes")
         admin_cookie = self.user_cookie("admin")
-        body = urlencode({"number": "525550077001", "country_id": "1", "provider_id": "1", "assignment_type": "pool_number", "status": "used", "is_active": "1"})
+        body = urlencode({"number": "525550077001", "country_id": "1", "provider_id": "1", "assignment_type": "gl", "status": "used", "is_active": "1"})
         self.request("/phones/create", method="POST", body=body, cookie=admin_cookie)
         add_body = urlencode({"phone_number": "525550077001", "usage_type": "pool_member", "comment": "admin actor"})
         self.request("/routes/1/numbers/add", method="POST", body=add_body, cookie=admin_cookie)
@@ -329,7 +329,7 @@ class ServerSmokeTest(unittest.TestCase):
     def test_switching_to_roman_records_roman_and_remove_actor(self):
         self.request("/routes")
         roman_cookie = self.user_cookie("roman")
-        body = urlencode({"number": "525550077002", "country_id": "1", "provider_id": "1", "assignment_type": "pool_number", "status": "used", "is_active": "1"})
+        body = urlencode({"number": "525550077002", "country_id": "1", "provider_id": "1", "assignment_type": "gl", "status": "used", "is_active": "1"})
         self.request("/phones/create", method="POST", body=body, cookie=roman_cookie)
         self.request("/routes/1/numbers/add", method="POST", body=urlencode({"phone_number": "525550077002", "usage_type": "pool_member"}), cookie=roman_cookie)
         conn = server.connect(server.DB_PATH)
@@ -354,7 +354,7 @@ class ServerSmokeTest(unittest.TestCase):
     def test_provider_deactivation_closes_route_links_with_selected_actor(self):
         self.request("/routes")
         roman_cookie = self.user_cookie("roman")
-        body = urlencode({"number": "525550077003", "country_id": "1", "provider_id": "1", "assignment_type": "pool_number", "status": "used", "is_active": "1"})
+        body = urlencode({"number": "525550077003", "country_id": "1", "provider_id": "1", "assignment_type": "gl", "status": "used", "is_active": "1"})
         self.request("/phones/create", method="POST", body=body, cookie=roman_cookie)
         self.request("/routes/1/numbers/add", method="POST", body=urlencode({"phone_number": "525550077003", "usage_type": "pool_member"}), cookie=roman_cookie)
         conn = server.connect(server.DB_PATH)
@@ -364,7 +364,7 @@ class ServerSmokeTest(unittest.TestCase):
             link_id = conn.execute("SELECT id FROM route_phone_numbers WHERE route_id = 1 AND phone_number_id = ?", (phone_id,)).fetchone()["id"]
         finally:
             conn.close()
-        update = urlencode({"number": "525550077003", "country_id": "1", "provider_id": "1", "project_label": "", "assignment_type": "pool_number", "status": "used", "is_active": "0", "connection_cost": "", "monthly_fee": "", "currency_id": "", "phone_type": "", "tariff_label": "", "comment": "deactivate"})
+        update = urlencode({"number": "525550077003", "country_id": "1", "provider_id": "1", "project_label": "", "assignment_type": "gl", "status": "used", "is_active": "0", "connection_cost": "", "monthly_fee": "", "currency_id": "", "phone_type": "", "tariff_label": "", "comment": "deactivate"})
         self.request(f"/phones/{phone_id}/update", method="POST", body=update, cookie=roman_cookie)
         conn = server.connect(server.DB_PATH)
         try:
@@ -972,7 +972,7 @@ class ServerSmokeTest(unittest.TestCase):
                 country_id=country_id,
                 provider_id=miatel_id,
                 number="525512345001",
-                assignment_type="pool_number",
+                assignment_type="gl",
                 status="used",
                 created_by=admin_id,
                 currency_id=eur_id,
@@ -1079,7 +1079,7 @@ class ServerSmokeTest(unittest.TestCase):
 
     def test_manual_phone_creation_without_provider_is_rejected(self):
         self.request("/routes")
-        body = urlencode({"number": "525550009901", "country_id": "1", "provider_id": "", "assignment_type": "pool_number", "status": "used"})
+        body = urlencode({"number": "525550009901", "country_id": "1", "provider_id": "", "assignment_type": "gl", "status": "used"})
         captured, content = self.request("/phones/create", method="POST", body=body)
         self.assertEqual(captured["status"], "400 Bad Request")
         self.assertIn("Провайдер обязателен", content)
@@ -1090,7 +1090,7 @@ class ServerSmokeTest(unittest.TestCase):
         try:
             conn.execute("""
                 INSERT INTO phone_numbers(country_id, provider_id, number, normalized_number, project_label, assignment_type, status, comment, is_active, review_required, created_by)
-                VALUES (1, NULL, '525550009902', '525550009902', 'Demo', 'other', 'unknown', 'Needs review', 1, 1, 1)
+                VALUES (1, NULL, '525550009902', '525550009902', 'Demo', 'gl', 'unknown', 'Needs review', 1, 1, 1)
             """)
             conn.commit()
             phone_id = conn.execute("SELECT id FROM phone_numbers WHERE number = '525550009902'").fetchone()["id"]
@@ -1102,11 +1102,11 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertIn("title='Требует проверки'", content)
         phone_row = content[content.index("525550009902"):content.index("525550009902") + 700]
         self.assertNotIn("<span class='badge'>Требует проверки</span>", phone_row)
-        body = urlencode({"number": "525550009902", "country_id": "1", "provider_id": "", "assignment_type": "other", "status": "unknown", "is_active": "1"})
+        body = urlencode({"number": "525550009902", "country_id": "1", "provider_id": "", "assignment_type": "gl", "status": "unknown", "is_active": "1"})
         captured, content = self.request(f"/phones/{phone_id}/update", method="POST", body=body)
         self.assertEqual(captured["status"], "400 Bad Request")
         self.assertIn("Нельзя снять флаг проверки, пока не выбран провайдер", content)
-        body = urlencode({"number": "525550009902", "country_id": "1", "provider_id": "", "assignment_type": "other", "status": "unknown", "is_active": "1", "review_required": "1", "comment": "Edited"})
+        body = urlencode({"number": "525550009902", "country_id": "1", "provider_id": "", "assignment_type": "gl", "status": "unknown", "is_active": "1", "review_required": "1", "comment": "Edited"})
         captured, _ = self.request(f"/phones/{phone_id}/update", method="POST", body=body)
         self.assertEqual(captured["status"], "303 See Other")
         conn = server.connect(server.DB_PATH)
@@ -1117,7 +1117,7 @@ class ServerSmokeTest(unittest.TestCase):
             self.assertEqual(row["comment"], "Edited")
         finally:
             conn.close()
-        body = urlencode({"number": "525550009902", "country_id": "1", "provider_id": "1", "assignment_type": "other", "status": "unknown", "is_active": "1"})
+        body = urlencode({"number": "525550009902", "country_id": "1", "provider_id": "1", "assignment_type": "gl", "status": "unknown", "is_active": "1"})
         captured, _ = self.request(f"/phones/{phone_id}/update", method="POST", body=body)
         self.assertEqual(captured["status"], "303 See Other")
         conn = server.connect(server.DB_PATH)
@@ -1130,7 +1130,7 @@ class ServerSmokeTest(unittest.TestCase):
 
     def test_reactivation_review_can_be_cleared_from_phone_edit(self):
         self.request("/routes")
-        body = urlencode({"number": "525550009909", "country_id": "1", "provider_id": "1", "assignment_type": "pool_number", "status": "used", "is_active": "1", "connection_cost": "50", "monthly_fee": "50"})
+        body = urlencode({"number": "525550009909", "country_id": "1", "provider_id": "1", "assignment_type": "gl", "status": "used", "is_active": "1", "connection_cost": "50", "monthly_fee": "50"})
         captured, _ = self.request("/phones/create", method="POST", body=body)
         self.assertEqual(captured["status"], "303 See Other")
         conn = server.connect(server.DB_PATH)
@@ -1139,10 +1139,10 @@ class ServerSmokeTest(unittest.TestCase):
         finally:
             conn.close()
 
-        deactivate = urlencode({"number": "525550009909", "country_id": "1", "provider_id": "1", "assignment_type": "pool_number", "status": "used", "is_active": "0", "connection_cost": "50", "monthly_fee": "50"})
+        deactivate = urlencode({"number": "525550009909", "country_id": "1", "provider_id": "1", "assignment_type": "gl", "status": "used", "is_active": "0", "connection_cost": "50", "monthly_fee": "50"})
         captured, _ = self.request(f"/phones/{phone_id}/update", method="POST", body=deactivate)
         self.assertEqual(captured["status"], "303 See Other")
-        reactivate = urlencode({"number": "525550009909", "country_id": "1", "provider_id": "1", "assignment_type": "pool_number", "status": "used", "is_active": "1", "connection_cost": "50", "monthly_fee": "50"})
+        reactivate = urlencode({"number": "525550009909", "country_id": "1", "provider_id": "1", "assignment_type": "gl", "status": "used", "is_active": "1", "connection_cost": "50", "monthly_fee": "50"})
         captured, _ = self.request(f"/phones/{phone_id}/update", method="POST", body=reactivate)
         self.assertEqual(captured["status"], "303 See Other")
         conn = server.connect(server.DB_PATH)
@@ -1157,7 +1157,7 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertIn("525550009909", content)
         self.assertIn("class='review-required-icon'", content)
 
-        clear = urlencode({"number": "525550009909", "country_id": "1", "provider_id": "1", "assignment_type": "pool_number", "status": "used", "is_active": "1", "connection_cost": "50.00", "monthly_fee": "50.000000"})
+        clear = urlencode({"number": "525550009909", "country_id": "1", "provider_id": "1", "assignment_type": "gl", "status": "used", "is_active": "1", "connection_cost": "50.00", "monthly_fee": "50.000000"})
         captured, _ = self.request(f"/phones/{phone_id}/update", method="POST", body=clear)
         self.assertEqual(captured["status"], "303 See Other")
         conn = server.connect(server.DB_PATH)
@@ -1184,11 +1184,11 @@ class ServerSmokeTest(unittest.TestCase):
         try:
             conn.execute("""
                 INSERT INTO phone_numbers(country_id, provider_id, number, normalized_number, project_label, assignment_type, status, comment, is_active, review_required, created_by)
-                VALUES (1, NULL, '525550009910', '525550009910', 'Demo', 'other', 'unknown', 'Needs review', 1, 1, 1)
+                VALUES (1, NULL, '525550009910', '525550009910', 'Demo', 'gl', 'unknown', 'Needs review', 1, 1, 1)
             """)
             conn.execute("""
                 INSERT INTO phone_numbers(country_id, provider_id, number, normalized_number, project_label, assignment_type, status, comment, is_active, review_required, created_by)
-                VALUES (1, 1, '525550009911', '525550009911', 'Demo', 'other', 'unknown', 'No review', 1, 0, 1)
+                VALUES (1, 1, '525550009911', '525550009911', 'Demo', 'gl', 'unknown', 'No review', 1, 0, 1)
             """)
             conn.commit()
         finally:
@@ -1271,7 +1271,7 @@ class ServerSmokeTest(unittest.TestCase):
 
     def test_history_pages_include_route_phone_add_remove_events(self):
         self.request("/routes")
-        body = urlencode({"number": "525550088888", "country_id": "1", "provider_id": "1", "assignment_type": "pool_number", "status": "used", "is_active": "1"})
+        body = urlencode({"number": "525550088888", "country_id": "1", "provider_id": "1", "assignment_type": "gl", "status": "used", "is_active": "1"})
         self.request("/phones/create", method="POST", body=body)
         body = urlencode({"phone_number": "525550088888", "usage_type": "pool_member", "comment": "for history"})
         self.request("/routes/1/numbers/add", method="POST", body=body)
@@ -1303,7 +1303,7 @@ class ServerSmokeTest(unittest.TestCase):
 
     def test_duplicate_phone_returns_user_message(self):
         self.request("/routes")
-        body = urlencode({"number": "525550000001", "country_id": "1", "provider_id": "2", "assignment_type": "pool_number", "status": "used"})
+        body = urlencode({"number": "525550000001", "country_id": "1", "provider_id": "2", "assignment_type": "gl", "status": "used"})
         captured, content = self.request("/phones/create", method="POST", body=body)
         self.assertEqual(captured["status"], "400 Bad Request")
         self.assertIn("Номер уже существует", content)
@@ -1319,7 +1319,7 @@ class ServerSmokeTest(unittest.TestCase):
 
     def test_route_number_add_rejects_non_used_phone_status(self):
         self.request("/routes")
-        body = urlencode({"number": "525550099998", "country_id": "1", "provider_id": "1", "assignment_type": "pool_number", "status": "free", "is_active": "1"})
+        body = urlencode({"number": "525550099998", "country_id": "1", "provider_id": "1", "assignment_type": "gl", "status": "free", "is_active": "1"})
         self.request("/phones/create", method="POST", body=body)
         body = urlencode({"phone_number": "525550099998", "usage_type": "pool_member"})
         captured, content = self.request("/routes/1/numbers/add", method="POST", body=body)
@@ -1359,7 +1359,7 @@ class ServerSmokeTest(unittest.TestCase):
 
     def test_route_number_management_errors_stay_in_context_and_use_error_style(self):
         self.request("/routes")
-        body = urlencode({"number": "525550099997", "country_id": "1", "provider_id": "1", "assignment_type": "pool_number", "status": "free", "is_active": "1"})
+        body = urlencode({"number": "525550099997", "country_id": "1", "provider_id": "1", "assignment_type": "gl", "status": "free", "is_active": "1"})
         self.request("/phones/create", method="POST", body=body)
         body = urlencode({"phone_number": "525550099997", "usage_type": "pool_member"})
         captured, content = self.request("/routes/1/numbers/add", method="POST", body=body)
@@ -1371,7 +1371,7 @@ class ServerSmokeTest(unittest.TestCase):
 
     def test_route_number_bulk_add_error_notice_uses_error_style(self):
         self.request("/routes")
-        body = urlencode({"number": "525550099996", "country_id": "1", "provider_id": "1", "assignment_type": "pool_number", "status": "free", "is_active": "1"})
+        body = urlencode({"number": "525550099996", "country_id": "1", "provider_id": "1", "assignment_type": "gl", "status": "free", "is_active": "1"})
         self.request("/phones/create", method="POST", body=body)
         body = urlencode({"phone_numbers": "525550099996"})
         captured, _ = self.request("/routes/1/numbers/bulk-add", method="POST", body=body)
@@ -1384,7 +1384,7 @@ class ServerSmokeTest(unittest.TestCase):
 
     def test_route_number_provider_inactive_error_text_is_preserved(self):
         self.request("/routes")
-        body = urlencode({"number": "525550099995", "country_id": "1", "provider_id": "1", "assignment_type": "pool_number", "status": "used"})
+        body = urlencode({"number": "525550099995", "country_id": "1", "provider_id": "1", "assignment_type": "gl", "status": "used"})
         self.request("/phones/create", method="POST", body=body)
         conn = server.connect(server.DB_PATH)
         try:
@@ -1400,7 +1400,7 @@ class ServerSmokeTest(unittest.TestCase):
 
     def test_phones_page_and_export_show_route_names(self):
         self.request("/routes")
-        body = urlencode({"number": "525550099999", "country_id": "1", "provider_id": "1", "assignment_type": "pool_number", "status": "used", "is_active": "1"})
+        body = urlencode({"number": "525550099999", "country_id": "1", "provider_id": "1", "assignment_type": "gl", "status": "used", "is_active": "1"})
         self.request("/phones/create", method="POST", body=body)
         captured, content = self.request("/phones")
         self.assertEqual(captured["status"], "200 OK")
@@ -1647,6 +1647,8 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertEqual(captured["status"], "200 OK")
         for expected in ("ГЛ", "АОН", "Scratchcards", "Competitors", "SMS", "Корп.телефония", "Дожим", "IVR"):
             self.assertIn(expected, content)
+        for obsolete in ("SIM-карта", "Входящая линия", "Горячая линия", "Другое", "Номер из пула"):
+            self.assertNotIn(obsolete, content)
         self.assertLess(content.index("ГЛ"), content.index("АОН"))
         self.assertLess(content.index("АОН"), content.index("Scratchcards"))
         self.request("/admin/dictionaries/projects/create", method="POST", body=urlencode({"name": "NewProject", "comment": ""}))

@@ -141,14 +141,7 @@ def html_to_csv_text(value: object) -> str:
     text = re.sub(r"\s*;\s*", "; ", text)
     return text.strip(" ;")
 
-ASSIGNMENT_LABELS = {
-    "pool_number": "Номер из пула",
-    "outgoing_cli": "АОН",
-    "inbound_line": "Входящая линия",
-    "office_phone": "Офисная телефония",
-    "sim_card": "SIM-карта",
-    "other": "Другое",
-}
+ASSIGNMENT_LABELS = {code: name for code, name, _sort_order in DEFAULT_PHONE_ASSIGNMENTS}
 
 
 def esc(value: object) -> str:
@@ -2071,7 +2064,7 @@ def ensure_seed(repo: Repository) -> None:
                 (code, name, sort_order, include_in_route_name),
             )
         repo.conn.execute(
-            "UPDATE phone_assignment_types SET is_active = 0 WHERE code IN ('outgoing_cli', 'inbound_line', 'office_phone', 'sim_card', 'pool_number', 'other')"
+            "DELETE FROM phone_assignment_types WHERE code IN ('outgoing_cli', 'inbound_line', 'office_phone', 'sim_card', 'pool_number', 'other')"
         )
         for code, name, sort_order in DEFAULT_PHONE_ASSIGNMENTS:
             repo.conn.execute(
@@ -2222,7 +2215,7 @@ def ensure_seed(repo: Repository) -> None:
                 country_id=country_id,
                 provider_id=provider_id,
                 number=number,
-                assignment_type="pool_number",
+                assignment_type="gl",
                 status="used",
                 created_by=admin_id,
                 currency_id=currency_id,
@@ -2233,7 +2226,7 @@ def ensure_seed(repo: Repository) -> None:
             repo.conn.execute(
                 """
                 UPDATE phone_numbers
-                SET country_id = ?, provider_id = ?, assignment_type = 'pool_number', status = 'used',
+                SET country_id = ?, provider_id = ?, assignment_type = 'gl', status = 'used',
                     currency_id = ?, comment = ?, is_active = 1, updated_by = ?, updated_at = CURRENT_TIMESTAMP,
                     deactivated_at = NULL
                 WHERE id = ?
