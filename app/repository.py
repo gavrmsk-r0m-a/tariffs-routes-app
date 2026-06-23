@@ -1262,12 +1262,13 @@ class Repository:
             (tariff["id"], changed_by, tariff["country_id"], tariff["country_name"], tariff["provider_id"], tariff["provider_name"], tariff["provider_prefix_id"], tariff["prefix"], old_currency_id, tariff["provider_currency_id"], old_price, tariff["price_in_provider_currency"], old_rate, tariff["conversion_rate_to_eur"], old_rate_date, tariff["conversion_rate_date"], old_eur_price, tariff["eur_price"], reason, details),
         )
 
-    def update_tariff(self, tariff_id: int, *, provider_currency_id: int, price_in_provider_currency: str, conversion_rate_to_eur: str, conversion_rate_date: str, currency_rate_id: int | None, comment: str | None, updated_by: int) -> bool:
+    def update_tariff(self, tariff_id: int, *, provider_currency_id: int, price_in_provider_currency: str, conversion_rate_to_eur: str, conversion_rate_date: str, currency_rate_id: int | None, comment: str | None, updated_by: int, is_current: bool | None = None) -> bool:
         old = self.get_tariff(tariff_id)
         if old is None:
             raise BusinessRuleError("Тариф не найден")
         price_value = validate_tariff_price(price_in_provider_currency)
         price_eur = eur_price(price_value, conversion_rate_to_eur)
+        requested_current = bool(old["is_current"]) if is_current is None else bool(is_current)
         changes = []
         if Decimal(str(old["price_in_provider_currency"])) != price_value:
             changes.append(f"Цена провайдера: {old['price_in_provider_currency']} → {price_value}")
@@ -1277,15 +1278,26 @@ class Repository:
             changes.append(f"Валюта: {old_code} → {new_code_row['code'] if new_code_row else provider_currency_id}")
         if (old["comment"] or "") != (comment or ""):
             changes.append(f"Комментарий: {old['comment'] or '—'} → {comment or '—'}")
+        if bool(old["is_current"]) != requested_current:
+            changes.append(f"Активность: {'Да' if old['is_current'] else 'Нет'} → {'Да' if requested_current else 'Нет'}")
         if not changes:
             return False
         self.conn.execute(
-            """UPDATE tariffs SET provider_currency_id = ?, price_in_provider_currency = ?, conversion_rate_to_eur = ?, conversion_rate_date = ?, currency_rate_id = ?, eur_price = ?, comment = ?, updated_by = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?""",
-            (provider_currency_id, str(price_value), str(conversion_rate_to_eur), conversion_rate_date, currency_rate_id, str(price_eur), comment, updated_by, tariff_id),
+            """UPDATE tariffs SET provider_currency_id = ?, price_in_provider_currency = ?, conversion_rate_to_eur = ?, conversion_rate_date = ?, currency_rate_id = ?, eur_price = ?, comment = ?, is_current = ?, updated_by = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?""",
+            (provider_currency_id, str(price_value), str(conversion_rate_to_eur), conversion_rate_date, currency_rate_id, str(price_eur), comment, 1 if requested_current else 0, updated_by, tariff_id),
         )
         new = self.get_tariff(tariff_id)
-        self._insert_tariff_history(new, updated_by, "tariff.changed", "; ".join(changes), old_currency_id=old["provider_currency_id"], old_price=old["price_in_provider_currency"], old_rate=old["conversion_rate_to_eur"], old_rate_date=old["conversion_rate_date"], old_eur_price=old["eur_price"])
-        self._change_log("tariff", tariff_id, "tariff.changed", updated_by, old_values={"price": str(old["price_in_provider_currency"]), "currency_id": old["provider_currency_id"], "comment": old["comment"]}, new_values={"price": str(price_value), "currency_id": provider_currency_id, "comment": comment}, summary="; ".join(changes))
+        status_changed = bool(old["is_current"]) != requested_current
+        reason = "tariff.changed"
+        if status_changed and len(changes) == 1:
+            reason = "tariff.activated" if requested_current else "tariff.deactivated"
+        details = "; ".join(changes)
+        if reason == "tariff.activated":
+            details = "Тариф активирован" if len(changes) == 1 else details
+        elif reason == "tariff.deactivated":
+            details = "Тариф деактивирован" if len(changes) == 1 else details
+        self._insert_tariff_history(new, updated_by, reason, details, old_currency_id=old["provider_currency_id"], old_price=old["price_in_provider_currency"], old_rate=old["conversion_rate_to_eur"], old_rate_date=old["conversion_rate_date"], old_eur_price=old["eur_price"])
+        self._change_log("tariff", tariff_id, reason, updated_by, old_values={"price": str(old["price_in_provider_currency"]), "currency_id": old["provider_currency_id"], "comment": old["comment"], "is_current": old["is_current"]}, new_values={"price": str(price_value), "currency_id": provider_currency_id, "comment": comment, "is_current": 1 if requested_current else 0}, summary=details)
         self.conn.commit()
         return True
 
