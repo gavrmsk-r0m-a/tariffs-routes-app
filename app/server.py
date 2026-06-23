@@ -787,6 +787,53 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     td[data-col="actions"] details:not(.edit-details)[open] > summary, td[data-col="actions"] details:not(.edit-details) > summary:hover {{ background: color-mix(in srgb, var(--danger-soft) 78%, var(--surface)); border-color: var(--danger); }}
     td[data-col="actions"] details > form {{ text-align: left; }}
     td[data-col="actions"] details[open] > form {{ position: absolute; right: 0; top: calc(100% + 6px); z-index: 20; min-width: 280px; max-width: min(520px, 70vw); margin: 0; padding: 12px; border: 1px solid var(--border-strong); border-radius: var(--radius-card); background: var(--surface); box-shadow: var(--shadow-card); }}
+    td[data-col="actions"] details.edit-details[open] > form {{
+      position: fixed !important;
+      left: 50% !important;
+      right: auto !important;
+      top: 50% !important;
+      z-index: 1000 !important;
+      width: min(560px, calc(100vw - 32px)) !important;
+      max-width: min(560px, calc(100vw - 32px)) !important;
+      max-height: calc(100vh - 48px) !important;
+      overflow: auto !important;
+      margin: 0 !important;
+      padding: 16px !important;
+      transform: translate(-50%, -50%) !important;
+      border: 1px solid var(--border-strong) !important;
+      border-radius: var(--radius-card) !important;
+      background: var(--surface) !important;
+      box-shadow: 0 22px 70px rgba(15, 23, 42, .22) !important;
+      text-align: left !important;
+      white-space: normal !important;
+    }}
+    td[data-col="actions"] details.edit-details[open]::before {{
+      content: "";
+      position: fixed;
+      inset: 0;
+      z-index: 999;
+      background: rgba(15, 23, 42, .16);
+    }}
+    td[data-col="actions"] details.edit-details[open] > summary {{ z-index: 1001; }}
+    td[data-col="actions"] details.edit-details > form input,
+    td[data-col="actions"] details.edit-details > form select,
+    td[data-col="actions"] details.edit-details > form textarea {{
+      width: 100%;
+      box-sizing: border-box;
+    }}
+    .admin-edit-actions {{
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      flex-basis: 100%;
+      width: 100%;
+      margin-top: 4px;
+    }}
+    .admin-edit-cancel {{
+      background: var(--surface-muted);
+      color: var(--text);
+      border-color: var(--border-strong);
+    }}
     .danger-action, form[action$="/deactivate"] button {{ min-height: 28px; min-width: auto; padding: 4px 8px; color: var(--danger-strong, var(--danger)); border-color: var(--danger); background: var(--danger-soft); font-size: 12px; font-weight: 720; box-shadow: none; }}
     .danger-action:hover, form[action$="/deactivate"] button:hover {{ background: color-mix(in srgb, var(--danger-soft) 78%, var(--surface)); border-color: var(--danger); color: var(--danger); }}
     html[data-theme="calm-blue"] .side-link:hover, html[data-theme="calm-blue"] .admin-link:hover, html[data-theme="terminal-paper"] .side-link:hover, html[data-theme="terminal-paper"] .admin-link:hover {{ background: color-mix(in srgb, var(--surface) 78%, transparent); border-color: var(--border); color: var(--text-strong); }}
@@ -1250,6 +1297,48 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
       const label = (summary.textContent || '').trim() || 'Редактировать';
       if (!summary.title) summary.title = label;
       if (!summary.getAttribute('aria-label')) summary.setAttribute('aria-label', label);
+    }});
+    const adminEditDetails = Array.from(document.querySelectorAll('td[data-col="actions"] details.edit-details'));
+    function closeAdminEdit(except) {{
+      adminEditDetails.forEach((details) => {{
+        if (details !== except) details.removeAttribute("open");
+      }});
+    }}
+    adminEditDetails.forEach((details) => {{
+      const form = details.querySelector("form");
+      if (form && !form.querySelector(".admin-edit-cancel")) {{
+        const saveButton = form.querySelector('button[type="submit"], button:not([type]), input[type="submit"]');
+        const actions = document.createElement("div");
+        actions.className = "admin-edit-actions";
+        const cancel = document.createElement("button");
+        cancel.type = "button";
+        cancel.className = "admin-edit-cancel";
+        cancel.textContent = "Отмена";
+        if (saveButton) {{
+          saveButton.parentNode.insertBefore(actions, saveButton);
+          actions.appendChild(saveButton);
+        }} else {{
+          form.appendChild(actions);
+        }}
+        actions.appendChild(cancel);
+        cancel.addEventListener("click", () => details.removeAttribute("open"));
+      }}
+      details.addEventListener("toggle", () => {{
+        if (details.open) closeAdminEdit(details);
+      }});
+    }});
+    document.addEventListener("click", (event) => {{
+      const openDetails = adminEditDetails.find((details) => details.open);
+      if (!openDetails) return;
+      if (openDetails.contains(event.target)) return;
+      openDetails.removeAttribute("open");
+    }});
+    document.addEventListener("keydown", (event) => {{
+      if (event.key !== "Escape") return;
+      const openDetails = adminEditDetails.find((details) => details.open);
+      if (!openDetails) return;
+      openDetails.removeAttribute("open");
+      event.preventDefault();
     }});
     function fallbackCopyText(text) {{
       const textarea = document.createElement("textarea");
