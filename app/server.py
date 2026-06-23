@@ -1669,6 +1669,8 @@ def section_for_get_path(path: str) -> str | None:
         return "companies"
     if path == "/provider-changes":
         return "provider_changes"
+    if path.startswith("/campaign-routing/") and path.endswith("/history"):
+        return "admin_company_routing_settings"
     if path == "/admin":
         return "admin"
     admin_paths = {
@@ -3558,8 +3560,71 @@ COMPANY_ROUTING_SETTINGS_COLUMN_LABELS = [
     ("valid_from", "Действует с"),
     ("valid_to", "Действует до"),
     ("comment", "Комментарий"),
+    ("history", ""),
 ]
 COMPANY_ROUTING_SETTINGS_COLUMNS = [key for key, _label in COMPANY_ROUTING_SETTINGS_COLUMN_LABELS]
+
+
+def campaign_routing_event_details(ev: sqlite3.Row) -> tuple[str, str, str]:
+    event = COMPANY_CHANGE_LABELS.get(ev["company_change_type"], ev["company_change_type"] or "Режим маршрутизации изменён")
+    description = ev["reason"] or "—"
+
+    def route_label(prefix: str) -> str:
+        route = ev[f"{prefix}_route_name"]
+        provider = ev[f"{prefix}_provider_name"]
+        if not route:
+            return "—"
+        return f"{provider} / {route}" if provider else route
+
+    details: list[str] = []
+    old_mode = ev["old_company_routing_mode"]
+    new_mode = ev["new_company_routing_mode"]
+    if old_mode or new_mode:
+        details.append(f"Режим: {routing_mode_label(old_mode)} → {routing_mode_label(new_mode)}")
+    if ev["old_company_has_autorotation"] is not None or ev["new_company_has_autorotation"] is not None:
+        old_auto = "Да" if ev["old_company_has_autorotation"] else "Нет"
+        new_auto = "Да" if ev["new_company_has_autorotation"] else "Нет"
+        details.append(f"Авторотация: {old_auto} → {new_auto}")
+    if ev["old_company_route_id"] or ev["new_company_route_id"]:
+        details.append(f"Маршрут: {route_label('old')} → {route_label('new')}")
+    return event, description, "; ".join(details) or "—"
+
+
+def campaign_routing_history_page(repo: Repository, setting_id: int) -> bytes:
+    setting = repo.get_company_routing_setting(setting_id)
+    if not setting:
+        raise BusinessRuleError("Схема маршрутизации кампании не найдена")
+    header_rows = [
+        ("GEO", setting["country_name"]),
+        ("ID кампании", setting["company_id_external"]),
+        ("Название кампании", setting["company_name"]),
+        ("Сервер", setting["server_name"]),
+        ("Current routing mode", routing_mode_label(setting["routing_mode"])),
+    ]
+    header = "".join(f"<dt>{esc(label)}</dt><dd>{esc(value or '—')}</dd>" for label, value in header_rows)
+    rows = []
+    for ev in repo.list_company_routing_setting_history(setting_id):
+        event, description, details = campaign_routing_event_details(ev)
+        rows.append(
+            "<tr>"
+            f"<td data-col='date'>{esc(ev['event_at'])}</td>"
+            f"<td data-col='user'>{esc(ev['user_name'] or '—')}</td>"
+            f"<td data-col='event'>{esc(event)}</td>"
+            f"<td data-col='description'>{esc(description)}</td>"
+            f"<td data-col='details'>{esc(details)}</td>"
+            f"<td data-col='comment'>{esc(ev['comment'])}</td>"
+            "</tr>"
+        )
+    if not rows:
+        rows.append("<tr><td colspan='6' class='muted'>История маршрутизации кампании пока пуста</td></tr>")
+    table = data_table('campaign_routing_history', [('date', 'Дата'), ('user', 'Пользователь'), ('event', 'Событие'), ('description', 'Описание'), ('details', 'Детали'), ('comment', 'Комментарий')], ''.join(rows))
+    body = f"""
+<h1>История маршрутизации кампании</h1>
+<p><a href='/admin/company-routing-settings'>← Вернуться к схеме маршрутизации кампаний</a></p>
+<section class='card'><dl class='details-grid'>{header}</dl></section>
+{table_card(table)}
+"""
+    return page("История маршрутизации кампании", body)
 
 def company_routing_settings_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
     q = q or {}
@@ -3593,6 +3658,7 @@ def company_routing_settings_page(repo: Repository, q: dict[str, str] | None = N
             "valid_from": esc(setting["valid_from"]),
             "valid_to": esc(setting["valid_to"] or "—"),
             "comment": esc(setting["comment"]),
+            "history": history_icon_link(f"/campaign-routing/{setting['id']}/history"),
         }
         rows.append(
             "<tr>"
@@ -4418,6 +4484,7 @@ def app(environ, start_response):
         elif path.startswith("/tariffs/") and path.endswith("/history"): response = tariff_history_page(repo, int(path.strip("/").split("/")[1]))
         elif path.startswith("/calling-companies/") and path.endswith("/history"): response = company_history_page(repo, int(path.strip("/").split("/")[1]))
         elif path.startswith("/companies/") and path.endswith("/history"): response = company_history_page(repo, int(path.strip("/").split("/")[1]))
+        elif path.startswith("/campaign-routing/") and path.endswith("/history"): response = campaign_routing_history_page(repo, int(path.strip("/").split("/")[1]))
         elif path.startswith("/routes/") and path.endswith("/edit"): response = route_edit_page(repo, int(path.strip("/").split("/")[1]))
         elif path.startswith("/phones/") and path.endswith("/edit"): response = phone_edit_page(repo, int(path.strip("/").split("/")[1]))
         elif path.startswith("/tariffs/") and path.endswith("/edit"): response = tariff_edit_page(repo, int(path.strip("/").split("/")[1]))

@@ -1567,6 +1567,51 @@ class Repository:
             )
         )
 
+
+    def get_company_routing_setting(self, setting_id: int) -> sqlite3.Row | None:
+        return self.conn.execute(
+            """
+            SELECT crs.*, c.name AS country_name, s.name AS server_name,
+                   cc.company_id_external, cc.company_name,
+                   r.name AS route_name, p.name AS provider_name
+            FROM company_routing_settings crs
+            JOIN calling_companies cc ON cc.id = crs.calling_company_id
+            JOIN countries c ON c.id = crs.country_id
+            JOIN servers s ON s.id = crs.server_id
+            LEFT JOIN routes r ON r.id = crs.route_id
+            LEFT JOIN providers p ON p.id = r.provider_id
+            WHERE crs.id = ?
+            """,
+            (setting_id,),
+        ).fetchone()
+
+    def list_company_routing_setting_history(self, setting_id: int) -> list[sqlite3.Row]:
+        setting = self.get_company_routing_setting(setting_id)
+        if not setting:
+            return []
+        return list(self.conn.execute(
+            """
+            SELECT re.*, u.display_name AS user_name, c.name AS country_name, s.name AS company_server_name,
+                   cc.company_id_external, cc.company_name,
+                   old_route.name AS old_route_name, old_provider.name AS old_provider_name,
+                   new_route.name AS new_route_name, new_provider.name AS new_provider_name
+            FROM routing_events re
+            LEFT JOIN users u ON u.id = re.created_by
+            LEFT JOIN countries c ON c.id = re.country_id
+            LEFT JOIN calling_companies cc ON cc.id = re.calling_company_id
+            LEFT JOIN servers s ON s.id = cc.server_id
+            LEFT JOIN routes old_route ON old_route.id = re.old_company_route_id
+            LEFT JOIN providers old_provider ON old_provider.id = old_route.provider_id
+            LEFT JOIN routes new_route ON new_route.id = re.new_company_route_id
+            LEFT JOIN providers new_provider ON new_provider.id = new_route.provider_id
+            WHERE re.apply_scope = 'campaign_setting'
+              AND re.calling_company_id = ?
+              AND re.is_active = 1
+            ORDER BY re.event_at DESC, re.id DESC
+            """,
+            (setting["calling_company_id"],),
+        ))
+
     def create_company_routing_setting(
         self,
         *,
