@@ -3122,7 +3122,10 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
       <details class='multi-select' id='event-company' data-placeholder='—'>
         <summary id='event-company-summary'>—</summary>
         <div class='multi-select-panel'>
-          <button type='button' class='small-button' id='campaign-select-visible'>Выбрать все найденные</button>
+          <div class='multi-select-actions'>
+            <button type='button' class='small-button' id='campaign-select-visible'>Выбрать все найденные</button>
+            <button type='button' class='small-button' id='campaign-clear-selected'>Отменить выбранные</button>
+          </div>
           {company_opts}
         </div>
       </details>
@@ -3318,11 +3321,29 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
   form.querySelectorAll('input[name="calling_company_ids"]').forEach((el) => el.addEventListener('change', sync));
   const campaignServerFilter = document.getElementById('campaign-server-filter');
   if (campaignServerFilter) campaignServerFilter.addEventListener('change', () => {{ filterCompanyOptions(true); sync(); }});
+  const campaignDropdown = document.getElementById('event-company');
   const selectVisible = document.getElementById('campaign-select-visible');
   if (selectVisible) selectVisible.addEventListener('click', () => {{
     document.querySelectorAll('#event-company .multi-option:not([hidden]) input[name="calling_company_ids"]').forEach((box) => {{ if (!box.disabled) box.checked = true; }});
     sync();
   }});
+  const clearSelected = document.getElementById('campaign-clear-selected');
+  if (clearSelected) clearSelected.addEventListener('click', () => {{
+    form.querySelectorAll('input[name="calling_company_ids"]:checked').forEach((box) => {{ box.checked = false; }});
+    sync();
+  }});
+  if (campaignDropdown) {{
+    document.addEventListener('click', (event) => {{
+      if (campaignDropdown.open && !campaignDropdown.contains(event.target)) campaignDropdown.open = false;
+    }});
+    campaignDropdown.addEventListener('keydown', (event) => {{
+      if (campaignDropdown.open && (event.key === 'Enter' || event.key === 'Escape')) {{
+        event.preventDefault();
+        event.stopPropagation();
+        campaignDropdown.open = false;
+      }}
+    }});
+  }}
   const campaignSearchButton = document.getElementById('campaign-id-search-button');
   if (campaignSearchButton) campaignSearchButton.addEventListener('click', findCampaignByVisibleId);
   form.querySelectorAll('.route-select').forEach((el) => el.addEventListener('change', () => updateSelectTitle(el)));
