@@ -2128,6 +2128,96 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
         self.assertEqual(captured["status"], "200 OK")
         self.assertNotIn("legacy filter single server event", content)
 
+    def _insert_routing_event(self, event_at, comment, *, country_id=1, apply_scope="none", server_id=None):
+        self.request("/routes")
+        conn = server.connect(server.DB_PATH)
+        try:
+            conn.execute(
+                """
+                INSERT INTO routing_events(
+                    event_at, apply_scope, reason, country_id, server_id, provider_id,
+                    comment, snapshot_json, created_by, updated_by
+                ) VALUES (?, ?, 'Другое', ?, ?, 1, ?, '{}', ?, ?)
+                """,
+                (event_at, apply_scope, country_id, server_id, comment, server.ADMIN_ID, server.ADMIN_ID),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+    def test_provider_changes_journal_supports_date_from_filter(self):
+        self._insert_routing_event("2026-06-21 23:59:59", "before date from")
+        self._insert_routing_event("2026-06-22 00:00:00", "on date from")
+        captured, content = self.request("/provider-changes?date_from=2026-06-22")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("Дата от", content)
+        self.assertIn("value='2026-06-22'", content)
+        self.assertIn("on date from", content)
+        self.assertNotIn("before date from", content)
+
+    def test_provider_changes_journal_supports_date_to_filter(self):
+        self._insert_routing_event("2026-06-22 23:59:59", "on date to")
+        self._insert_routing_event("2026-06-23 00:00:00", "after date to")
+        captured, content = self.request("/provider-changes?date_to=2026-06-22")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("on date to", content)
+        self.assertNotIn("after date to", content)
+
+    def test_provider_changes_journal_supports_exact_inclusive_date_range(self):
+        self._insert_routing_event("2026-06-21 23:59:59", "previous day exact")
+        self._insert_routing_event("2026-06-22 00:00:00", "start of exact day")
+        self._insert_routing_event("2026-06-22 23:59:59", "end of exact day")
+        self._insert_routing_event("2026-06-23 00:00:00", "next day exact")
+        captured, content = self.request("/provider-changes?date_from=2026-06-22&date_to=2026-06-22")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("start of exact day", content)
+        self.assertIn("end of exact day", content)
+        self.assertNotIn("previous day exact", content)
+        self.assertNotIn("next day exact", content)
+
+    def test_provider_changes_invalid_date_range_shows_validation_error(self):
+        captured, content = self.request("/provider-changes?date_from=2026-06-25&date_to=2026-06-22")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("Дата от не может быть позже даты до", content)
+
+    def test_provider_changes_date_filters_combine_with_geo_scope_and_server_filters(self):
+        self._insert_routing_event("2026-06-22 12:00:00", "matching geo scope server", apply_scope="server_priority", server_id=1)
+        self._insert_routing_event("2026-06-22 12:00:00", "wrong scope", apply_scope="none", server_id=1)
+        self._insert_routing_event("2026-06-22 12:00:00", "wrong server", apply_scope="server_priority", server_id=2)
+        conn = server.connect(server.DB_PATH)
+        try:
+            other_country_id = conn.execute("INSERT INTO countries(name, code) VALUES ('Испания', 'ES')").lastrowid
+            conn.execute(
+                """
+                INSERT INTO routing_events(event_at, apply_scope, reason, country_id, server_id, provider_id, comment, snapshot_json, created_by, updated_by)
+                VALUES ('2026-06-22 12:00:00', 'server_priority', 'Другое', ?, 1, 1, 'wrong geo', '{}', ?, ?)
+                """,
+                (other_country_id, server.ADMIN_ID, server.ADMIN_ID),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        captured, content = self.request("/provider-changes?date_from=2026-06-22&date_to=2026-06-22&country_id=1&apply_scope=server_priority&server_id=1")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("matching geo scope server", content)
+        self.assertNotIn("wrong scope", content)
+        self.assertNotIn("wrong server", content)
+        self.assertNotIn("wrong geo", content)
+
+    def test_provider_changes_reset_clears_date_fields(self):
+        captured, content = self.request("/provider-changes?reset_filters=1")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("name='date_from' value=''", content)
+        self.assertIn("name='date_to' value=''", content)
+
+    def test_provider_changes_csv_export_respects_date_range_filter(self):
+        self._insert_routing_event("2026-06-22 12:00:00", "export included by date")
+        self._insert_routing_event("2026-06-23 12:00:00", "export excluded by date")
+        captured, content = self.request("/provider-changes?date_from=2026-06-22&date_to=2026-06-22&export=csv")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("export included by date", content)
+        self.assertNotIn("export excluded by date", content)
+
     def test_provider_changes_none_and_campaign_setting_forms_still_render(self):
         self.request("/routes")
         captured, content = self.request("/provider-changes")

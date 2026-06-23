@@ -37,7 +37,7 @@ FILTER_SECTIONS = {
     "/tariffs": ("tariffs", ("country_id", "provider_id", "priority_status", "status")),
     "/phones": ("phones", ("country_id", "provider_id", "project", "assignment_type", "status", "number", "review_required")),
     "/companies": ("companies", ("server_id", "country_id", "company", "external_id", "has_autorotation", "is_active")),
-    "/provider-changes": ("provider_changes", ("country_id", "apply_scope", "server_id", "campaign_id", "provider_id", "include_inactive")),
+    "/provider-changes": ("provider_changes", ("date_from", "date_to", "country_id", "apply_scope", "server_id", "campaign_id", "provider_id", "include_inactive")),
     "/admin/server-priorities": ("admin_server_priorities", ("country_id", "server_id")),
     "/admin/company-routing-settings": ("admin_company_routing_settings", ("country_id", "server_id", "company_id_external", "routing_mode", "is_active", "show_history")),
 }
@@ -3358,10 +3358,30 @@ def provider_event_details(ev) -> tuple[str, str, str]:
     return ev["company_server_name"] or "—", campaign, "; ".join(details) or "—"
 
 
+def provider_changes_date_filter_values(q: dict[str, str]) -> tuple[dict[str, str], str | None]:
+    date_from = (q.get("date_from") or "").strip()
+    date_to = (q.get("date_to") or "").strip()
+    for value in (date_from, date_to):
+        if value:
+            try:
+                datetime.strptime(value, "%Y-%m-%d")
+            except ValueError:
+                return {}, "Некорректный формат даты"
+    if date_from and date_to and date_from > date_to:
+        return {}, "Дата от не может быть позже даты до"
+    filters: dict[str, str] = {}
+    if date_from:
+        filters["date_from"] = f"{date_from} 00:00:00"
+    if date_to:
+        filters["date_to"] = f"{date_to} 23:59:59"
+    return filters, None
+
+
 def provider_changes_page(repo: Repository, q: dict[str, str] | None = None, form_error: str | None = None, form_data: dict | None = None) -> bytes:
     q = q or {}
-    filters = {"country_id": q.get("country_id"), "apply_scope": q.get("apply_scope"), "server_id": q.get("server_id"), "campaign_id": q.get("campaign_id"), "provider_id": q.get("provider_id"), "include_inactive": q.get("include_inactive") == "1"}
-    records = list(repo.list_routing_events(filters))
+    date_filters, filter_error = provider_changes_date_filter_values(q)
+    filters = {"country_id": q.get("country_id"), "apply_scope": q.get("apply_scope"), "server_id": q.get("server_id"), "campaign_id": q.get("campaign_id"), "provider_id": q.get("provider_id"), "include_inactive": q.get("include_inactive") == "1", **date_filters}
+    records = [] if filter_error else list(repo.list_routing_events(filters))
     if q.get("export") == "csv":
         export_rows = []
         for ev in records:
@@ -3378,6 +3398,8 @@ def provider_changes_page(repo: Repository, q: dict[str, str] | None = None, for
     if not rows:
         rows.append("<tr><td colspan='9'><div class='empty-state'>Событий пока нет</div></td></tr>")
     filters_html = f"""<form class='filter-grid' method='get' action='/provider-changes'>
+<label>Дата от <input type='date' name='date_from' value='{esc(q.get('date_from'))}'></label>
+<label>Дата до <input type='date' name='date_to' value='{esc(q.get('date_to'))}'></label>
 <label>GEO <select name='country_id'>{options(repo, 'countries', selected=q.get('country_id'), empty='Все')}</select></label>
 <label>Область применения <select name='apply_scope'>{routing_scope_options(q.get('apply_scope'))}</select></label>
 <label>Сервер <select name='server_id'>{options(repo, 'servers', selected=q.get('server_id'), empty='Все')}</select></label>
@@ -3389,7 +3411,8 @@ def provider_changes_page(repo: Repository, q: dict[str, str] | None = None, for
     body = f"""
 <h1>Смена провайдеров</h1>
 {routing_event_form(repo, form_data, form_error) if can_write("provider_changes") else ""}
-{filter_card(filters_html, q, ('country_id', 'apply_scope', 'server_id', 'campaign_id', 'provider_id', 'include_inactive'))}
+{filter_card(filters_html, q, ('date_from', 'date_to', 'country_id', 'apply_scope', 'server_id', 'campaign_id', 'provider_id', 'include_inactive'))}
+{f"<div class='notice error'>{esc(filter_error)}</div>" if filter_error else ""}
 {table_card(journal_html, title='Журнал событий', extra_class='journal-card')}
 {table_footer(pagination_html, export_link('/provider-changes', q) + column_settings('provider_changes', [('event_at', 'Дата события'), ('scope', 'Область применения'), ('geo', 'GEO'), ('server', 'Сервер'), ('campaign', 'Кампания'), ('details', 'Детали'), ('reason', 'Причина'), ('comment', 'Комментарий'), ('actions', 'Действия')]))}
 """

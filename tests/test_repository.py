@@ -142,6 +142,32 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
         self.assertIn(cyrillic_route_id, blank_search_ids)
         self.assertIn(latin_route_id, blank_search_ids)
 
+    def _insert_routing_event(self, event_at: str, comment: str) -> None:
+        self.conn.execute(
+            """
+            INSERT INTO routing_events(
+                event_at, apply_scope, reason, country_id, provider_id, comment,
+                snapshot_json, created_by, updated_by
+            ) VALUES (?, 'none', 'Другое', ?, ?, ?, '{}', ?, ?)
+            """,
+            (event_at, self.country_id, self.provider_id, comment, self.admin_id, self.admin_id),
+        )
+        self.conn.commit()
+
+    def test_list_routing_events_filters_by_date_from(self):
+        self._insert_routing_event("2026-06-21 23:59:59", "repo before from")
+        self._insert_routing_event("2026-06-22 00:00:00", "repo from match")
+        comments = [row["comment"] for row in self.repo.list_routing_events({"date_from": "2026-06-22 00:00:00"})]
+        self.assertIn("repo from match", comments)
+        self.assertNotIn("repo before from", comments)
+
+    def test_list_routing_events_filters_by_date_to_inclusively(self):
+        self._insert_routing_event("2026-06-22 23:59:59", "repo to match")
+        self._insert_routing_event("2026-06-23 00:00:00", "repo after to")
+        comments = [row["comment"] for row in self.repo.list_routing_events({"date_to": "2026-06-22 23:59:59"})]
+        self.assertIn("repo to match", comments)
+        self.assertNotIn("repo after to", comments)
+
     def test_create_tariff_rejects_invalid_prices_without_audit(self):
         for price, message in (("", "Цена обязательна"), ("   ", "Цена обязательна"), ("abc", "Цена должна быть числом"), ("0", "Цена должна быть больше 0"), ("-1", "Цена должна быть больше 0")):
             with self.subTest(price=price):

@@ -2235,6 +2235,12 @@ class Repository:
         params: list = []
         if not filters.get("include_inactive"):
             clauses.append("re.is_active = 1")
+        if filters.get("date_from"):
+            clauses.append("re.event_at >= ?")
+            params.append(filters["date_from"])
+        if filters.get("date_to"):
+            clauses.append("re.event_at <= ?")
+            params.append(filters["date_to"])
         for key, column in {
             "country_id": "re.country_id",
             "apply_scope": "re.apply_scope",
