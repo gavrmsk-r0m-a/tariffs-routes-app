@@ -2900,10 +2900,7 @@ def tariffs_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
     rows = []
     for t in records:
         prefix = t["prefix"] or "—"
-        toggle = "deactivate" if t["is_current"] else "activate"
-        label = "Деактивировать" if t["is_current"] else "Активировать"
-        cls = "danger-action" if t["is_current"] else ""
-        actions = f"<a class='button edit-action' href='/tariffs/{t['id']}/edit' title='Редактировать' aria-label='Редактировать' data-tooltip='Редактировать'>Редактировать</a> <form method='post' action='/tariffs/{t['id']}/{toggle}'><button class='{cls}' title='{label}'>{label}</button></form>" if can_write("tariffs") else ""
+        actions = f"<a class='button edit-action' href='/tariffs/{t['id']}/edit' title='Редактировать' aria-label='Редактировать' data-tooltip='Редактировать'>Редактировать</a>" if can_write("tariffs") else ""
         history = history_icon_link(f"/tariffs/{t['id']}/history")
         rows.append(f"""<tr><td data-col='history' class='history-cell'>{history}</td><td data-col='actions' class='actions'>{actions}</td><td data-col='geo'>{esc(t['country_name'])}</td><td data-col='provider'>{esc(t['provider_name'])}</td><td data-col='prefix'>{esc(prefix)}</td><td data-col='provider_price'>{esc(t['price_in_provider_currency'])} {esc(t['currency_code'])}</td><td data-col='eur_price'>{esc(t['eur_price'])} EUR</td><td data-col='active'>{'Да' if t['is_current'] else 'Нет'}</td>{clamp_cell('comment', esc(t['comment']), t['comment'], classes='comment-cell')}</tr>""")
     filters_html = f"""<form class="filter-grid" method="get" action="/tariffs">
@@ -4059,6 +4056,7 @@ def tariff_edit_page(repo: Repository, tariff_id: int) -> bytes:
 <label>Валюта <span class='required'>*</span><select name='currency_id' id='tariff-currency' data-original-currency='{esc(tariff['provider_currency_id'])}'>{active_options(repo, 'currencies', 'code', selected=tariff['provider_currency_id'])}</select></label>
 <p class='muted wide' id='currency-warning' hidden>Вы меняете валюту тарифа. Проверьте, что цена указана в новой валюте.</p>
 <label>Комментарий <input name='comment' value='{esc(tariff['comment'])}'></label>
+<label>Активен <span class='required'>*</span><select name='is_current'><option value='1' {'selected' if tariff['is_current'] else ''}>Да</option><option value='0' {'selected' if not tariff['is_current'] else ''}>Нет</option></select></label>
 <p class='muted wide'>GEO, провайдер и префикс задают идентичность тарифа и не редактируются.</p>
 <button onclick="return confirm('Сохранить изменения?')">Сохранить</button></form>
 <script>
@@ -4294,14 +4292,10 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
         rate = repo.latest_currency_rate(currency_id)
         if rate is None:
             raise BusinessRuleError("Для выбранной валюты нет курса к EUR. Добавьте курс в Администрирование → Курсы валют")
-        repo.update_tariff(tariff_id, provider_currency_id=currency_id, price_in_provider_currency=data["price"], conversion_rate_to_eur=rate["rate_to_eur"], conversion_rate_date=rate["rate_date"], currency_rate_id=rate["id"], comment=data.get("comment"), updated_by=actor_id)
+        repo.update_tariff(tariff_id, provider_currency_id=currency_id, price_in_provider_currency=data["price"], conversion_rate_to_eur=rate["rate_to_eur"], conversion_rate_date=rate["rate_date"], currency_rate_id=rate["id"], comment=data.get("comment"), updated_by=actor_id, is_current=data.get("is_current") == "1")
         return f"/tariffs/{tariff_id}/edit"
-    if path.startswith("/tariffs/") and path.endswith("/deactivate"):
-        tariff_id = int(path.strip("/").split("/")[1])
-        repo.set_tariff_active(tariff_id, is_current=False, changed_by=actor_id); return "/tariffs"
-    if path.startswith("/tariffs/") and path.endswith("/activate"):
-        tariff_id = int(path.strip("/").split("/")[1])
-        repo.set_tariff_active(tariff_id, is_current=True, changed_by=actor_id); return "/tariffs"
+    if path.startswith("/tariffs/") and (path.endswith("/deactivate") or path.endswith("/activate")):
+        raise BusinessRuleError("Активность тарифа изменяется только через форму редактирования")
     if path == "/companies/create":
         repo.create_calling_company(server_id=int(data["server_id"]), country_id=int(data["country_id"]), company_name=data["company_name"], company_id_external=data["company_id_external"], has_autorotation=data.get("has_autorotation") == "1", created_by=actor_id, comment=data.get("comment"), is_active=data.get("is_active") == "1", line_count=int(data.get("line_count") or 0), dial_set_count=int(data.get("dial_set_count") or 0), retry_interval_seconds=int(data.get("retry_interval_seconds") or 0))
         return "/companies"

@@ -110,10 +110,88 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertIn("name='price'", content)
         self.assertIn("name='currency_id'", content)
         self.assertIn("name='comment'", content)
+        self.assertIn("Активен", content)
+        self.assertIn("name='is_current'", content)
         self.assertNotIn("name='country_id'", content)
         self.assertNotIn("name='provider_id'", content)
         self.assertNotIn("name='provider_prefix_id'", content)
         self.assertIn("Вы меняете валюту тарифа", content)
+
+
+    def test_tariffs_table_has_no_one_click_activation_actions(self):
+        captured, content = self.request("/tariffs?status=all")
+        self.assertEqual(captured["status"], "200 OK")
+        table_fragment = content.split('<table', 1)[1].split('</table>', 1)[0]
+        self.assertIn("Редактировать", table_fragment)
+        self.assertIn("Инфо", content)
+        self.assertNotIn("Деактивировать", table_fragment)
+        self.assertNotIn("Активировать", table_fragment)
+        self.assertNotIn("/deactivate", table_fragment)
+        self.assertNotIn("/activate", table_fragment)
+
+    def test_tariff_active_status_changes_only_through_edit_form(self):
+        self.request("/tariffs")
+        conn = server.connect(server.DB_PATH)
+        try:
+            repo = server.Repository(conn)
+            admin_id = conn.execute("SELECT id FROM users WHERE username = 'admin'").fetchone()["id"]
+            country_id = conn.execute("SELECT id FROM countries LIMIT 1").fetchone()["id"]
+            provider_id = conn.execute("SELECT id FROM providers LIMIT 1").fetchone()["id"]
+            currency_id = conn.execute("SELECT id FROM currencies WHERE code = 'EUR' LIMIT 1").fetchone()["id"]
+            existing = repo.find_tariff_by_identity(country_id, provider_id, None)
+            tariff_id = existing["id"] if existing else repo.create_tariff(country_id=country_id, provider_id=provider_id, provider_currency_id=currency_id, price_in_provider_currency="2.5", conversion_rate_to_eur="1", conversion_rate_date="2026-06-22", created_by=admin_id)
+            original_price = conn.execute("SELECT price_in_provider_currency FROM tariffs WHERE id = ?", (tariff_id,)).fetchone()["price_in_provider_currency"]
+        finally:
+            conn.close()
+
+        body = urlencode({"price": str(original_price), "currency_id": str(currency_id), "comment": "deactivated through edit", "is_current": "0"})
+        captured, _content = self.request(f"/tariffs/{tariff_id}/update", method="POST", body=body)
+        self.assertEqual(captured["status"], "303 See Other")
+        conn = server.connect(server.DB_PATH)
+        try:
+            row = conn.execute("SELECT is_current FROM tariffs WHERE id = ?", (tariff_id,)).fetchone()
+            self.assertEqual(row["is_current"], 0)
+            history = conn.execute("SELECT reason, comment FROM tariff_change_history WHERE tariff_id = ? ORDER BY id DESC LIMIT 1", (tariff_id,)).fetchone()
+            self.assertIn("Активность: Да → Нет", history["comment"])
+        finally:
+            conn.close()
+
+        captured, inactive_content = self.request("/tariffs?status=inactive")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn(f"/tariffs/{tariff_id}/edit", inactive_content)
+
+        body = urlencode({"price": str(original_price), "currency_id": str(currency_id), "comment": "activated through edit", "is_current": "1"})
+        captured, _content = self.request(f"/tariffs/{tariff_id}/update", method="POST", body=body)
+        self.assertEqual(captured["status"], "303 See Other")
+        conn = server.connect(server.DB_PATH)
+        try:
+            row = conn.execute("SELECT is_current FROM tariffs WHERE id = ?", (tariff_id,)).fetchone()
+            self.assertEqual(row["is_current"], 1)
+            history = conn.execute("SELECT reason, comment FROM tariff_change_history WHERE tariff_id = ? ORDER BY id DESC LIMIT 1", (tariff_id,)).fetchone()
+            self.assertIn("Активность: Нет → Да", history["comment"])
+        finally:
+            conn.close()
+
+    def test_tariff_comment_save_without_status_change_has_no_activation_history(self):
+        self.request("/tariffs")
+        conn = server.connect(server.DB_PATH)
+        try:
+            tariff = conn.execute("SELECT id, provider_currency_id, price_in_provider_currency, is_current FROM tariffs LIMIT 1").fetchone()
+            tariff_id = tariff["id"]
+            body = urlencode({"price": str(tariff["price_in_provider_currency"]), "currency_id": str(tariff["provider_currency_id"]), "comment": "comment only", "is_current": str(tariff["is_current"])})
+        finally:
+            conn.close()
+        captured, _content = self.request(f"/tariffs/{tariff_id}/update", method="POST", body=body)
+        self.assertEqual(captured["status"], "303 See Other")
+        conn = server.connect(server.DB_PATH)
+        try:
+            history = conn.execute("SELECT reason, comment FROM tariff_change_history WHERE tariff_id = ? ORDER BY id DESC LIMIT 1", (tariff_id,)).fetchone()
+            self.assertEqual(history["reason"], "tariff.changed")
+            self.assertNotIn("Тариф активирован", history["comment"] or "")
+            self.assertNotIn("Тариф деактивирован", history["comment"] or "")
+            self.assertNotIn("Активность:", history["comment"] or "")
+        finally:
+            conn.close()
 
     def test_main_screens_render(self):
         for path, marker in [

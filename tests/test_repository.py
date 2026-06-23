@@ -246,11 +246,33 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
         ))
         self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM tariff_change_history WHERE tariff_id = ?", (tariff_id,)).fetchone()[0], history_count)
 
-        self.repo.set_tariff_active(tariff_id, is_current=False, changed_by=self.admin_id)
-        self.repo.set_tariff_active(tariff_id, is_current=True, changed_by=self.admin_id)
-        reasons = [r["reason"] for r in self.conn.execute("SELECT reason FROM tariff_change_history WHERE tariff_id = ? ORDER BY id", (tariff_id,))]
-        self.assertIn("tariff.deactivated", reasons)
-        self.assertIn("tariff.activated", reasons)
+        self.repo.update_tariff(
+            tariff_id, provider_currency_id=usd_id, price_in_provider_currency="3.1",
+            conversion_rate_to_eur="0.9", conversion_rate_date="2026-06-22", currency_rate_id=None,
+            comment="new terms", updated_by=self.admin_id, is_current=False,
+        )
+        row = self.conn.execute("SELECT reason, comment FROM tariff_change_history WHERE tariff_id = ? ORDER BY id DESC LIMIT 1", (tariff_id,)).fetchone()
+        self.assertEqual(row["reason"], "tariff.deactivated")
+        self.assertIn("Тариф деактивирован", row["comment"])
+
+        self.repo.update_tariff(
+            tariff_id, provider_currency_id=usd_id, price_in_provider_currency="3.2",
+            conversion_rate_to_eur="0.9", conversion_rate_date="2026-06-22", currency_rate_id=None,
+            comment="reactivated with new price", updated_by=self.admin_id, is_current=True,
+        )
+        row = self.conn.execute("SELECT reason, comment FROM tariff_change_history WHERE tariff_id = ? ORDER BY id DESC LIMIT 1", (tariff_id,)).fetchone()
+        self.assertEqual(row["reason"], "tariff.changed")
+        self.assertIn("Цена провайдера: 3.1 → 3.2", row["comment"])
+        self.assertIn("Комментарий: new terms → reactivated with new price", row["comment"])
+        self.assertIn("Активность: Нет → Да", row["comment"])
+
+        history_count = self.conn.execute("SELECT COUNT(*) FROM tariff_change_history WHERE tariff_id = ?", (tariff_id,)).fetchone()[0]
+        self.assertFalse(self.repo.update_tariff(
+            tariff_id, provider_currency_id=usd_id, price_in_provider_currency="3.2",
+            conversion_rate_to_eur="0.9", conversion_rate_date="2026-06-22", currency_rate_id=None,
+            comment="reactivated with new price", updated_by=self.admin_id, is_current=True,
+        ))
+        self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM tariff_change_history WHERE tariff_id = ?", (tariff_id,)).fetchone()[0], history_count)
 
     def test_existing_admin_password_is_not_overwritten_by_fallback(self):
         conn = sqlite3.connect(":memory:")
