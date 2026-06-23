@@ -57,6 +57,35 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
         self.assertTrue(verify_password("admin", row["password_hash"], row["password_salt"]))
         conn.close()
 
+    def test_reference_defaults_seed_current_projects_and_assignments(self):
+        projects = [tuple(row) for row in self.conn.execute(
+            "SELECT code, name, is_active, sort_order, include_in_route_name FROM projects WHERE is_active = 1 ORDER BY sort_order"
+        )]
+        self.assertEqual(projects, [
+            ("mezhdep", "Меж.деп.", 1, 1, 0),
+            ("rep", "REP", 1, 2, 1),
+            ("itm", "ИТМ", 1, 3, 1),
+            ("prepayment", "Предоплата", 1, 4, 1),
+            ("legal", "Юр.деп.", 1, 5, 1),
+        ])
+        assignments = [tuple(row) for row in self.conn.execute(
+            """
+            SELECT code, name, is_active, sort_order FROM phone_assignment_types
+            WHERE is_active = 1 AND code IN ('gl', 'aon', 'scratchcards', 'competitors', 'sms', 'corporate_telephony', 'dozhim', 'ivr')
+            ORDER BY sort_order
+            """
+        )]
+        self.assertEqual(assignments, [
+            ("gl", "ГЛ", 1, 1),
+            ("aon", "АОН", 1, 2),
+            ("scratchcards", "Scratchcards", 1, 3),
+            ("competitors", "Competitors", 1, 4),
+            ("sms", "SMS", 1, 5),
+            ("corporate_telephony", "Корп.телефония", 1, 6),
+            ("dozhim", "Дожим", 1, 7),
+            ("ivr", "IVR", 1, 8),
+        ])
+
     def _tariff_counts(self):
         return {
             "tariffs": self.conn.execute("SELECT COUNT(*) FROM tariffs").fetchone()[0],

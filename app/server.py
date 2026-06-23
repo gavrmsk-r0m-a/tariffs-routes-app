@@ -15,7 +15,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, quote, unquote, urlencode
 from wsgiref.simple_server import make_server
 
-from app.db import DEFAULT_DB_PATH, connect, init_db
+from app.db import DEFAULT_DB_PATH, DEFAULT_PHONE_ASSIGNMENTS, DEFAULT_PROJECTS, connect, init_db
 from app.importer import apply_import, preview_import
 from app.repository import BusinessRuleError, COMPANY_CHANGE_LABELS, ROUTING_SCOPE_LABELS, Repository, normalize_phone_status, normalize_provider_name, normalize_real_prefix, validate_phone_number
 
@@ -1928,14 +1928,14 @@ def phone_type_options(repo: Repository, selected: str | None = None, empty: str
 
 def project_options(repo: Repository, selected: str | None = None, empty: str | None = None) -> str:
     opts = f"<option value=''>{esc(empty)}</option>" if empty is not None else ""
-    for row in repo.conn.execute("SELECT name FROM projects WHERE is_active = 1 OR name = ? ORDER BY name", (selected or "",)):
+    for row in repo.conn.execute("SELECT name FROM projects WHERE is_active = 1 OR name = ? ORDER BY sort_order, name", (selected or "",)):
         opts += f"<option value='{esc(row['name'])}' {'selected' if row['name'] == selected else ''}>{esc(row['name'])}</option>"
     return opts
 
 
 def assignment_options(repo: Repository, selected: str | None = None, empty: str | None = None) -> str:
     opts = f"<option value=''>{esc(empty)}</option>" if empty is not None else ""
-    for row in repo.conn.execute("SELECT code, name FROM phone_assignment_types WHERE is_active = 1 OR code = ? ORDER BY name", (selected or "",)):
+    for row in repo.conn.execute("SELECT code, name FROM phone_assignment_types WHERE is_active = 1 OR code = ? ORDER BY sort_order, name", (selected or "",)):
         opts += f"<option value='{esc(row['code'])}' {'selected' if row['code'] == selected else ''}>{esc(row['name'])}</option>"
     return opts
 
@@ -2049,17 +2049,31 @@ def ensure_seed(repo: Repository) -> None:
                 )
         for type_name in ("Mobile", "Fixed Line", "Toll-Free", "VoIP", "Unknown"):
             repo.conn.execute("INSERT OR IGNORE INTO phone_number_types(name, is_active) VALUES (?, 1)", (type_name,))
-        for project_name in ("Междепы", "Competitors", "ITM", "Monitoring", "Test"):
-            repo.conn.execute("INSERT OR IGNORE INTO projects(name, is_active) VALUES (?, 1)", (project_name,))
-        for code, name in (
-            ("outgoing_cli", "АОН"),
-            ("inbound_line", "Входящая линия"),
-            ("office_phone", "Горячая линия"),
-            ("sim_card", "SIM-карта"),
-            ("pool_number", "Номер из пула"),
-            ("other", "Другое"),
-        ):
-            repo.conn.execute("INSERT OR IGNORE INTO phone_assignment_types(code, name, is_active) VALUES (?, ?, 1)", (code, name))
+        repo.conn.execute("UPDATE projects SET is_active = 0 WHERE name IN ('Междепы', 'Competitors', 'ITM', 'Monitoring', 'Test')")
+        for code, name, sort_order, include_in_route_name in DEFAULT_PROJECTS:
+            repo.conn.execute(
+                """
+                INSERT INTO projects(code, name, is_active, sort_order, include_in_route_name)
+                VALUES (?, ?, 1, ?, ?)
+                ON CONFLICT(name) DO UPDATE SET code = excluded.code, is_active = 1,
+                    sort_order = excluded.sort_order, include_in_route_name = excluded.include_in_route_name,
+                    updated_at = CURRENT_TIMESTAMP
+                """,
+                (code, name, sort_order, include_in_route_name),
+            )
+        repo.conn.execute(
+            "UPDATE phone_assignment_types SET is_active = 0 WHERE code IN ('outgoing_cli', 'inbound_line', 'office_phone', 'sim_card', 'pool_number', 'other')"
+        )
+        for code, name, sort_order in DEFAULT_PHONE_ASSIGNMENTS:
+            repo.conn.execute(
+                """
+                INSERT INTO phone_assignment_types(code, name, is_active, sort_order)
+                VALUES (?, ?, 1, ?)
+                ON CONFLICT(code) DO UPDATE SET name = excluded.name, is_active = 1,
+                    sort_order = excluded.sort_order, updated_at = CURRENT_TIMESTAMP
+                """,
+                (code, name, sort_order),
+            )
         repo.conn.commit()
 
     def scalar_id(sql: str, params: tuple = ()) -> int | None:
@@ -2709,7 +2723,7 @@ def routes_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
   <label>ГЕО <span class="required">*</span><select name="country_id">{active_options(repo, 'countries')}</select></label>
   <label>Провайдер <span class="required">*</span><select name="provider_id">{active_options(repo, 'providers')}</select></label>
   <label>Префикс <select name="provider_prefix_id">{prefix_options(repo)}</select></label>
-  <label>Проект/метка <input name="project_label"></label>
+  <label>Проект/метка <select name="project_label">{project_options(repo, empty='—')}</select></label>
   <label>Источник АОН <span class="required">*</span><select name="cli_source_type"><option value="pool">Pool</option><option value="rnd">RND</option><option value="sim">SIM</option><option value="single_number">Single</option><option value="other">Other</option></select></label>
   <label>Метка АОН <span class="required">*</span><input name="cli_source_label" value="Pool_A"></label>
   <label>Статус <span class="required">*</span><select name="is_actual"><option value="1">Активный</option><option value="0">Неактивный</option></select></label>
@@ -3747,12 +3761,12 @@ def dictionaries_page(repo: Repository, q: dict[str, str] | None = None) -> byte
             rows.append(f"""<tr{row_class(row)}><td>{esc(row['name'])}</td><td><span class='status-badge'>{active_label(row['is_active'])}</span></td><td>{esc(row['comment'])}</td><td data-col='actions'><details class='edit-details'><summary title='Редактировать' aria-label='Редактировать'>Редактировать</summary><form method='post' action='/admin/dictionaries/phone-types/{row['id']}/update'><input name='name' value='{esc(row['name'])}'><input name='comment' value='{esc(row['comment'])}' placeholder='Комментарий'>{active_select(row['is_active'])}<button>Сохранить</button></form></details></td></tr>""")
     elif active_section == "projects":
         headers = ["Название проекта", "Активен", "Комментарий", "Действия"]
-        source = list(repo.conn.execute("SELECT * FROM projects ORDER BY name"))
+        source = list(repo.conn.execute("SELECT * FROM projects ORDER BY sort_order, name"))
         for row in source:
             rows.append(f"""<tr{row_class(row)}><td>{esc(row['name'])}</td><td><span class='status-badge'>{active_label(row['is_active'])}</span></td><td>{esc(row['comment'])}</td><td data-col='actions'><details class='edit-details'><summary title='Редактировать' aria-label='Редактировать'>Редактировать</summary><form method='post' action='/admin/dictionaries/projects/{row['id']}/update'><input name='name' value='{esc(row['name'])}'><input name='comment' value='{esc(row['comment'])}' placeholder='Комментарий'>{active_select(row['is_active'])}<button>Сохранить</button></form></details></td></tr>""")
     else:
         headers = ["Назначение", "Активен", "Комментарий", "Действия"]
-        source = list(repo.conn.execute("SELECT * FROM phone_assignment_types ORDER BY name"))
+        source = list(repo.conn.execute("SELECT * FROM phone_assignment_types ORDER BY sort_order, name"))
         for row in source:
             rows.append(f"""<tr{row_class(row)}><td>{esc(row['name'])}</td><td><span class='status-badge'>{active_label(row['is_active'])}</span></td><td>{esc(row['comment'])}</td><td data-col='actions'><details class='edit-details'><summary title='Редактировать' aria-label='Редактировать'>Редактировать</summary><form method='post' action='/admin/dictionaries/phone-assignments/{row['id']}/update'><input name='name' value='{esc(row['name'])}'><input name='code' value='{esc(row['code'])}' readonly><input name='comment' value='{esc(row['comment'])}' placeholder='Комментарий'>{active_select(row['is_active'])}<button>Сохранить</button></form></details></td></tr>""")
 
