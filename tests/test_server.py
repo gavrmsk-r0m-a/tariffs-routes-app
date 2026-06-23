@@ -144,6 +144,29 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertIn("Гость", content)
         self.assertIn("Логин", content)
 
+    def test_admin_inline_edit_uses_single_modal_with_cancel_outside_and_escape_close(self):
+        for path, form_action in [
+            ("/admin/change-reasons", "/admin/change-reasons/"),
+            ("/admin/users", "/admin/users/"),
+            ("/admin/dictionaries?section=countries", "/admin/dictionaries/countries/"),
+            ("/admin/dictionaries?section=providers", "/admin/dictionaries/providers/"),
+            ("/admin/dictionaries?section=currencies", "/admin/dictionaries/currencies/"),
+            ("/admin/dictionaries?section=prefixes", "/admin/dictionaries/prefixes/"),
+            ("/admin/dictionaries?section=servers", "/admin/dictionaries/servers/"),
+            ("/admin/dictionaries?section=phone-types", "/admin/dictionaries/phone-types/"),
+            ("/admin/dictionaries?section=projects", "/admin/dictionaries/projects/"),
+            ("/admin/dictionaries?section=phone-assignments", "/admin/dictionaries/phone-assignments/"),
+        ]:
+            with self.subTest(path=path):
+                captured, content = self.request(path)
+                self.assertEqual(captured["status"], "200 OK")
+                self.assertIn("details.edit-details[open] > form", content)
+                self.assertIn('const adminEditDetails = Array.from', content)
+                self.assertIn('closeAdminEdit(details)', content)
+                self.assertIn('event.key !== "Escape"', content)
+                self.assertIn('cancel.textContent = "Отмена"', content)
+                self.assertIn(form_action, content)
+
     def test_login_page_returns_user_selection_and_active_users(self):
         captured, content = self.request("/login")
         self.assertEqual(captured["status"], "200 OK")
