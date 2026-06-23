@@ -2417,6 +2417,19 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
         self.assertIn("class='multi-select' id='event-company'", create_form)
         self.assertIn("name='calling_company_ids'", create_form)
         self.assertIn("Выбрать все найденные", create_form)
+        self.assertIn("Отменить выбранные", create_form)
+        self.assertIn("id='campaign-clear-selected'", create_form)
+
+    def test_campaign_setting_form_clear_selected_and_close_dropdown_scripts_render(self):
+        self.request("/routes")
+        captured, content = self.request("/provider-changes")
+        self.assertEqual(captured["status"], "200 OK")
+        create_form = content.split("<form method='post' action='/provider-changes/create'", 1)[1].split("</form>", 1)[0]
+        self.assertIn("const clearSelected = document.getElementById('campaign-clear-selected')", content)
+        self.assertIn("input[name=\"calling_company_ids\"]:checked", content)
+        self.assertIn("campaignDropdown.open && !campaignDropdown.contains(event.target)", content)
+        self.assertIn("event.key === 'Enter' || event.key === 'Escape'", content)
+        self.assertIn("event.preventDefault()", content)
 
     def test_bulk_campaign_autorotation_creates_event_per_changed_campaign_and_skips_noop(self):
         self.request("/routes")
