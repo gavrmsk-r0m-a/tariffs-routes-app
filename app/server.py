@@ -15,7 +15,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, quote, unquote, urlencode
 from wsgiref.simple_server import make_server
 
-from app.db import DEFAULT_DB_PATH, DEFAULT_PHONE_ASSIGNMENTS, DEFAULT_PROJECTS, connect, init_db
+from app.db import DEFAULT_DB_PATH, DEFAULT_PHONE_ASSIGNMENTS, DEFAULT_PROJECTS, connect, ensure_db_initialized, init_db
 from app.importer import apply_import, preview_import
 from app.repository import BusinessRuleError, COMPANY_CHANGE_LABELS, ROUTING_SCOPE_LABELS, Repository, normalize_phone_status, normalize_provider_name, normalize_real_prefix, validate_phone_number
 
@@ -4492,7 +4492,7 @@ def user_error(exc: Exception) -> str:
 
 def app(environ, start_response):
     conn = connect(DB_PATH)
-    init_db(conn)
+    ensure_db_initialized(conn, DB_PATH)
     repo = Repository(conn)
     ensure_seed(repo)
     method = environ["REQUEST_METHOD"]

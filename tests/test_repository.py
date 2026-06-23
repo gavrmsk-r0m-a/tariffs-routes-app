@@ -86,6 +86,14 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
             ("ivr", "IVR", 1, 8),
         ])
 
+    def test_init_db_can_be_called_multiple_times_without_resetting_data(self):
+        user_id = self.repo.create_user("repeat_init_user", "Repeat Init User")
+        init_db(self.conn)
+        init_db(self.conn)
+        row = self.conn.execute("SELECT username FROM users WHERE id = ?", (user_id,)).fetchone()
+        self.assertIsNotNone(row)
+        self.assertEqual(row["username"], "repeat_init_user")
+
     def _tariff_counts(self):
         return {
             "tariffs": self.conn.execute("SELECT COUNT(*) FROM tariffs").fetchone()[0],
