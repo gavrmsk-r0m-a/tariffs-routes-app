@@ -16,6 +16,25 @@ DEFAULT_USERS = (
     ("guest", "Гость", "guest", "guest123"),
 )
 
+DEFAULT_PROJECTS = (
+    ("mezhdep", "Меж.деп.", 1, 0),
+    ("rep", "REP", 2, 1),
+    ("itm", "ИТМ", 3, 1),
+    ("prepayment", "Предоплата", 4, 1),
+    ("legal", "Юр.деп.", 5, 1),
+)
+
+DEFAULT_PHONE_ASSIGNMENTS = (
+    ("gl", "ГЛ", 1),
+    ("aon", "АОН", 2),
+    ("scratchcards", "Scratchcards", 3),
+    ("competitors", "Competitors", 4),
+    ("sms", "SMS", 5),
+    ("corporate_telephony", "Корп.телефония", 6),
+    ("dozhim", "Дожим", 7),
+    ("ivr", "IVR", 8),
+)
+
 PHONE_STATUS_SQL = "status TEXT NOT NULL DEFAULT 'unknown' CHECK (status IN ('used', 'free', 'problem', 'unknown'))"
 
 
@@ -191,8 +210,11 @@ def run_lightweight_migrations(conn: sqlite3.Connection) -> None:
     conn.execute("""
         CREATE TABLE IF NOT EXISTS projects (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            code TEXT UNIQUE,
             name TEXT NOT NULL UNIQUE,
             is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            include_in_route_name INTEGER NOT NULL DEFAULT 1 CHECK (include_in_route_name IN (0, 1)),
             comment TEXT,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -204,11 +226,16 @@ def run_lightweight_migrations(conn: sqlite3.Connection) -> None:
             code TEXT NOT NULL UNIQUE,
             name TEXT NOT NULL UNIQUE,
             is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
+            sort_order INTEGER NOT NULL DEFAULT 0,
             comment TEXT,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         )
     """)
+    _add_column_if_missing(conn, "projects", "code", "TEXT")
+    _add_column_if_missing(conn, "projects", "sort_order", "INTEGER NOT NULL DEFAULT 0")
+    _add_column_if_missing(conn, "projects", "include_in_route_name", "INTEGER NOT NULL DEFAULT 1 CHECK (include_in_route_name IN (0, 1))")
+    _add_column_if_missing(conn, "phone_assignment_types", "sort_order", "INTEGER NOT NULL DEFAULT 0")
     conn.execute("""
         CREATE TABLE IF NOT EXISTS company_routing_settings (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -284,6 +311,31 @@ def run_lightweight_migrations(conn: sqlite3.Connection) -> None:
     conn.execute("CREATE INDEX IF NOT EXISTS idx_routing_event_servers_event ON routing_event_servers(routing_event_id)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_routing_event_servers_server ON routing_event_servers(server_id)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_routing_event_servers_new_route ON routing_event_servers(new_route_id)")
+    conn.execute("UPDATE projects SET is_active = 0 WHERE name IN ('Междепы', 'Competitors', 'ITM', 'Monitoring', 'Test')")
+    for code, name, sort_order, include_in_route_name in DEFAULT_PROJECTS:
+        conn.execute(
+            """
+            INSERT INTO projects(code, name, is_active, sort_order, include_in_route_name)
+            VALUES (?, ?, 1, ?, ?)
+            ON CONFLICT(name) DO UPDATE SET code = excluded.code, is_active = 1,
+                sort_order = excluded.sort_order, include_in_route_name = excluded.include_in_route_name,
+                updated_at = CURRENT_TIMESTAMP
+            """,
+            (code, name, sort_order, include_in_route_name),
+        )
+    conn.execute(
+        "UPDATE phone_assignment_types SET is_active = 0 WHERE code IN ('outgoing_cli', 'inbound_line', 'office_phone', 'sim_card', 'pool_number', 'other')"
+    )
+    for code, name, sort_order in DEFAULT_PHONE_ASSIGNMENTS:
+        conn.execute(
+            """
+            INSERT INTO phone_assignment_types(code, name, is_active, sort_order)
+            VALUES (?, ?, 1, ?)
+            ON CONFLICT(code) DO UPDATE SET name = excluded.name, is_active = 1,
+                sort_order = excluded.sort_order, updated_at = CURRENT_TIMESTAMP
+            """,
+            (code, name, sort_order),
+        )
     for code, name in (
         ("outgoing_cli", "АОН"),
         ("inbound_line", "Входящая линия"),

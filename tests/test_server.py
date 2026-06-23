@@ -1628,14 +1628,36 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertEqual(captured["status"], "200 OK")
         self.assertIn("Проект", content)
         self.assertIn("Назначение номера", content)
+        captured, content = self.request("/admin/dictionaries?section=projects")
+        self.assertEqual(captured["status"], "200 OK")
+        for expected in ("Меж.деп.", "REP", "ИТМ", "Предоплата", "Юр.деп."):
+            self.assertIn(expected, content)
+        self.assertLess(content.index("Меж.деп."), content.index("REP"))
+        self.assertLess(content.index("REP"), content.index("ИТМ"))
+        captured, content = self.request("/admin/dictionaries?section=phone-assignments")
+        self.assertEqual(captured["status"], "200 OK")
+        for expected in ("ГЛ", "АОН", "Scratchcards", "Competitors", "SMS", "Корп.телефония", "Дожим", "IVR"):
+            self.assertIn(expected, content)
+        self.assertLess(content.index("ГЛ"), content.index("АОН"))
+        self.assertLess(content.index("АОН"), content.index("Scratchcards"))
         self.request("/admin/dictionaries/projects/create", method="POST", body=urlencode({"name": "NewProject", "comment": ""}))
         self.request("/admin/dictionaries/phone-assignments/create", method="POST", body=urlencode({"name": "Мониторинг", "code": "monitoring", "comment": ""}))
         captured, content = self.request("/phones")
         self.assertEqual(captured["status"], "200 OK")
+        for expected in ("Меж.деп.", "REP", "ИТМ", "Предоплата", "Юр.деп."):
+            self.assertIn(expected, content)
+        for expected in ("ГЛ", "АОН", "Scratchcards", "Competitors", "SMS", "Корп.телефония", "Дожим", "IVR"):
+            self.assertIn(expected, content)
+        self.assertNotIn(">Номер из пула</option>", content)
+        self.assertNotIn(">Другое</option>", content)
         self.assertIn("NewProject", content)
         self.assertIn("Мониторинг", content)
         self.assertIn("Дата создания", content)
         self.assertIn("Дата отключения", content)
+
+        captured, content = self.request("/routes")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("Меж.деп.", content)
 
     def test_dictionaries_layout_selects_one_workspace_section(self):
         self.request("/routes")
