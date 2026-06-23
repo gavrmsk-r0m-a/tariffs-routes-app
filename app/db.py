@@ -1,12 +1,18 @@
 from __future__ import annotations
 
 import sqlite3
+import threading
 from app.repository import hash_password
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 SCHEMA_PATH = Path(__file__).resolve().parent / "schema.sql"
 DEFAULT_DB_PATH = ROOT / "mvp.sqlite3"
+SQLITE_TIMEOUT_SECONDS = 30
+SQLITE_BUSY_TIMEOUT_MS = SQLITE_TIMEOUT_SECONDS * 1000
+
+_INIT_LOCK = threading.Lock()
+_INITIALIZED_DB_KEYS: set[str] = set()
 
 
 DEFAULT_USERS = (
@@ -50,10 +56,33 @@ def _phone_status_expr(column: str = "status") -> str:
 
 
 def connect(path: str | Path = DEFAULT_DB_PATH) -> sqlite3.Connection:
-    conn = sqlite3.connect(path)
+    conn = sqlite3.connect(path, timeout=SQLITE_TIMEOUT_SECONDS)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute(f"PRAGMA busy_timeout = {SQLITE_BUSY_TIMEOUT_MS}")
     return conn
+
+
+def _db_key(path: str | Path) -> str:
+    if str(path) == ":memory:":
+        return ":memory:"
+    return str(Path(path).resolve())
+
+
+def _has_schema(conn: sqlite3.Connection) -> bool:
+    return conn.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'users'").fetchone() is not None
+
+
+def ensure_db_initialized(conn: sqlite3.Connection, path: str | Path = DEFAULT_DB_PATH) -> None:
+    """Run SQLite initialization once per process for request-time connections."""
+    key = _db_key(path)
+    if key in _INITIALIZED_DB_KEYS:
+        return
+    with _INIT_LOCK:
+        if key in _INITIALIZED_DB_KEYS:
+            return
+        init_db(conn)
+        _INITIALIZED_DB_KEYS.add(key)
 
 
 def _column_names(conn: sqlite3.Connection, table: str) -> set[str]:
@@ -311,6 +340,20 @@ def run_lightweight_migrations(conn: sqlite3.Connection) -> None:
     conn.execute("CREATE INDEX IF NOT EXISTS idx_routing_event_servers_event ON routing_event_servers(routing_event_id)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_routing_event_servers_server ON routing_event_servers(server_id)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_routing_event_servers_new_route ON routing_event_servers(new_route_id)")
+    legacy_no_prefix_filter = """
+        SELECT id FROM provider_prefixes
+        WHERE prefix IS NULL
+           OR TRIM(prefix) = ''
+           OR TRIM(prefix) IN ('Без префикса', 'без префикса', 'no prefix')
+           OR TRIM(prefix) IN ('—', '-')
+    """
+    conn.execute(f"UPDATE routes SET provider_prefix_id = NULL WHERE provider_prefix_id IN ({legacy_no_prefix_filter})")
+    conn.execute(f"UPDATE tariffs SET provider_prefix_id = NULL WHERE provider_prefix_id IN ({legacy_no_prefix_filter})")
+    conn.execute(f"""
+        UPDATE provider_prefixes
+        SET is_active = 0, updated_at = CURRENT_TIMESTAMP
+        WHERE id IN ({legacy_no_prefix_filter})
+    """)
     conn.execute("UPDATE projects SET is_active = 0 WHERE name IN ('Междепы', 'Competitors', 'ITM', 'Monitoring', 'Test')")
     for code, name, sort_order, include_in_route_name in DEFAULT_PROJECTS:
         conn.execute(
@@ -348,6 +391,9 @@ def run_lightweight_migrations(conn: sqlite3.Connection) -> None:
 
 
 def init_db(conn: sqlite3.Connection) -> None:
-    conn.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
+    conn.execute(f"PRAGMA busy_timeout = {SQLITE_BUSY_TIMEOUT_MS}")
+    conn.execute("PRAGMA foreign_keys = ON")
+    if not _has_schema(conn):
+        conn.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
     run_lightweight_migrations(conn)
     conn.commit()

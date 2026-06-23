@@ -69,6 +69,15 @@ class ServerSmokeTest(unittest.TestCase):
         for old_value in ("reserved", "blocked", "disabled"):
             self.assertNotIn(f"value='{old_value}'", html)
 
+    def test_head_root_initializes_database_without_crashing(self):
+        captured, _content = self.request("/", method="HEAD", auto_login=False)
+        self.assertIn(captured["status"], {"200 OK", "303 See Other"})
+        conn = server.connect(server.DB_PATH)
+        try:
+            self.assertIsNotNone(conn.execute("SELECT 1 FROM users LIMIT 1").fetchone())
+        finally:
+            conn.close()
+
     def test_tariffs_page_omits_priority_and_export_excludes_priority(self):
         captured, content = self.request("/tariffs")
         self.assertEqual(captured["status"], "200 OK")
