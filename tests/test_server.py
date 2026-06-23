@@ -2399,6 +2399,59 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
         self.assertIn("Мексика/Sancom/Demo_0827@", content)
         self.assertIn("Провайдер: Sancom", content)
 
+
+    def test_campaign_setting_form_renders_checkbox_multi_select(self):
+        self.request("/routes")
+        captured, content = self.request("/provider-changes")
+        self.assertEqual(captured["status"], "200 OK")
+        create_form = content.split("<form method='post' action='/provider-changes/create'", 1)[1].split("</form>", 1)[0]
+        self.assertIn("class='multi-select' id='event-company'", create_form)
+        self.assertIn("name='calling_company_ids'", create_form)
+        self.assertIn("Выбрать все найденные", create_form)
+
+    def test_bulk_campaign_autorotation_creates_event_per_changed_campaign_and_skips_noop(self):
+        self.request("/routes")
+        conn = server.connect(server.DB_PATH)
+        try:
+            repo = server.Repository(conn)
+            admin_id = conn.execute("SELECT id FROM users WHERE username = 'admin'").fetchone()["id"]
+            country_id = conn.execute("SELECT id FROM countries ORDER BY id LIMIT 1").fetchone()["id"]
+            server_id = conn.execute("SELECT id FROM servers ORDER BY id LIMIT 1").fetchone()["id"]
+            changed_one = repo.create_calling_company(server_id=server_id, country_id=country_id, company_name="Bulk One", company_id_external="9101", has_autorotation=False, created_by=admin_id)
+            changed_two = repo.create_calling_company(server_id=server_id, country_id=country_id, company_name="Bulk Two", company_id_external="9102", has_autorotation=False, created_by=admin_id)
+            noop = repo.create_calling_company(server_id=server_id, country_id=country_id, company_name="Bulk Noop", company_id_external="9103", has_autorotation=True, created_by=admin_id)
+        finally:
+            conn.close()
+        body = urlencode([
+            ("apply_scope", "campaign_setting"),
+            ("event_at", "2026-06-10T12:00"),
+            ("calling_company_ids", str(changed_one)),
+            ("calling_company_ids", str(changed_two)),
+            ("calling_company_ids", str(noop)),
+            ("company_change_type", "enable_autorotation"),
+            ("reason", "Тест нового маршрута"),
+            ("comment", "bulk enable"),
+        ])
+        captured, _ = self.request("/provider-changes/create", method="POST", body=body)
+        self.assertEqual(captured["status"], "303 See Other")
+        location = dict(captured["headers"])["Location"]
+        self.assertIn("notice=", location)
+        conn = server.connect(server.DB_PATH)
+        try:
+            rows = conn.execute("SELECT calling_company_id FROM routing_events WHERE apply_scope = 'campaign_setting' AND comment = ? ORDER BY calling_company_id", ("bulk enable",)).fetchall()
+            self.assertEqual([row["calling_company_id"] for row in rows], [changed_one, changed_two])
+            active_count = conn.execute("SELECT COUNT(*) FROM company_routing_settings WHERE calling_company_id IN (?, ?) AND is_active = 1 AND valid_to IS NULL AND has_autorotation = 1", (changed_one, changed_two)).fetchone()[0]
+            self.assertEqual(active_count, 2)
+        finally:
+            conn.close()
+
+    def test_bulk_campaign_setting_requires_at_least_one_campaign(self):
+        self.request("/routes")
+        body = urlencode({"apply_scope": "campaign_setting", "event_at": "2026-06-10T12:00", "company_change_type": "enable_autorotation", "reason": "Тест нового маршрута", "comment": "empty"})
+        captured, content = self.request("/provider-changes/create", method="POST", body=body)
+        self.assertEqual(captured["status"], "400 Bad Request")
+        self.assertIn("Выберите хотя бы одну кампанию", content)
+
     def test_campaign_setting_enable_autorotation_ui_and_applied_settings(self):
         self.request("/routes")
         captured, content = self.request("/provider-changes")
