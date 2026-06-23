@@ -1422,6 +1422,30 @@ class RoutingEventsRepositoryTest(unittest.TestCase):
         self.assertEqual(active["route_id"], self.route_id)
 
 
+    def test_campaign_routing_history_preserves_event_comments(self):
+        self.create_event(
+            apply_scope="campaign_setting",
+            calling_company_id=self.company_id,
+            company_change_type="enable_autorotation",
+            provider_id=None,
+            comment="1111111",
+        )
+        self.create_event(
+            apply_scope="campaign_setting",
+            calling_company_id=self.company_id,
+            company_change_type="set_campaign_route",
+            new_company_route_id=self.alt_route_id,
+            provider_id=None,
+            comment="2222222",
+            event_at="2026-06-10 13:00",
+        )
+
+        active = self.conn.execute("SELECT * FROM company_routing_settings WHERE calling_company_id = ? AND is_active = 1 AND valid_to IS NULL", (self.company_id,)).fetchone()
+        self.assertEqual(active["comment"], "2222222")
+        rows = self.repo.list_company_routing_setting_history(active["id"])
+        self.assertEqual([row["comment"] for row in rows], ["2222222", "1111111"])
+        self.assertEqual([row["company_change_type"] for row in rows], ["set_campaign_route", "enable_autorotation"])
+
     def test_campaign_setting_duplicate_enable_autorotation_is_blocked_without_logs(self):
         self.repo.create_company_routing_setting(calling_company_id=self.company_id, country_id=self.country_id, server_id=self.server_id, route_id=None, routing_mode="autorotation", has_autorotation=True, comment="old", created_by=self.admin_id)
         before_events = self.conn.execute("SELECT COUNT(*) FROM routing_events").fetchone()[0]

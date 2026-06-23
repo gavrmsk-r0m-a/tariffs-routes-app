@@ -1781,6 +1781,42 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertNotIn("/admin/company-routing-settings/1/deactivate", content)
         self.assertNotIn("/admin/company-routing-settings/1/delete", content)
 
+    def test_company_routing_settings_info_icon_and_history_page(self):
+        self.request("/routes")
+        body = urlencode({"apply_scope": "campaign_setting", "event_at": "2026-06-10T12:00", "calling_company_id": "2", "company_change_type": "enable_autorotation", "reason": "Тест нового маршрута", "comment": "1111111"})
+        captured, _ = self.request("/provider-changes/create", method="POST", body=body)
+        self.assertEqual(captured["status"], "303 See Other")
+        route_id = ""
+        conn = server.connect(server.DB_PATH)
+        try:
+            route_id = str(conn.execute("SELECT id FROM routes WHERE name = 'Мексика/Sancom/Demo_0827@'").fetchone()[0])
+        finally:
+            conn.close()
+        body = urlencode({"apply_scope": "campaign_setting", "event_at": "2026-06-10T13:00", "calling_company_id": "2", "company_change_type": "set_campaign_route", "campaign_provider_id": "1", "new_company_route_id": route_id, "reason": "Тест нового маршрута", "comment": "2222222"})
+        captured, _ = self.request("/provider-changes/create", method="POST", body=body)
+        self.assertEqual(captured["status"], "303 See Other")
+
+        captured, content = self.request("/admin/company-routing-settings")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("/campaign-routing/", content)
+        self.assertIn("aria-label='История'", content)
+        self.assertIn("2222222", content)
+
+        conn = server.connect(server.DB_PATH)
+        try:
+            setting_id = conn.execute("SELECT id FROM company_routing_settings WHERE calling_company_id = 2 AND is_active = 1 AND valid_to IS NULL").fetchone()[0]
+        finally:
+            conn.close()
+        captured, history = self.request(f"/campaign-routing/{setting_id}/history")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("История маршрутизации кампании", history)
+        self.assertIn("Current routing mode", history)
+        self.assertIn("Включили авторотацию", history)
+        self.assertIn("Прописали ручной маршрут", history)
+        self.assertIn("1111111", history)
+        self.assertIn("2222222", history)
+        self.assertIn("Авторотация: Нет → Да", history)
+
     def test_company_routing_setting_create_endpoint_blocked_and_filters_render(self):
         self.request("/routes")
         body = urlencode({
