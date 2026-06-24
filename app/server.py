@@ -21,12 +21,38 @@ from app.importer import apply_import, preview_import
 from app.repository import BusinessRuleError, COMPANY_CHANGE_LABELS, ROUTING_SCOPE_LABELS, Repository, normalize_phone_status, normalize_provider_name, normalize_real_prefix, validate_phone_number
 from app.telegram import notify_provider_change_created
 
+logger = logging.getLogger(__name__)
+
+
+def load_dotenv_if_present(path: str | Path = ".env") -> None:
+    """Load simple KEY=VALUE pairs from a local .env file without overriding env."""
+    env_path = Path(path)
+    if not env_path.exists():
+        return
+    try:
+        for raw_line in env_path.read_text(encoding="utf-8").splitlines():
+            line = raw_line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            key = key.strip()
+            if not key or key in os.environ:
+                continue
+            value = value.strip()
+            if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
+                value = value[1:-1]
+            os.environ[key] = value
+    except OSError as exc:
+        logger.warning("Could not load .env file %s: %s", env_path, exc)
+
+
+load_dotenv_if_present()
+
 DB_PATH = Path(os.environ.get("MVP_DB_PATH", DEFAULT_DB_PATH))
 ADMIN_ID = 1
 CURRENT_USER_COOKIE = "mvp_auth"
 FILTER_STATE_COOKIE = "mvp_filter_state"
 AUTH_COOKIE_SECRET = os.environ.get("MVP_AUTH_SECRET", "dev-mvp-auth-secret-change-me")
-logger = logging.getLogger(__name__)
 
 def sign_user_id(user_id: int) -> str:
     value = str(user_id)

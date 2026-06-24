@@ -30,60 +30,67 @@ def provider_change_url(base_url: str | None) -> str | None:
     return urljoin(base_url.rstrip("/") + "/", "provider-changes")
 
 
-def build_provider_change_message(event: dict) -> str:
-    scope = event.get("apply_scope")
-    lines = [
-        "Новая смена провайдера",
-        "",
-        f"Область: {ROUTING_SCOPE_LABELS.get(scope, _text(scope))}",
-    ]
-    _append_if_present(lines, "GEO", event.get("country_name"))
+def _route_transition(event: dict, old_key: str, new_key: str) -> str | None:
+    old_value = event.get(old_key)
+    new_value = event.get(new_key)
+    if old_value or new_value:
+        return f"{_text(old_value)} → {_text(new_value)}"
+    return None
 
+
+def provider_change_details(event: dict) -> str:
+    scope = event.get("apply_scope")
     if scope == "server_priority":
-        server_names = event.get("affected_server_names") or event.get("server_name")
-        _append_if_present(lines, "Сервер", server_names)
-        route_parts = []
-        if event.get("old_route_name"):
-            route_parts.append(str(event["old_route_name"]))
-        if event.get("new_route_name"):
-            route_parts.append(str(event["new_route_name"]))
-        if route_parts:
-            lines.append(f"Маршрут: {' → '.join(route_parts)}")
-        _append_if_present(lines, "Провайдер", event.get("provider_name"))
-    elif scope == "campaign_setting":
-        company = " / ".join(part for part in (event.get("company_id_external"), event.get("company_name")) if part)
-        _append_if_present(lines, "Кампания", company)
-        _append_if_present(lines, "Сервер", event.get("company_server_name"))
-        if event.get("company_change_type"):
-            lines.append(f"Тип изменения: {COMPANY_CHANGE_LABELS.get(event.get('company_change_type'), event.get('company_change_type'))}")
-        if event.get("new_company_routing_mode"):
-            lines.append(f"Режим: {_text(event.get('old_company_routing_mode'))} → {_text(event.get('new_company_routing_mode'))}")
-        if event.get("old_company_route_name") or event.get("new_company_route_name"):
-            lines.append(f"Маршрут кампании: {_text(event.get('old_company_route_name'))} → {_text(event.get('new_company_route_name'))}")
+        if event.get("old_route_name") and event.get("new_route_name"):
+            return f"Маршрут: {_route_transition(event, 'old_route_name', 'new_route_name')}"
+        route = event.get("new_route_name") or event.get("old_route_name")
+        if route:
+            return f"Маршрут: {route}"
+        return _text(event.get("provider_name"))
+    if scope == "campaign_setting":
+        details = []
+        change_type = event.get("company_change_type")
+        if change_type:
+            details.append(str(COMPANY_CHANGE_LABELS.get(change_type, change_type)))
+        mode = _route_transition(event, "old_company_routing_mode", "new_company_routing_mode")
+        if mode:
+            details.append(f"Режим: {mode}")
+        route = _route_transition(event, "old_company_route_name", "new_company_route_name")
+        if route:
+            details.append(f"Маршрут: {route}")
         if event.get("old_company_has_autorotation") is not None or event.get("new_company_has_autorotation") is not None:
             old_auto = "Да" if event.get("old_company_has_autorotation") else "Нет"
             new_auto = "Да" if event.get("new_company_has_autorotation") else "Нет"
-            lines.append(f"Авторотация: {old_auto} → {new_auto}")
-        _append_if_present(lines, "Провайдер", event.get("provider_name"))
-    else:
-        _append_if_present(lines, "Провайдер", event.get("provider_name"))
-        _append_if_present(lines, "Маршрут", event.get("affected_route_name"))
+            details.append(f"Авторотация: {old_auto} → {new_auto}")
+        return "; ".join(details) or _text(event.get("provider_name"))
+    route = event.get("affected_route_name")
+    provider = event.get("provider_name")
+    if route and provider:
+        return f"Провайдер: {provider}; Маршрут/префикс: {route}"
+    return _text(route or provider)
 
-    lines.extend([
+
+def build_provider_change_message(event: dict) -> str:
+    scope = event.get("apply_scope")
+    server = event.get("affected_server_names") or event.get("company_server_name") or event.get("server_name")
+    campaign = " / ".join(str(part) for part in (event.get("company_id_external"), event.get("company_name")) if part)
+    lines = [
+        "🚨 Новая смена провайдера",
+        "",
+        f"Дата: {_text(event.get('event_at'))}",
+        f"Область: {ROUTING_SCOPE_LABELS.get(scope, _text(scope))}",
+        f"GEO: {_text(event.get('country_name'))}",
+        f"Сервер: {_text(server)}",
+        f"Кампания: {_text(campaign)}",
         f"Причина: {_text(event.get('reason'))}",
-    ])
-    if event.get("comment") and str(event.get("comment")).strip():
-        lines.append(f"Комментарий: {event.get('comment')}")
-    lines.extend([
+        f"Детали: {provider_change_details(event)}",
+        f"Комментарий: {_text(event.get('comment'))}",
         f"Создал: {_text(event.get('author_name'))}",
-        f"Время: {_text(event.get('event_at'))}",
-    ])
-
+    ]
     url = provider_change_url(os.environ.get("APP_BASE_URL"))
     if url:
-        lines.extend(["", "Открыть в TeleRoute:", url])
+        lines.extend(["", "Открыть:", url])
     return "\n".join(lines)
-
 
 def send_telegram_message(text: str) -> bool:
     token = os.environ.get("TELEGRAM_BOT_TOKEN")
