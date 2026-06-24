@@ -398,15 +398,18 @@ class Repository:
         is_actual: bool = True,
         priority_status: str = "unknown",
         inbound_line_available: bool = False,
+        aon_pool: str | None = None,
+        rnd_type: str | None = None,
+        rnd_pool_owner: str | None = None,
     ) -> int:
         cur = self.conn.execute(
             """
             INSERT INTO routes(
                 country_id, provider_id, provider_prefix_id, name, project_label,
-                cli_source_type, cli_source_label, comment, is_actual, priority_status,
+                cli_source_type, cli_source_label, aon_pool, rnd_type, rnd_pool_owner, comment, is_actual, priority_status,
                 inbound_line_available, created_by
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 country_id,
@@ -416,6 +419,9 @@ class Repository:
                 project_label,
                 cli_source_type,
                 cli_source_label,
+                aon_pool,
+                rnd_type,
+                rnd_pool_owner,
                 comment,
                 1 if is_actual else 0,
                 priority_status,
@@ -1078,8 +1084,11 @@ class Repository:
             ("project_label", "Проект", _empty_label, "optional_text"),
             ("is_actual", "Активность маршрута", _bool_label, "bool"),
             ("priority_status", "Приоритет", lambda v: priority_labels.get(str(v), _empty_label(v)), "optional_text"),
-            ("cli_source_type", "Тип маршрута", _empty_label, "optional_text"),
-            ("cli_source_label", "Источник маршрута", _empty_label, "optional_text"),
+            ("cli_source_type", "Источник АОН", _empty_label, "optional_text"),
+            ("cli_source_label", "Метка АОН", _empty_label, "optional_text"),
+            ("aon_pool", "АОН/пул", _empty_label, "optional_text"),
+            ("rnd_type", "Тип RND", _empty_label, "optional_text"),
+            ("rnd_pool_owner", "Какой пул / принадлежность", _empty_label, "optional_text"),
         ]
         changes: list[str] = []
         for key, label, formatter, kind in specs:
@@ -1111,17 +1120,24 @@ class Repository:
         is_actual: bool,
         priority_status: str,
         updated_by: int,
+        cli_source_type: str | None = None,
+        cli_source_label: str | None = None,
+        aon_pool: str | None = None,
+        rnd_type: str | None = None,
+        rnd_pool_owner: str | None = None,
     ) -> None:
         existing = self.conn.execute("SELECT * FROM routes WHERE id = ?", (route_id,)).fetchone()
         if existing is None:
             raise BusinessRuleError("Route not found")
         old_values = dict(existing)
         final_provider_id = provider_id if provider_id is not None else int(existing["provider_id"])
+        final_cli_source_type = cli_source_type if cli_source_type is not None else existing["cli_source_type"]
+        final_cli_source_label = cli_source_label if cli_source_label is not None else existing["cli_source_label"]
         self.conn.execute(
-            "UPDATE routes SET name = ?, provider_id = ?, provider_prefix_id = ?, comment = ?, is_actual = ?, priority_status = ?, updated_by = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-            (name, final_provider_id, provider_prefix_id, comment, 1 if is_actual else 0, priority_status, updated_by, route_id),
+            "UPDATE routes SET name = ?, provider_id = ?, provider_prefix_id = ?, cli_source_type = ?, cli_source_label = ?, aon_pool = ?, rnd_type = ?, rnd_pool_owner = ?, comment = ?, is_actual = ?, priority_status = ?, updated_by = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (name, final_provider_id, provider_prefix_id, final_cli_source_type, final_cli_source_label, aon_pool, rnd_type, rnd_pool_owner, comment, 1 if is_actual else 0, priority_status, updated_by, route_id),
         )
-        new_values = {**old_values, "name": name, "provider_id": final_provider_id, "provider_prefix_id": provider_prefix_id, "comment": comment, "is_actual": 1 if is_actual else 0, "priority_status": priority_status}
+        new_values = {**old_values, "name": name, "provider_id": final_provider_id, "provider_prefix_id": provider_prefix_id, "cli_source_type": final_cli_source_type, "cli_source_label": final_cli_source_label, "aon_pool": aon_pool, "rnd_type": rnd_type, "rnd_pool_owner": rnd_pool_owner, "comment": comment, "is_actual": 1 if is_actual else 0, "priority_status": priority_status}
         changes = self._route_field_changes(old_values, new_values)
         if changes:
             payload = {"changes": changes, "description": f"Изменено полей: {len(changes)}", "details": "; ".join(changes)}
