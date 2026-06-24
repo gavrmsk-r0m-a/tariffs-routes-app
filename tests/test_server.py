@@ -1562,6 +1562,8 @@ class ServerSmokeTest(unittest.TestCase):
     def test_route_aon_source_dropdown_offers_only_new_sources(self):
         captured, content = self.request("/routes")
         self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("Тип АОН", content)
+        self.assertNotIn("Источник АОН", content)
         source_select = content.split('name="cli_source_type"', 1)[1].split('</select>', 1)[0]
         self.assertIn("value='pool'", source_select)
         self.assertIn("value='rnd'", source_select)
@@ -1590,24 +1592,24 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertEqual(captured["status"], "303 See Other")
         conn = server.connect(server.DB_PATH)
         try:
-            row = conn.execute("SELECT cli_source_label, aon_pool, rnd_type FROM routes WHERE cli_source_type = 'rnd' AND aon_pool = 'Локальный RND' ORDER BY id DESC LIMIT 1").fetchone()
-            self.assertEqual((row["cli_source_label"], row["aon_pool"], row["rnd_type"]), ("RND", "Локальный RND", "local"))
+            row = conn.execute("SELECT cli_source_label, aon_pool, rnd_type FROM routes WHERE cli_source_type = 'rnd' AND aon_pool = 'Локальный пул' ORDER BY id DESC LIMIT 1").fetchone()
+            self.assertEqual((row["cli_source_label"], row["aon_pool"], row["rnd_type"]), ("RND", "Локальный пул", "local"))
         finally:
             conn.close()
 
     def test_rnd_nonlocal_requires_and_saves_pool_ownership(self):
         self.request("/routes")
-        invalid = urlencode({"country_id": "1", "provider_id": "1", "cli_source_type": "rnd", "rnd_type": "nonlocal", "is_actual": "1"})
+        invalid = urlencode({"country_id": "1", "provider_id": "1", "cli_source_type": "rnd", "is_actual": "1"})
         captured, content = self.request("/routes/create", method="POST", body=invalid)
         self.assertEqual(captured["status"], "400 Bad Request")
-        self.assertIn("Укажите принадлежность нелокального RND", content)
+        self.assertIn("Тип пула обязателен для RND", content)
 
         valid = urlencode({"country_id": "1", "provider_id": "1", "provider_prefix_id": "", "project_label": "", "cli_source_type": "rnd", "rnd_type": "nonlocal", "rnd_pool_owner": "венгерский пул", "is_actual": "1"})
         captured, _ = self.request("/routes/create", method="POST", body=valid)
         self.assertEqual(captured["status"], "303 See Other")
         conn = server.connect(server.DB_PATH)
         try:
-            row = conn.execute("SELECT cli_source_label, aon_pool, rnd_type, rnd_pool_owner FROM routes WHERE aon_pool = 'Нелокальный RND: венгерский пул'").fetchone()
+            row = conn.execute("SELECT cli_source_label, aon_pool, rnd_type, rnd_pool_owner FROM routes WHERE aon_pool = 'Нелокальный пул: венгерский пул'").fetchone()
             self.assertEqual((row["cli_source_label"], row["rnd_type"], row["rnd_pool_owner"]), ("RND", "nonlocal", "венгерский пул"))
         finally:
             conn.close()
@@ -1638,6 +1640,36 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertIn("Legacy/Single@", content)
         captured, content = self.request(f"/routes/{route_id}/edit")
         self.assertIn("Single", content)
+
+
+    def test_route_name_template_examples_and_custom_saved_name(self):
+        self.request("/routes")
+        conn = server.connect(server.DB_PATH)
+        try:
+            repo = server.Repository(conn)
+            admin_id = conn.execute("SELECT id FROM users WHERE username = 'admin'").fetchone()["id"]
+            br_id = repo.create_country("Бразилия", "BR")
+            it_id = repo.create_country("Италия", "IT")
+            at_id = repo.create_country("Австрия", "AT")
+            miatel_id = conn.execute("SELECT id FROM providers WHERE name = 'Miatel'").fetchone()["id"]
+            prefix_id = repo.create_prefix(miatel_id, "0333")
+            self.assertEqual(server.build_route_name(repo, br_id, miatel_id, "Меж.деп.", "RND", None), "Бразилия/Miatel/RND@")
+            self.assertEqual(server.build_route_name(repo, br_id, miatel_id, "", "Pool_B", None), "Бразилия/Miatel/Pool_B@")
+            self.assertEqual(server.build_route_name(repo, it_id, miatel_id, "ITM", "Pool_B", None), "Италия/ITM/Miatel/Pool_B@")
+            self.assertEqual(server.build_route_name(repo, at_id, miatel_id, "ITM", "RND", prefix_id), "Австрия/ITM/Miatel/RND/0333pfx@")
+            conn.commit()
+        finally:
+            conn.close()
+
+        body = urlencode({"country_id": "1", "provider_id": "1", "provider_prefix_id": "", "project_label": "", "cli_source_type": "pool", "cli_source_label": "custom_label", "aon_pool": "Пул купленных номеров", "name": "Custom/Confirmed@", "is_actual": "1"})
+        captured, _ = self.request("/routes/create", method="POST", body=body)
+        self.assertEqual(captured["status"], "303 See Other")
+        conn = server.connect(server.DB_PATH)
+        try:
+            row = conn.execute("SELECT name FROM routes WHERE cli_source_label = 'custom_label'").fetchone()
+            self.assertEqual(row["name"], "Custom/Confirmed@")
+        finally:
+            conn.close()
 
     def test_duplicate_route_returns_user_message(self):
         self.request("/routes")
