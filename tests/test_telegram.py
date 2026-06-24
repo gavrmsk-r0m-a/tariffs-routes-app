@@ -1,7 +1,9 @@
 import os
+import tempfile
 import unittest
 from unittest.mock import patch
 
+import app.server as server
 from app.telegram import build_provider_change_message, send_telegram_message
 
 
@@ -27,7 +29,7 @@ class TelegramMessageTest(unittest.TestCase):
         self.assertIn("Причина: Плохие показатели", message)
         self.assertIn("Комментарий: Перевели трафик на Miatel", message)
         self.assertIn("Создал: Admin", message)
-        self.assertIn("Время: 2026-06-24 21:15", message)
+        self.assertIn("Дата: 2026-06-24 21:15", message)
         self.assertIn("https://teleroute.example/provider-changes", message)
 
     def test_none_scope_does_not_invent_server_field(self):
@@ -43,7 +45,26 @@ class TelegramMessageTest(unittest.TestCase):
         with patch.dict(os.environ, {}, clear=True):
             message = build_provider_change_message(event)
         self.assertIn("Область: Не меняли настройки в нашей системе", message)
-        self.assertNotIn("Сервер:", message)
+        self.assertIn("Сервер: —", message)
+
+
+    def test_load_dotenv_if_present_does_not_override_existing_env(self):
+        with tempfile.NamedTemporaryFile("w", delete=False, encoding="utf-8") as env_file:
+            env_file.write("TELEGRAM_BOT_TOKEN=from-file\nTELEGRAM_CHAT_ID=chat-from-file\nAPP_BASE_URL=\"https://from-file.example\"\n")
+            env_path = env_file.name
+        try:
+            with patch.dict(os.environ, {"TELEGRAM_BOT_TOKEN": "existing-token"}, clear=True):
+                server.load_dotenv_if_present(env_path)
+                self.assertEqual(os.environ["TELEGRAM_BOT_TOKEN"], "existing-token")
+                self.assertEqual(os.environ["TELEGRAM_CHAT_ID"], "chat-from-file")
+                self.assertEqual(os.environ["APP_BASE_URL"], "https://from-file.example")
+        finally:
+            os.unlink(env_path)
+
+    def test_load_dotenv_if_missing_is_noop(self):
+        with patch.dict(os.environ, {}, clear=True):
+            server.load_dotenv_if_present("/tmp/tariffs-routes-app-missing.env")
+            self.assertNotIn("TELEGRAM_BOT_TOKEN", os.environ)
 
     def test_send_skips_when_config_missing(self):
         with patch.dict(os.environ, {}, clear=True), patch("urllib.request.urlopen") as urlopen:
