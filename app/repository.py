@@ -2374,6 +2374,27 @@ class Repository:
             ORDER BY re.event_at DESC, re.id DESC
         """, params))
 
+    def get_routing_event(self, event_id: int) -> sqlite3.Row | None:
+        rows = self.list_routing_events({"include_inactive": True})
+        for row in rows:
+            if int(row["id"]) == int(event_id):
+                data = dict(row)
+                if data.get("apply_scope") == "server_priority":
+                    server_rows = self.conn.execute(
+                        """
+                        SELECT s.name
+                        FROM routing_event_servers res
+                        JOIN servers s ON s.id = res.server_id
+                        WHERE res.routing_event_id = ?
+                        ORDER BY s.name
+                        """,
+                        (event_id,),
+                    ).fetchall()
+                    if server_rows:
+                        data["affected_server_names"] = ", ".join(server["name"] for server in server_rows)
+                return data
+        return None
+
     def update_routing_event(self, event_id: int, *, updated_by: int, **kwargs) -> None:
         existing = self.conn.execute("SELECT * FROM routing_events WHERE id = ?", (event_id,)).fetchone()
         if not existing:

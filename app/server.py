@@ -6,6 +6,7 @@ import hmac
 import html
 import io
 import json
+import logging
 import os
 import re
 import sqlite3
@@ -18,12 +19,14 @@ from wsgiref.simple_server import make_server
 from app.db import DEFAULT_DB_PATH, DEFAULT_PHONE_ASSIGNMENTS, DEFAULT_PROJECTS, connect, ensure_db_initialized, init_db
 from app.importer import apply_import, preview_import
 from app.repository import BusinessRuleError, COMPANY_CHANGE_LABELS, ROUTING_SCOPE_LABELS, Repository, normalize_phone_status, normalize_provider_name, normalize_real_prefix, validate_phone_number
+from app.telegram import notify_provider_change_created
 
 DB_PATH = Path(os.environ.get("MVP_DB_PATH", DEFAULT_DB_PATH))
 ADMIN_ID = 1
 CURRENT_USER_COOKIE = "mvp_auth"
 FILTER_STATE_COOKIE = "mvp_filter_state"
 AUTH_COOKIE_SECRET = os.environ.get("MVP_AUTH_SECRET", "dev-mvp-auth-secret-change-me")
+logger = logging.getLogger(__name__)
 
 def sign_user_id(user_id: int) -> str:
     value = str(user_id)
@@ -4233,6 +4236,16 @@ def parse_int(value: str | None) -> int | None:
     return int(value) if value not in (None, "") else None
 
 
+def send_provider_change_notification(repo: Repository, event_id: int) -> None:
+    try:
+        event = repo.get_routing_event(event_id)
+        if event is None:
+            return
+        notify_provider_change_created(dict(event))
+    except Exception as exc:
+        logger.error("Telegram provider-change notification failed: %s", exc)
+
+
 def handle_post(repo: Repository, path: str, data: dict[str, str]):
     actor_id = current_actor_id()
     if path == "/admin/users/create":
@@ -4420,7 +4433,7 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
             if not calling_company_ids:
                 raise BusinessRuleError("Выберите хотя бы одну кампанию")
             if not raw_values.get("calling_company_ids") and legacy_calling_company_id and not (data.get("campaign_id_search") or "").strip():
-                repo.create_routing_event(
+                event_id = repo.create_routing_event(
                     event_at=data.get("event_at"), apply_scope=apply_scope, reason=data.get("reason"), comment=data.get("comment"),
                     country_id=parse_int(data.get("country_id")), server_id=parse_int(data.get("server_id")), server_ids=selected_server_ids, provider_id=provider_id,
                     affected_route_id=parse_int(data.get("affected_route_id")), old_route_id=parse_int(data.get("old_route_id")), new_route_id=parse_int(data.get("new_route_id")),
@@ -4428,6 +4441,7 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
                     new_company_routing_mode=data.get("new_company_routing_mode") or None, new_company_route_id=parse_int(data.get("new_company_route_id")),
                     new_company_has_autorotation=parse_int(data.get("new_company_has_autorotation")), created_by=actor_id,
                 )
+                send_provider_change_notification(repo, event_id)
                 return "/provider-changes"
             helper_server_id = parse_int(data.get("server_id"))
             if helper_server_id:
@@ -4441,7 +4455,7 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
             seen_company_ids = list(dict.fromkeys(calling_company_ids))
             for calling_company_id in seen_company_ids:
                 try:
-                    repo.create_routing_event(
+                    event_id = repo.create_routing_event(
                         event_at=data.get("event_at"), apply_scope=apply_scope, reason=data.get("reason"), comment=data.get("comment"),
                         country_id=parse_int(data.get("country_id")), server_id=parse_int(data.get("server_id")), server_ids=selected_server_ids, provider_id=provider_id,
                         affected_route_id=parse_int(data.get("affected_route_id")), old_route_id=parse_int(data.get("old_route_id")), new_route_id=parse_int(data.get("new_route_id")),
@@ -4449,6 +4463,7 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
                         new_company_routing_mode=data.get("new_company_routing_mode") or None, new_company_route_id=parse_int(data.get("new_company_route_id")),
                         new_company_has_autorotation=parse_int(data.get("new_company_has_autorotation")), created_by=actor_id,
                     )
+                    send_provider_change_notification(repo, event_id)
                     created_count += 1
                 except BusinessRuleError as exc:
                     if any(marker in str(exc) for marker in noop_markers):
@@ -4460,7 +4475,7 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
             if skipped_count:
                 return f"/provider-changes?notice={quote(f'Создано событий: {created_count}. Пропущено без изменений: {skipped_count}.')}"
             return "/provider-changes"
-        repo.create_routing_event(
+        event_id = repo.create_routing_event(
             event_at=data.get("event_at"), apply_scope=apply_scope, reason=data.get("reason"), comment=data.get("comment"),
             country_id=parse_int(data.get("country_id")), server_id=parse_int(data.get("server_id")), server_ids=selected_server_ids, provider_id=provider_id,
             affected_route_id=parse_int(data.get("affected_route_id")), old_route_id=parse_int(data.get("old_route_id")), new_route_id=parse_int(data.get("new_route_id")),
@@ -4468,6 +4483,7 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
             new_company_routing_mode=data.get("new_company_routing_mode") or None, new_company_route_id=parse_int(data.get("new_company_route_id")),
             new_company_has_autorotation=parse_int(data.get("new_company_has_autorotation")), created_by=actor_id,
         )
+        send_provider_change_notification(repo, event_id)
         return "/provider-changes"
     if path.startswith("/provider-changes/") and path.endswith("/update"):
         change_id = int(path.strip("/").split("/")[1])

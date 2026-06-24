@@ -4,6 +4,7 @@ import os
 import re
 import tempfile
 import unittest
+from unittest.mock import patch
 from urllib.parse import urlencode
 
 import app.server as server
@@ -3174,3 +3175,66 @@ class RolePermissionTest(ServerSmokeTest):
         self.assertEqual(captured["status"], "200 OK")
         self.assertNotIn("+ Добавить тариф", content)
         self.assertNotIn("Деактивировать", content)
+
+class ProviderChangeTelegramServerTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.NamedTemporaryFile(delete=False)
+        self.tmp.close()
+        self.conn = server.connect(self.tmp.name)
+        server.init_db(self.conn)
+        server.ensure_seed(server.Repository(self.conn))
+        self.repo = server.Repository(self.conn)
+        self.admin_id = self.conn.execute("SELECT id FROM users WHERE username = 'admin'").fetchone()["id"]
+        server._REQUEST_CONTEXT["current_user_id"] = self.admin_id
+        self.country_id = self.repo.create_country("Телеграм GEO", "TGM")
+        self.currency_id = self.conn.execute("SELECT id FROM currencies WHERE code = 'EUR'").fetchone()["id"]
+        self.provider_id = self.repo.create_provider("Telegram Miatel", "voip", self.currency_id)
+
+    def tearDown(self):
+        server._REQUEST_CONTEXT.clear()
+        self.conn.close()
+        os.unlink(self.tmp.name)
+
+    def _create_none_scope_post(self):
+        return {
+            "_actor_id": str(self.admin_id),
+            "event_at": "2026-06-24 21:15",
+            "apply_scope": "none",
+            "reason": "Плохие показатели",
+            "comment": "Перевели трафик на Miatel",
+            "country_id": str(self.country_id),
+            "provider_id": str(self.provider_id),
+            "_raw": "",
+        }
+
+    def test_provider_change_creation_calls_telegram_when_env_config_exists(self):
+        with patch.dict(os.environ, {"TELEGRAM_BOT_TOKEN": "token", "TELEGRAM_CHAT_ID": "chat"}, clear=True), \
+             patch("app.server.notify_provider_change_created", return_value=True) as notify:
+            location = server.handle_post(self.repo, "/provider-changes/create", self._create_none_scope_post())
+        self.assertEqual(location, "/provider-changes")
+        notify.assert_called_once()
+        self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM routing_events").fetchone()[0], 1)
+
+    def test_provider_change_creation_does_not_make_telegram_request_when_env_missing(self):
+        with patch.dict(os.environ, {}, clear=True), patch("urllib.request.urlopen") as urlopen:
+            location = server.handle_post(self.repo, "/provider-changes/create", self._create_none_scope_post())
+        self.assertEqual(location, "/provider-changes")
+        urlopen.assert_not_called()
+        self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM routing_events").fetchone()[0], 1)
+
+    def test_telegram_failure_does_not_prevent_event_creation(self):
+        with patch.dict(os.environ, {"TELEGRAM_BOT_TOKEN": "token", "TELEGRAM_CHAT_ID": "chat"}, clear=True), \
+             patch("app.server.notify_provider_change_created", side_effect=RuntimeError("telegram down")):
+            location = server.handle_post(self.repo, "/provider-changes/create", self._create_none_scope_post())
+        self.assertEqual(location, "/provider-changes")
+        self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM routing_events").fetchone()[0], 1)
+
+    def test_comment_edit_does_not_send_telegram_notification(self):
+        event_id = self.repo.create_routing_event(
+            event_at="2026-06-24 21:15", apply_scope="none", reason="Другое", comment="old",
+            country_id=self.country_id, provider_id=self.provider_id, created_by=self.admin_id,
+        )
+        with patch("app.server.notify_provider_change_created") as notify:
+            location = server.handle_post(self.repo, f"/provider-changes/{event_id}/update", {"_actor_id": str(self.admin_id), "comment": "new"})
+        self.assertEqual(location, "/provider-changes")
+        notify.assert_not_called()
