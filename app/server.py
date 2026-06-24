@@ -2515,31 +2515,31 @@ def ensure_seed(repo: Repository) -> None:
 
 
 AON_SOURCE_LABELS = {"pool": "Pool", "rnd": "RND", "sim": "SIM", "single_number": "Single", "other": "Other"}
-RND_TYPE_LABELS = {"local": "Локальный RND", "nonlocal": "Нелокальный RND"}
+POOL_TYPE_LABELS = {"purchased": "Пул купленных номеров", "local": "Локальный пул", "nonlocal": "Нелокальный пул", "sim_gateway": "SIM / GSM-шлюз"}
+RND_TYPE_LABELS = {"local": "Локальный пул", "nonlocal": "Нелокальный пул"}
 
 def normalize_route_aon_fields(data: dict[str, str]) -> tuple[str, str, str, str | None, str | None]:
     cli_source_type = (data.get("cli_source_type") or "").strip()
     if not cli_source_type:
-        raise BusinessRuleError("Источник АОН обязателен")
+        raise BusinessRuleError("Тип АОН обязателен")
     if cli_source_type not in {"pool", "rnd", "sim", "single_number", "other"}:
-        raise BusinessRuleError("Некорректный источник АОН")
+        raise BusinessRuleError("Некорректный тип АОН")
     rnd_type = (data.get("rnd_type") or "").strip() or None
     rnd_pool_owner = (data.get("rnd_pool_owner") or "").strip() or None
     aon_pool = (data.get("aon_pool") or "").strip()
     if cli_source_type == "pool":
         label = (data.get("cli_source_label") or "").strip()
         if not label:
-            raise BusinessRuleError("Метка АОН обязательна для источника Pool")
-        return cli_source_type, label, aon_pool or "Пул купленных номеров", None, None
+            raise BusinessRuleError("Метка АОН обязательна для типа Pool")
+        pool_type = aon_pool if aon_pool in {"Пул купленных номеров", "Локальный пул", "Нелокальный пул"} else "Пул купленных номеров"
+        return cli_source_type, label, format_aon_pool(pool_type, rnd_pool_owner), None, rnd_pool_owner
     if cli_source_type == "rnd":
         if rnd_type not in {"local", "nonlocal"}:
-            raise BusinessRuleError("Тип RND обязателен")
-        if rnd_type == "nonlocal" and not rnd_pool_owner:
-            raise BusinessRuleError("Укажите принадлежность нелокального RND")
-        combined = "Локальный RND" if rnd_type == "local" else f"Нелокальный RND: {rnd_pool_owner}"
-        return cli_source_type, "RND", combined, rnd_type, rnd_pool_owner
+            raise BusinessRuleError("Тип пула обязателен для RND")
+        pool_type = POOL_TYPE_LABELS[rnd_type]
+        return cli_source_type, "RND", format_aon_pool(pool_type, rnd_pool_owner), rnd_type, rnd_pool_owner
     if cli_source_type == "sim":
-        return cli_source_type, "SIM", aon_pool or "SIM / GSM-шлюз", None, None
+        return cli_source_type, "SIM", format_aon_pool("SIM / GSM-шлюз", rnd_pool_owner), None, rnd_pool_owner
     label = (data.get("cli_source_label") or "").strip()
     if not label:
         raise BusinessRuleError("Метка АОН обязательна")
@@ -2551,31 +2551,77 @@ def aon_source_options(selected: object | None = None, *, include_legacy: bool =
         values.append(str(selected))
     return "".join(f"<option value='{esc(v)}' {'selected' if v == selected else ''}>{esc(AON_SOURCE_LABELS.get(v, v))}</option>" for v in values)
 
+def format_aon_pool(pool_type: str, owner: str | None = None) -> str:
+    pool_type = (pool_type or "").strip()
+    owner = (owner or "").strip()
+    return f"{pool_type}: {owner}" if pool_type and owner else pool_type
+
+def pool_type_options(selected: object | None = None) -> str:
+    values = ["Пул купленных номеров", "Локальный пул", "Нелокальный пул", "SIM / GSM-шлюз"]
+    return "".join(f"<option value='{esc(v)}' {'selected' if v == selected else ''}>{esc(v)}</option>" for v in values)
+
 def rnd_type_options(selected: object | None = None) -> str:
     return "<option value=''>—</option>" + "".join(f"<option value='{v}' {'selected' if v == selected else ''}>{label}</option>" for v, label in RND_TYPE_LABELS.items())
 
 def route_aon_script() -> str:
     return """<script>
+function routeSelectedText(select) { return select && select.selectedOptions && select.selectedOptions[0] ? select.selectedOptions[0].textContent.trim() : ''; }
+function routeTemplateName(form) {
+  const country = routeSelectedText(form.querySelector('[name=country_id]')) || (form.dataset.countryName || '');
+  const provider = routeSelectedText(form.querySelector('[name=provider_id]'));
+  const project = routeSelectedText(form.querySelector('[name=project_label]'));
+  const label = (form.querySelector('[name=cli_source_label]')?.value || '').trim();
+  const prefixValue = form.querySelector('[name=provider_prefix_id]')?.value || '';
+  const prefixSelect = form.querySelector('[name=provider_prefix_id]');
+  let prefix = '';
+  if (prefixValue && prefixSelect) prefix = routeSelectedText(prefixSelect).replace(/ .*$/, '') + 'pfx';
+  const parts = [country, (project && project !== '—' && project !== 'Меж.деп.') ? project : '', provider, label, prefix].map(v => (v || '').replace(new RegExp('^/+|/+$', 'g'), '').trim()).filter(Boolean);
+  if (parts.length < 3) return '';
+  return parts.join('/') + '@';
+}
+function updateRouteName(form, force) {
+  const name = form.querySelector('[name=name]');
+  if (!name) return;
+  const generated = routeTemplateName(form);
+  form.dataset.generatedRouteName = generated;
+  if (!form.dataset.customRouteName || force) name.value = generated || 'Заполните обязательные поля для формирования названия';
+}
 function updateAonFields(root) {
   const source = root.querySelector('[name=cli_source_type]');
   if (!source) return;
   const label = root.querySelector('[name=cli_source_label]');
   const pool = root.querySelector('[name=aon_pool]');
-  const rndFields = root.querySelectorAll('[data-rnd-field]');
+  const rndType = root.querySelector('[name=rnd_type]');
   const value = source.value;
   if (label) {
     label.readOnly = value === 'rnd' || value === 'sim';
     if (value === 'rnd') label.value = 'RND';
     if (value === 'sim') label.value = 'SIM';
   }
-  rndFields.forEach(el => { el.hidden = value !== 'rnd'; });
-  if (pool && value === 'sim' && !pool.value) pool.value = 'SIM / GSM-шлюз';
-  if (pool && value === 'pool' && !pool.value) pool.value = 'Пул купленных номеров';
+  if (pool) {
+    Array.from(pool.options).forEach(opt => {
+      opt.hidden = (value === 'pool' && opt.value === 'SIM / GSM-шлюз') || (value === 'rnd' && !['Локальный пул','Нелокальный пул'].includes(opt.value)) || (value === 'sim' && opt.value !== 'SIM / GSM-шлюз');
+    });
+    pool.disabled = false; pool.setAttribute('aria-readonly', value === 'sim' ? 'true' : 'false');
+    if (value === 'sim') pool.value = 'SIM / GSM-шлюз';
+    if (value === 'rnd' && !['Локальный пул','Нелокальный пул'].includes(pool.value)) pool.value = 'Локальный пул';
+    if (value === 'pool' && !['Пул купленных номеров','Локальный пул','Нелокальный пул'].includes(pool.value)) pool.value = 'Пул купленных номеров';
+  }
+  if (rndType && pool) rndType.value = pool.value === 'Нелокальный пул' ? 'nonlocal' : (pool.value === 'Локальный пул' ? 'local' : '');
+  updateRouteName(root, false);
 }
 document.querySelectorAll('form').forEach(form => {
   if (form.querySelector('[name=cli_source_type]')) {
+    const name = form.querySelector('[name=name]');
+    if (name) name.addEventListener('input', () => { form.dataset.customRouteName = name.value !== (form.dataset.generatedRouteName || '') ? '1' : ''; });
     form.addEventListener('change', () => updateAonFields(form));
+    form.addEventListener('submit', ev => {
+      updateAonFields(form);
+      if (name && !name.value.trim()) { ev.preventDefault(); alert('Название маршрута обязательно'); return; }
+      if (name && form.dataset.generatedRouteName && name.value !== form.dataset.generatedRouteName && !confirm('Вы отредактировали название маршрута, оно не соответствует шаблону. Сохранить изменённое название?')) ev.preventDefault();
+    });
     updateAonFields(form);
+    if (name && !name.value) updateRouteName(form, true);
   }
 });
 </script>"""
@@ -2591,7 +2637,8 @@ def build_route_name(repo: Repository, country_id: int, provider_id: int, projec
     country_name = country["name"] if country else ""
     provider_name = provider["name"] if provider else ""
     prefix_part = f"{prefix['prefix']}pfx" if prefix and prefix["prefix"] else ""
-    base = clean_parts([country_name, project_label, provider_name, cli_source_label, prefix_part]) + "@"
+    project_part = project_label if project_label and project_label != "Меж.деп." else ""
+    base = clean_parts([country_name, project_part, provider_name, cli_source_label, prefix_part]) + "@"
     while "//@" in base or "//" in base:
         base = base.replace("//", "/")
     return base
@@ -2911,14 +2958,14 @@ def routes_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
   <label>Провайдер <span class="required">*</span><select name="provider_id">{active_options(repo, 'providers')}</select></label>
   <label>Префикс <select name="provider_prefix_id">{prefix_options(repo)}</select></label>
   <label>Проект/метка <select name="project_label">{project_options(repo, empty='—')}</select></label>
-  <label>Источник АОН <span class="required">*</span><select name="cli_source_type">{aon_source_options()}</select></label>
+  <label>Тип АОН <span class="required">*</span><select name="cli_source_type">{aon_source_options()}</select></label>
   <label>Метка АОН <span class="required">*</span><input name="cli_source_label" value="Pool_A"></label>
-  <label>АОН/пул <input name="aon_pool" value="Пул купленных номеров"></label>
-  <label data-rnd-field>Тип RND <span class="required">*</span><select name="rnd_type">{rnd_type_options()}</select></label>
-  <label data-rnd-field>Какой пул / принадлежность <input name="rnd_pool_owner" placeholder="венгерский пул"></label>
+  <label>Тип пула <span class="required">*</span><select name="aon_pool">{pool_type_options("Пул купленных номеров")}</select></label>
+  <input type="hidden" name="rnd_type">
+  <label>Принадлежность пула <input name="rnd_pool_owner" placeholder="венгерский пул"></label>
   <label>Статус <span class="required">*</span><select name="is_actual"><option value="1">Активный</option><option value="0">Неактивный</option></select></label>
   <label>Комментарий <input name="comment"></label>
-  <p class="muted wide">Название будет сформировано автоматически по выбранным полям. Свободный ввод названия отключён.</p>
+  <label class="wide">Название маршрута <span class="required">*</span><input name="name" placeholder="Заполните обязательные поля для формирования названия"></label>
   <button>Сохранить</button>
 </form>""" + route_aon_script()
     table_html = f"{data_table('routes', [('geo', 'ГЕО'), ('route', f"<span class='copyable-header'>Название маршрута {copy_column_button('route-name')}</span>"), ('provider', 'Провайдер'), ('prefix', 'Префикс'), ('actual', 'Актуальный'), ('aon_pool', 'АОН/пул'), ('comment', 'Комментарий'), ('numbers', 'Номера'), ('history', 'Ист.'), ('actions', 'Действия')], ''.join(rows))}"
@@ -4157,7 +4204,7 @@ def tariff_edit_page(repo: Repository, tariff_id: int) -> bytes:
 <label>Комментарий <input name='comment' value='{esc(tariff['comment'])}'></label>
 <label>Активен <span class='required'>*</span><select name='is_current'><option value='1' {'selected' if tariff['is_current'] else ''}>Да</option><option value='0' {'selected' if not tariff['is_current'] else ''}>Нет</option></select></label>
 <p class='muted wide'>GEO, провайдер и префикс задают идентичность тарифа и не редактируются.</p>
-<button onclick="return confirm('Сохранить изменения?')">Сохранить</button></form>
+<button>Сохранить</button></form>
 <script>
 const currencySelect = document.getElementById('tariff-currency');
 const currencyWarning = document.getElementById('currency-warning');
@@ -4168,23 +4215,23 @@ updateCurrencyWarning();
     return page("Редактировать тариф", body)
 
 def route_edit_page(repo: Repository, route_id: int) -> bytes:
-    route = repo.conn.execute("SELECT * FROM routes WHERE id = ?", (route_id,)).fetchone()
+    route = repo.conn.execute("SELECT r.*, c.name AS country_name FROM routes r JOIN countries c ON c.id = r.country_id WHERE r.id = ?", (route_id,)).fetchone()
     if route is None:
         return page("Маршрут не найден", "<h1>Маршрут не найден</h1>")
     body = f"""<h1>Редактировать маршрут</h1><p><a href='/routes'>← Назад</a></p>
-<form method='post' action='/routes/{route_id}/update'>
-<label>Название <span class='required'>*</span><input name='name' value='{esc(route['name'])}' size='60'></label>
+<form method='post' action='/routes/{route_id}/update' data-country-name='{esc(route['country_name']) if 'country_name' in route.keys() else ''}'>
+<label>Название маршрута <span class='required'>*</span><input name='name' value='{esc(route['name'])}' size='60'></label>
 <label>Провайдер <span class='required'>*</span><select name='provider_id'>{active_options(repo, 'providers', selected=route['provider_id'])}</select></label>
 <label>Префикс <select name='provider_prefix_id'>{prefix_options(repo, selected=route['provider_prefix_id'])}</select></label>
-<label>Источник АОН <span class='required'>*</span><select name='cli_source_type'>{aon_source_options(route['cli_source_type'], include_legacy=True)}</select></label>
+<label>Тип АОН <span class='required'>*</span><select name='cli_source_type'>{aon_source_options(route['cli_source_type'], include_legacy=True)}</select></label>
 <label>Метка АОН <span class='required'>*</span><input name='cli_source_label' value='{esc(route['cli_source_label'])}'></label>
-<label>АОН/пул <input name='aon_pool' value='{esc(route['aon_pool'] or '')}'></label>
-<label data-rnd-field>Тип RND <span class='required'>*</span><select name='rnd_type'>{rnd_type_options(route['rnd_type'])}</select></label>
-<label data-rnd-field>Какой пул / принадлежность <input name='rnd_pool_owner' value='{esc(route['rnd_pool_owner'] or '')}'></label>
+<label>Тип пула <span class='required'>*</span><select name='aon_pool'>{pool_type_options((route['aon_pool'] or '').split(':', 1)[0])}</select></label>
+<input type='hidden' name='rnd_type' value='{esc(route['rnd_type'] or '')}'>
+<label>Принадлежность пула <input name='rnd_pool_owner' value='{esc(route['rnd_pool_owner'] or '')}'></label>
 <label>Комментарий <input name='comment' value='{esc(route['comment'])}'></label>
 <label>Актуальный <select name='is_actual'><option value='1' {'selected' if route['is_actual'] else ''}>Активный</option><option value='0' {'selected' if not route['is_actual'] else ''}>Неактивный</option></select></label>
 <label>Приоритет <select name='priority_status'><option value='priority' {'selected' if route['priority_status']=='priority' else ''}>priority</option><option value='alternative' {'selected' if route['priority_status']=='alternative' else ''}>alternative</option><option value='unknown' {'selected' if route['priority_status']=='unknown' else ''}>unknown</option></select></label>
-<button onclick="return confirm('Сохранить изменения?')">Сохранить</button></form>
+<button>Сохранить</button></form>
 {route_aon_script()}
 <div class='card'><h2>Номера маршрута / АОНы</h2><p>Управление купленными номерами доступно для каждого маршрута, даже если номеров пока нет.</p><p><a class='button' href='/routes/{route_id}/numbers/manage'>Номера маршрута / АОНы</a></p></div>"""
     return page("Редактировать маршрут", body)
@@ -4211,7 +4258,7 @@ def phone_edit_page(repo: Repository, phone_id: int) -> bytes:
 <label>Комментарий <input name='comment' value='{esc(phone['comment'])}'></label>
 <label><input type='checkbox' name='review_required' value='1' {'checked' if phone['review_required'] else ''}> Требует проверки</label>
 <p class='muted'>Поле «Маршрутов» не редактируется и считается автоматически.</p>
-<button onclick="return confirm('Сохранить изменения?')">Сохранить</button></form>"""
+<button>Сохранить</button></form>"""
     return page("Редактировать номер", body)
 
 
@@ -4244,7 +4291,7 @@ def company_edit_page(repo: Repository, company_id: int) -> bytes:
 <label>Интервал дозвона, сек. <input name='retry_interval_seconds' value='{esc(cc['retry_interval_seconds'])}'></label>
 <label>Активна <select name='is_active'><option value='1' {'selected' if cc['is_active'] else ''}>Да</option><option value='0' {'selected' if not cc['is_active'] else ''}>Нет</option></select></label>
 <label>Комментарий <input name='comment' value='{esc(cc['comment'])}'></label>
-<button onclick="return confirm('Сохранить изменения?')">Сохранить</button></form>"""
+<button>Сохранить</button></form>"""
     return page("Редактировать кампанию", body)
 
 
@@ -4314,7 +4361,9 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
             if prefix_provider and int(prefix_provider["provider_id"]) != provider_id:
                 raise BusinessRuleError("Префикс не принадлежит выбранному провайдеру")
         cli_source_type, cli_source_label, aon_pool, rnd_type, rnd_pool_owner = normalize_route_aon_fields(data)
-        name = build_route_name(repo, country_id, provider_id, data.get("project_label"), cli_source_label, prefix_id)
+        name = (data.get("name") or "").strip()
+        if not name:
+            name = build_route_name(repo, country_id, provider_id, data.get("project_label"), cli_source_label, prefix_id)
         if len(name.replace("/", "").replace("@", "").strip()) < 4:
             raise BusinessRuleError("Некорректное название маршрута: заполните ГЕО, провайдера и источник АОН")
         repo.create_route(country_id=country_id, provider_id=provider_id, provider_prefix_id=prefix_id, name=name, project_label=data.get("project_label"), cli_source_type=cli_source_type, cli_source_label=cli_source_label, aon_pool=aon_pool, rnd_type=rnd_type, rnd_pool_owner=rnd_pool_owner, comment=data.get("comment"), created_by=actor_id, is_actual=data.get("is_actual") == "1")
