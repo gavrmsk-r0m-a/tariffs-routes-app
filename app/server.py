@@ -2484,6 +2484,73 @@ def ensure_seed(repo: Repository) -> None:
         return
     normalize_demo_dataset()
 
+
+AON_SOURCE_LABELS = {"pool": "Pool", "rnd": "RND", "sim": "SIM", "single_number": "Single", "other": "Other"}
+RND_TYPE_LABELS = {"local": "Локальный RND", "nonlocal": "Нелокальный RND"}
+
+def normalize_route_aon_fields(data: dict[str, str]) -> tuple[str, str, str, str | None, str | None]:
+    cli_source_type = (data.get("cli_source_type") or "").strip()
+    if not cli_source_type:
+        raise BusinessRuleError("Источник АОН обязателен")
+    if cli_source_type not in {"pool", "rnd", "sim", "single_number", "other"}:
+        raise BusinessRuleError("Некорректный источник АОН")
+    rnd_type = (data.get("rnd_type") or "").strip() or None
+    rnd_pool_owner = (data.get("rnd_pool_owner") or "").strip() or None
+    aon_pool = (data.get("aon_pool") or "").strip()
+    if cli_source_type == "pool":
+        label = (data.get("cli_source_label") or "").strip()
+        if not label:
+            raise BusinessRuleError("Метка АОН обязательна для источника Pool")
+        return cli_source_type, label, aon_pool or "Пул купленных номеров", None, None
+    if cli_source_type == "rnd":
+        if rnd_type not in {"local", "nonlocal"}:
+            raise BusinessRuleError("Тип RND обязателен")
+        if rnd_type == "nonlocal" and not rnd_pool_owner:
+            raise BusinessRuleError("Укажите принадлежность нелокального RND")
+        combined = "Локальный RND" if rnd_type == "local" else f"Нелокальный RND: {rnd_pool_owner}"
+        return cli_source_type, "RND", combined, rnd_type, rnd_pool_owner
+    if cli_source_type == "sim":
+        return cli_source_type, "SIM", aon_pool or "SIM / GSM-шлюз", None, None
+    label = (data.get("cli_source_label") or "").strip()
+    if not label:
+        raise BusinessRuleError("Метка АОН обязательна")
+    return cli_source_type, label, aon_pool, None, None
+
+def aon_source_options(selected: object | None = None, *, include_legacy: bool = False) -> str:
+    values = ["pool", "rnd", "sim"]
+    if include_legacy and selected in {"single_number", "other"}:
+        values.append(str(selected))
+    return "".join(f"<option value='{esc(v)}' {'selected' if v == selected else ''}>{esc(AON_SOURCE_LABELS.get(v, v))}</option>" for v in values)
+
+def rnd_type_options(selected: object | None = None) -> str:
+    return "<option value=''>—</option>" + "".join(f"<option value='{v}' {'selected' if v == selected else ''}>{label}</option>" for v, label in RND_TYPE_LABELS.items())
+
+def route_aon_script() -> str:
+    return """<script>
+function updateAonFields(root) {
+  const source = root.querySelector('[name=cli_source_type]');
+  if (!source) return;
+  const label = root.querySelector('[name=cli_source_label]');
+  const pool = root.querySelector('[name=aon_pool]');
+  const rndFields = root.querySelectorAll('[data-rnd-field]');
+  const value = source.value;
+  if (label) {
+    label.readOnly = value === 'rnd' || value === 'sim';
+    if (value === 'rnd') label.value = 'RND';
+    if (value === 'sim') label.value = 'SIM';
+  }
+  rndFields.forEach(el => { el.hidden = value !== 'rnd'; });
+  if (pool && value === 'sim' && !pool.value) pool.value = 'SIM / GSM-шлюз';
+  if (pool && value === 'pool' && !pool.value) pool.value = 'Пул купленных номеров';
+}
+document.querySelectorAll('form').forEach(form => {
+  if (form.querySelector('[name=cli_source_type]')) {
+    form.addEventListener('change', () => updateAonFields(form));
+    updateAonFields(form);
+  }
+});
+</script>"""
+
 def clean_parts(parts: list[str]) -> str:
     return "/".join([p.strip(" /") for p in parts if p and p.strip(" /")])
 
@@ -2794,7 +2861,7 @@ def routes_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
     filters = {"country_id": q.get("country_id"), "provider_id": q.get("provider_id"), "prefix_id": q.get("prefix_id"), "is_actual": q.get("is_actual"), "search_like": q.get("search")}
     records = list(repo.list_routes(filters))
     if q.get("export") == "csv":
-        return csv_response("routes_export.csv", ["GEO", "Провайдер", "Маршрут", "Сервер", "Активен", "Комментарий"], [[r["country_name"], r["provider_name"], r["name"], "", "Да" if r["is_actual"] else "Нет", r["comment"]] for r in records])
+        return csv_response("routes_export.csv", ["GEO", "Провайдер", "Маршрут", "АОН/пул", "Сервер", "Активен", "Комментарий"], [[r["country_name"], r["provider_name"], r["name"], r["aon_pool"] or "—", "", "Да" if r["is_actual"] else "Нет", r["comment"]] for r in records])
     records, pagination_html = paginate_rows(records, q, "/routes")
     rows = []
     for route in records:
@@ -2803,7 +2870,7 @@ def routes_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
         numbers = f'{numbers_label} <a class="button route-numbers-action" href="/routes/{route["id"]}/numbers">Показать номера</a>'
         edit = f"<a class='button edit-action' href='/routes/{route['id']}/edit' title='Редактировать' aria-label='Редактировать' data-tooltip='Редактировать'>Редактировать</a>" if can_write("routes") else ""
         history = history_icon_link(f"/routes/{route['id']}/history")
-        rows.append(f"<tr><td data-col='geo'>{esc(route['country_name'])}</td>{clamp_cell('route', esc(route['name']), route['name'], extra_attrs="data-copy-column='route-name'")}<td data-col='provider'>{esc(route['provider_name'])}</td><td data-col='prefix'>{esc(prefix)}</td><td data-col='actual'>{'Да' if route['is_actual'] else 'Нет'}</td>{clamp_cell('comment', esc(route['comment']), route['comment'], classes='comment-cell')}<td data-col='numbers'>{numbers}</td><td data-col='history' class='history-cell'>{history}</td><td data-col='actions' class='actions'>{edit}</td></tr>")
+        rows.append(f"<tr><td data-col='geo'>{esc(route['country_name'])}</td>{clamp_cell('route', esc(route['name']), route['name'], extra_attrs="data-copy-column='route-name'")}<td data-col='provider'>{esc(route['provider_name'])}</td><td data-col='prefix'>{esc(prefix)}</td><td data-col='actual'>{'Да' if route['is_actual'] else 'Нет'}</td>{clamp_cell('aon_pool', esc(route['aon_pool'] or '—'), route['aon_pool'] or '—')}{clamp_cell('comment', esc(route['comment']), route['comment'], classes='comment-cell')}<td data-col='numbers'>{numbers}</td><td data-col='history' class='history-cell'>{history}</td><td data-col='actions' class='actions'>{edit}</td></tr>")
     filters_html = f"""<form class="filter-grid" method="get" action="/routes">
 <label>ГЕО <select name="country_id">{options(repo, 'countries', selected=q.get('country_id'), empty='Все')}</select></label>
 <label>Провайдер <select name="provider_id">{options(repo, 'providers', selected=q.get('provider_id'), empty='Все')}</select></label>
@@ -2815,20 +2882,23 @@ def routes_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
   <label>Провайдер <span class="required">*</span><select name="provider_id">{active_options(repo, 'providers')}</select></label>
   <label>Префикс <select name="provider_prefix_id">{prefix_options(repo)}</select></label>
   <label>Проект/метка <select name="project_label">{project_options(repo, empty='—')}</select></label>
-  <label>Источник АОН <span class="required">*</span><select name="cli_source_type"><option value="pool">Pool</option><option value="rnd">RND</option><option value="sim">SIM</option><option value="single_number">Single</option><option value="other">Other</option></select></label>
+  <label>Источник АОН <span class="required">*</span><select name="cli_source_type">{aon_source_options()}</select></label>
   <label>Метка АОН <span class="required">*</span><input name="cli_source_label" value="Pool_A"></label>
+  <label>АОН/пул <input name="aon_pool" value="Пул купленных номеров"></label>
+  <label data-rnd-field>Тип RND <span class="required">*</span><select name="rnd_type">{rnd_type_options()}</select></label>
+  <label data-rnd-field>Какой пул / принадлежность <input name="rnd_pool_owner" placeholder="венгерский пул"></label>
   <label>Статус <span class="required">*</span><select name="is_actual"><option value="1">Активный</option><option value="0">Неактивный</option></select></label>
   <label>Комментарий <input name="comment"></label>
   <p class="muted wide">Название будет сформировано автоматически по выбранным полям. Свободный ввод названия отключён.</p>
   <button>Сохранить</button>
-</form>"""
-    table_html = f"{data_table('routes', [('geo', 'ГЕО'), ('route', f"<span class='copyable-header'>Название маршрута {copy_column_button('route-name')}</span>"), ('provider', 'Провайдер'), ('prefix', 'Префикс'), ('actual', 'Актуальный'), ('comment', 'Комментарий'), ('numbers', 'Номера'), ('history', 'Ист.'), ('actions', 'Действия')], ''.join(rows))}"
+</form>""" + route_aon_script()
+    table_html = f"{data_table('routes', [('geo', 'ГЕО'), ('route', f"<span class='copyable-header'>Название маршрута {copy_column_button('route-name')}</span>"), ('provider', 'Провайдер'), ('prefix', 'Префикс'), ('actual', 'Актуальный'), ('aon_pool', 'АОН/пул'), ('comment', 'Комментарий'), ('numbers', 'Номера'), ('history', 'Ист.'), ('actions', 'Действия')], ''.join(rows))}"
     body = f"""
 <h1>Маршруты</h1>
 {filter_card(filters_html, q, ('country_id', 'provider_id', 'prefix_id', 'is_actual', 'search'))}
 {form_card('+ Добавить маршрут <span class="muted">Admin</span>', create_html) if can_write("routes") else ""}
 {table_card(table_html)}
-{table_footer(pagination_html, export_link('/routes', q) + column_settings('routes', [('geo', 'ГЕО'), ('route', 'Название маршрута'), ('provider', 'Провайдер'), ('prefix', 'Префикс'), ('actual', 'Актуальный'), ('comment', 'Комментарий'), ('numbers', 'Номера'), ('actions', 'Действия')]))}
+{table_footer(pagination_html, export_link('/routes', q) + column_settings('routes', [('geo', 'ГЕО'), ('route', 'Название маршрута'), ('provider', 'Провайдер'), ('prefix', 'Префикс'), ('actual', 'Актуальный'), ('aon_pool', 'АОН/пул'), ('comment', 'Комментарий'), ('numbers', 'Номера'), ('actions', 'Действия')]))}
 """
     return page("Маршруты", table_page_container(body))
 
@@ -4077,10 +4147,16 @@ def route_edit_page(repo: Repository, route_id: int) -> bytes:
 <label>Название <span class='required'>*</span><input name='name' value='{esc(route['name'])}' size='60'></label>
 <label>Провайдер <span class='required'>*</span><select name='provider_id'>{active_options(repo, 'providers', selected=route['provider_id'])}</select></label>
 <label>Префикс <select name='provider_prefix_id'>{prefix_options(repo, selected=route['provider_prefix_id'])}</select></label>
+<label>Источник АОН <span class='required'>*</span><select name='cli_source_type'>{aon_source_options(route['cli_source_type'], include_legacy=True)}</select></label>
+<label>Метка АОН <span class='required'>*</span><input name='cli_source_label' value='{esc(route['cli_source_label'])}'></label>
+<label>АОН/пул <input name='aon_pool' value='{esc(route['aon_pool'] or '')}'></label>
+<label data-rnd-field>Тип RND <span class='required'>*</span><select name='rnd_type'>{rnd_type_options(route['rnd_type'])}</select></label>
+<label data-rnd-field>Какой пул / принадлежность <input name='rnd_pool_owner' value='{esc(route['rnd_pool_owner'] or '')}'></label>
 <label>Комментарий <input name='comment' value='{esc(route['comment'])}'></label>
 <label>Актуальный <select name='is_actual'><option value='1' {'selected' if route['is_actual'] else ''}>Активный</option><option value='0' {'selected' if not route['is_actual'] else ''}>Неактивный</option></select></label>
 <label>Приоритет <select name='priority_status'><option value='priority' {'selected' if route['priority_status']=='priority' else ''}>priority</option><option value='alternative' {'selected' if route['priority_status']=='alternative' else ''}>alternative</option><option value='unknown' {'selected' if route['priority_status']=='unknown' else ''}>unknown</option></select></label>
 <button onclick="return confirm('Сохранить изменения?')">Сохранить</button></form>
+{route_aon_script()}
 <div class='card'><h2>Номера маршрута / АОНы</h2><p>Управление купленными номерами доступно для каждого маршрута, даже если номеров пока нет.</p><p><a class='button' href='/routes/{route_id}/numbers/manage'>Номера маршрута / АОНы</a></p></div>"""
     return page("Редактировать маршрут", body)
 
@@ -4198,10 +4274,11 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
             prefix_provider = repo.conn.execute("SELECT provider_id FROM provider_prefixes WHERE id = ?", (prefix_id,)).fetchone()
             if prefix_provider and int(prefix_provider["provider_id"]) != provider_id:
                 raise BusinessRuleError("Префикс не принадлежит выбранному провайдеру")
-        name = build_route_name(repo, country_id, provider_id, data.get("project_label"), data.get("cli_source_label", ""), prefix_id)
+        cli_source_type, cli_source_label, aon_pool, rnd_type, rnd_pool_owner = normalize_route_aon_fields(data)
+        name = build_route_name(repo, country_id, provider_id, data.get("project_label"), cli_source_label, prefix_id)
         if len(name.replace("/", "").replace("@", "").strip()) < 4:
             raise BusinessRuleError("Некорректное название маршрута: заполните ГЕО, провайдера и источник АОН")
-        repo.create_route(country_id=country_id, provider_id=provider_id, provider_prefix_id=prefix_id, name=name, project_label=data.get("project_label"), cli_source_type=data["cli_source_type"], cli_source_label=data["cli_source_label"], comment=data.get("comment"), created_by=actor_id, is_actual=data.get("is_actual") == "1")
+        repo.create_route(country_id=country_id, provider_id=provider_id, provider_prefix_id=prefix_id, name=name, project_label=data.get("project_label"), cli_source_type=cli_source_type, cli_source_label=cli_source_label, aon_pool=aon_pool, rnd_type=rnd_type, rnd_pool_owner=rnd_pool_owner, comment=data.get("comment"), created_by=actor_id, is_actual=data.get("is_actual") == "1")
         return "/routes"
     if path.startswith("/routes/") and path.endswith("/update"):
         route_id = int(path.strip("/").split("/")[1])
@@ -4214,7 +4291,15 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
                 raise BusinessRuleError("Префикс не принадлежит провайдеру маршрута")
         if not name:
             raise BusinessRuleError("Название маршрута обязательно")
-        repo.update_route(route_id, name=name, provider_id=provider_id, provider_prefix_id=prefix_id, comment=data.get("comment"), is_actual=data.get("is_actual") == "1", priority_status=data.get("priority_status") or "unknown", updated_by=actor_id)
+        route_existing = repo.conn.execute("SELECT cli_source_type, cli_source_label, aon_pool, rnd_type, rnd_pool_owner FROM routes WHERE id = ?", (route_id,)).fetchone()
+        if route_existing is None:
+            raise BusinessRuleError("Route not found")
+        aon_data = dict(data)
+        for key in ("cli_source_type", "cli_source_label", "aon_pool", "rnd_type", "rnd_pool_owner"):
+            if key not in aon_data:
+                aon_data[key] = route_existing[key] or ""
+        cli_source_type, cli_source_label, aon_pool, rnd_type, rnd_pool_owner = normalize_route_aon_fields(aon_data)
+        repo.update_route(route_id, name=name, provider_id=provider_id, provider_prefix_id=prefix_id, cli_source_type=cli_source_type, cli_source_label=cli_source_label, aon_pool=aon_pool, rnd_type=rnd_type, rnd_pool_owner=rnd_pool_owner, comment=data.get("comment"), is_actual=data.get("is_actual") == "1", priority_status=data.get("priority_status") or "unknown", updated_by=actor_id)
         return "/routes"
     if path.startswith("/routes/") and path.endswith("/numbers/add"):
         route_id = int(path.strip("/").split("/")[1])

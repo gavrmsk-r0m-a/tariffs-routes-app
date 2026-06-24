@@ -1557,6 +1557,87 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertIn(f"/routes/{route_id}/numbers", content)
         self.assertIn("Показать номера", content)
 
+
+    def test_route_aon_source_dropdown_offers_only_new_sources(self):
+        captured, content = self.request("/routes")
+        self.assertEqual(captured["status"], "200 OK")
+        source_select = content.split('name="cli_source_type"', 1)[1].split('</select>', 1)[0]
+        self.assertIn("value='pool'", source_select)
+        self.assertIn("value='rnd'", source_select)
+        self.assertIn("value='sim'", source_select)
+        self.assertNotIn('single_number', source_select)
+        self.assertNotIn('other', source_select)
+
+    def test_pool_route_saves_manual_aon_label_and_pool_info(self):
+        self.request("/routes")
+        body = urlencode({"country_id": "1", "provider_id": "1", "provider_prefix_id": "", "project_label": "", "cli_source_type": "pool", "cli_source_label": "pool_A_stage1", "aon_pool": "Пул купленных номеров", "is_actual": "1"})
+        captured, _ = self.request("/routes/create", method="POST", body=body)
+        self.assertEqual(captured["status"], "303 See Other")
+        conn = server.connect(server.DB_PATH)
+        try:
+            row = conn.execute("SELECT cli_source_type, cli_source_label, aon_pool FROM routes WHERE cli_source_label = 'pool_A_stage1'").fetchone()
+            self.assertEqual((row["cli_source_type"], row["cli_source_label"], row["aon_pool"]), ("pool", "pool_A_stage1", "Пул купленных номеров"))
+        finally:
+            conn.close()
+        captured, content = self.request("/routes")
+        self.assertIn("Пул купленных номеров", content)
+
+    def test_rnd_local_sets_label_and_pool_info(self):
+        self.request("/routes")
+        body = urlencode({"country_id": "1", "provider_id": "1", "provider_prefix_id": "", "project_label": "", "cli_source_type": "rnd", "cli_source_label": "ignored", "rnd_type": "local", "is_actual": "1"})
+        captured, _ = self.request("/routes/create", method="POST", body=body)
+        self.assertEqual(captured["status"], "303 See Other")
+        conn = server.connect(server.DB_PATH)
+        try:
+            row = conn.execute("SELECT cli_source_label, aon_pool, rnd_type FROM routes WHERE cli_source_type = 'rnd' AND aon_pool = 'Локальный RND' ORDER BY id DESC LIMIT 1").fetchone()
+            self.assertEqual((row["cli_source_label"], row["aon_pool"], row["rnd_type"]), ("RND", "Локальный RND", "local"))
+        finally:
+            conn.close()
+
+    def test_rnd_nonlocal_requires_and_saves_pool_ownership(self):
+        self.request("/routes")
+        invalid = urlencode({"country_id": "1", "provider_id": "1", "cli_source_type": "rnd", "rnd_type": "nonlocal", "is_actual": "1"})
+        captured, content = self.request("/routes/create", method="POST", body=invalid)
+        self.assertEqual(captured["status"], "400 Bad Request")
+        self.assertIn("Укажите принадлежность нелокального RND", content)
+
+        valid = urlencode({"country_id": "1", "provider_id": "1", "provider_prefix_id": "", "project_label": "", "cli_source_type": "rnd", "rnd_type": "nonlocal", "rnd_pool_owner": "венгерский пул", "is_actual": "1"})
+        captured, _ = self.request("/routes/create", method="POST", body=valid)
+        self.assertEqual(captured["status"], "303 See Other")
+        conn = server.connect(server.DB_PATH)
+        try:
+            row = conn.execute("SELECT cli_source_label, aon_pool, rnd_type, rnd_pool_owner FROM routes WHERE aon_pool = 'Нелокальный RND: венгерский пул'").fetchone()
+            self.assertEqual((row["cli_source_label"], row["rnd_type"], row["rnd_pool_owner"]), ("RND", "nonlocal", "венгерский пул"))
+        finally:
+            conn.close()
+
+    def test_sim_sets_label_and_pool_info(self):
+        self.request("/routes")
+        body = urlencode({"country_id": "1", "provider_id": "1", "provider_prefix_id": "", "project_label": "", "cli_source_type": "sim", "cli_source_label": "ignored", "is_actual": "1"})
+        captured, _ = self.request("/routes/create", method="POST", body=body)
+        self.assertEqual(captured["status"], "303 See Other")
+        conn = server.connect(server.DB_PATH)
+        try:
+            row = conn.execute("SELECT cli_source_type, cli_source_label, aon_pool FROM routes WHERE cli_source_type = 'sim' ORDER BY id DESC LIMIT 1").fetchone()
+            self.assertEqual((row["cli_source_type"], row["cli_source_label"], row["aon_pool"]), ("sim", "SIM", "SIM / GSM-шлюз"))
+        finally:
+            conn.close()
+
+    def test_existing_legacy_aon_source_route_still_displays(self):
+        self.request("/routes")
+        conn = server.connect(server.DB_PATH)
+        try:
+            cur = conn.execute("INSERT INTO routes(country_id, provider_id, name, cli_source_type, cli_source_label, created_by) VALUES (1, 1, 'Legacy/Single@', 'single_number', 'old_single', 1)")
+            route_id = cur.lastrowid
+            conn.commit()
+        finally:
+            conn.close()
+        captured, content = self.request("/routes")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("Legacy/Single@", content)
+        captured, content = self.request(f"/routes/{route_id}/edit")
+        self.assertIn("Single", content)
+
     def test_duplicate_route_returns_user_message(self):
         self.request("/routes")
         body = urlencode({"country_id": "1", "provider_id": "2", "provider_prefix_id": "", "project_label": "", "cli_source_type": "pool", "cli_source_label": "Demo_A", "is_actual": "1"})
@@ -2845,7 +2926,7 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
         self.assertEqual(captured["status"], "200 OK")
         self.assertIn(("Content-Type", "text/csv; charset=utf-8"), captured["headers"])
         self.assertIn(("Content-Disposition", "attachment; filename=routes_export.csv"), captured["headers"])
-        self.assertTrue(content.startswith("\ufeffGEO;Провайдер;Маршрут;Сервер;Активен;Комментарий"))
+        self.assertTrue(content.startswith("\ufeffGEO;Провайдер;Маршрут;АОН/пул;Сервер;Активен;Комментарий"))
         self.assertIn(";", content.splitlines()[0])
         self.assertEqual(content.count("bulk export row"), 55)
 

@@ -225,6 +225,9 @@ def run_lightweight_migrations(conn: sqlite3.Connection) -> None:
     _add_column_if_missing(conn, "phone_numbers", "tariff_label", "TEXT")
     _add_column_if_missing(conn, "phone_numbers", "deactivated_at", "TEXT")
     _add_column_if_missing(conn, "phone_numbers", "review_required", "INTEGER NOT NULL DEFAULT 0 CHECK (review_required IN (0, 1))")
+    _add_column_if_missing(conn, "routes", "aon_pool", "TEXT")
+    _add_column_if_missing(conn, "routes", "rnd_type", "TEXT CHECK (rnd_type IN ('local', 'nonlocal') OR rnd_type IS NULL)")
+    _add_column_if_missing(conn, "routes", "rnd_pool_owner", "TEXT")
     _rebuild_phone_numbers_if_needed(conn)
     conn.execute("""
         CREATE TABLE IF NOT EXISTS phone_number_types (
