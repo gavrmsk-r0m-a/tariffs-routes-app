@@ -1195,6 +1195,12 @@ class ServerSmokeTest(unittest.TestCase):
         finally:
             conn.close()
 
+        captured, content = self.request("/admin/server-priorities?server_id=1")
+        self.assertEqual(captured["status"], "200 OK")
+        eu1_block = content.split("<h2>Сервер: EU1</h2>", 1)[1].split("</section>", 1)[0]
+        self.assertIn("data-col='current_priority'>Мексика/Sancom/Demo_0827@<br><span class='muted'>Перелив: Активный резерв без gateway word</span></td>", eu1_block)
+        self.assertIn("data-col='previous_priority'>Мексика/Miatel/Demo_A@<br><span class='muted'>Перелив: —</span></td>", eu1_block)
+
     def test_server_priority_rejects_only_identical_route_and_overflow_state(self):
         self.request("/routes")
         overflow_id = self._create_overflow_route("Активный резерв")
