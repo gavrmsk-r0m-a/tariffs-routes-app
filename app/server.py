@@ -3177,6 +3177,22 @@ def route_options_for_dynamic_form(repo: Repository, selected: object | None = N
     return opts
 
 
+def overflow_route_options(repo: Repository, selected: object | None = None, empty: str | None = "—") -> str:
+    opts = f"<option value=''>{esc(empty)}</option>" if empty is not None else ""
+    rows = repo.conn.execute(
+        """
+        SELECT id, name
+        FROM routes
+        WHERE is_actual = 1
+        ORDER BY name
+        """
+    ).fetchall()
+    for row in rows:
+        if "шлюз" not in (row["name"] or "").casefold():
+            continue
+        opts += f"<option value='{row['id']}' {'selected' if str(row['id']) == str(selected) else ''}>{esc(row['name'])}</option>"
+    return opts
+
 def route_metadata_json(repo: Repository) -> str:
     rows = repo.conn.execute(
         """
@@ -3259,6 +3275,7 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
             ("Маршрут/префикс", one("SELECT name FROM routes WHERE id = ?", event["affected_route_id"])),
             ("Старый маршрут", one("SELECT name FROM routes WHERE id = ?", event["old_route_id"])),
             ("Новый маршрут", one("SELECT name FROM routes WHERE id = ?", event["new_route_id"])),
+            ("Перелив", one("SELECT name FROM routes WHERE id = ?", event["overflow_route_id"]) if event["apply_scope"] == "server_priority" and event["has_overflow"] else "—"),
             ("Кампания", one("SELECT company_id_external || ' / ' || company_name FROM calling_companies WHERE id = ?", event["calling_company_id"])),
             ("Тип изменения кампании", change_type_labels.get(event["company_change_type"], event["company_change_type"] or "—")),
             ("Режим маршрутизации", mode_labels.get(event["new_company_routing_mode"], event["new_company_routing_mode"] or "—")),
@@ -3285,6 +3302,10 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
     route_opts = route_options_for_dynamic_form(repo, selected=event["affected_route_id"] if event else None, empty="—")
     new_route_opts = route_options_for_dynamic_form(repo, selected=event["new_route_id"] if event else None, empty="—")
     company_route_opts = route_options_for_dynamic_form(repo, selected=event["new_company_route_id"] if event else None, empty="—")
+    overflow_route_selected = event.get("overflow_route_id") if isinstance(event, dict) else (event["overflow_route_id"] if event else None)
+    has_overflow_value = event.get("has_overflow") if isinstance(event, dict) else (event["has_overflow"] if event else 0)
+    overflow_opts = overflow_route_options(repo, selected=overflow_route_selected, empty="—")
+    has_overflow_checked = "checked" if has_overflow_value else ""
     selected_company_ids = set()
     if event:
         raw_selected = event.get("calling_company_ids") if isinstance(event, dict) else None
@@ -3345,6 +3366,8 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
   {old_route_field}
   <label class='scope-field route-select-field' data-scopes='server_priority'>Новый маршрут <span class='required'>*</span><select name='new_route_id' id='new-route' class='route-select'>{new_route_opts}</select></label>
   <span class='scope-field route-empty-message muted' data-scopes='server_priority' id='new-route-empty' hidden>Нет маршрутов для выбранного провайдера и GEO</span>
+  <label class='scope-field' data-scopes='server_priority'><input type='checkbox' name='has_overflow' id='has-overflow' value='1' {has_overflow_checked}> Есть перелив</label>
+  <label class='scope-field' data-scopes='server_priority' id='overflow-route-field'>Маршрут перелива <span class='required'>*</span><select name='overflow_route_id' id='overflow-route'>{overflow_opts}</select></label>
   <div class='provider-change-campaign-lower-grid'>
     <label class='routing-reason-field'>Причина <span class='required'>*</span><select name='reason' id='routing-reason' required>{routing_reason_options(event['reason'] if event else None, scope)}</select><span class='field-helper' id='routing-reason-helper'></span></label>
     <div class='scope-field campaign-company-field' data-scopes='campaign_setting'>
@@ -3527,6 +3550,12 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
     updateSelectTitle(document.getElementById('new-route'));
     updateSelectTitle(document.getElementById('company-route'));
     setRequired(document.getElementById('new-route'), scope === 'server_priority');
+    const hasOverflow = document.getElementById('has-overflow');
+    const overflowField = document.getElementById('overflow-route-field');
+    const overflowRoute = document.getElementById('overflow-route');
+    const overflowEnabled = scope === 'server_priority' && hasOverflow && hasOverflow.checked;
+    if (overflowField) overflowField.hidden = !overflowEnabled;
+    if (overflowRoute) {{ overflowRoute.disabled = !overflowEnabled; overflowRoute.required = !!overflowEnabled; if (!overflowEnabled) overflowRoute.value = ''; }}
     setRequired(ctype, scope === 'campaign_setting');
     syncCommentRequirement(scope);
   }}
@@ -3574,7 +3603,7 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
   }}));
   form.querySelectorAll('input[name="server_ids"]').forEach((box) => box.addEventListener('change', updateServerSelectionCount));
   updateServerSelectionCount();
-  form.querySelectorAll('input[name="apply_scope"], #event-country, #event-provider, #campaign-provider, #company-change-type').forEach((el) => el.addEventListener('change', sync));
+  form.querySelectorAll('input[name="apply_scope"], #event-country, #event-provider, #campaign-provider, #company-change-type, #has-overflow').forEach((el) => el.addEventListener('change', sync));
   const reasonSelect = document.getElementById('routing-reason');
   if (reasonSelect) reasonSelect.addEventListener('change', () => syncCommentRequirement(selectedScope()));
   form.querySelectorAll('input[name="calling_company_ids"]').forEach((el) => el.addEventListener('change', sync));
@@ -3660,9 +3689,11 @@ def provider_event_details(ev) -> tuple[str, str, str]:
             if items:
                 unique_names = list(dict.fromkeys(server_names))
                 server_text = ", ".join(unique_names) if unique_names else "—"
-                return server_text, "—", "Серверы:<ul class='event-server-list'>" + "".join(items) + "</ul>"
+                overflow = ev["overflow_route_name"] if ev["has_overflow"] else "—"
+                return server_text, "—", "Серверы:<ul class='event-server-list'>" + "".join(items) + f"</ul>; Перелив: {esc(overflow)}"
         route_text = f"{esc(ev['old_route_name'] or '—')} → {esc(ev['new_route_name'] or '—')}"
-        return ev["server_name"] or "—", "—", route_text
+        overflow = ev["overflow_route_name"] if ev["has_overflow"] else "—"
+        return ev["server_name"] or "—", "—", route_text + f"; Перелив: {esc(overflow)}"
     campaign = "—"
     if ev["company_id_external"] or ev["company_name"]:
         campaign = f"{ev['company_id_external'] or '—'} / {ev['company_name'] or '—'}"
@@ -4600,7 +4631,8 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
             affected_route_id=parse_int(data.get("affected_route_id")), old_route_id=parse_int(data.get("old_route_id")), new_route_id=parse_int(data.get("new_route_id")),
             calling_company_id=legacy_calling_company_id, company_change_type=data.get("company_change_type") or None,
             new_company_routing_mode=data.get("new_company_routing_mode") or None, new_company_route_id=parse_int(data.get("new_company_route_id")),
-            new_company_has_autorotation=parse_int(data.get("new_company_has_autorotation")), created_by=actor_id,
+            new_company_has_autorotation=parse_int(data.get("new_company_has_autorotation")),
+            has_overflow=(data.get("has_overflow") == "1"), overflow_route_id=parse_int(data.get("overflow_route_id")), created_by=actor_id,
         )
         send_provider_change_notification(repo, event_id)
         return "/provider-changes"
@@ -4943,6 +4975,8 @@ def app(environ, start_response):
                 "calling_company_ids": [parse_int(value) for value in parse_qs(parsed.get("_raw", ""), keep_blank_values=True).get("calling_company_ids", []) if parse_int(value)],
                 "company_change_type": parsed.get("company_change_type") or None,
                 "new_company_route_id": parse_int(parsed.get("new_company_route_id")),
+                "has_overflow": 1 if parsed.get("has_overflow") == "1" else 0,
+                "overflow_route_id": parse_int(parsed.get("overflow_route_id")),
                 "reason": parsed.get("reason"),
                 "comment": parsed.get("comment"),
                 "campaign_id_search": parsed.get("campaign_id_search"),

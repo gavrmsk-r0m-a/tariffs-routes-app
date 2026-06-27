@@ -1996,6 +1996,8 @@ class Repository:
         }
         if values.get("apply_scope") == "server_priority":
             snapshot["affected_servers"] = values.get("affected_servers", [])
+            snapshot["has_overflow"] = values.get("has_overflow", 0)
+            snapshot["overflow_route_name"] = self._name_by_id('routes', values.get("overflow_route_id")) if values.get("overflow_route_id") else None
         return snapshot
 
     def _routing_event_summary(self, values: dict) -> str:
@@ -2015,6 +2017,7 @@ class Repository:
             if values.get("server_id"):
                 parts.append(f"Сервер: {self._name_by_id('servers', values.get('server_id'))}")
             parts.append(f"Маршрут: {self._route_label(values.get('old_route_id')) or '—'} → {self._route_label(values.get('new_route_id')) or '—'}")
+            parts.append(f"Перелив: {self._route_label(values.get('overflow_route_id')) if values.get('has_overflow') else '—'}")
         elif scope == "campaign_setting":
             if values.get("calling_company_id"):
                 company = self.conn.execute("SELECT company_id_external, company_name FROM calling_companies WHERE id = ?", (values.get("calling_company_id"),)).fetchone()
@@ -2154,6 +2157,8 @@ class Repository:
             "new_company_route_id": kwargs.get("new_company_route_id"),
             "old_company_has_autorotation": kwargs.get("old_company_has_autorotation"),
             "new_company_has_autorotation": kwargs.get("new_company_has_autorotation"),
+            "has_overflow": 1 if kwargs.get("has_overflow") else 0,
+            "overflow_route_id": kwargs.get("overflow_route_id"),
         }
         created_by = kwargs.get("created_by")
         if not created_by:
@@ -2178,11 +2183,13 @@ class Repository:
             for field in (
                 "server_id", "old_route_id", "new_route_id", "calling_company_id", "company_change_type",
                 "old_company_routing_mode", "new_company_routing_mode", "old_company_route_id", "new_company_route_id",
-                "old_company_has_autorotation", "new_company_has_autorotation",
+                "old_company_has_autorotation", "new_company_has_autorotation", "overflow_route_id",
             ):
                 values[field] = None
             values["server_ids"] = None
             values["affected_servers"] = None
+            values["has_overflow"] = 0
+            values["overflow_route_id"] = None
         elif apply_scope == "server_priority":
             if not values["country_id"] or not values["new_route_id"]:
                 raise BusinessRuleError("GEO, сервер и новый маршрут обязательны для серверного приоритета")
@@ -2201,6 +2208,15 @@ class Repository:
                 country_id=values["country_id"], server_ids=server_ids, new_route_id=values["new_route_id"]
             )
             values["old_route_id"] = values["affected_servers"][0]["old_route_id"] if len(server_ids) == 1 else None
+            if values["has_overflow"]:
+                if not values["overflow_route_id"]:
+                    raise BusinessRuleError("Маршрут перелива обязателен")
+                overflow = self.conn.execute("SELECT name, is_actual FROM routes WHERE id = ?", (values["overflow_route_id"],)).fetchone()
+                if not overflow or not int(overflow["is_actual"]) or "шлюз" not in (overflow["name"] or "").casefold():
+                    raise BusinessRuleError("Маршрут перелива должен быть активным и содержать слово шлюз")
+            else:
+                values["has_overflow"] = 0
+                values["overflow_route_id"] = None
         else:
             if not values["calling_company_id"] or not values["company_change_type"]:
                 raise BusinessRuleError("Кампания и тип изменения обязательны")
@@ -2248,6 +2264,8 @@ class Repository:
             )
             values["server_ids"] = None
             values["affected_servers"] = None
+            values["has_overflow"] = 0
+            values["overflow_route_id"] = None
 
         values["snapshot_json"] = json.dumps(self._routing_event_snapshot(values), ensure_ascii=False)
         cur = self.conn.execute(
@@ -2256,16 +2274,16 @@ class Repository:
                 event_at, apply_scope, reason, country_id, server_id, provider_id, affected_route_id,
                 old_route_id, new_route_id, calling_company_id, company_change_type,
                 old_company_routing_mode, new_company_routing_mode, old_company_route_id, new_company_route_id,
-                old_company_has_autorotation, new_company_has_autorotation, comment, snapshot_json,
+                old_company_has_autorotation, new_company_has_autorotation, has_overflow, overflow_route_id, comment, snapshot_json,
                 created_by, updated_by
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 values["event_at"], values["apply_scope"], values["reason"], values["country_id"], None if values["apply_scope"] == "campaign_setting" else values["server_id"],
                 values["provider_id"], values["affected_route_id"], values["old_route_id"], values["new_route_id"],
                 values["calling_company_id"], values["company_change_type"], values["old_company_routing_mode"],
                 values["new_company_routing_mode"], values["old_company_route_id"], values["new_company_route_id"],
-                values["old_company_has_autorotation"], values["new_company_has_autorotation"], values["comment"],
+                values["old_company_has_autorotation"], values["new_company_has_autorotation"], values["has_overflow"], values["overflow_route_id"], values["comment"],
                 values["snapshot_json"], created_by, created_by,
             ),
         )
@@ -2371,6 +2389,7 @@ class Repository:
         return list(self.conn.execute(f"""
             SELECT re.*, c.name AS country_name, s.name AS server_name, p.name AS provider_name,
                    ar.name AS affected_route_name, nr.name AS new_route_name, oldr.name AS old_route_name,
+                   overflowr.name AS overflow_route_name,
                    oldcr.name AS old_company_route_name, newcr.name AS new_company_route_name,
                    oldcp.name AS old_company_route_provider_name, newcp.name AS new_company_route_provider_name,
                    cc.company_id_external, cc.company_name, cs.name AS company_server_name,
@@ -2382,6 +2401,7 @@ class Repository:
             LEFT JOIN routes ar ON ar.id = re.affected_route_id
             LEFT JOIN routes nr ON nr.id = re.new_route_id
             LEFT JOIN routes oldr ON oldr.id = re.old_route_id
+            LEFT JOIN routes overflowr ON overflowr.id = re.overflow_route_id
             LEFT JOIN routes oldcr ON oldcr.id = re.old_company_route_id
             LEFT JOIN routes newcr ON newcr.id = re.new_company_route_id
             LEFT JOIN providers oldcp ON oldcp.id = oldcr.provider_id
