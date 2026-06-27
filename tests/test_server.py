@@ -1101,6 +1101,57 @@ class ServerSmokeTest(unittest.TestCase):
         _captured, content = self.request("/provider-changes")
         self.assertIn("Перелив: —", content)
 
+    def test_server_priorities_page_shows_current_overflow_route_only(self):
+        self.request("/routes")
+        overflow_id = self._create_overflow_route("GSM шлюз резерв")
+        body = urlencode({
+            "apply_scope": "server_priority", "event_at": "2026-06-10T11:05", "country_id": "1",
+            "server_ids": "1", "provider_id": "1", "new_route_id": "1", "reason": "Задача руководства",
+            "comment": "с переливом", "has_overflow": "1", "overflow_route_id": str(overflow_id),
+        })
+        captured, _content = self.request("/provider-changes/create", method="POST", body=body)
+        self.assertEqual(captured["status"], "303 See Other")
+
+        captured, content = self.request("/admin/server-priorities?server_id=1")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("data-col='overflow'", content)
+        self.assertIn("Перелив", content)
+        eu1_block = content.split("<h2>Сервер: EU1</h2>", 1)[1].split("</section>", 1)[0]
+        self.assertIn("data-col='overflow'>GSM шлюз резерв</td>", eu1_block)
+        self.assertIn("data-col='previous_priority'>Miatel / Мексика/Miatel/Demo_A@</td>", eu1_block)
+
+    def test_server_priorities_page_shows_dash_without_current_overflow(self):
+        self.request("/routes")
+        captured, content = self.request("/admin/server-priorities?server_id=1")
+        self.assertEqual(captured["status"], "200 OK")
+        eu1_block = content.split("<h2>Сервер: EU1</h2>", 1)[1].split("</section>", 1)[0]
+        self.assertIn("data-col='overflow'>—</td>", eu1_block)
+
+    def test_server_priorities_page_does_not_show_old_overflow_after_current_priority_changes(self):
+        self.request("/routes")
+        overflow_id = self._create_overflow_route("GSM шлюз резерв")
+        with_overflow = urlencode({
+            "apply_scope": "server_priority", "event_at": "2026-06-10T11:05", "country_id": "1",
+            "server_ids": "1", "provider_id": "1", "new_route_id": "1", "reason": "Задача руководства",
+            "comment": "с переливом", "has_overflow": "1", "overflow_route_id": str(overflow_id),
+        })
+        captured, _content = self.request("/provider-changes/create", method="POST", body=with_overflow)
+        self.assertEqual(captured["status"], "303 See Other")
+        without_overflow = urlencode({
+            "apply_scope": "server_priority", "event_at": "2026-06-10T11:10", "country_id": "1",
+            "server_ids": "1", "provider_id": "2", "new_route_id": "2", "reason": "Задача руководства",
+            "comment": "без перелива",
+        })
+        captured, _content = self.request("/provider-changes/create", method="POST", body=without_overflow)
+        self.assertEqual(captured["status"], "303 See Other")
+
+        captured, content = self.request("/admin/server-priorities?server_id=1")
+        self.assertEqual(captured["status"], "200 OK")
+        eu1_block = content.split("<h2>Сервер: EU1</h2>", 1)[1].split("</section>", 1)[0]
+        self.assertIn("data-col='overflow'>—</td>", eu1_block)
+        self.assertNotIn("GSM шлюз резерв", eu1_block)
+        self.assertIn("data-col='previous_priority'>Sancom / Мексика/Sancom/Demo_0827@</td>", eu1_block)
+
     def test_overflow_route_select_and_validation_allow_only_active_gateway_routes(self):
         self.request("/routes")
         active_gateway = self._create_overflow_route("Активный шлюз")
@@ -2091,13 +2142,13 @@ class ServerSmokeTest(unittest.TestCase):
             self.assertIn(f"Сервер: {server_name}", content)
         self.assertLess(content.index("Сервер: EU1"), content.index("Сервер: EU2"))
         self.assertLess(content.index("Сервер: EU2"), content.index("Сервер: EU3"))
-        self.assertIn("<th data-col='geo' title='GEO'>GEO</th><th data-col='current_priority' title='Текущий приоритет'>Текущий приоритет</th><th data-col='previous_priority' title='Предыдущий приоритет'>Предыдущий приоритет</th>", content)
+        self.assertIn("<th data-col='geo' title='GEO'>GEO</th><th data-col='current_priority' title='Текущий приоритет'>Текущий приоритет</th><th data-col='overflow' title='Перелив'>Перелив</th><th data-col='previous_priority' title='Предыдущий приоритет'>Предыдущий приоритет</th>", content)
         self.assertNotIn("<th data-col='actions' title='Действия'>Действия</th>", content)
         self.assertIn("Нет настроенных приоритетов", content)
         eu3_block = content.split("Сервер: EU3", 1)[1].split("</section>", 1)[0]
         self.assertIn("Нет настроенных приоритетов", eu3_block)
         eu1_block = content.split("Сервер: EU1", 1)[1].split("</section>", 1)[0]
-        self.assertIn("<td data-col='geo'>Мексика</td><td data-col='current_priority'>Miatel / Мексика/Miatel/Demo_A@</td><td data-col='previous_priority'>—</td>", eu1_block)
+        self.assertIn("<td data-col='geo'>Мексика</td><td data-col='current_priority'>Miatel / Мексика/Miatel/Demo_A@</td><td data-col='overflow'>—</td><td data-col='previous_priority'>—</td>", eu1_block)
         self.assertNotIn("<summary>Редактировать</summary>", eu1_block)
         self.assertNotIn("name='current_route_id'", eu1_block)
         self.assertNotIn("Сохранить текущий маршрут", eu1_block)

@@ -3866,11 +3866,12 @@ def server_priorities_page(repo: Repository, q: dict[str, str] | None = None) ->
         SELECT srp.*, c.name AS country_name, s.name AS server_name,
                cp.name AS current_provider_name, pp.name AS previous_provider_name,
                cr.name AS current_route_name, pr.name AS previous_route_name,
-               u.username AS changed_by_username
+               overflowr.name AS overflow_route_name, u.username AS changed_by_username
         FROM server_route_priorities srp
         JOIN countries c ON c.id = srp.country_id JOIN servers s ON s.id = srp.server_id
         LEFT JOIN routes cr ON cr.id = srp.current_route_id LEFT JOIN providers cp ON cp.id = cr.provider_id
         LEFT JOIN routes pr ON pr.id = srp.previous_route_id LEFT JOIN providers pp ON pp.id = pr.provider_id
+        LEFT JOIN routes overflowr ON overflowr.id = srp.overflow_route_id
         LEFT JOIN users u ON u.id = srp.changed_by
         {priority_where}
         ORDER BY s.name, c.name
@@ -3885,14 +3886,15 @@ def server_priorities_page(repo: Repository, q: dict[str, str] | None = None) ->
         previous_route = row["previous_route_name"] or "—"
         current_priority = "—" if not row["current_route_id"] else f"{esc(current_provider)} / {esc(current_route)}"
         previous_priority = "—" if not row["previous_route_id"] else f"{esc(previous_provider)} / {esc(previous_route)}"
+        overflow = esc(row["overflow_route_name"]) if row["has_overflow"] and row["overflow_route_id"] and row["overflow_route_name"] else "—"
         if row["server_id"] in server_rows:
             server_rows[row["server_id"]].append(
-                f"<tr><td data-col='geo'>{esc(row['country_name'])}</td><td data-col='current_priority'>{current_priority}</td><td data-col='previous_priority'>{previous_priority}</td></tr>"
+                f"<tr><td data-col='geo'>{esc(row['country_name'])}</td><td data-col='current_priority'>{current_priority}</td><td data-col='overflow'>{overflow}</td><td data-col='previous_priority'>{previous_priority}</td></tr>"
             )
     blocks = []
     for server_id in server_names:
-        rows = server_rows[server_id] or ["<tr><td colspan='3' class='muted'>Нет настроенных приоритетов</td></tr>"]
-        table_html = f"{data_table('server_priorities', [('geo', 'GEO'), ('current_priority', 'Текущий приоритет'), ('previous_priority', 'Предыдущий приоритет')], ''.join(rows))}"
+        rows = server_rows[server_id] or ["<tr><td colspan='4' class='muted'>Нет настроенных приоритетов</td></tr>"]
+        table_html = f"{data_table('server_priorities', [('geo', 'GEO'), ('current_priority', 'Текущий приоритет'), ('overflow', 'Перелив'), ('previous_priority', 'Предыдущий приоритет')], ''.join(rows))}"
         blocks.append(f"""
 <section class='server-priority-block'>
   <h2>Сервер: {esc(server_names[server_id])}</h2>
@@ -3903,7 +3905,7 @@ def server_priorities_page(repo: Repository, q: dict[str, str] | None = None) ->
 <h1>Администрирование → Приоритет по серверам</h1>
 {filter_card(filters_html, q, ('country_id', 'server_id'))}
 {''.join(blocks)}
-{table_footer(pagination_html, export_link('/admin/server-priorities', q) + column_settings('server_priorities', [('geo', 'GEO'), ('current_priority', 'Текущий приоритет'), ('previous_priority', 'Предыдущий приоритет')]))}"""
+{table_footer(pagination_html, export_link('/admin/server-priorities', q) + column_settings('server_priorities', [('geo', 'GEO'), ('current_priority', 'Текущий приоритет'), ('overflow', 'Перелив'), ('previous_priority', 'Предыдущий приоритет')]))}"""
     return page("Приоритет по серверам", body)
 
 

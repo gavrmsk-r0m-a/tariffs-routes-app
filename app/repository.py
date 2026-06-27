@@ -2299,21 +2299,22 @@ class Repository:
                         self.conn.execute(
                             """
                             UPDATE server_route_priorities
-                            SET previous_route_id = current_route_id, current_route_id = ?, changed_at = ?,
+                            SET previous_route_id = current_route_id, current_route_id = ?,
+                                has_overflow = ?, overflow_route_id = ?, changed_at = ?,
                                 changed_by = ?, reason = ?, comment = ?, updated_by = ?, updated_at = CURRENT_TIMESTAMP
                             WHERE id = ?
                             """,
-                            (values["new_route_id"], values["event_at"], created_by, values["reason"], values["comment"], created_by, priority_id),
+                            (values["new_route_id"], values["has_overflow"], values["overflow_route_id"], values["event_at"], created_by, values["reason"], values["comment"], created_by, priority_id),
                         )
                     else:
                         cur2 = self.conn.execute(
                             """
                             INSERT INTO server_route_priorities(
-                                country_id, server_id, current_route_id, previous_route_id, changed_at,
-                                changed_by, reason, comment, created_by, updated_by
-                            ) VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, ?)
+                                country_id, server_id, current_route_id, previous_route_id, has_overflow,
+                                overflow_route_id, changed_at, changed_by, reason, comment, created_by, updated_by
+                            ) VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?)
                             """,
-                            (values["country_id"], affected["server_id"], values["new_route_id"], values["event_at"], created_by, values["reason"], values["comment"], created_by, created_by),
+                            (values["country_id"], affected["server_id"], values["new_route_id"], values["has_overflow"], values["overflow_route_id"], values["event_at"], created_by, values["reason"], values["comment"], created_by, created_by),
                         )
                         priority_id = int(cur2.lastrowid)
                     affected["server_route_priority_id"] = priority_id
@@ -2681,7 +2682,8 @@ class Repository:
                         """
                         UPDATE server_route_priorities
                         SET previous_route_id = current_route_id,
-                            current_route_id = ?, provider_change_log_id = ?, changed_at = CURRENT_TIMESTAMP,
+                            current_route_id = ?, has_overflow = 0, overflow_route_id = NULL,
+                            provider_change_log_id = ?, changed_at = CURRENT_TIMESTAMP,
                             changed_by = ?, reason = ?, comment = ?, updated_by = ?, updated_at = CURRENT_TIMESTAMP
                         WHERE id = ?
                         """,
