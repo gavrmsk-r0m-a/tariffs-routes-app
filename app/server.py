@@ -129,6 +129,9 @@ def paginate_rows(rows: list, q: dict[str, str], base_path: str) -> tuple[list, 
 
 
 def export_link(base_path: str, q: dict[str, str]) -> str:
+    section = section_for_get_path(base_path)
+    if section and not can_export(section):
+        return ""
     params = {key: value for key, value in q.items() if key not in {"page", "limit", "export"} and value not in (None, "")}
     params["export"] = "csv"
     return f"<span class='action-icon export-action-icon' aria-hidden='true'>{nav_icon('export')}</span><a class='button export-button table-utility-button' href='{esc(base_path + '?' + urlencode(params))}'>Экспорт</a>"
@@ -195,13 +198,37 @@ def clamp_cell(col: str, content_html: str, title: object, *, extra_attrs: str =
     return f"<td data-col='{esc(col)}'{class_attr}{attrs}{title_attr}{full_text_attr}><span class='cell-clamp'>{content_html}</span></td>"
 
 
+SECTION_ALIASES = {"phones": "phone_numbers", "companies": "call_campaigns"}
+
+SECTION_REGISTRY = [
+    {"section_key": "dashboard", "display_name": "Главная", "supports_export": False},
+    {"section_key": "routes", "display_name": "Маршруты", "supports_export": True},
+    {"section_key": "tariffs", "display_name": "Тарифы", "supports_export": True},
+    {"section_key": "phone_numbers", "display_name": "Купленные номера", "supports_export": True},
+    {"section_key": "call_campaigns", "display_name": "Кампании прозвона", "supports_export": False},
+    {"section_key": "provider_changes", "display_name": "Смена провайдеров", "supports_export": True},
+    {"section_key": "admin", "display_name": "Администрирование", "supports_export": False},
+    {"section_key": "change_log", "display_name": "Change log", "supports_export": False},
+]
+SECTION_BY_KEY = {section["section_key"]: section for section in SECTION_REGISTRY}
+
+def normalize_section_key(section: str) -> str:
+    return SECTION_ALIASES.get(section, section)
+
 ROLE_PERMISSIONS = {
-    "admin": {"read": {"*"}, "write": {"*"}},
+    "admin": {"read": {"*"}, "write": {"*"}, "export": {"*"}},
     "operator": {
-        "read": {"dashboard", "routes", "tariffs", "phones", "companies", "provider_changes", "admin_server_priorities", "admin_company_routing_settings"},
-        "write": {"provider_changes"},
+        "read": {"dashboard", "routes", "tariffs", "phone_numbers", "call_campaigns", "provider_changes"},
+        "write": {"phone_numbers", "call_campaigns", "provider_changes"},
+        "export": {"phone_numbers", "provider_changes"},
     },
-    "guest": {"read": {"dashboard", "routes", "tariffs"}, "write": set()},
+    "duty": {
+        "read": {"dashboard", "routes", "tariffs", "phone_numbers", "call_campaigns", "provider_changes"},
+        "write": {"phone_numbers", "call_campaigns", "provider_changes"},
+        "export": {"phone_numbers", "provider_changes"},
+    },
+    "boss": {"read": {"dashboard", "tariffs"}, "write": set(), "export": {"tariffs"}},
+    "guest": {"read": {"dashboard"}, "write": set(), "export": set()},
 }
 
 EXPORT_FILENAMES = {
@@ -229,6 +256,8 @@ ADMIN_SECTION_KEYS = {
 
 
 def normalize_role(role_key: str | None) -> str:
+    if role_key == "operator":
+        return "duty"
     return role_key if role_key in ROLE_PERMISSIONS else "guest"
 
 
@@ -237,17 +266,54 @@ def current_role_key() -> str:
 
 
 def role_allows(role_key: str | None, action: str, section: str) -> bool:
+    section = normalize_section_key(section)
     allowed = ROLE_PERMISSIONS[normalize_role(role_key)][action]
     return "*" in allowed or section in allowed
 
 
+def explicit_user_permissions(user_id: int, section: str) -> sqlite3.Row | None:
+    repo = _REQUEST_CONTEXT.get("repo")
+    if not user_id or not isinstance(repo, Repository):
+        return None
+    return repo.conn.execute(
+        "SELECT can_read, can_write, can_export FROM user_permissions WHERE user_id = ? AND section_key = ?",
+        (user_id, normalize_section_key(section)),
+    ).fetchone()
+
+
+def has_permission(user, section_key: str, action: str) -> bool:
+    section = normalize_section_key(section_key)
+    role_key = user["role_key"] if user is not None else current_role_key()
+    if normalize_role(role_key) == "admin":
+        return True
+    user_id = int(user["id"]) if user is not None else int(_REQUEST_CONTEXT.get("current_user_id") or 0)
+    row = explicit_user_permissions(user_id, section)
+    if row is not None:
+        column = {"read": "can_read", "write": "can_write", "export": "can_export"}[action]
+        return bool(row[column])
+    return role_allows(role_key, action, section)
+
+
 def can_read(section: str) -> bool:
-    return role_allows(current_role_key(), "read", section)
+    return has_permission(None, section, "read")
 
 
 def can_write(section: str) -> bool:
-    return role_allows(current_role_key(), "write", section)
+    return has_permission(None, section, "write")
 
+
+def can_export(section: str) -> bool:
+    return has_permission(None, section, "export")
+
+
+def require_read(section_key: str):
+    return lambda: require_permission("read", section_key)
+
+def require_write(section_key: str):
+    return lambda: require_permission("write", section_key)
+
+def require_export(section_key: str):
+    return lambda: require_permission("export", section_key)
 
 
 def forbidden_page() -> bytes:
@@ -1833,7 +1899,7 @@ def section_for_write_path(path: str) -> str | None:
 
 
 def require_permission(action: str, section: str | None) -> None:
-    if section and not role_allows(current_role_key(), action, section):
+    if section and not has_permission(None, section, action):
         raise ForbiddenError()
 
 def request_query(environ) -> dict[str, str]:
@@ -3804,10 +3870,49 @@ def admin_page(repo: Repository) -> bytes:
 
 def role_options(selected: str | None = None) -> str:
     opts = ""
-    for value, label in (("admin", "Админ"), ("operator", "Дежурный"), ("guest", "Гость")):
+    for value, label in (("admin", "Админ"), ("operator", "Дежурный"), ("boss", "Руководитель"), ("guest", "Гость")):
         opts += f"<option value='{value}' {'selected' if value == selected else ''}>{esc(label)}</option>"
     return opts
 
+
+
+def permission_matrix_form(repo: Repository, user_id: int | None = None) -> str:
+    existing = {}
+    if user_id is not None:
+        existing = {row["section_key"]: row for row in repo.conn.execute("SELECT section_key, can_read, can_write, can_export FROM user_permissions WHERE user_id = ?", (user_id,))}
+    rows = []
+    for section in SECTION_REGISTRY:
+        key = section["section_key"]
+        row = existing.get(key)
+        read_checked = " checked" if row and row["can_read"] else ""
+        write_checked = " checked" if row and row["can_write"] else ""
+        export_checked = " checked" if row and row["can_export"] else ""
+        export_cell = (
+            f"<input type='checkbox' name='perm__{key}__export' value='1'{export_checked}>"
+            if section["supports_export"] else "<span class='muted'>—</span>"
+        )
+        rows.append(f"<tr><td>{esc(section['display_name'])}<br><code>{esc(key)}</code></td><td><input type='checkbox' name='perm__{key}__read' value='1'{read_checked}></td><td><input type='checkbox' name='perm__{key}__write' value='1'{write_checked}></td><td>{export_cell}</td></tr>")
+    return f"<fieldset><legend>Права доступа</legend><table><thead><tr><th>Раздел</th><th>Чтение</th><th>Запись</th><th>Экспорт</th></tr></thead><tbody>{''.join(rows)}</tbody></table><p class='muted'>Если явные права не сохранены, применяются права роли по умолчанию.</p></fieldset>"
+
+
+def save_user_permissions(repo: Repository, user_id: int, data: dict[str, str]) -> None:
+    for section in SECTION_REGISTRY:
+        key = section["section_key"]
+        can_read_value = 1 if data.get(f"perm__{key}__read") == "1" else 0
+        can_write_value = 1 if data.get(f"perm__{key}__write") == "1" else 0
+        can_export_value = 1 if section["supports_export"] and data.get(f"perm__{key}__export") == "1" else 0
+        repo.conn.execute(
+            """
+            INSERT INTO user_permissions(user_id, section_key, can_read, can_write, can_export)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(user_id, section_key) DO UPDATE SET
+                can_read = excluded.can_read,
+                can_write = excluded.can_write,
+                can_export = excluded.can_export
+            """,
+            (user_id, key, can_read_value, can_write_value, can_export_value),
+        )
+    repo.conn.commit()
 
 def users_page(repo: Repository) -> bytes:
     rows = []
@@ -3829,6 +3934,7 @@ def users_page(repo: Repository) -> bytes:
         <label>Активен <select name='is_active'><option value='1' {'selected' if user['is_active'] else ''}>Да</option><option value='0' {'selected' if not user['is_active'] else ''}>Нет</option></select></label>
         <label>Новый пароль <input name='password' type='password' minlength='6' autocomplete='new-password'></label>
         <label>Повторите пароль <input name='password_confirm' type='password' minlength='6' autocomplete='new-password'></label>
+        {permission_matrix_form(repo, int(user['id']))}
         <button>Сохранить</button>
       </form>
     </details>
@@ -3840,11 +3946,12 @@ def users_page(repo: Repository) -> bytes:
 <label>Роль <select name='role_key'>{role_options('operator')}</select></label>
 <label>Пароль <span class='required'>*</span><input name='password' type='password' minlength='6' required autocomplete='new-password'></label>
 <label>Повторите пароль <span class='required'>*</span><input name='password_confirm' type='password' minlength='6' required autocomplete='new-password'></label>
+{permission_matrix_form(repo)}
 <button>Создать</button></form>"""
     table_html = f"<table><thead><tr><th>ID</th><th>Логин</th><th>Отображаемое имя</th><th>Роль</th><th>Активен</th><th>Создан</th><th>Обновлён</th><th data-col='actions'>Действия</th></tr></thead><tbody>{''.join(rows)}</tbody></table>"
     body = f"""
 <h1>Пользователи</h1>
-<p class='muted'>Пользователи входят по логину и паролю. Права доступа зависят от роли; индивидуальные права по разделам пока не реализованы.</p>
+<p class='muted'>Пользователи входят по логину и паролю. Права доступа берутся из индивидуальной матрицы; если она не заполнена, применяются права роли по умолчанию.</p>
 {form_card('+ Создать пользователя', create_html)}
 {table_card(table_html)}"""
     return page("Пользователи", body)
@@ -4461,7 +4568,8 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
             raise BusinessRuleError("Пароль обязателен и должен быть не короче 6 символов")
         if password != password_confirm:
             raise BusinessRuleError("Пароли не совпадают")
-        repo.create_user(username, data.get("role_key") or "operator", display_name, password=password)
+        new_user_id = repo.create_user(username, data.get("role_key") or "operator", display_name, password=password)
+        save_user_permissions(repo, new_user_id, data)
         return "/admin/users"
     if path.startswith("/admin/users/") and path.endswith("/update"):
         user_id = int(path.strip("/").split("/")[2])
@@ -4482,6 +4590,7 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
             if password != password_confirm:
                 raise BusinessRuleError("Пароли не совпадают")
             repo.update_user_password(user_id, password)
+        save_user_permissions(repo, user_id, data)
         return "/admin/users"
     if path == "/routes/create":
         country_id = int(data["country_id"]); provider_id = int(data["provider_id"]); prefix_id = parse_int(data.get("provider_prefix_id"))
@@ -4999,6 +5108,7 @@ def app(environ, start_response):
             start_response("404 Not Found", html_headers()); return [page("404", "<h1>404</h1>")]
         extra_headers = [filter_cookie] if filter_cookie else []
         if q.get("export") == "csv" and path in EXPORT_FILENAMES:
+            require_permission("export", section_for_get_path(path))
             start_response("200 OK", csv_headers(EXPORT_FILENAMES[path]) + extra_headers)
         else:
             start_response("200 OK", html_headers() + extra_headers)
