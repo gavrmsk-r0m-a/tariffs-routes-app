@@ -2418,13 +2418,16 @@ class Repository:
         existing = self.conn.execute("SELECT * FROM routing_events WHERE id = ?", (event_id,)).fetchone()
         if not existing:
             raise BusinessRuleError("Событие маршрутизации не найдено")
+        updated_at_original = kwargs.get("updated_at_original")
+        if updated_at_original is not None and updated_at_original != existing["updated_at"]:
+            raise BusinessRuleError("Запись была изменена другим пользователем. Обновите страницу и повторите действие.")
         comment = self._require_text(kwargs.get("comment"), "Комментарий обязателен")
         if comment == existing["comment"]:
             return
         self.conn.execute(
             """
             UPDATE routing_events
-            SET comment = ?, updated_by = ?, updated_at = CURRENT_TIMESTAMP
+            SET comment = ?, updated_by = ?, updated_at = strftime('%Y-%m-%d %H:%M:%f', 'now')
             WHERE id = ?
             """,
             (comment, updated_by, event_id),

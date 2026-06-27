@@ -42,6 +42,41 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
             is_active=is_active,
         )
 
+
+    def _create_basic_routing_event(self, comment="initial"):
+        return self.repo.create_routing_event(
+            event_at="2026-06-22T12:00",
+            apply_scope="none",
+            reason="Провайдер сменил маршрут",
+            country_id=self.country_id,
+            provider_id=self.provider_id,
+            affected_route_id=self.route_id,
+            comment=comment,
+            created_by=self.admin_id,
+        )
+
+    def test_routing_event_created_with_updated_at(self):
+        event_id = self._create_basic_routing_event()
+        updated_at = self.conn.execute("SELECT updated_at FROM routing_events WHERE id = ?", (event_id,)).fetchone()["updated_at"]
+        self.assertTrue(updated_at)
+
+    def test_routing_event_update_changes_updated_at(self):
+        event_id = self._create_basic_routing_event()
+        original = self.conn.execute("SELECT updated_at FROM routing_events WHERE id = ?", (event_id,)).fetchone()["updated_at"]
+        self.repo.update_routing_event(event_id, comment="updated", updated_at_original=original, updated_by=self.admin_id)
+        row = self.conn.execute("SELECT comment, updated_at FROM routing_events WHERE id = ?", (event_id,)).fetchone()
+        self.assertEqual(row["comment"], "updated")
+        self.assertNotEqual(row["updated_at"], original)
+
+    def test_routing_event_stale_updated_at_does_not_save(self):
+        event_id = self._create_basic_routing_event()
+        original = self.conn.execute("SELECT updated_at FROM routing_events WHERE id = ?", (event_id,)).fetchone()["updated_at"]
+        self.repo.update_routing_event(event_id, comment="other user", updated_at_original=original, updated_by=self.admin_id)
+        with self.assertRaisesRegex(BusinessRuleError, "Запись была изменена другим пользователем"):
+            self.repo.update_routing_event(event_id, comment="stale save", updated_at_original=original, updated_by=self.admin_id)
+        row = self.conn.execute("SELECT comment FROM routing_events WHERE id = ?", (event_id,)).fetchone()
+        self.assertEqual(row["comment"], "other user")
+
     def test_existing_admin_without_password_gets_default_hashed_password(self):
         conn = sqlite3.connect(":memory:")
         conn.row_factory = sqlite3.Row

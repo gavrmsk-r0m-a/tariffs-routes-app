@@ -8,8 +8,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 SCHEMA_PATH = Path(__file__).resolve().parent / "schema.sql"
 DEFAULT_DB_PATH = ROOT / "mvp.sqlite3"
-SQLITE_TIMEOUT_SECONDS = 30
-SQLITE_BUSY_TIMEOUT_MS = SQLITE_TIMEOUT_SECONDS * 1000
+SQLITE_TIMEOUT_SECONDS = 5
+SQLITE_BUSY_TIMEOUT_MS = 5000
 
 _INIT_LOCK = threading.Lock()
 _INITIALIZED_DB_KEYS: set[str] = set()
@@ -55,11 +55,16 @@ def _phone_status_expr(column: str = "status") -> str:
     )
 
 
+def apply_connection_pragmas(conn: sqlite3.Connection) -> None:
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute(f"PRAGMA busy_timeout={SQLITE_BUSY_TIMEOUT_MS}")
+    conn.execute("PRAGMA foreign_keys=ON")
+
+
 def connect(path: str | Path = DEFAULT_DB_PATH) -> sqlite3.Connection:
     conn = sqlite3.connect(path, timeout=SQLITE_TIMEOUT_SECONDS)
     conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON")
-    conn.execute(f"PRAGMA busy_timeout = {SQLITE_BUSY_TIMEOUT_MS}")
+    apply_connection_pragmas(conn)
     return conn
 
 
@@ -209,6 +214,8 @@ def run_lightweight_migrations(conn: sqlite3.Connection) -> None:
     _add_column_if_missing(conn, "users", "updated_at", "TEXT")
     _add_column_if_missing(conn, "users", "password_hash", "TEXT")
     _add_column_if_missing(conn, "users", "password_salt", "TEXT")
+    if conn.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'routing_events'").fetchone() is not None:
+        _add_column_if_missing(conn, "routing_events", "updated_at", "TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP")
     conn.execute("UPDATE users SET display_name = username WHERE display_name IS NULL OR TRIM(display_name) = ''")
     if "role" in _column_names(conn, "users"):
         conn.execute("UPDATE users SET role_key = CASE WHEN role = 'Admin' THEN 'admin' ELSE 'operator' END WHERE role_key IS NULL OR role_key = ''")
@@ -385,8 +392,7 @@ def run_lightweight_migrations(conn: sqlite3.Connection) -> None:
 
 
 def init_db(conn: sqlite3.Connection) -> None:
-    conn.execute(f"PRAGMA busy_timeout = {SQLITE_BUSY_TIMEOUT_MS}")
-    conn.execute("PRAGMA foreign_keys = ON")
+    apply_connection_pragmas(conn)
     if not _has_schema(conn):
         conn.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
     run_lightweight_migrations(conn)

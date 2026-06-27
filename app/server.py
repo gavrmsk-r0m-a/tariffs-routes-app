@@ -3273,6 +3273,8 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
 <p class='muted wide'>Событие смены провайдеров является неизменяемым операционным событием. Для исправления типа, маршрута, кампании или авторотации создайте новое корректирующее событие.</p>
 <dl class='readonly-grid'>{readonly_html}</dl>
 <form method='post' action='/provider-changes/{event['id']}/update' class='form-grid' id='routing-event-form'>
+  {f"<div class='error wide'>{esc(error_message)}</div>" if error_message else ""}
+  <input type='hidden' name='updated_at_original' value='{esc(event['updated_at'])}'>
   <label class='wide'>Комментарий <span class='required'>*</span><textarea name='comment' rows='3' cols='60' required>{esc(event['comment'] if event else '')}</textarea></label>
   <button>Сохранить комментарий</button>
 </form>
@@ -4337,6 +4339,16 @@ def provider_change_edit_page(repo: Repository, change_id: int) -> bytes:
     return page("Редактировать событие", body)
 
 
+def provider_change_edit_page_with_error(repo: Repository, change_id: int, error_message: str) -> bytes:
+    event = repo.conn.execute("SELECT * FROM routing_events WHERE id = ?", (change_id,)).fetchone()
+    if event is None:
+        return page("Событие не найдено", f"<h1>Событие не найдено</h1><div class='error'>{esc(error_message)}</div>")
+    body = f"""<h1>Редактировать событие смены провайдеров</h1><p><a href='/provider-changes'>← Назад</a></p>
+{routing_event_form(repo, event, error_message)}
+<p class='muted'>Создано: {esc(event['created_at'])}; обновлено: {esc(event['updated_at'])}</p>"""
+    return page("Редактировать событие", body)
+
+
 def parse_int(value: str | None) -> int | None:
     return int(value) if value not in (None, "") else None
 
@@ -4594,7 +4606,7 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
         return "/provider-changes"
     if path.startswith("/provider-changes/") and path.endswith("/update"):
         change_id = int(path.strip("/").split("/")[1])
-        repo.update_routing_event(change_id, comment=data.get("comment"), updated_by=actor_id)
+        repo.update_routing_event(change_id, comment=data.get("comment"), updated_at_original=data.get("updated_at_original"), updated_by=actor_id)
         return "/provider-changes"
     if path.startswith("/provider-changes/") and path.endswith("/deactivate"):
         raise BusinessRuleError("События смены провайдеров нельзя деактивировать")
@@ -4914,6 +4926,9 @@ def app(environ, start_response):
         if return_path.startswith("/routes/") and return_path.endswith("/numbers/manage"):
             route_id = int(return_path.strip("/").split("/")[1])
             return [route_numbers_manage_page(repo, route_id, {"notice": user_error(exc), "notice_type": "error"})]
+        if path.startswith("/provider-changes/") and path.endswith("/update"):
+            change_id = int(path.strip("/").split("/")[1])
+            return [provider_change_edit_page_with_error(repo, change_id, user_error(exc))]
         if path == "/provider-changes/create":
             form_data = {
                 "event_at": parsed.get("event_at") or datetime.now().strftime("%Y-%m-%d %H:%M"),
