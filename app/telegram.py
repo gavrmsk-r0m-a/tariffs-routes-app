@@ -93,15 +93,9 @@ def _footer_block(event: dict) -> list[str]:
     ]
 
 
-def _server_priority_message(event: dict) -> str:
-    server = event.get("affected_server_names") or event.get("server_name")
+def _server_priority_route_block(event: dict) -> list[str]:
     old_route = event.get("old_route_name") or event.get("affected_route_name")
-    lines = [
-        "🚨 <b>Смена провайдера</b>",
-        "",
-        f"📍 {_bold(event.get('country_name'))} | {_bold(server)}",
-        "⚙️ Серверный приоритет",
-        "",
+    return [
         "🔄 Маршрут:",
         "",
         "Было:",
@@ -109,9 +103,27 @@ def _server_priority_message(event: dict) -> str:
         "",
         "✅ Стало:",
         _bold(event.get("new_route_name")),
-        "",
+    ]
+
+
+def _server_priority_overflow_block(event: dict) -> list[str]:
+    return [
         "🌊 Перелив:",
         _html(event.get("overflow_route_name")),
+    ]
+
+
+def _server_priority_message(event: dict) -> str:
+    server = event.get("affected_server_names") or event.get("server_name")
+    lines = [
+        "🚨 <b>Смена провайдера</b>",
+        "",
+        f"📍 {_bold(event.get('country_name'))} | {_bold(server)}",
+        "⚙️ Серверный приоритет",
+        "",
+        *_server_priority_route_block(event),
+        "",
+        *_server_priority_overflow_block(event),
         "",
         *_price_difference_block(event),
         "",
