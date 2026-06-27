@@ -3873,40 +3873,69 @@ def server_priorities_page(repo: Repository, q: dict[str, str] | None = None) ->
                cp.name AS current_provider_name, pp.name AS previous_provider_name,
                cr.name AS current_route_name, pr.name AS previous_route_name,
                overflowr.name AS overflow_route_name,
-               preve.has_overflow AS previous_has_overflow, prevoverflowr.name AS previous_overflow_route_name,
                u.username AS changed_by_username
         FROM server_route_priorities srp
         JOIN countries c ON c.id = srp.country_id JOIN servers s ON s.id = srp.server_id
         LEFT JOIN routes cr ON cr.id = srp.current_route_id LEFT JOIN providers cp ON cp.id = cr.provider_id
         LEFT JOIN routes pr ON pr.id = srp.previous_route_id LEFT JOIN providers pp ON pp.id = pr.provider_id
         LEFT JOIN routes overflowr ON overflowr.id = srp.overflow_route_id
-        LEFT JOIN routing_events preve ON preve.id = (
-            SELECT re2.id
-            FROM routing_events re2
-            WHERE re2.apply_scope = 'server_priority'
-              AND re2.country_id = srp.country_id
-              AND re2.new_route_id = srp.previous_route_id
-              AND datetime(re2.event_at) < datetime(srp.changed_at)
-              AND (
-                  re2.server_id = srp.server_id
-                  OR (re2.server_id IS NULL AND re2.snapshot_json LIKE '%"server_id": ' || srp.server_id || '%')
-              )
-            ORDER BY datetime(re2.event_at) DESC, re2.id DESC
-            LIMIT 1
-        )
-        LEFT JOIN routes prevoverflowr ON prevoverflowr.id = preve.overflow_route_id
         LEFT JOIN users u ON u.id = srp.changed_by
         {priority_where}
         ORDER BY s.name, c.name
     """, priority_params))
     if q.get("export") == "csv":
         return csv_response("server_priorities_export.csv", ["GEO", "Сервер", "Провайдер/маршрут", "Приоритет", "Активен", "Комментарий"], [[row["country_name"], row["server_name"], f"{row['current_provider_name'] or '—'} / {row['current_route_name'] or '—'}", row["current_route_name"] or "—", "Да" if row["is_active"] else "Нет", row["comment"]] for row in priority_records])
+
+    def previous_overflow_route_id(row: sqlite3.Row) -> int | None:
+        if not row["previous_route_id"]:
+            return None
+        event = repo.conn.execute(
+            """
+            SELECT re.snapshot_json
+            FROM routing_events re
+            JOIN routing_event_servers res ON res.routing_event_id = re.id
+            WHERE re.apply_scope = 'server_priority'
+              AND re.country_id = ?
+              AND res.server_id = ?
+              AND res.old_route_id = ?
+              AND res.new_route_id = ?
+              AND datetime(re.event_at) = datetime(?)
+            ORDER BY re.id DESC
+            LIMIT 1
+            """,
+            (row["country_id"], row["server_id"], row["previous_route_id"], row["current_route_id"], row["changed_at"]),
+        ).fetchone()
+        if not event or not event["snapshot_json"]:
+            return None
+        try:
+            snapshot = json.loads(event["snapshot_json"])
+        except (TypeError, json.JSONDecodeError):
+            return None
+        for affected in snapshot.get("affected_servers", []):
+            if int(affected.get("server_id") or 0) != int(row["server_id"]):
+                continue
+            if not affected.get("old_has_overflow"):
+                return None
+            overflow_route_id = affected.get("old_overflow_route_id")
+            return int(overflow_route_id) if overflow_route_id else None
+        return None
+
+    previous_overflow_ids = {overflow_id for row in priority_records if (overflow_id := previous_overflow_route_id(row))}
+    previous_overflow_names = {}
+    if previous_overflow_ids:
+        placeholders = ",".join("?" for _ in previous_overflow_ids)
+        previous_overflow_names = {
+            route["id"]: route["name"]
+            for route in repo.conn.execute(f"SELECT id, name FROM routes WHERE id IN ({placeholders})", tuple(previous_overflow_ids))
+        }
+
     priority_records, pagination_html = paginate_rows(priority_records, q, "/admin/server-priorities")
     for row in priority_records:
         current_route = row["current_route_name"] or "—"
         previous_route = row["previous_route_name"] or "—"
         current_overflow = esc(row["overflow_route_name"]) if row["has_overflow"] and row["overflow_route_id"] and row["overflow_route_name"] else "—"
-        previous_overflow = esc(row["previous_overflow_route_name"]) if row["previous_has_overflow"] and row["previous_overflow_route_name"] else "—"
+        previous_overflow_id = previous_overflow_route_id(row)
+        previous_overflow = esc(previous_overflow_names.get(previous_overflow_id)) if previous_overflow_id and previous_overflow_names.get(previous_overflow_id) else "—"
         current_priority = f"{esc(current_route)}<br><span class='muted'>Перелив: {current_overflow}</span>" if row["current_route_id"] else "—<br><span class='muted'>Перелив: —</span>"
         previous_priority = f"{esc(previous_route)}<br><span class='muted'>Перелив: {previous_overflow}</span>" if row["previous_route_id"] else "—<br><span class='muted'>Перелив: —</span>"
         if row["server_id"] in server_rows:
