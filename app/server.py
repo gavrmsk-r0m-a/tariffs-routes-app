@@ -3181,16 +3181,21 @@ def overflow_route_options(repo: Repository, selected: object | None = None, emp
     opts = f"<option value=''>{esc(empty)}</option>" if empty is not None else ""
     rows = repo.conn.execute(
         """
-        SELECT id, name
-        FROM routes
-        WHERE is_actual = 1
-        ORDER BY name
-        """
+        SELECT r.id, r.name, r.country_id, r.provider_id, c.name AS country_name, p.name AS provider_name
+        FROM routes r
+        JOIN countries c ON c.id = r.country_id
+        JOIN providers p ON p.id = r.provider_id
+        WHERE r.is_actual = 1 OR r.id = ?
+        ORDER BY c.name, p.name, r.name
+        """,
+        (selected or 0,),
     ).fetchall()
     for row in rows:
-        if "шлюз" not in (row["name"] or "").casefold():
-            continue
-        opts += f"<option value='{row['id']}' {'selected' if str(row['id']) == str(selected) else ''}>{esc(row['name'])}</option>"
+        label = f"{row['country_name']} / {row['provider_name']} / {row['name']}"
+        opts += (
+            f"<option value='{row['id']}' data-country-id='{row['country_id']}' data-provider-id='{row['provider_id']}' "
+            f"title='{esc(label)}' {'selected' if str(row['id']) == str(selected) else ''}>{esc(label)}</option>"
+        )
     return opts
 
 def route_metadata_json(repo: Repository) -> str:
@@ -3537,6 +3542,7 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
     renderCurrentRoutes();
     rebuildRouteSelect(document.getElementById('affected-route'), country && country.value, provider && provider.value, null);
     rebuildRouteSelect(document.getElementById('new-route'), country && country.value, provider && provider.value, document.getElementById('new-route-empty'));
+    rebuildRouteSelect(document.getElementById('overflow-route'), country && country.value, null, null);
     filterCompanyOptions(false);
     const checkedCampaign = selectedCampaignBoxes()[0];
     const campaignProvider = document.getElementById('campaign-provider');

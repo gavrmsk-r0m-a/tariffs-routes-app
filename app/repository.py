@@ -2061,7 +2061,7 @@ class Repository:
             raise BusinessRuleError("Сервер обязателен для серверного приоритета")
         return normalized
 
-    def _server_priority_affected_servers(self, *, country_id: int, server_ids: list[int], new_route_id: int) -> list[dict]:
+    def _server_priority_affected_servers(self, *, country_id: int, server_ids: list[int], new_route_id: int, has_overflow: int, overflow_route_id: int | None) -> list[dict]:
         affected = []
         for server_id in server_ids:
             server = self.conn.execute("SELECT id, name, is_active FROM servers WHERE id = ?", (server_id,)).fetchone()
@@ -2070,10 +2070,18 @@ class Repository:
             if not server["is_active"]:
                 raise BusinessRuleError("Нельзя выбрать неактивный сервер")
             current = self.conn.execute(
-                "SELECT id, current_route_id FROM server_route_priorities WHERE country_id = ? AND server_id = ?",
+                "SELECT id, current_route_id, has_overflow, overflow_route_id FROM server_route_priorities WHERE country_id = ? AND server_id = ?",
                 (country_id, server_id),
             ).fetchone()
             old_route_id = current["current_route_id"] if current else None
+            old_has_overflow = int(current["has_overflow"]) if current else 0
+            old_overflow_route_id = current["overflow_route_id"] if current else None
+            is_noop = (
+                old_route_id is not None
+                and int(old_route_id) == int(new_route_id)
+                and old_has_overflow == int(has_overflow)
+                and (int(old_overflow_route_id) if old_overflow_route_id is not None else None) == (int(overflow_route_id) if overflow_route_id is not None else None)
+            )
             affected.append({
                 "server_id": server_id,
                 "server_name": server["name"],
@@ -2082,7 +2090,9 @@ class Repository:
                 "new_route_id": new_route_id,
                 "new_route": self._route_label(new_route_id),
                 "server_route_priority_id": current["id"] if current else None,
-                "status": "skipped_noop" if old_route_id is not None and int(old_route_id) == int(new_route_id) else "applied",
+                "old_has_overflow": old_has_overflow,
+                "old_overflow_route_id": old_overflow_route_id,
+                "status": "skipped_noop" if is_noop else "applied",
             })
         if all(row["status"] == "skipped_noop" for row in affected):
             raise BusinessRuleError("Выбранный маршрут уже установлен для всех выбранных серверов")
@@ -2204,19 +2214,20 @@ class Repository:
             values["provider_id"] = route["provider_id"]
             values["server_ids"] = server_ids
             values["server_id"] = server_ids[0] if len(server_ids) == 1 else None
-            values["affected_servers"] = self._server_priority_affected_servers(
-                country_id=values["country_id"], server_ids=server_ids, new_route_id=values["new_route_id"]
-            )
-            values["old_route_id"] = values["affected_servers"][0]["old_route_id"] if len(server_ids) == 1 else None
             if values["has_overflow"]:
                 if not values["overflow_route_id"]:
                     raise BusinessRuleError("Маршрут перелива обязателен")
-                overflow = self.conn.execute("SELECT name, is_actual FROM routes WHERE id = ?", (values["overflow_route_id"],)).fetchone()
-                if not overflow or not int(overflow["is_actual"]) or "шлюз" not in (overflow["name"] or "").casefold():
-                    raise BusinessRuleError("Маршрут перелива должен быть активным и содержать слово шлюз")
+                overflow = self.conn.execute("SELECT country_id, is_actual FROM routes WHERE id = ?", (values["overflow_route_id"],)).fetchone()
+                if not overflow or not int(overflow["is_actual"]) or int(overflow["country_id"]) != int(values["country_id"]):
+                    raise BusinessRuleError("Маршрут перелива должен быть активным и относиться к выбранному GEO")
             else:
                 values["has_overflow"] = 0
                 values["overflow_route_id"] = None
+            values["affected_servers"] = self._server_priority_affected_servers(
+                country_id=values["country_id"], server_ids=server_ids, new_route_id=values["new_route_id"],
+                has_overflow=values["has_overflow"], overflow_route_id=values["overflow_route_id"]
+            )
+            values["old_route_id"] = values["affected_servers"][0]["old_route_id"] if len(server_ids) == 1 else None
         else:
             if not values["calling_company_id"] or not values["company_change_type"]:
                 raise BusinessRuleError("Кампания и тип изменения обязательны")

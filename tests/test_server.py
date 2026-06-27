@@ -1026,17 +1026,19 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertIn(".form-grid .route-select-field option { font-size: 13px; }", content)
         self.assertIn("@media (max-width: 720px)", content)
 
-    def _create_overflow_route(self, name="Резервный ШЛЮЗ GSM", is_actual=1):
+    def _create_overflow_route(self, name="Резервный ШЛЮЗ GSM", is_actual=1, country_id=1, provider_id=1):
         conn = server.connect(server.DB_PATH)
         try:
             server.init_db(conn)
             server.ensure_seed(server.Repository(conn))
+            if not conn.execute("SELECT 1 FROM countries WHERE id = ?", (country_id,)).fetchone():
+                conn.execute("INSERT INTO countries(id, name, code, is_active) VALUES (?, ?, ?, 1)", (country_id, f"Test GEO {country_id}", f"TG{country_id}"))
             cur = conn.execute(
                 """
                 INSERT INTO routes(country_id, provider_id, name, cli_source_type, cli_source_label, created_by, is_actual)
-                VALUES (1, 1, ?, 'rnd', 'test', 1, ?)
+                VALUES (?, ?, ?, 'rnd', 'test', 1, ?)
                 """,
-                (name, is_actual),
+                (country_id, provider_id, name, is_actual),
             )
             conn.commit()
             return cur.lastrowid
@@ -1151,18 +1153,21 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertIn("data-col='current_priority'>Мексика/Miatel/Demo_A@<br><span class='muted'>Перелив: —</span></td>", eu1_block)
         self.assertIn("data-col='previous_priority'>Мексика/Sancom/Demo_0827@<br><span class='muted'>Перелив: GSM шлюз резерв</span></td>", eu1_block)
 
-    def test_overflow_route_select_and_validation_allow_only_active_gateway_routes(self):
+    def test_overflow_route_select_and_validation_allow_active_routes_for_selected_geo(self):
         self.request("/routes")
         active_gateway = self._create_overflow_route("Активный шлюз")
         inactive_gateway = self._create_overflow_route("Неактивный шлюз", is_actual=0)
         active_non_gateway = self._create_overflow_route("Активный резерв")
+        other_geo = self._create_overflow_route("Казахстан резерв", country_id=2, provider_id=1)
         _captured, content = self.request("/provider-changes")
         overflow_select = content.split("id='overflow-route'", 1)[1].split("</select>", 1)[0]
         self.assertIn(f"<option value='{active_gateway}'", overflow_select)
         self.assertNotIn(f"<option value='{inactive_gateway}'", overflow_select)
-        self.assertNotIn(f"<option value='{active_non_gateway}'", overflow_select)
+        self.assertIn(f"<option value='{active_non_gateway}'", overflow_select)
+        self.assertIn(f"<option value='{other_geo}'", overflow_select)
+        self.assertIn("rebuildRouteSelect(document.getElementById('overflow-route'), country && country.value, null, null);", content)
 
-        for route_id in (inactive_gateway, active_non_gateway):
+        for route_id in (inactive_gateway, other_geo):
             body = urlencode({
                 "apply_scope": "server_priority", "event_at": "2026-06-10T11:15", "country_id": "1",
                 "server_ids": "1", "provider_id": "1", "new_route_id": "1", "reason": "Задача руководства",
@@ -1170,7 +1175,56 @@ class ServerSmokeTest(unittest.TestCase):
             })
             captured, content = self.request("/provider-changes/create", method="POST", body=body)
             self.assertEqual(captured["status"], "400 Bad Request")
-            self.assertIn("Маршрут перелива должен быть активным и содержать слово шлюз", content)
+            self.assertIn("Маршрут перелива должен быть активным и относиться к выбранному GEO", content)
+
+
+    def test_server_priority_allows_same_route_when_overflow_state_changes(self):
+        self.request("/routes")
+        overflow_id = self._create_overflow_route("Активный резерв без gateway word")
+        body = urlencode({
+            "apply_scope": "server_priority", "event_at": "2026-06-10T11:20", "country_id": "1",
+            "server_ids": "1", "provider_id": "1", "new_route_id": "1", "reason": "Задача руководства",
+            "comment": "add overflow", "has_overflow": "1", "overflow_route_id": str(overflow_id),
+        })
+        captured, _content = self.request("/provider-changes/create", method="POST", body=body)
+        self.assertEqual(captured["status"], "303 See Other")
+        conn = server.connect(server.DB_PATH)
+        try:
+            row = conn.execute("SELECT current_route_id, has_overflow, overflow_route_id FROM server_route_priorities WHERE country_id = 1 AND server_id = 1").fetchone()
+            self.assertEqual((row["current_route_id"], row["has_overflow"], row["overflow_route_id"]), (1, 1, overflow_id))
+        finally:
+            conn.close()
+
+    def test_server_priority_rejects_only_identical_route_and_overflow_state(self):
+        self.request("/routes")
+        overflow_id = self._create_overflow_route("Активный резерв")
+        body = urlencode({
+            "apply_scope": "server_priority", "event_at": "2026-06-10T11:25", "country_id": "1",
+            "server_ids": "1", "provider_id": "1", "new_route_id": "1", "reason": "Задача руководства",
+            "comment": "add overflow", "has_overflow": "1", "overflow_route_id": str(overflow_id),
+        })
+        self.assertEqual(self.request("/provider-changes/create", method="POST", body=body)[0]["status"], "303 See Other")
+        captured, content = self.request("/provider-changes/create", method="POST", body=body)
+        self.assertEqual(captured["status"], "400 Bad Request")
+        self.assertIn("Выбранный маршрут уже установлен для всех выбранных серверов", content)
+
+    def test_server_priority_allows_same_route_when_overflow_route_changes(self):
+        self.request("/routes")
+        first = self._create_overflow_route("Первый резерв")
+        second = self._create_overflow_route("Второй резерв")
+        initial = urlencode({
+            "apply_scope": "server_priority", "event_at": "2026-06-10T11:30", "country_id": "1",
+            "server_ids": "1", "provider_id": "1", "new_route_id": "1", "reason": "Задача руководства",
+            "comment": "first overflow", "has_overflow": "1", "overflow_route_id": str(first),
+        })
+        self.assertEqual(self.request("/provider-changes/create", method="POST", body=initial)[0]["status"], "303 See Other")
+        changed = urlencode({
+            "apply_scope": "server_priority", "event_at": "2026-06-10T11:35", "country_id": "1",
+            "server_ids": "1", "provider_id": "1", "new_route_id": "1", "reason": "Задача руководства",
+            "comment": "second overflow", "has_overflow": "1", "overflow_route_id": str(second),
+        })
+        captured, _content = self.request("/provider-changes/create", method="POST", body=changed)
+        self.assertEqual(captured["status"], "303 See Other")
 
     def test_provider_change_server_priority_uses_active_server_checkboxes(self):
         self.request("/routes")
