@@ -2404,6 +2404,21 @@ class Repository:
                    overflowr.name AS overflow_route_name,
                    oldcr.name AS old_company_route_name, newcr.name AS new_company_route_name,
                    oldcp.name AS old_company_route_provider_name, newcp.name AS new_company_route_provider_name,
+                   CASE re.apply_scope
+                       WHEN 'campaign_setting' THEN old_company_tariff.eur_price
+                       ELSE old_route_tariff.eur_price
+                   END AS old_price_eur,
+                   CASE re.apply_scope
+                       WHEN 'campaign_setting' THEN new_company_tariff.eur_price
+                       ELSE new_route_tariff.eur_price
+                   END AS new_price_eur,
+                   CASE
+                       WHEN (CASE re.apply_scope WHEN 'campaign_setting' THEN old_company_tariff.eur_price ELSE old_route_tariff.eur_price END) IS NULL
+                         OR (CASE re.apply_scope WHEN 'campaign_setting' THEN new_company_tariff.eur_price ELSE new_route_tariff.eur_price END) IS NULL
+                       THEN NULL
+                       ELSE (CASE re.apply_scope WHEN 'campaign_setting' THEN new_company_tariff.eur_price ELSE new_route_tariff.eur_price END)
+                          - (CASE re.apply_scope WHEN 'campaign_setting' THEN old_company_tariff.eur_price ELSE old_route_tariff.eur_price END)
+                   END AS price_delta_eur,
                    cc.company_id_external, cc.company_name, cs.name AS company_server_name,
                    COALESCE(u.display_name, u.username) AS author_name
             FROM routing_events re
@@ -2416,6 +2431,34 @@ class Repository:
             LEFT JOIN routes overflowr ON overflowr.id = re.overflow_route_id
             LEFT JOIN routes oldcr ON oldcr.id = re.old_company_route_id
             LEFT JOIN routes newcr ON newcr.id = re.new_company_route_id
+            LEFT JOIN tariffs old_route_tariff ON old_route_tariff.id = (
+                SELECT t.id FROM tariffs t
+                WHERE t.country_id = re.country_id AND t.provider_id = oldr.provider_id
+                  AND COALESCE(t.provider_prefix_id, 0) = COALESCE(oldr.provider_prefix_id, 0)
+                  AND t.is_current = 1
+                ORDER BY t.created_at DESC, t.id DESC LIMIT 1
+            )
+            LEFT JOIN tariffs new_route_tariff ON new_route_tariff.id = (
+                SELECT t.id FROM tariffs t
+                WHERE t.country_id = re.country_id AND t.provider_id = nr.provider_id
+                  AND COALESCE(t.provider_prefix_id, 0) = COALESCE(nr.provider_prefix_id, 0)
+                  AND t.is_current = 1
+                ORDER BY t.created_at DESC, t.id DESC LIMIT 1
+            )
+            LEFT JOIN tariffs old_company_tariff ON old_company_tariff.id = (
+                SELECT t.id FROM tariffs t
+                WHERE t.country_id = re.country_id AND t.provider_id = oldcr.provider_id
+                  AND COALESCE(t.provider_prefix_id, 0) = COALESCE(oldcr.provider_prefix_id, 0)
+                  AND t.is_current = 1
+                ORDER BY t.created_at DESC, t.id DESC LIMIT 1
+            )
+            LEFT JOIN tariffs new_company_tariff ON new_company_tariff.id = (
+                SELECT t.id FROM tariffs t
+                WHERE t.country_id = re.country_id AND t.provider_id = newcr.provider_id
+                  AND COALESCE(t.provider_prefix_id, 0) = COALESCE(newcr.provider_prefix_id, 0)
+                  AND t.is_current = 1
+                ORDER BY t.created_at DESC, t.id DESC LIMIT 1
+            )
             LEFT JOIN providers oldcp ON oldcp.id = oldcr.provider_id
             LEFT JOIN providers newcp ON newcp.id = newcr.provider_id
             LEFT JOIN calling_companies cc ON cc.id = re.calling_company_id

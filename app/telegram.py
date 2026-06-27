@@ -5,6 +5,7 @@ import logging
 import os
 import urllib.error
 import urllib.request
+from decimal import Decimal, InvalidOperation
 from html import escape
 from urllib.parse import urljoin
 
@@ -34,6 +35,35 @@ def _bool_text(value: object) -> str:
         return "—"
     return "Да" if str(value) in {"1", "true", "True", "yes", "Да"} else "Нет"
 
+
+def _decimal(value: object) -> Decimal | None:
+    if value is None or str(value).strip() == "":
+        return None
+    try:
+        return Decimal(str(value).strip())
+    except (InvalidOperation, ValueError):
+        return None
+
+
+def _price_difference_block(event: dict) -> list[str]:
+    delta = _decimal(event.get("price_delta_eur"))
+    if delta is None:
+        old_price = _decimal(event.get("old_price_eur"))
+        new_price = _decimal(event.get("new_price_eur"))
+        if old_price is not None and new_price is not None:
+            delta = new_price - old_price
+    if delta is None:
+        return ["⚪ Разница:", "—"]
+    if delta < 0:
+        indicator = "🟢"
+        value = f"{delta:.2f} EUR"
+    elif delta > 0:
+        indicator = "🔴"
+        value = f"+{delta:.2f} EUR"
+    else:
+        indicator = "⚪"
+        value = "0.00 EUR"
+    return [f"{indicator} Разница:", value]
 
 def app_base_url() -> str:
     return os.environ.get("APP_BASE_URL", "").strip() or DEFAULT_APP_BASE_URL
@@ -76,6 +106,8 @@ def _server_priority_message(event: dict) -> str:
         _html(old_route),
         f"→ {_bold(event.get('new_route_name'))}",
         "",
+        *_price_difference_block(event),
+        "",
         "🌊 Перелив:",
         _html(event.get("overflow_route_name")),
         "",
@@ -106,6 +138,8 @@ def _campaign_setting_message(event: dict) -> str:
         "📞 Маршрут:",
         _html(event.get("old_company_route_name")),
         f"→ {_bold(event.get('new_company_route_name'))}",
+        "",
+        *_price_difference_block(event),
         "",
         "🔁 Авторотация:",
         f"{_html(_bool_text(event.get('old_company_has_autorotation')))} → {_bold(_bool_text(event.get('new_company_has_autorotation')))}",

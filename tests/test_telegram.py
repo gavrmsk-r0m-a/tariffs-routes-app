@@ -30,6 +30,32 @@ class TelegramMessageTest(unittest.TestCase):
         self.assertIn("🌊 Перелив:\nМексика/Overflow@", message)
         self.assertIn("https://teleroute.example/provider-changes", message)
 
+    def test_server_priority_formats_cheaper_price_difference_with_green_indicator(self):
+        event = {
+            "apply_scope": "server_priority",
+            "old_price_eur": "1.20",
+            "new_price_eur": "1.12",
+        }
+        with patch.dict(os.environ, {}, clear=True):
+            message = build_provider_change_message(event)
+        self.assertIn("🟢 Разница:\n-0.08 EUR", message)
+
+    def test_server_priority_formats_more_expensive_price_difference_with_red_indicator(self):
+        event = {
+            "apply_scope": "server_priority",
+            "price_delta_eur": "0.12",
+        }
+        with patch.dict(os.environ, {}, clear=True):
+            message = build_provider_change_message(event)
+        self.assertIn("🔴 Разница:\n+0.12 EUR", message)
+
+    def test_server_priority_formats_equal_and_unknown_price_difference_neutrally(self):
+        with patch.dict(os.environ, {}, clear=True):
+            equal_message = build_provider_change_message({"apply_scope": "server_priority", "price_delta_eur": "0"})
+            unknown_message = build_provider_change_message({"apply_scope": "server_priority"})
+        self.assertIn("⚪ Разница:\n0.00 EUR", equal_message)
+        self.assertIn("⚪ Разница:\n—", unknown_message)
+
     def test_message_builder_uses_127_fallback_when_app_base_url_missing(self):
         with patch.dict(os.environ, {}, clear=True):
             message = build_provider_change_message({})
