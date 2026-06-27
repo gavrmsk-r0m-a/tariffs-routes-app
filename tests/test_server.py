@@ -63,6 +63,70 @@ class ServerSmokeTest(unittest.TestCase):
         return f"{server.CURRENT_USER_COOKIE}={server.sign_user_id(user_id)}"
 
 
+
+    def test_provider_change_edit_form_contains_updated_at_original(self):
+        self.request("/login")
+        conn = server.connect(server.DB_PATH)
+        try:
+            server.init_db(conn)
+            repo = server.Repository(conn)
+            event_id = repo.create_routing_event(
+                event_at="2026-06-22T12:00", apply_scope="none", reason="Провайдер сменил маршрут",
+                country_id=1, provider_id=1, affected_route_id=1, comment="initial", created_by=1,
+            )
+            updated_at = conn.execute("SELECT updated_at FROM routing_events WHERE id = ?", (event_id,)).fetchone()["updated_at"]
+        finally:
+            conn.close()
+        _captured, html = self.request(f"/provider-changes/{event_id}/edit")
+        self.assertIn("name='updated_at_original'", html)
+        self.assertIn(f"value='{updated_at}'", html)
+
+    def test_provider_change_update_conflict_shows_error(self):
+        self.request("/login")
+        conn = server.connect(server.DB_PATH)
+        try:
+            server.init_db(conn)
+            repo = server.Repository(conn)
+            event_id = repo.create_routing_event(
+                event_at="2026-06-22T12:00", apply_scope="none", reason="Провайдер сменил маршрут",
+                country_id=1, provider_id=1, affected_route_id=1, comment="initial", created_by=1,
+            )
+            stale = conn.execute("SELECT updated_at FROM routing_events WHERE id = ?", (event_id,)).fetchone()["updated_at"]
+            repo.update_routing_event(event_id, comment="other user", updated_at_original=stale, updated_by=1)
+        finally:
+            conn.close()
+        body = urlencode({"comment": "stale save", "updated_at_original": stale})
+        captured, html = self.request(f"/provider-changes/{event_id}/update", method="POST", body=body)
+        self.assertEqual(captured["status"], "400 Bad Request")
+        self.assertIn("Запись была изменена другим пользователем. Обновите страницу и повторите действие.", html)
+        conn = server.connect(server.DB_PATH)
+        try:
+            self.assertEqual(conn.execute("SELECT comment FROM routing_events WHERE id = ?", (event_id,)).fetchone()["comment"], "other user")
+        finally:
+            conn.close()
+
+    def test_provider_change_update_with_current_updated_at_saves(self):
+        self.request("/login")
+        conn = server.connect(server.DB_PATH)
+        try:
+            server.init_db(conn)
+            repo = server.Repository(conn)
+            event_id = repo.create_routing_event(
+                event_at="2026-06-22T12:00", apply_scope="none", reason="Провайдер сменил маршрут",
+                country_id=1, provider_id=1, affected_route_id=1, comment="initial", created_by=1,
+            )
+            current = conn.execute("SELECT updated_at FROM routing_events WHERE id = ?", (event_id,)).fetchone()["updated_at"]
+        finally:
+            conn.close()
+        body = urlencode({"comment": "saved", "updated_at_original": current})
+        captured, _html = self.request(f"/provider-changes/{event_id}/update", method="POST", body=body)
+        self.assertEqual(captured["status"], "303 See Other")
+        conn = server.connect(server.DB_PATH)
+        try:
+            self.assertEqual(conn.execute("SELECT comment FROM routing_events WHERE id = ?", (event_id,)).fetchone()["comment"], "saved")
+        finally:
+            conn.close()
+
     def test_phone_status_options_expose_only_simplified_statuses(self):
         html = server.phone_status_options(empty="Все")
         for label in ("Используется", "Свободен", "Проблемный", "Неизвестно"):
