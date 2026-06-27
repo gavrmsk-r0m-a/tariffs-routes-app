@@ -1888,18 +1888,32 @@ class Repository:
         self.conn.commit()
 
 
-    ROUTING_EVENT_REASONS = (
-        "Задача руководства",
-        "Массовые отбои / занято",
-        "Плохой дозвон",
-        "Провайдер не отвечает",
-        "Авария у провайдера",
-        "Тест нового маршрута",
-        "Плановое переключение",
-        "Обновление пула / АОН",
-        "Проблема с префиксом",
-        "Другое",
-    )
+    ROUTING_EVENT_REASONS_BY_SCOPE = {
+        "none": (
+            "Обновление/смена АОНов",
+            "Провайдер сменил маршрут",
+            "Другое",
+        ),
+        "server_priority": (
+            "Массовый отбои/занято",
+            "Обратная смена провайдера",
+            "Задача руководства",
+            "Другое",
+        ),
+        "campaign_setting": (
+            "Задача руководства",
+            "Массовые отбои / занято",
+            "Плохой дозвон",
+            "Провайдер не отвечает",
+            "Авария у провайдера",
+            "Тест нового маршрута",
+            "Плановое переключение",
+            "Обновление пула / АОН",
+            "Проблема с префиксом",
+            "Другое",
+        ),
+    }
+    ROUTING_EVENT_REASONS = ROUTING_EVENT_REASONS_BY_SCOPE["campaign_setting"]
 
     def _require_text(self, value: str | None, message: str) -> str:
         if not value or not value.strip():
@@ -2124,7 +2138,7 @@ class Repository:
             "event_at": self._require_text(kwargs.get("event_at"), "Дата события обязательна").replace("T", " "),
             "apply_scope": apply_scope,
             "reason": self._require_text(kwargs.get("reason"), "Причина обязательна"),
-            "comment": self._require_text(kwargs.get("comment"), "Комментарий обязателен"),
+            "comment": (kwargs.get("comment") or "").strip(),
             "country_id": kwargs.get("country_id"),
             "server_id": kwargs.get("server_id"),
             "server_ids": kwargs.get("server_ids"),
@@ -2144,6 +2158,11 @@ class Repository:
         created_by = kwargs.get("created_by")
         if not created_by:
             raise BusinessRuleError("Пользователь обязателен")
+        allowed_reasons = self.ROUTING_EVENT_REASONS_BY_SCOPE[apply_scope]
+        if values["reason"] not in allowed_reasons:
+            raise BusinessRuleError("Некорректная причина")
+        if apply_scope == "none" and values["reason"] == "Другое" and not values["comment"]:
+            raise BusinessRuleError("Требуется понятный комментарий")
 
         if apply_scope == "none":
             if not values["provider_id"]:
