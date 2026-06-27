@@ -26,9 +26,22 @@ class TelegramMessageTest(unittest.TestCase):
             message = build_provider_change_message(event)
         self.assertIn("🚨 <b>Смена провайдера</b>", message)
         self.assertIn("📍 <b>Мексика</b> | <b>EU1</b>", message)
-        self.assertIn("Мексика/Sancom/Old@\n→ <b>Мексика/Miatel/RND@</b>", message)
+        self.assertIn("🔄 Маршрут:\n\nБыло:\nМексика/Sancom/Old@\n\n✅ Стало:\n<b>Мексика/Miatel/RND@</b>", message)
         self.assertIn("🌊 Перелив:\nМексика/Overflow@", message)
+        self.assertLess(message.index("🔄 Маршрут:"), message.index("🌊 Перелив:"))
+        self.assertLess(message.index("🌊 Перелив:"), message.index("⚪ Разница:"))
+        self.assertLess(message.index("⚪ Разница:"), message.index("📝 Причина / Комментарий:"))
         self.assertIn("https://teleroute.example/provider-changes", message)
+
+    def test_server_priority_shows_route_before_after_even_when_same(self):
+        event = {
+            "apply_scope": "server_priority",
+            "old_route_name": "Мексика/Miatel/RND@",
+            "new_route_name": "Мексика/Miatel/RND@",
+        }
+        with patch.dict(os.environ, {}, clear=True):
+            message = build_provider_change_message(event)
+        self.assertIn("🔄 Маршрут:\n\nБыло:\nМексика/Miatel/RND@\n\n✅ Стало:\n<b>Мексика/Miatel/RND@</b>", message)
 
     def test_server_priority_formats_cheaper_price_difference_with_green_indicator(self):
         event = {
@@ -121,7 +134,7 @@ class TelegramMessageTest(unittest.TestCase):
         with patch.dict(os.environ, {}, clear=True):
             message = build_provider_change_message(event)
         self.assertIn("<b>Мексика &lt;MX&gt;</b> | <b>EU &amp; US</b>", message)
-        self.assertIn("Old &lt;route&gt; &amp; one\n→ <b>New &lt;route&gt; &amp; two</b>", message)
+        self.assertIn("Было:\nOld &lt;route&gt; &amp; one\n\n✅ Стало:\n<b>New &lt;route&gt; &amp; two</b>", message)
         self.assertIn("A &lt; B &amp; C", message)
         self.assertIn("Use &lt;safe&gt; &amp; fast", message)
         self.assertIn("Admin &lt;root&gt;", message)
