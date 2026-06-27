@@ -383,6 +383,8 @@ CREATE TABLE IF NOT EXISTS server_route_priorities (
     server_id INTEGER NOT NULL REFERENCES servers(id) ON DELETE RESTRICT,
     current_route_id INTEGER NOT NULL REFERENCES routes(id) ON DELETE RESTRICT,
     previous_route_id INTEGER REFERENCES routes(id) ON DELETE RESTRICT,
+    has_overflow INTEGER NOT NULL DEFAULT 0 CHECK (has_overflow IN (0, 1)),
+    overflow_route_id INTEGER REFERENCES routes(id) ON DELETE RESTRICT,
     provider_change_log_id INTEGER REFERENCES provider_change_logs(id) ON DELETE RESTRICT,
     changed_at TEXT,
     changed_by INTEGER REFERENCES users(id) ON DELETE RESTRICT,

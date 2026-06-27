@@ -216,6 +216,9 @@ def run_lightweight_migrations(conn: sqlite3.Connection) -> None:
     _add_column_if_missing(conn, "users", "password_salt", "TEXT")
     if conn.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'routing_events'").fetchone() is not None:
         _add_column_if_missing(conn, "routing_events", "updated_at", "TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP")
+    if conn.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'server_route_priorities'").fetchone() is not None:
+        _add_column_if_missing(conn, "server_route_priorities", "has_overflow", "INTEGER NOT NULL DEFAULT 0 CHECK (has_overflow IN (0, 1))")
+        _add_column_if_missing(conn, "server_route_priorities", "overflow_route_id", "INTEGER REFERENCES routes(id) ON DELETE RESTRICT")
     conn.execute("UPDATE users SET display_name = username WHERE display_name IS NULL OR TRIM(display_name) = ''")
     if "role" in _column_names(conn, "users"):
         conn.execute("UPDATE users SET role_key = CASE WHEN role = 'Admin' THEN 'admin' ELSE 'operator' END WHERE role_key IS NULL OR role_key = ''")
