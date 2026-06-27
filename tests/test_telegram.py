@@ -4,7 +4,7 @@ import unittest
 from unittest.mock import patch
 
 import app.server as server
-from app.telegram import build_provider_change_message, send_telegram_message
+from app.telegram import build_provider_change_message, provider_change_url, send_telegram_message
 
 
 class TelegramMessageTest(unittest.TestCase):
@@ -32,6 +32,15 @@ class TelegramMessageTest(unittest.TestCase):
         self.assertIn("Дата: 2026-06-24 21:15", message)
         self.assertIn("https://teleroute.example/provider-changes", message)
 
+    def test_message_builder_uses_localhost_fallback_when_app_base_url_missing(self):
+        with patch.dict(os.environ, {}, clear=True):
+            message = build_provider_change_message({})
+        self.assertIn("http://localhost:8000/provider-changes", message)
+
+    def test_provider_change_url_uses_configured_app_base_url_without_duplicate_slashes(self):
+        with patch.dict(os.environ, {"APP_BASE_URL": "https://routes.company.com/"}, clear=True):
+            self.assertEqual(provider_change_url(), "https://routes.company.com/provider-changes")
+
     def test_none_scope_does_not_invent_server_field(self):
         event = {
             "apply_scope": "none",
@@ -46,7 +55,6 @@ class TelegramMessageTest(unittest.TestCase):
             message = build_provider_change_message(event)
         self.assertIn("Область: Не меняли настройки в нашей системе", message)
         self.assertIn("Сервер: —", message)
-
 
     def test_load_dotenv_if_present_does_not_override_existing_env(self):
         with tempfile.NamedTemporaryFile("w", delete=False, encoding="utf-8") as env_file:

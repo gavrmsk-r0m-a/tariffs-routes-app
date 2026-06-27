@@ -12,6 +12,7 @@ from app.repository import COMPANY_CHANGE_LABELS, ROUTING_SCOPE_LABELS
 logger = logging.getLogger(__name__)
 
 TELEGRAM_API_TIMEOUT_SECONDS = 5
+DEFAULT_APP_BASE_URL = "http://localhost:8000"
 
 
 def _text(value: object) -> str:
@@ -24,10 +25,13 @@ def _append_if_present(lines: list[str], label: str, value: object) -> None:
         lines.append(f"{label}: {value}")
 
 
-def provider_change_url(base_url: str | None) -> str | None:
-    if not base_url or not base_url.strip():
-        return None
-    return urljoin(base_url.rstrip("/") + "/", "provider-changes")
+def app_base_url() -> str:
+    return os.environ.get("APP_BASE_URL", "").strip() or DEFAULT_APP_BASE_URL
+
+
+def provider_change_url(base_url: str | None = None) -> str:
+    base = base_url.strip() if base_url and base_url.strip() else app_base_url()
+    return urljoin(base.rstrip("/") + "/", "provider-changes")
 
 
 def _route_transition(event: dict, old_key: str, new_key: str) -> str | None:
@@ -87,10 +91,9 @@ def build_provider_change_message(event: dict) -> str:
         f"Комментарий: {_text(event.get('comment'))}",
         f"Создал: {_text(event.get('author_name'))}",
     ]
-    url = provider_change_url(os.environ.get("APP_BASE_URL"))
-    if url:
-        lines.extend(["", "Открыть:", url])
+    lines.extend(["", "Открыть:", provider_change_url()])
     return "\n".join(lines)
+
 
 def send_telegram_message(text: str) -> bool:
     token = os.environ.get("TELEGRAM_BOT_TOKEN")
