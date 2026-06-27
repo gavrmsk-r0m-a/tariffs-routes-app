@@ -3761,7 +3761,8 @@ def provider_changes_page(repo: Repository, q: dict[str, str] | None = None, for
     for ev in records:
         server_text, campaign_text, details_text = provider_event_details(ev)
         actions = f"<a class='button edit-action' href='/provider-changes/{ev['id']}/edit' title='Редактировать' aria-label='Редактировать' data-tooltip='Редактировать'>Редактировать</a>" if can_write("provider_changes") else ""
-        rows.append(f"<tr class='{'' if ev['is_active'] else 'inactive-row'}'><td data-col='event_at'>{esc(ev['event_at'])}</td><td data-col='scope'>{esc(ROUTING_SCOPE_LABELS.get(ev['apply_scope'], ev['apply_scope']))}</td><td data-col='geo'>{esc(ev['country_name'])}</td><td data-col='server'>{esc(server_text)}</td><td data-col='campaign'>{esc(campaign_text)}</td>{clamp_cell('details', details_text, details_text)}{clamp_cell('reason', esc(ev['reason']), ev['reason'])}{clamp_cell('comment', esc(ev['comment']), ev['comment'])}<td data-col='actions' class='actions'>{actions}</td></tr>")
+        comment_text = (ev["comment"] or "").strip() or "—"
+        rows.append(f"<tr class='{'' if ev['is_active'] else 'inactive-row'}'><td data-col='event_at'>{esc(ev['event_at'])}</td><td data-col='scope'>{esc(ROUTING_SCOPE_LABELS.get(ev['apply_scope'], ev['apply_scope']))}</td><td data-col='geo'>{esc(ev['country_name'])}</td><td data-col='server'>{esc(server_text)}</td><td data-col='campaign'>{esc(campaign_text)}</td>{clamp_cell('details', details_text, details_text)}{clamp_cell('comment', esc(comment_text), comment_text)}{clamp_cell('reason', esc(ev['reason']), ev['reason'])}<td data-col='actions' class='actions'>{actions}</td></tr>")
     if not rows:
         rows.append("<tr><td colspan='9'><div class='empty-state'>Событий пока нет</div></td></tr>")
     filters_html = f"""<form class='filter-grid' method='get' action='/provider-changes'>
@@ -3774,7 +3775,7 @@ def provider_changes_page(repo: Repository, q: dict[str, str] | None = None, for
 <label>Провайдер <select name='provider_id'>{options(repo, 'providers', selected=q.get('provider_id'), empty='Все')}</select></label>
 <label class='checkbox-inline'><input type='checkbox' name='include_inactive' value='1' {'checked' if q.get('include_inactive') == '1' else ''}> Показывать архив/неактивные</label>
 <button>Найти</button></form>"""
-    journal_html = f"{data_table('provider_changes', [('event_at', 'Дата события'), ('scope', 'Область применения'), ('geo', 'GEO'), ('server', 'Сервер'), ('campaign', 'Кампания'), ('details', 'Детали'), ('reason', 'Причина'), ('comment', 'Комментарий'), ('actions', 'Действия')], ''.join(rows))}"
+    journal_html = f"{data_table('provider_changes', [('event_at', 'Дата события'), ('scope', 'Область применения'), ('geo', 'GEO'), ('server', 'Сервер'), ('campaign', 'Кампания'), ('details', 'Детали'), ('comment', 'Комментарий'), ('reason', 'Причина'), ('actions', 'Действия')], ''.join(rows))}"
     body = f"""
 <h1>Смена провайдеров</h1>
 {routing_event_form(repo, form_data, form_error) if can_write("provider_changes") else ""}
@@ -3782,7 +3783,7 @@ def provider_changes_page(repo: Repository, q: dict[str, str] | None = None, for
 {f"<div class='notice ok'>{esc(q.get('notice'))}</div>" if q.get('notice') else ""}
 {f"<div class='notice error'>{esc(filter_error)}</div>" if filter_error else ""}
 {table_card(journal_html, title='Журнал событий', extra_class='journal-card')}
-{table_footer(pagination_html, export_link('/provider-changes', q) + column_settings('provider_changes', [('event_at', 'Дата события'), ('scope', 'Область применения'), ('geo', 'GEO'), ('server', 'Сервер'), ('campaign', 'Кампания'), ('details', 'Детали'), ('reason', 'Причина'), ('comment', 'Комментарий'), ('actions', 'Действия')]))}
+{table_footer(pagination_html, export_link('/provider-changes', q) + column_settings('provider_changes', [('event_at', 'Дата события'), ('scope', 'Область применения'), ('geo', 'GEO'), ('server', 'Сервер'), ('campaign', 'Кампания'), ('details', 'Детали'), ('comment', 'Комментарий'), ('reason', 'Причина'), ('actions', 'Действия')]))}
 """
     return page("Смена провайдеров", table_page_container(body))
 
