@@ -214,6 +214,17 @@ def run_lightweight_migrations(conn: sqlite3.Connection) -> None:
     _add_column_if_missing(conn, "users", "updated_at", "TEXT")
     _add_column_if_missing(conn, "users", "password_hash", "TEXT")
     _add_column_if_missing(conn, "users", "password_salt", "TEXT")
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS user_permissions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            section_key TEXT NOT NULL,
+            can_read INTEGER NOT NULL DEFAULT 0 CHECK (can_read IN (0, 1)),
+            can_write INTEGER NOT NULL DEFAULT 0 CHECK (can_write IN (0, 1)),
+            can_export INTEGER NOT NULL DEFAULT 0 CHECK (can_export IN (0, 1)),
+            UNIQUE(user_id, section_key)
+        )
+    """)
     if conn.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'routing_events'").fetchone() is not None:
         _add_column_if_missing(conn, "routing_events", "updated_at", "TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP")
     if conn.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'server_route_priorities'").fetchone() is not None:

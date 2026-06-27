@@ -12,6 +12,17 @@ CREATE TABLE IF NOT EXISTS users (
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+
+CREATE TABLE IF NOT EXISTS user_permissions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    section_key TEXT NOT NULL,
+    can_read INTEGER NOT NULL DEFAULT 0 CHECK (can_read IN (0, 1)),
+    can_write INTEGER NOT NULL DEFAULT 0 CHECK (can_write IN (0, 1)),
+    can_export INTEGER NOT NULL DEFAULT 0 CHECK (can_export IN (0, 1)),
+    UNIQUE(user_id, section_key)
+);
+
 CREATE TABLE IF NOT EXISTS countries (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL UNIQUE,
