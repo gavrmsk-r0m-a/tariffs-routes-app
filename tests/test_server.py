@@ -2703,6 +2703,45 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
         finally:
             conn.close()
 
+    def _provider_changes_journal_html(self):
+        captured, content = self.request("/provider-changes")
+        self.assertEqual(captured["status"], "200 OK")
+        return content.split("<h2>Журнал событий</h2>", 1)[1].split("<div class='table-footer'>", 1)[0]
+
+    def test_provider_changes_journal_shows_server_priority_comment(self):
+        self._insert_routing_event("2026-06-22 10:00:00", "server priority journal comment", apply_scope="server_priority", server_id=1)
+        journal = self._provider_changes_journal_html()
+        self.assertIn("data-col='comment'><span class='cell-clamp'>server priority journal comment</span>", journal)
+
+    def test_provider_changes_journal_shows_campaign_settings_comment(self):
+        self.request("/routes")
+        conn = server.connect(server.DB_PATH)
+        try:
+            conn.execute(
+                """
+                INSERT INTO routing_events(
+                    event_at, apply_scope, reason, country_id, provider_id, calling_company_id,
+                    comment, snapshot_json, created_by, updated_by
+                ) VALUES (?, 'campaign_setting', 'Другое', 1, 1, 1, ?, '{}', ?, ?)
+                """,
+                ("2026-06-22 10:05:00", "campaign settings journal comment", server.ADMIN_ID, server.ADMIN_ID),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        journal = self._provider_changes_journal_html()
+        self.assertIn("data-col='comment'><span class='cell-clamp'>campaign settings journal comment</span>", journal)
+
+    def test_provider_changes_journal_shows_no_system_change_comment(self):
+        self._insert_routing_event("2026-06-22 10:10:00", "no system change journal comment", apply_scope="none")
+        journal = self._provider_changes_journal_html()
+        self.assertIn("data-col='comment'><span class='cell-clamp'>no system change journal comment</span>", journal)
+
+    def test_provider_changes_journal_shows_empty_comment_dash(self):
+        self._insert_routing_event("2026-06-22 10:15:00", "", apply_scope="none")
+        journal = self._provider_changes_journal_html()
+        self.assertIn("data-col='comment'><span class='cell-clamp'>—</span>", journal)
+
     def test_provider_changes_journal_supports_date_from_filter(self):
         self._insert_routing_event("2026-06-21 23:59:59", "before date from")
         self._insert_routing_event("2026-06-22 00:00:00", "on date from")
