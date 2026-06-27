@@ -416,6 +416,8 @@ CREATE TABLE IF NOT EXISTS routing_events (
     new_company_route_id INTEGER REFERENCES routes(id) ON DELETE RESTRICT,
     old_company_has_autorotation INTEGER CHECK (old_company_has_autorotation IN (0, 1) OR old_company_has_autorotation IS NULL),
     new_company_has_autorotation INTEGER CHECK (new_company_has_autorotation IN (0, 1) OR new_company_has_autorotation IS NULL),
+    has_overflow INTEGER NOT NULL DEFAULT 0 CHECK (has_overflow IN (0, 1)),
+    overflow_route_id INTEGER REFERENCES routes(id) ON DELETE RESTRICT,
     comment TEXT NOT NULL,
     snapshot_json TEXT,
     is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),

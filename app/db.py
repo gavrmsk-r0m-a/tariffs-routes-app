@@ -320,6 +320,8 @@ def run_lightweight_migrations(conn: sqlite3.Connection) -> None:
             new_company_route_id INTEGER REFERENCES routes(id) ON DELETE RESTRICT,
             old_company_has_autorotation INTEGER CHECK (old_company_has_autorotation IN (0, 1) OR old_company_has_autorotation IS NULL),
             new_company_has_autorotation INTEGER CHECK (new_company_has_autorotation IN (0, 1) OR new_company_has_autorotation IS NULL),
+            has_overflow INTEGER NOT NULL DEFAULT 0 CHECK (has_overflow IN (0, 1)),
+            overflow_route_id INTEGER REFERENCES routes(id) ON DELETE RESTRICT,
             comment TEXT NOT NULL,
             snapshot_json TEXT,
             is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
@@ -332,6 +334,8 @@ def run_lightweight_migrations(conn: sqlite3.Connection) -> None:
             updated_by INTEGER REFERENCES users(id) ON DELETE RESTRICT
         )
     """)
+    _add_column_if_missing(conn, "routing_events", "has_overflow", "INTEGER NOT NULL DEFAULT 0 CHECK (has_overflow IN (0, 1))")
+    _add_column_if_missing(conn, "routing_events", "overflow_route_id", "INTEGER REFERENCES routes(id) ON DELETE RESTRICT")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_routing_events_event_at ON routing_events(event_at DESC, id DESC)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_routing_events_scope ON routing_events(apply_scope)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_routing_events_active ON routing_events(is_active)")
