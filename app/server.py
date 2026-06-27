@@ -3130,10 +3130,13 @@ def companies_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
 {table_footer(pagination_html, export_link('/companies', q) + "<a class='button table-utility-button' href='/calling-companies/history'>Журнал событий</a>" + column_settings('companies', [('server', 'Сервер'), ('geo', 'ГЕО'), ('company_name', 'Название кампании'), ('company_id', 'ID кампании'), ('lines', 'Количество линий'), ('dial_sets', 'Количество наборов'), ('autorotation', 'Авторотация'), ('retry_interval', 'Интервал дозвона'), ('active', 'Активна'), ('comment', 'Комментарий'), ('actions', 'Действия')]))}"""
     return page("Кампании прозвона", table_page_container(body))
 
-def routing_reason_options(selected: str | None = None) -> str:
+def routing_reason_options(selected: str | None = None, scope: str = "campaign_setting") -> str:
+    reasons = Repository.ROUTING_EVENT_REASONS_BY_SCOPE.get(scope, Repository.ROUTING_EVENT_REASONS)
+    if selected and selected not in reasons:
+        reasons = (*reasons, selected)
     return "".join(
         f"<option value='{esc(reason)}' {'selected' if reason == selected else ''}>{esc(reason)}</option>"
-        for reason in Repository.ROUTING_EVENT_REASONS
+        for reason in reasons
     )
 
 
@@ -3341,7 +3344,7 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
   <label class='scope-field route-select-field' data-scopes='server_priority'>Новый маршрут <span class='required'>*</span><select name='new_route_id' id='new-route' class='route-select'>{new_route_opts}</select></label>
   <span class='scope-field route-empty-message muted' data-scopes='server_priority' id='new-route-empty' hidden>Нет маршрутов для выбранного провайдера и GEO</span>
   <div class='provider-change-campaign-lower-grid'>
-    <label class='routing-reason-field'>Причина <span class='required'>*</span><select name='reason' required>{routing_reason_options(event['reason'] if event else None)}</select></label>
+    <label class='routing-reason-field'>Причина <span class='required'>*</span><select name='reason' id='routing-reason' required>{routing_reason_options(event['reason'] if event else None, scope)}</select><span class='field-helper' id='routing-reason-helper'></span></label>
     <div class='scope-field campaign-company-field' data-scopes='campaign_setting'>
       <span class='field-label'>Кампания <span class='required'>*</span></span>
       <details class='multi-select' id='event-company' data-placeholder='—'>
@@ -3359,7 +3362,7 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
   <label class='scope-field conditional-field' data-scopes='campaign_setting' data-campaign-route-field='1'>Новый провайдер кампании <span class='required'>*</span><select name='campaign_provider_id' id='campaign-provider'>{active_options(repo, 'providers', selected=provider_selected, empty='—')}</select></label>
   <label class='scope-field conditional-field' data-scopes='campaign_setting' data-campaign-route-field='1'>Новый маршрут кампании <span class='required'>*</span><select name='new_company_route_id' id='company-route'>{company_route_opts}</select></label>
   <span class='scope-field route-empty-message muted' data-scopes='campaign_setting' id='company-route-empty' hidden>Нет маршрутов для выбранного провайдера и GEO кампании</span>
-  <label class='wide'>Комментарий <span class='required'>*</span><textarea name='comment' rows='3' cols='60' required>{esc(event['comment'] if event else '')}</textarea></label>
+  <label class='wide'>Комментарий <span class='required comment-required'>*</span><textarea name='comment' id='routing-comment' rows='3' cols='60'>{esc(event['comment'] if event else '')}</textarea></label>
   <p class='scope-field muted wide' data-scopes='campaign_setting'>Событие будет сохранено в журнале и применено к ‘Схеме маршрутизации кампаний’.</p>
   <p class='scope-field muted wide' data-scopes='server_priority'>Старый маршрут подтягивается автоматически из текущего server_route_priorities при создании.</p>
   <button>{submit}</button>
@@ -3371,10 +3374,35 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
   const routes = {route_metadata_json(repo)};
   const priorities = {current_priorities_json(repo)};
   const campaigns = {campaign_metadata_json(repo)};
+  const reasonsByScope = {json.dumps(Repository.ROUTING_EVENT_REASONS_BY_SCOPE, ensure_ascii=False)};
+  const currentReason = {json.dumps(event['reason'] if event else None, ensure_ascii=False)};
   const campaignCountries = Object.fromEntries(campaigns.map((company) => [String(company.id), company.country_id]));
   const routeNeeds = new Set(['set_campaign_route']);
   function selectedScope() {{ return (form.querySelector('input[name="apply_scope"]:checked') || {{value: 'none'}}).value; }}
   function setRequired(el, required) {{ if (el) el.required = !!required; }}
+  function rebuildReasonSelect(scope) {{
+    const reason = document.getElementById('routing-reason');
+    if (!reason) return;
+    const previous = reason.value || currentReason || '';
+    reason.innerHTML = '';
+    (reasonsByScope[scope] || []).forEach((value) => {{
+      const opt = document.createElement('option');
+      opt.value = value;
+      opt.textContent = value;
+      if (value === previous) opt.selected = true;
+      reason.appendChild(opt);
+    }});
+  }}
+  function syncCommentRequirement(scope) {{
+    const reason = document.getElementById('routing-reason');
+    const comment = document.getElementById('routing-comment');
+    const marker = form.querySelector('.comment-required');
+    const helper = document.getElementById('routing-reason-helper');
+    const requireComment = scope === 'none' && reason && reason.value === 'Другое';
+    if (comment) comment.required = requireComment;
+    if (marker) marker.hidden = !requireComment;
+    if (helper) helper.textContent = requireComment ? 'Требуется понятный комментарий' : (scope === 'server_priority' && reason && reason.value === 'Обратная смена провайдера' ? 'например тех. проблемы' : '');
+  }}
   function rebuildRouteSelect(select, countryId, providerId, emptyEl) {{
     if (!select) return;
     const current = select.value;
@@ -3461,6 +3489,7 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
   function sync() {{
     const scope = selectedScope();
     form.dataset.currentScope = scope;
+    rebuildReasonSelect(scope);
     form.querySelectorAll('.scope-card').forEach((card) => card.classList.toggle('selected', card.querySelector('input').checked));
     form.querySelectorAll('.scope-field').forEach((el) => {{
       const show = (el.dataset.scopes || '').split(' ').includes(scope);
@@ -3497,6 +3526,7 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
     updateSelectTitle(document.getElementById('company-route'));
     setRequired(document.getElementById('new-route'), scope === 'server_priority');
     setRequired(ctype, scope === 'campaign_setting');
+    syncCommentRequirement(scope);
   }}
   function renderCurrentRoutes() {{
     const panel = form.querySelector('[data-server-current-routes]');
@@ -3543,6 +3573,8 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
   form.querySelectorAll('input[name="server_ids"]').forEach((box) => box.addEventListener('change', updateServerSelectionCount));
   updateServerSelectionCount();
   form.querySelectorAll('input[name="apply_scope"], #event-country, #event-provider, #campaign-provider, #company-change-type').forEach((el) => el.addEventListener('change', sync));
+  const reasonSelect = document.getElementById('routing-reason');
+  if (reasonSelect) reasonSelect.addEventListener('change', () => syncCommentRequirement(selectedScope()));
   form.querySelectorAll('input[name="calling_company_ids"]').forEach((el) => el.addEventListener('change', sync));
   const campaignServerFilter = document.getElementById('campaign-server-filter');
   if (campaignServerFilter) campaignServerFilter.addEventListener('change', () => {{ filterCompanyOptions(true); sync(); }});

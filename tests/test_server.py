@@ -924,6 +924,31 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertNotIn("Новый route", content)
         self.assertNotIn("Новая авторотация", content)
 
+
+    def test_provider_change_reason_lists_and_helpers_match_scopes(self):
+        self.request("/routes")
+        captured, content = self.request("/provider-changes")
+        self.assertEqual(captured["status"], "200 OK")
+        create_form = content.split("<form method='post' action='/provider-changes/create'", 1)[1].split("</form>", 1)[0]
+        for expected in ("Обновление/смена АОНов", "Провайдер сменил маршрут", "Другое"):
+            self.assertIn(f">{expected}</option>", create_form)
+        for obsolete in ("Массовые отбои / занято", "Плохой дозвон", "Обновление пула / АОН"):
+            self.assertNotIn(f">{obsolete}</option>", create_form)
+        self.assertIn("Массовый отбои/занято", content)
+        self.assertIn("Обратная смена провайдера", content)
+        self.assertIn("Требуется понятный комментарий", content)
+        self.assertIn("например тех. проблемы", content)
+        self.assertIn("id='routing-comment'", create_form)
+
+    def test_provider_change_none_other_requires_comment_but_named_reason_does_not(self):
+        ok_body = urlencode({"apply_scope": "none", "event_at": "2026-06-10T10:00", "provider_id": "1", "reason": "Провайдер сменил маршрут", "comment": ""})
+        captured, _ = self.request("/provider-changes/create", method="POST", body=ok_body)
+        self.assertEqual(captured["status"], "303 See Other")
+        bad_body = urlencode({"apply_scope": "none", "event_at": "2026-06-10T11:00", "provider_id": "1", "reason": "Другое", "comment": ""})
+        captured, content = self.request("/provider-changes/create", method="POST", body=bad_body)
+        self.assertEqual(captured["status"], "400 Bad Request")
+        self.assertIn("Требуется понятный комментарий", content)
+
     def test_provider_change_new_route_select_is_wide_and_has_titles(self):
         self.request("/routes")
         captured, content = self.request("/provider-changes")
@@ -2222,7 +2247,7 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
             "server_id": "1",
             "provider_id": "1",
             "new_route_id": "1",
-            "reason": "Плановое переключение",
+            "reason": "Задача руководства",
             "comment": "Переключили EU1 на Sancom",
         })
         captured, _ = self.request("/provider-changes/create", method="POST", body=body)
@@ -2257,7 +2282,7 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
             ("server_ids", "2"),
             ("provider_id", str(target["provider_id"])),
             ("new_route_id", str(target["route_id"])),
-            ("reason", "Плановое переключение"),
+            ("reason", "Задача руководства"),
             ("comment", "Переключили EU1 и EU2"),
         ])
         captured, _ = self.request("/provider-changes/create", method="POST", body=body)
@@ -2293,7 +2318,7 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
             ("server_ids", "3"),
             ("provider_id", str(target["provider_id"])),
             ("new_route_id", str(target["id"])),
-            ("reason", "Плановое переключение"),
+            ("reason", "Задача руководства"),
             ("comment", "Проверяем журнал по нескольким серверам"),
         ])
         captured, _ = self.request("/provider-changes/create", method="POST", body=body)
@@ -2349,7 +2374,7 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
             ("server_ids", "3"),
             ("provider_id", str(target["provider_id"])),
             ("new_route_id", str(target["id"])),
-            ("reason", "Плановое переключение"),
+            ("reason", "Задача руководства"),
             ("comment", "Фильтр должен найти EU1 и EU3"),
         ])
         captured, _ = self.request("/provider-changes/create", method="POST", body=body)
@@ -2843,7 +2868,7 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
             ("server_ids", "3"),
             ("provider_id", str(target["provider_id"])),
             ("new_route_id", str(target["id"])),
-            ("reason", "Плановое переключение"),
+            ("reason", "Задача руководства"),
             ("comment", "server details"),
         ])
         self.request("/provider-changes/create", method="POST", body=body)
@@ -3178,8 +3203,8 @@ class RolePermissionTest(ServerSmokeTest):
             "event_at": "2026-06-14T10:00",
             "apply_scope": "none",
             "provider_id": "1",
-            "reason": "Плановая смена",
-            "comment": "operator allowed",
+            "reason": "Провайдер сменил маршрут",
+            "comment": "",
         })
         captured, content = self.request("/provider-changes/create", method="POST", body=body, cookie=self.user_cookie("duty"))
         self.assertEqual(captured["status"], "303 See Other")
@@ -3232,7 +3257,7 @@ class ProviderChangeTelegramServerTest(unittest.TestCase):
             "_actor_id": str(self.admin_id),
             "event_at": "2026-06-24 21:15",
             "apply_scope": "none",
-            "reason": "Плохие показатели",
+            "reason": "Провайдер сменил маршрут",
             "comment": "Перевели трафик на Miatel",
             "country_id": str(self.country_id),
             "provider_id": str(self.provider_id),
