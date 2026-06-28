@@ -877,14 +877,6 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .inactive-row {{ color: var(--muted); background: var(--surface-strong); }}
     .status-badge {{ display: inline-flex; align-items: center; min-height: 22px; padding: 2px 7px; border: 1px solid var(--cyber); border-radius: 999px; background: var(--cyber-soft); color: var(--text-strong); font-size: 12px; font-weight: 720; white-space: nowrap; }}
 
-    .dashboard-hero {{ position: relative; overflow: hidden; display: flex; align-items: center; justify-content: space-between; gap: 18px; border: 1px solid var(--border-strong); border-radius: 18px; padding: 26px; margin: 0 0 18px; background:
-      radial-gradient(circle at 82% 20%, rgba(0, 191, 166, 0.20), transparent 16rem),
-      linear-gradient(135deg, var(--surface) 0%, var(--surface-strong) 58%, var(--cyber-soft) 100%); box-shadow: var(--shadow-glow, var(--shadow-card)); }}
-    .dashboard-hero::after {{ content: ""; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(rgba(79, 70, 229, 0.045) 1px, transparent 1px), linear-gradient(90deg, rgba(79, 70, 229, 0.045) 1px, transparent 1px); background-size: 22px 22px; mask-image: linear-gradient(120deg, transparent, #000 18%, #000 70%, transparent); }}
-    .dashboard-hero > * {{ position: relative; z-index: 1; }}
-    .dashboard-hero h1 {{ margin: 0 0 8px; padding: 0; border: 0; font-size: 34px; }}
-    .eyebrow {{ margin: 0 0 6px; color: var(--accent-strong); font-size: 12px; font-weight: 820; text-transform: uppercase; letter-spacing: .08em; }}
-    .hero-text {{ max-width: 760px; margin: 0; color: var(--muted); font-size: 16px; }}
     .hero-action {{ background: var(--accent-strong); border-color: var(--accent-strong); color: #fff; white-space: nowrap; }}
     .hero-action:hover {{ background: var(--accent); border-color: var(--accent); color: #fff; }}
     .metrics-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; margin: 0 0 18px; }}
@@ -993,8 +985,6 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     html[data-theme="mvp"] .side-link.active, html[data-theme="terminal-paper"] .side-link.active {{ background: var(--surface); border-color: var(--border-strong); color: var(--accent-strong); box-shadow: var(--shadow-soft); font-weight: 780; }}
     html[data-theme="mvp"] .side-link.active::before, html[data-theme="terminal-paper"] .side-link.active::before {{ content: none; }}
     html[data-theme="mvp"] .admin-link.active, html[data-theme="terminal-paper"] .admin-link.active {{ background: var(--surface); border-color: var(--border-strong); color: var(--accent-strong); font-weight: 730; box-shadow: var(--shadow-soft); }}
-    html[data-theme="mvp"] .dashboard-hero, html[data-theme="terminal-paper"] .dashboard-hero {{ background: linear-gradient(135deg, var(--surface) 0%, var(--accent-soft) 100%); box-shadow: var(--shadow-card); }}
-    html[data-theme="mvp"] .dashboard-hero::after, html[data-theme="terminal-paper"] .dashboard-hero::after {{ content: none; }}
     html[data-theme="mvp"] .metric-card, html[data-theme="terminal-paper"] .metric-card {{ border: 1px solid var(--border); background: var(--surface); box-shadow: var(--shadow-soft); }}
     html[data-theme="mvp"] .status-badge, html[data-theme="terminal-paper"] .status-badge {{ border-color: var(--border); background: var(--surface-muted); color: var(--text); }}
     html[data-theme="dark"] .theme-selector select:focus, html[data-theme="dark"] .theme-selector select:focus-visible {{ border-color: var(--accent); outline-color: var(--accent); box-shadow: 0 0 0 3px rgba(109, 93, 252, 0.14); }}
@@ -1002,8 +992,6 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     html[data-theme="dark"] tbody tr:hover {{ background: rgba(109, 93, 252, 0.08); }}
     html[data-theme="dark"] .table-card td[data-copy-column="phone-number"], html[data-theme="dark"] code {{ font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }}
     html[data-theme="dark"] .hero-action {{ background: linear-gradient(135deg, var(--accent-strong), var(--accent)); box-shadow: var(--shadow-glow); }}
-    html[data-theme="dark"] .eyebrow {{ display: inline-flex; align-items: center; gap: 6px; color: var(--cyber-strong); background: var(--cyber-soft); border: 1px solid rgba(0, 191, 166, 0.28); border-radius: 999px; padding: 3px 8px; }}
-    html[data-theme="dark"] .eyebrow::before {{ content: "◈"; color: var(--cyber); }}
     html[data-theme="dark"] .quick-link-card {{ transition: transform 140ms ease, border-color 140ms ease, box-shadow 140ms ease, background 140ms ease; }}
 
     /* Figma-inspired light operations admin */
@@ -1293,7 +1281,6 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
       white-space: nowrap;
     }}
 
-    /* RouteOps Control Center dark theme overrides */
     html[data-theme="dark"] {{
       color-scheme: dark;
     }}
@@ -1558,14 +1545,6 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
       border-color: var(--border-strong);
       color: var(--text);
       box-shadow: none;
-    }}
-
-    html[data-theme="dark"] .dashboard-hero {{
-      background:
-        radial-gradient(circle at 84% 18%, rgba(56, 189, 248, .18), transparent 16rem),
-        linear-gradient(135deg, #111827 0%, #101A2C 60%, #0B1020 100%);
-      border-color: var(--border-strong);
-      box-shadow: var(--shadow-card);
     }}
 
     html[data-theme="dark"] .metric-icon,
@@ -3480,9 +3459,7 @@ def dashboard_page(repo: Repository) -> bytes:
     ])
     feed = dashboard_events(repo)
     body = f"""
-<section class='dashboard-hero'>
-  <div><p class='eyebrow'>RouteOps Control Center</p><h1>Главная</h1><p class='hero-text'>Операционная панель маршрутов, номеров и смен провайдеров.</p></div>
-</section>
+<h1>Главная</h1>
 <section class='metrics-grid'>{metrics}</section>
 <section class='dashboard-section'><div class='dashboard-panel-title'><h2>Быстрые переходы</h2></div><div class='quick-links'>{work_links}{admin_links}</div></section>
 <section class='dashboard-section'><div class='dashboard-panel-title'><h2>Лента событий</h2></div><div class='event-feed'>{feed}</div></section>
