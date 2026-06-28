@@ -724,7 +724,7 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     input:focus, select:focus, textarea:focus {{ border-color: var(--focus); background: var(--surface); }}
     input::placeholder, textarea::placeholder {{ color: var(--muted); }}
     textarea {{ width: 100%; }}
-    input[type="checkbox"], input[type="radio"] {{ width: auto; margin: 0 6px 0 0; vertical-align: middle; accent-color: var(--accent); }}
+    input[type="checkbox"], input[type="radio"] {{ width: 14px; height: 14px; min-height: 14px; padding: 0; margin: 0 5px 0 0; vertical-align: -2px; accent-color: var(--accent); box-shadow: none; }}
     label {{ display: inline-grid; gap: 4px; margin: 0; align-items: start; color: var(--text); font-weight: 620; }}
     form {{ display: flex; flex-wrap: wrap; gap: 8px 10px; align-items: end; }}
     form button {{ align-self: end; }}
@@ -735,11 +735,11 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .server-checkbox-toolbar button {{ min-height: 28px; padding: 3px 9px; border-radius: var(--radius-control); font-size: 12px; font-weight: 620; box-shadow: none; }}
     .server-selection-count {{ color: var(--muted); font-size: 12px; font-weight: 620; white-space: nowrap; }}
     .server-checkbox-grid {{ display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }}
-    .server-checkbox-item {{ min-height: 36px; display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border-strong); border-radius: var(--radius-control); padding: 7px 12px; background: var(--surface); margin: 0; font-weight: 720; line-height: 1; cursor: pointer; box-shadow: inset 0 1px 1px rgba(34, 48, 42, 0.03); transition: border-color 140ms ease, background 140ms ease, box-shadow 140ms ease, color 140ms ease; }}
+    .server-checkbox-item {{ min-height: 30px; display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--border-strong); border-radius: var(--radius-control); padding: 5px 9px; background: var(--surface); margin: 0; font-weight: 700; line-height: 1; cursor: pointer; box-shadow: inset 0 1px 1px rgba(34, 48, 42, 0.03); transition: border-color 140ms ease, background 140ms ease, box-shadow 140ms ease, color 140ms ease; }}
     .server-checkbox-item:hover {{ border-color: var(--accent); background: var(--surface-muted); }}
     .server-checkbox-item input[type="checkbox"] {{ position: absolute; opacity: 0; pointer-events: none; }}
     .server-checkbox-item:has(input:checked) {{ border-color: var(--accent); background: var(--accent-soft); color: var(--text-strong); box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 24%, transparent) inset; }}
-    .server-checkbox-item:has(input:checked)::before {{ content: "✓"; display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; border-radius: 4px; background: var(--accent); color: #fff; font-size: 11px; font-weight: 820; }}
+    .server-checkbox-item:has(input:checked)::before {{ content: "✓"; display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; border-radius: 4px; background: var(--accent); color: #fff; font-size: 10px; font-weight: 820; }}
     .server-checkbox-copy {{ min-width: 0; display: inline-flex; align-items: center; }}
     .server-checkbox-main {{ font-weight: 760; line-height: 1.15; color: inherit; }}
     .server-current-routes {{ display: grid; gap: 5px; max-height: 210px; overflow: auto; margin-top: 10px; padding: 9px 10px; border: 1px solid var(--border); border-radius: var(--radius-control); background: var(--surface); }}
@@ -784,8 +784,8 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     #routing-event-form .routing-reason-field {{ width: 190px; }}
     #routing-event-form[data-current-scope='campaign_setting'] {{ grid-template-columns: minmax(0, 1fr); column-gap: 12px; }}
     #routing-event-form .provider-change-campaign-grid, #routing-event-form .provider-change-campaign-lower-grid {{ display: contents; }}
-    #routing-event-form[data-current-scope='campaign_setting'] .provider-change-campaign-grid {{ grid-column: 1 / -1; display: grid; grid-template-columns: 180px 140px 220px 56px 280px; gap: 12px; align-items: end; }}
-    #routing-event-form[data-current-scope='campaign_setting'] .provider-change-campaign-lower-grid {{ grid-column: 1 / -1; display: grid; grid-template-columns: 220px 420px; gap: 12px; align-items: end; }}
+    #routing-event-form[data-current-scope='campaign_setting'] .provider-change-campaign-grid {{ grid-column: 1 / -1; display: grid; grid-template-columns: minmax(170px, 190px) minmax(160px, 190px) minmax(220px, 1fr) minmax(0, 56px) minmax(240px, 1.15fr); gap: 12px; align-items: end; }}
+    #routing-event-form[data-current-scope='campaign_setting'] .provider-change-campaign-lower-grid {{ grid-column: 1 / -1; display: grid; grid-template-columns: minmax(220px, .8fr) minmax(360px, 1.2fr); gap: 12px; align-items: end; }}
     #routing-event-form .provider-change-campaign-grid label, #routing-event-form .provider-change-campaign-lower-grid label {{ min-width: 0; width: auto; }}
     #routing-event-form .campaign-server-field, #routing-event-form .campaign-id-field, #routing-event-form .campaign-change-type-field, #routing-event-form .campaign-company-field {{ min-width: 0; width: auto; }}
     #routing-event-form .campaign-search-action-field {{ min-width: 0; width: 56px; display: grid; grid-template-rows: 18px auto; align-items: end; }}
@@ -799,7 +799,7 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     #routing-event-form .multi-option {{ display: flex; gap: 8px; align-items: center; min-width: 0; padding: 6px 4px; font-weight: 560; cursor: pointer; }}
     #routing-event-form .multi-option input {{ width: auto; }}
     #routing-event-form .multi-option span {{ overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
-    @media (max-width: 1020px) {{ #routing-event-form, #routing-event-form[data-current-scope='campaign_setting'] {{ grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }} #routing-event-form[data-current-scope='campaign_setting'] .provider-change-campaign-grid {{ grid-template-columns: 180px 140px 220px 56px 280px; overflow-x: auto; }} #routing-event-form[data-current-scope='campaign_setting'] .provider-change-campaign-lower-grid {{ grid-template-columns: 220px 420px; overflow-x: auto; }} #routing-event-form .routing-provider-field, #routing-event-form .routing-reason-field, #routing-event-form .route-select-field, #routing-event-form .campaign-server-field, #routing-event-form .campaign-id-field, #routing-event-form .campaign-change-type-field, #routing-event-form .campaign-company-field {{ min-width: 0; }} }}
+    @media (max-width: 1020px) {{ #routing-event-form, #routing-event-form[data-current-scope='campaign_setting'] {{ grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }} #routing-event-form[data-current-scope='campaign_setting'] .provider-change-campaign-grid, #routing-event-form[data-current-scope='campaign_setting'] .provider-change-campaign-lower-grid {{ grid-template-columns: repeat(2, minmax(0, 1fr)); overflow: visible; }} #routing-event-form .routing-provider-field, #routing-event-form .routing-reason-field, #routing-event-form .route-select-field, #routing-event-form .campaign-server-field, #routing-event-form .campaign-id-field, #routing-event-form .campaign-change-type-field, #routing-event-form .campaign-company-field {{ min-width: 0; }} }}
     @media (max-width: 720px) {{ .form-grid .route-select-field {{ grid-column: 1 / -1; width: 100%; min-width: 0; }} }}
     .filter-grid .checkbox-inline, .form-grid .checkbox-inline {{ min-width: auto; display: flex; align-items: center; gap: 5px; align-self: center; font-weight: 560; }}
     .form-grid .wide, .filter-grid .wide {{ grid-column: 1 / -1; }}
@@ -972,14 +972,17 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .modal-form-card > summary::-webkit-details-marker {{ display: none; }}
     .modal-form-card > summary::marker {{ content: ""; }}
     .modal-form-card[open]::before, .modal-overlay {{ content: ""; position: fixed; inset: 0; z-index: 980; background: rgba(0, 0, 0, 0.55); }}
-    .modal-form-card[open] > form, .modal-form-card[open] > .modal-body, .modal-card {{ position: fixed; left: 50%; top: 50%; z-index: 990; width: min(860px, calc(100vw - 32px)); max-height: calc(100vh - 48px); overflow: auto; transform: translate(-50%, -50%); margin: 0; padding: 20px; border: 1px solid var(--border-strong); border-radius: 18px; background: var(--surface); color: var(--text); box-shadow: 0 24px 80px rgba(0,0,0,.28); box-sizing: border-box; }}
+    .modal-form-card[open] > form, .modal-form-card[open] > .modal-body, .modal-card {{ position: fixed; left: 50%; top: 50%; z-index: 990; width: min(1040px, calc(100vw - 32px)); max-height: calc(100vh - 48px); overflow: auto; transform: translate(-50%, -50%); margin: 0; padding: 20px; border: 1px solid var(--border-strong); border-radius: 18px; background: var(--surface); color: var(--text); box-shadow: 0 24px 80px rgba(0,0,0,.28); box-sizing: border-box; }}
     .modal-card form, .modal-form-card[open] > form {{ display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }}
     .modal-card form label, .modal-card form fieldset, .modal-form-card[open] > form label, .modal-form-card[open] > form fieldset {{ min-width: 0; }}
     .modal-card form .wide, .modal-card form p, .modal-card form fieldset, .modal-form-card[open] > form .wide, .modal-form-card[open] > form p, .modal-form-card[open] > form fieldset {{ grid-column: 1 / -1; }}
     .modal-card h2 {{ margin: 0 0 4px; color: var(--text-strong); }}
     .modal-description {{ margin: 0 0 16px; color: var(--muted); }}
     .modal-actions {{ grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; padding-top: 12px; border-top: 1px solid var(--border); }}
-    .modal-cancel {{ background: var(--surface-muted); color: var(--text); border-color: var(--border-strong); }}
+    .modal-save, .admin-edit-save {{ background: var(--success); border-color: var(--success); color: #fff; font-weight: 780; }}
+    .modal-save:hover, .admin-edit-save:hover {{ background: color-mix(in srgb, var(--success) 88%, #000); border-color: var(--success); color: #fff; }}
+    .modal-cancel, .admin-edit-cancel {{ background: var(--danger-soft); color: var(--danger); border-color: color-mix(in srgb, var(--danger) 42%, var(--border-strong)); }}
+    .modal-cancel:hover, .admin-edit-cancel:hover {{ background: color-mix(in srgb, var(--danger-soft) 78%, var(--surface)); color: var(--danger); border-color: var(--danger); }}
     .modal-card input, .modal-card select, .modal-card textarea, .modal-form-card[open] input, .modal-form-card[open] select, .modal-form-card[open] textarea {{ width: 100%; box-sizing: border-box; background: var(--input-bg, var(--surface)); color: var(--text); border-color: var(--border-strong); }}
     html[data-theme="dark"] .modal-card, html[data-theme="dark"] .modal-form-card[open] > form, html[data-theme="dark"] .modal-form-card[open] > .modal-body {{ background: var(--surface); border-color: var(--border-strong); color: var(--text); }}
     html[data-theme="dark"] .modal-overlay, html[data-theme="dark"] .modal-form-card[open]::before {{ background: rgba(0, 0, 0, 0.55); }}
@@ -1912,6 +1915,7 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
       cancel.textContent = "Отмена";
       if (saveButton) {{
         saveButton.parentNode.insertBefore(actions, saveButton);
+        saveButton.classList.add("modal-save");
         actions.appendChild(cancel);
         actions.appendChild(saveButton);
       }} else {{
@@ -2014,6 +2018,7 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
         cancel.textContent = "Отмена";
         if (saveButton) {{
           saveButton.parentNode.insertBefore(actions, saveButton);
+          saveButton.classList.add("admin-edit-save");
           actions.appendChild(saveButton);
         }} else {{
           form.appendChild(actions);
@@ -4093,14 +4098,14 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
   <div class='provider-change-campaign-grid'>
     <label>Дата события <span class='required'>*</span><input type='datetime-local' name='event_at' value='{esc(event_at)}' required></label>
     <label class='scope-field campaign-helper-field campaign-server-field' data-scopes='campaign_setting'>Сервер <select name='server_id' id='campaign-server-filter'>{options(repo, 'servers', selected=event['server_id'] if event else None, empty='—')}</select></label>
-    <label class='scope-field campaign-helper-field campaign-id-field' data-scopes='campaign_setting'>ID кампании <input name='campaign_id_search' id='campaign-id-search' value='{esc(event['campaign_id_search'] if event and 'campaign_id_search' in event.keys() else '')}'><span class='field-error' id='campaign-id-search-error' aria-live='polite'></span></label>
-    <div class='scope-field campaign-search-action-field' data-scopes='campaign_setting'><span class='button-label-spacer' aria-hidden='true'></span><button type='button' id='campaign-id-search-button' class='small-button'>OK</button></div>
     <label class='scope-field campaign-change-type-field' data-scopes='campaign_setting'>Тип изменения кампании <span class='required'>*</span><select name='company_change_type' id='company-change-type'>
       <option value=''>—</option>
       {''.join(f"<option value='{v}' {'selected' if event and event['company_change_type'] == v else ''}>{label}</option>" for v, label in [('enable_autorotation','Включили авторотацию'),('disable_autorotation','Выключили авторотацию'),('set_campaign_route','Прописали ручной маршрут'),('remove_campaign_route','Убрали ручной маршрут')])}
     </select></label>
+    <label class='scope-field campaign-helper-field campaign-id-field' data-scopes='campaign_setting'>ID кампании <input name='campaign_id_search' id='campaign-id-search' value='{esc(event['campaign_id_search'] if event and 'campaign_id_search' in event.keys() else '')}'><span class='field-error' id='campaign-id-search-error' aria-live='polite'></span></label>
+    <div class='scope-field campaign-search-action-field' data-scopes='campaign_setting'><span class='button-label-spacer' aria-hidden='true'></span><button type='button' id='campaign-id-search-button' class='small-button'>OK</button></div>
   </div>
-  <label class='scope-field' data-scopes='none server_priority'>GEO <select name='country_id' id='event-country'>{active_options(repo, 'countries', selected=event['country_id'] if event else None, empty='—')}</select></label>
+  <label class='scope-field' data-scopes='none server_priority'>GEO <span class='required'>*</span><select name='country_id' id='event-country'>{active_options(repo, 'countries', selected=event['country_id'] if event else None, empty='—')}</select></label>
   <fieldset class='scope-field' data-scopes='server_priority'><legend>Серверы <span class='required'>*</span></legend>{server_priority_server_boxes}</fieldset>
   <label class='scope-field routing-provider-field' data-scopes='none server_priority'>Провайдер <span class='required provider-required'>*</span><select name='provider_id' id='event-provider'>{active_options(repo, 'providers', selected=provider_selected, empty='—')}</select></label>
   <label class='scope-field' data-scopes='none'>Маршрут/префикс <select name='affected_route_id' id='affected-route'>{route_opts}</select></label>
