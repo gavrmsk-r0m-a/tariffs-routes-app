@@ -818,8 +818,8 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .filter-grid, .form-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, max-content)); gap: 10px 12px; align-items: end; padding: 14px; }}
     .filter-grid {{ display: flex; flex-wrap: wrap; gap: 10px; align-items: end; }}
     .filter-grid label, .form-grid label {{ min-width: 150px; }}
-    .filter-grid label:not(.checkbox-inline):not(.scope-card), .form-grid label:not(.checkbox-inline):not(.scope-card):not(.spillover-checkbox) {{ display: block; white-space: nowrap; }}
-    .filter-grid label:not(.checkbox-inline) > input, .filter-grid label:not(.checkbox-inline) > select, .filter-grid label:not(.checkbox-inline) > textarea, .form-grid label:not(.checkbox-inline):not(.scope-card):not(.spillover-checkbox) > input, .form-grid label:not(.checkbox-inline):not(.scope-card):not(.spillover-checkbox) > select, .form-grid label:not(.checkbox-inline):not(.scope-card):not(.spillover-checkbox) > textarea {{ display: block; margin-top: 4px; }}
+    .filter-grid label:not(.checkbox-inline):not(.scope-card), .form-grid label:not(.checkbox-inline):not(.scope-card):not(.spillover-checkbox):not(.important-checkbox) {{ display: block; white-space: nowrap; }}
+    .filter-grid label:not(.checkbox-inline) > input, .filter-grid label:not(.checkbox-inline) > select, .filter-grid label:not(.checkbox-inline) > textarea, .form-grid label:not(.checkbox-inline):not(.scope-card):not(.spillover-checkbox):not(.important-checkbox) > input, .form-grid label:not(.checkbox-inline):not(.scope-card):not(.spillover-checkbox):not(.important-checkbox) > select, .form-grid label:not(.checkbox-inline):not(.scope-card):not(.spillover-checkbox):not(.important-checkbox) > textarea {{ display: block; margin-top: 4px; }}
     .filter-grid input, .filter-grid select, .form-grid input, .form-grid select {{ width: 100%; }}
     .form-grid .route-select-field {{ min-width: min(420px, 100%); width: clamp(420px, 44vw, 560px); grid-column: span 2; }}
     .form-grid .route-select-field .route-select {{ width: 100%; min-width: 0; font-size: 14px; }}
@@ -852,8 +852,8 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     @media (max-width: 1020px) {{ #routing-event-form, #routing-event-form[data-current-scope='campaign_setting'] {{ grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }} #routing-event-form[data-current-scope='campaign_setting'] .provider-change-campaign-grid, #routing-event-form[data-current-scope='campaign_setting'] .provider-change-campaign-lower-grid {{ grid-template-columns: repeat(2, minmax(0, 1fr)); overflow: visible; }} #routing-event-form .routing-provider-field, #routing-event-form .routing-reason-field, #routing-event-form .route-select-field, #routing-event-form .campaign-server-field, #routing-event-form .campaign-id-field, #routing-event-form .campaign-id-action-field, #routing-event-form .campaign-change-type-field, #routing-event-form .campaign-company-field {{ min-width: 0; }} }}
     @media (max-width: 720px) {{ .form-grid .route-select-field {{ grid-column: 1 / -1; width: 100%; min-width: 0; }} }}
     .filter-grid .checkbox-inline, .form-grid .checkbox-inline {{ min-width: auto; display: flex; align-items: center; gap: 5px; align-self: center; font-weight: 560; }}
-    .form-grid .spillover-checkbox {{ min-width: 150px; min-height: 34px; display: inline-flex; align-items: center; gap: 8px; align-self: end; padding: 4px 0; font-weight: 720; white-space: nowrap; }}
-    .form-grid .spillover-checkbox input[type='checkbox'] {{ width: 22px; height: 22px; min-height: 22px; flex: 0 0 22px; margin: 0; border-color: var(--border-strong); accent-color: var(--accent); }}
+    .important-checkbox, .form-grid .spillover-checkbox {{ min-width: 150px; min-height: 34px; display: inline-flex; align-items: center; gap: 8px; align-self: end; padding: 4px 0; font-weight: 720; white-space: nowrap; }}
+    .important-checkbox input[type='checkbox'], .form-grid .spillover-checkbox input[type='checkbox'] {{ width: 22px; height: 22px; min-height: 22px; flex: 0 0 22px; margin: 0; border-color: var(--border-strong); accent-color: var(--accent); }}
     .form-grid .wide, .filter-grid .wide {{ grid-column: 1 / -1; }}
     .form-grid fieldset, .filter-grid fieldset {{ grid-column: 1 / -1; margin: 0; }}
     .form-grid textarea {{ min-width: min(620px, 100%); }}
@@ -4124,7 +4124,7 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
   {old_route_field}
   <label class='scope-field route-select-field' data-scopes='server_priority'>Новый маршрут <span class='required'>*</span><select name='new_route_id' id='new-route' class='route-select'>{new_route_opts}</select></label>
   <span class='scope-field route-empty-message muted' data-scopes='server_priority' id='new-route-empty' hidden>Нет маршрутов для выбранного провайдера и GEO</span>
-  <label class='scope-field spillover-checkbox' data-scopes='server_priority'><input type='checkbox' name='has_overflow' id='has-overflow' value='1' {has_overflow_checked}> <span>Есть перелив</span></label>
+  <label class='scope-field spillover-checkbox important-checkbox' data-scopes='server_priority'><input type='checkbox' name='has_overflow' id='has-overflow' value='1' {has_overflow_checked}> <span>Есть перелив</span></label>
   <label class='scope-field' data-scopes='server_priority' id='overflow-route-field'>Маршрут перелива <span class='required'>*</span><select name='overflow_route_id' id='overflow-route'>{overflow_opts}</select></label>
   <div class='provider-change-campaign-lower-grid'>
     <label class='routing-reason-field'>Причина <span class='required'>*</span><select name='reason' id='routing-reason' required>{routing_reason_options(event['reason'] if event else None, scope)}</select><span class='field-helper' id='routing-reason-helper'></span></label>
@@ -5176,7 +5176,7 @@ def phone_edit_page(repo: Repository, phone_id: int) -> bytes:
 <label>Тип номера <select name='phone_type'>{phone_type_options(repo, selected=phone['phone_type'], empty='—')}</select></label>
 <label>Тариф <input name='tariff_label' value='{esc(phone['tariff_label'])}'></label>
 <label>Комментарий <input name='comment' value='{esc(phone['comment'])}'></label>
-<label><input type='checkbox' name='review_required' value='1' {'checked' if phone['review_required'] else ''}> Требует проверки</label>
+<label class='important-checkbox'><input type='checkbox' name='review_required' value='1' {'checked' if phone['review_required'] else ''}> <span>Требует проверки</span></label>
 <p class='muted'>Поле «Маршрутов» не редактируется и считается автоматически.</p>
 <button>Сохранить</button></form>"""
     return page("Редактировать номер", body)
