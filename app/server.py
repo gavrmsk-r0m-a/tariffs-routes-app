@@ -1818,11 +1818,12 @@ def is_public_path(path: str) -> bool:
     return path in {"/login", "/logout", "/change-password", "/health", "/check"} or path.startswith("/static/")
 
 
-def login_page(repo: Repository, message: str | None = None) -> bytes:
-    notice = f"<div class='login-error'>{esc(message)}</div>" if message else ""
+def login_page(repo: Repository, message: str | None = None, notice_type: str = "error") -> bytes:
+    notice_class = "login-ok" if notice_type == "success" else "login-error"
+    notice = f"<div class='{notice_class}'>{esc(message)}</div>" if message else ""
     html = f"""<!doctype html>
 <html lang='ru' data-theme='calm-blue'>
-<head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'><title>Вход · TeleRoute</title><style>body{{font-family:Arial,sans-serif;background:#eef2f7;color:#172554}}.login-body{{min-height:100vh;display:grid;place-items:center;padding:24px}}.login-card{{width:min(420px,100%);padding:28px;border:1px solid #e3eaf7;border-radius:18px;background:white;box-shadow:0 10px 24px rgba(32,50,90,.08)}}.brand-block{{display:flex;gap:12px;align-items:center}}.brand-mark{{display:grid;place-items:center;width:36px;height:36px;border-radius:11px;background:#4f46e5;color:white;font-weight:900}}.brand-copy strong,.brand-copy span{{display:block}}.brand-copy span,.muted{{color:#7180a4}}.login-form{{display:grid;gap:14px;margin-top:18px}}label{{display:grid;gap:6px;font-weight:700}}input{{border:1px solid #cdd6e8;border-radius:10px;padding:10px 12px;font:inherit}}.button{{border:0;border-radius:10px;background:#2547e8;color:white;font-weight:800;padding:10px 18px}}.login-error{{padding:10px 12px;border-radius:10px;background:#fff0f0;color:#b42318;font-weight:700}}</style></head>
+<head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'><title>Вход · TeleRoute</title><style>body{{font-family:Arial,sans-serif;background:#eef2f7;color:#172554}}.login-body{{min-height:100vh;display:grid;place-items:center;padding:24px}}.login-card{{width:min(420px,100%);padding:28px;border:1px solid #e3eaf7;border-radius:18px;background:white;box-shadow:0 10px 24px rgba(32,50,90,.08)}}.brand-block{{display:flex;gap:12px;align-items:center}}.brand-mark{{display:grid;place-items:center;width:36px;height:36px;border-radius:11px;background:#4f46e5;color:white;font-weight:900}}.brand-copy strong,.brand-copy span{{display:block}}.brand-copy span,.muted{{color:#7180a4}}.login-form{{display:grid;gap:14px;margin-top:18px}}label{{display:grid;gap:6px;font-weight:700}}input{{border:1px solid #cdd6e8;border-radius:10px;padding:10px 12px;font:inherit}}.button{{border:0;border-radius:10px;background:#2547e8;color:white;font-weight:800;padding:10px 18px}}.login-error,.login-ok{{padding:10px 12px;border-radius:10px;font-weight:700}}.login-error{{background:#fff0f0;color:#b42318}}.login-ok{{background:#ecfdf3;color:#027a48}}</style></head>
 <body class='login-body'>
   <main class='login-shell'>
     <section class='login-card'>
@@ -1843,7 +1844,7 @@ def login_page(repo: Repository, message: str | None = None) -> bytes:
 
 def change_password_page(message: str | None = None) -> bytes:
     notice = f"<div class='login-error'>{esc(message)}</div>" if message else ""
-    html = f"""<!doctype html><html lang='ru' data-theme='calm-blue'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'><title>Смена пароля · TeleRoute</title><style>body{{font-family:Arial,sans-serif;background:#eef2f7;color:#172554}}.login-body{{min-height:100vh;display:grid;place-items:center;padding:24px}}.login-card{{width:min(420px,100%);padding:28px;border:1px solid #e3eaf7;border-radius:18px;background:white;box-shadow:0 10px 24px rgba(32,50,90,.08)}}.login-form{{display:grid;gap:14px;margin-top:18px}}label{{display:grid;gap:6px;font-weight:700}}input{{border:1px solid #cdd6e8;border-radius:10px;padding:10px 12px;font:inherit}}.button{{border:0;border-radius:10px;background:#2547e8;color:white;font-weight:800;padding:10px 18px}}.login-error{{padding:10px 12px;border-radius:10px;background:#fff0f0;color:#b42318;font-weight:700}}</style></head><body class='login-body'><main class='login-card'><h1>Смена пароля</h1><p>Задайте новый пароль для продолжения работы.</p>{notice}<form method='post' action='/change-password' class='login-form'><label>Новый пароль <input name='password' type='password' autocomplete='new-password' required></label><label>Повтор нового пароля <input name='password_confirm' type='password' autocomplete='new-password' required></label><button class='button' type='submit'>Сохранить пароль</button></form><p><a href='/logout'>Выйти</a></p></main></body></html>"""
+    html = f"""<!doctype html><html lang='ru' data-theme='calm-blue'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'><title>Смена пароля · TeleRoute</title><style>body{{font-family:Arial,sans-serif;background:#eef2f7;color:#172554}}.login-body{{min-height:100vh;display:grid;place-items:center;padding:24px}}.login-card{{width:min(420px,100%);padding:28px;border:1px solid #e3eaf7;border-radius:18px;background:white;box-shadow:0 10px 24px rgba(32,50,90,.08)}}.login-form{{display:grid;gap:14px;margin-top:18px}}label{{display:grid;gap:6px;font-weight:700}}input{{border:1px solid #cdd6e8;border-radius:10px;padding:10px 12px;font:inherit}}.button{{border:0;border-radius:10px;background:#2547e8;color:white;font-weight:800;padding:10px 18px}}.login-error,.login-ok{{padding:10px 12px;border-radius:10px;font-weight:700}}.login-error{{background:#fff0f0;color:#b42318}}.login-ok{{background:#ecfdf3;color:#027a48}}</style></head><body class='login-body'><main class='login-card'><h1>Смена пароля</h1><p>Задайте новый пароль для продолжения работы.</p>{notice}<form method='post' action='/change-password' class='login-form'><label>Новый пароль <input name='password' type='password' autocomplete='new-password' required></label><label>Повтор нового пароля <input name='password_confirm' type='password' autocomplete='new-password' required></label><button class='button' type='submit'>Сохранить пароль</button></form><p><a href='/logout'>Выйти</a></p></main></body></html>"""
     return html.encode("utf-8")
 
 def section_for_get_path(path: str) -> str | None:
@@ -3920,7 +3921,8 @@ def save_user_permissions(repo: Repository, user_id: int, data: dict[str, str]) 
         )
     repo.conn.commit()
 
-def users_page(repo: Repository) -> bytes:
+def users_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
+    q = q or {}
     rows = []
     for user in repo.list_users(active_only=False):
         rows.append(f"""
@@ -3962,6 +3964,7 @@ def users_page(repo: Repository) -> bytes:
     table_html = f"<table><thead><tr><th>ID</th><th>Логин</th><th>Отображаемое имя</th><th>Email</th><th>Роль</th><th>Активен</th><th>Смена пароля</th><th>Создан</th><th>Обновлён</th><th data-col='actions'>Действия</th></tr></thead><tbody>{''.join(rows)}</tbody></table>"
     body = f"""
 <h1>Пользователи</h1>
+{f"<div class='notice ok'>{esc(q.get('notice'))}</div>" if q.get('notice') else ""}
 <p class='muted'>Пользователи входят по логину и паролю. Права доступа берутся из индивидуальной матрицы; если она не заполнена, применяются права роли по умолчанию.</p>
 {form_card('+ Создать пользователя', create_html)}
 {table_card(table_html)}"""
@@ -4603,6 +4606,13 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
             if password != password_confirm:
                 raise BusinessRuleError("Пароли не совпадают")
             repo.update_user_password(user_id, password, must_change_password=True)
+            target_user = repo.get_user(user_id)
+            target_name = target_user["display_name"] or target_user["username"] if target_user is not None else display_name
+            if user_id == actor_id:
+                return f"/login?notice={quote('Ваш пароль сброшен. Войдите с временным паролем и смените его.')}&notice_type=success"
+            notice = f"Пароль пользователя {target_name} сброшен. При следующем входе пользователь должен сменить пароль."
+            save_user_permissions(repo, user_id, data)
+            return f"/admin/users?notice={quote(notice)}"
         save_user_permissions(repo, user_id, data)
         return "/admin/users"
     if path == "/routes/create":
@@ -5041,7 +5051,7 @@ def app(environ, start_response):
             return redirect(start_response, "/login", [clear_current_user_cookie()])
         if method == "GET" and path == "/login":
             start_response("200 OK", html_headers())
-            return [login_page(repo)]
+            return [login_page(repo, q.get("notice"), q.get("notice_type") or "error")]
         if method == "POST" and path == "/login":
             raw_size = int(environ.get("CONTENT_LENGTH") or "0")
             raw_body = environ["wsgi.input"].read(raw_size).decode("utf-8")
@@ -5055,6 +5065,8 @@ def app(environ, start_response):
         if method == "GET" and path == "/change-password":
             if current_user_id is None:
                 return redirect(start_response, "/login", [clear_current_user_cookie()] if cookie_id is not None else None)
+            if current_user is None or not current_user["must_change_password"]:
+                return redirect(start_response, "/routes")
             start_response("200 OK", html_headers())
             return [change_password_page()]
         if method == "POST" and path == "/change-password":
@@ -5096,7 +5108,12 @@ def app(environ, start_response):
                 start_response("200 OK", html_headers())
                 return [import_page(repo, notice, selected_entity=parsed["entity_type"], selected_mode=parsed.get("mode", "append_update"), csv_data=parsed.get("csv_data", ""))]
             location = handle_post(repo, path, parsed)
-            return redirect(start_response, location)
+            extra_redirect_headers = None
+            if path.startswith("/admin/users/") and path.endswith("/update") and parsed.get("password"):
+                target_user_id = int(path.strip("/").split("/")[2])
+                if current_user_id is not None and target_user_id == current_user_id:
+                    extra_redirect_headers = [clear_current_user_cookie()]
+            return redirect(start_response, location, extra_redirect_headers)
         require_permission("read", section_for_get_path(path))
         if path.startswith(("/routes/", "/phones/", "/companies/", "/tariffs/")) and path.endswith("/edit"):
             require_permission("write", section_for_write_path(path.replace("/edit", "/update")))
@@ -5121,7 +5138,7 @@ def app(environ, start_response):
         elif path == "/admin/import": response = import_page(repo)
         elif path == "/admin/currency-rates": response = currency_rates_page(repo)
         elif path == "/admin/change-reasons": response = change_reasons_page(repo)
-        elif path == "/admin/users": response = users_page(repo)
+        elif path == "/admin/users": response = users_page(repo, q)
         elif path == "/admin/dictionaries": response = dictionaries_page(repo, q)
         elif path == "/admin/telegram": response = telegram_page(repo)
         elif path == "/admin/change-log": response = change_log_page(repo)
