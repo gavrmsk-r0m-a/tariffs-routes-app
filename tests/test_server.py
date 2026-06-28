@@ -549,11 +549,16 @@ class ServerSmokeTest(unittest.TestCase):
     def test_theme_toggle_is_clickable_and_persistent_scripted_control(self):
         captured, content = self.request("/routes")
         self.assertEqual(captured["status"], "200 OK")
-        self.assertIn('data-theme-toggle', content)
-        self.assertIn('data-theme-label>Светлая тема', content)
-        self.assertIn('localStorage.setItem("mvp-theme", nextTheme)', content)
-        self.assertIn('const savedTheme = localStorage.getItem("mvp-theme") || "calm-blue"', content)
-        self.assertIn('Тёмная тема', content)
+        self.assertIn('data-theme-selector', content)
+        self.assertIn('data-theme-current>Тема: MVP ▾', content)
+        self.assertIn('data-theme-option="mvp"', content)
+        self.assertIn('data-theme-option="dark"', content)
+        self.assertIn('data-theme-option="light-v2"', content)
+        self.assertIn('const themeAliases = { "calm-blue": "mvp", "cyber-sketch": "dark", "terminal-paper": "mvp" };', content)
+        self.assertIn('let savedTheme = normalizeTheme(localStorage.getItem("mvp-theme") || "mvp")', content)
+        self.assertIn('localStorage.setItem("mvp-theme", theme)', content)
+        self.assertIn('Тёмная', content)
+        self.assertIn('Светлая 2.0', content)
 
     def test_selected_user_records_route_and_phone_history_actor(self):
         self.request("/routes")
