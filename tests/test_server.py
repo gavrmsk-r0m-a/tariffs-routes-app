@@ -416,6 +416,7 @@ class ServerSmokeTest(unittest.TestCase):
             user_id = server.Repository(conn).create_user("operator4", "operator", "Оператор", password="old123")
         finally:
             conn.close()
+        admin_cookie = self.user_cookie("admin")
         body = urlencode({
             "display_name": "Оператор",
             "role_key": "operator",
@@ -423,10 +424,51 @@ class ServerSmokeTest(unittest.TestCase):
             "password": "new123",
             "password_confirm": "new123",
         })
-        captured, _ = self.request(f"/admin/users/{user_id}/update", method="POST", body=body)
+        captured, _ = self.request(f"/admin/users/{user_id}/update", method="POST", body=body, cookie=admin_cookie, auto_login=False)
         self.assertEqual(captured["status"], "303 See Other")
+        self.assertIn(("Location", "/admin/users?notice=%D0%9F%D0%B0%D1%80%D0%BE%D0%BB%D1%8C%20%D0%BF%D0%BE%D0%BB%D1%8C%D0%B7%D0%BE%D0%B2%D0%B0%D1%82%D0%B5%D0%BB%D1%8F%20%D0%9E%D0%BF%D0%B5%D1%80%D0%B0%D1%82%D0%BE%D1%80%20%D1%81%D0%B1%D1%80%D0%BE%D1%88%D0%B5%D0%BD.%20%D0%9F%D1%80%D0%B8%20%D1%81%D0%BB%D0%B5%D0%B4%D1%83%D1%8E%D1%89%D0%B5%D0%BC%20%D0%B2%D1%85%D0%BE%D0%B4%D0%B5%20%D0%BF%D0%BE%D0%BB%D1%8C%D0%B7%D0%BE%D0%B2%D0%B0%D1%82%D0%B5%D0%BB%D1%8C%20%D0%B4%D0%BE%D0%BB%D0%B6%D0%B5%D0%BD%20%D1%81%D0%BC%D0%B5%D0%BD%D0%B8%D1%82%D1%8C%20%D0%BF%D0%B0%D1%80%D0%BE%D0%BB%D1%8C."), captured["headers"])
+        conn = server.connect(server.DB_PATH)
+        try:
+            row = conn.execute("SELECT must_change_password FROM users WHERE id = ?", (user_id,)).fetchone()
+            admin_row = conn.execute("SELECT must_change_password FROM users WHERE username = 'admin'").fetchone()
+        finally:
+            conn.close()
+        self.assertEqual(row["must_change_password"], 1)
+        self.assertEqual(admin_row["must_change_password"], 0)
+        captured, content = self.request("/admin/users", cookie=admin_cookie, auto_login=False)
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("Admin · Админ", content)
+        captured, _ = self.request("/routes", cookie=admin_cookie, auto_login=False)
+        self.assertEqual(captured["status"], "200 OK")
         captured, _ = self.request("/login", method="POST", body=urlencode({"username": "operator4", "password": "new123"}))
         self.assertEqual(captured["status"], "303 See Other")
+        self.assertIn(("Location", "/change-password"), captured["headers"])
+
+    def test_admin_self_password_reset_logs_out_current_user_only(self):
+        admin_cookie = self.user_cookie("admin")
+        conn = server.connect(server.DB_PATH)
+        try:
+            admin = conn.execute("SELECT id FROM users WHERE username = 'admin'").fetchone()
+        finally:
+            conn.close()
+        body = urlencode({
+            "username": "admin",
+            "display_name": "Админ",
+            "role_key": "admin",
+            "is_active": "1",
+            "password": "selfnew123",
+            "password_confirm": "selfnew123",
+        })
+        captured, _ = self.request(f"/admin/users/{admin['id']}/update", method="POST", body=body, cookie=admin_cookie, auto_login=False)
+        self.assertEqual(captured["status"], "303 See Other")
+        self.assertIn("/login?notice=", dict(captured["headers"])["Location"])
+        self.assertIn("Max-Age=0", dict(captured["headers"]).get("Set-Cookie", ""))
+        captured, _ = self.request("/routes", cookie=admin_cookie, auto_login=False)
+        self.assertEqual(captured["status"], "303 See Other")
+        self.assertIn(("Location", "/change-password"), captured["headers"])
+        captured, _ = self.request("/login", method="POST", body=urlencode({"username": "admin", "password": "selfnew123"}), auto_login=False)
+        self.assertEqual(captured["status"], "303 See Other")
+        self.assertIn(("Location", "/change-password"), captured["headers"])
 
 
     def test_sidebar_displays_selected_user_and_selector_is_single_source(self):
