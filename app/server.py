@@ -328,7 +328,7 @@ SEMANTIC_ICONS = {
     "dashboard": material_icon("dashboard"),
     "routes": material_icon("route"),
     "tariffs": material_icon("sell"),
-    "phones": material_icon("dialpad"),
+    "phones": material_icon("sim_card"),
     "companies": material_icon("campaign"),
     "provider_changes": material_icon("sync_alt"),
     "admin": material_icon("admin_panel_settings"),
