@@ -473,7 +473,14 @@ def current_user_selector() -> str:
 
 def theme_selector() -> str:
     return """
-        <button class="theme-selector" type="button" data-theme-toggle data-tooltip="Светлая тема" aria-pressed="false"><span class="side-icon" data-theme-icon>☼</span><span class="side-label" data-theme-label>Светлая тема</span></button>
+        <div class="theme-selector-wrap" data-theme-selector data-tooltip="Тема: MVP">
+          <button class="theme-selector" type="button" data-theme-menu-toggle aria-haspopup="menu" aria-expanded="false"><span class="side-icon" aria-hidden="true">◐</span><span class="side-label" data-theme-current>Тема: MVP ▾</span></button>
+          <div class="theme-menu" data-theme-menu role="menu" aria-label="Выбор темы">
+            <button type="button" role="menuitemradio" data-theme-option="mvp" aria-checked="true"><span class="theme-check" aria-hidden="true">✓</span><span>MVP</span></button>
+            <button type="button" role="menuitemradio" data-theme-option="dark" aria-checked="false"><span class="theme-check" aria-hidden="true">✓</span><span>Тёмная</span></button>
+            <button type="button" role="menuitemradio" data-theme-option="light-v2" aria-checked="false" disabled title="Скоро"><span class="theme-check" aria-hidden="true">✓</span><span>Светлая 2.0</span><small>скоро</small></button>
+          </div>
+        </div>
     """
 
 def breadcrumbs(title: str) -> str:
@@ -519,8 +526,7 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
   <title>{esc(title)}</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/core@1.0.0-beta20/dist/css/tabler.min.css">
   <style>
-    :root,
-    html[data-theme="cyber-sketch"] {{
+    html[data-theme="light-v2"] {{
       --bg: #f7f5ff;
       --surface: #ffffff;
       --surface-muted: #fbfaff;
@@ -553,7 +559,7 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
       --radius-control: 8px;
       --radius-card: 12px;
     }}
-    html[data-theme="calm-blue"] {{
+    html[data-theme="mvp"] {{
       --bg: #f5f7fb;
       --surface: #ffffff;
       --surface-muted: #f8fafc;
@@ -601,10 +607,42 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
       --success-soft: var(--accent-soft);
       --focus: var(--accent);
     }}
+    html[data-theme="dark"] {{
+      --bg: #0B1020;
+      --surface: #111827;
+      --surface-muted: #151E2F;
+      --surface-strong: #1E293B;
+      --sidebar-bg: #080D19;
+      --text-strong: #E5E7EB;
+      --text: #CBD5E1;
+      --muted: #94A3B8;
+      --border: #263244;
+      --border-strong: #334155;
+      --accent: #38BDF8;
+      --accent-strong: #0EA5E9;
+      --accent-soft: rgba(56, 189, 248, 0.12);
+      --cyber: #38BDF8;
+      --cyber-strong: #0EA5E9;
+      --cyber-soft: rgba(56, 189, 248, 0.12);
+      --pink: #38BDF8;
+      --pink-soft: rgba(56, 189, 248, 0.12);
+      --success: #22C55E;
+      --success-soft: rgba(34, 197, 94, 0.14);
+      --warning: #F59E0B;
+      --warning-soft: rgba(245, 158, 11, 0.14);
+      --danger: #EF4444;
+      --danger-soft: rgba(239, 68, 68, 0.14);
+      --focus: var(--accent);
+      --shadow-soft: 0 12px 28px rgba(0, 0, 0, .22);
+      --shadow-card: 0 18px 45px rgba(0, 0, 0, .34);
+      --shadow-glow: 0 0 0 1px rgba(56, 189, 248, .18), 0 18px 38px rgba(14, 165, 233, .14);
+      --radius-control: 10px;
+      --radius-card: 14px;
+    }}
     * {{ box-sizing: border-box; }}
     html {{ scrollbar-gutter: stable; }}
     body {{ font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 0; color: var(--text); background: var(--bg); font-size: 14px; line-height: 1.45; }}
-    html[data-theme="cyber-sketch"] body {{ background:
+    html[data-theme="light-v2"] body {{ background:
       radial-gradient(circle at 16% 10%, rgba(0, 191, 166, 0.12), transparent 24rem),
       radial-gradient(circle at 88% 2%, rgba(255, 79, 216, 0.08), transparent 20rem),
       linear-gradient(rgba(109, 93, 252, 0.035) 1px, transparent 1px),
@@ -931,25 +969,25 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     }}
     .danger-action, form[action$="/deactivate"] button {{ min-height: 28px; min-width: auto; padding: 4px 8px; color: var(--danger-strong, var(--danger)); border-color: var(--danger); background: var(--danger-soft); font-size: 12px; font-weight: 720; box-shadow: none; }}
     .danger-action:hover, form[action$="/deactivate"] button:hover {{ background: color-mix(in srgb, var(--danger-soft) 78%, var(--surface)); border-color: var(--danger); color: var(--danger); }}
-    html[data-theme="calm-blue"] .side-link:hover, html[data-theme="calm-blue"] .admin-link:hover, html[data-theme="terminal-paper"] .side-link:hover, html[data-theme="terminal-paper"] .admin-link:hover {{ background: color-mix(in srgb, var(--surface) 78%, transparent); border-color: var(--border); color: var(--text-strong); }}
-    html[data-theme="calm-blue"] .side-link.active, html[data-theme="terminal-paper"] .side-link.active {{ background: var(--surface); border-color: var(--border-strong); color: var(--accent-strong); box-shadow: var(--shadow-soft); font-weight: 780; }}
-    html[data-theme="calm-blue"] .side-link.active::before, html[data-theme="terminal-paper"] .side-link.active::before {{ content: none; }}
-    html[data-theme="calm-blue"] .admin-link.active, html[data-theme="terminal-paper"] .admin-link.active {{ background: var(--surface); border-color: var(--border-strong); color: var(--accent-strong); font-weight: 730; box-shadow: var(--shadow-soft); }}
-    html[data-theme="calm-blue"] .dashboard-hero, html[data-theme="terminal-paper"] .dashboard-hero {{ background: linear-gradient(135deg, var(--surface) 0%, var(--accent-soft) 100%); box-shadow: var(--shadow-card); }}
-    html[data-theme="calm-blue"] .dashboard-hero::after, html[data-theme="terminal-paper"] .dashboard-hero::after {{ content: none; }}
-    html[data-theme="calm-blue"] .metric-card, html[data-theme="terminal-paper"] .metric-card {{ border: 1px solid var(--border); background: var(--surface); box-shadow: var(--shadow-soft); }}
-    html[data-theme="calm-blue"] .status-badge, html[data-theme="terminal-paper"] .status-badge {{ border-color: var(--border); background: var(--surface-muted); color: var(--text); }}
-    html[data-theme="cyber-sketch"] .theme-selector select:focus, html[data-theme="cyber-sketch"] .theme-selector select:focus-visible {{ border-color: var(--accent); outline-color: var(--accent); box-shadow: 0 0 0 3px rgba(109, 93, 252, 0.14); }}
-    html[data-theme="cyber-sketch"] th {{ background: var(--surface-strong); color: var(--text-strong); }}
-    html[data-theme="cyber-sketch"] tbody tr:hover {{ background: rgba(109, 93, 252, 0.08); }}
-    html[data-theme="cyber-sketch"] .table-card td[data-copy-column="phone-number"], html[data-theme="cyber-sketch"] code {{ font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }}
-    html[data-theme="cyber-sketch"] .hero-action {{ background: linear-gradient(135deg, var(--accent-strong), var(--accent)); box-shadow: var(--shadow-glow); }}
-    html[data-theme="cyber-sketch"] .eyebrow {{ display: inline-flex; align-items: center; gap: 6px; color: var(--cyber-strong); background: var(--cyber-soft); border: 1px solid rgba(0, 191, 166, 0.28); border-radius: 999px; padding: 3px 8px; }}
-    html[data-theme="cyber-sketch"] .eyebrow::before {{ content: "◈"; color: var(--cyber); }}
-    html[data-theme="cyber-sketch"] .quick-link-card {{ transition: transform 140ms ease, border-color 140ms ease, box-shadow 140ms ease, background 140ms ease; }}
+    html[data-theme="mvp"] .side-link:hover, html[data-theme="mvp"] .admin-link:hover, html[data-theme="terminal-paper"] .side-link:hover, html[data-theme="terminal-paper"] .admin-link:hover {{ background: color-mix(in srgb, var(--surface) 78%, transparent); border-color: var(--border); color: var(--text-strong); }}
+    html[data-theme="mvp"] .side-link.active, html[data-theme="terminal-paper"] .side-link.active {{ background: var(--surface); border-color: var(--border-strong); color: var(--accent-strong); box-shadow: var(--shadow-soft); font-weight: 780; }}
+    html[data-theme="mvp"] .side-link.active::before, html[data-theme="terminal-paper"] .side-link.active::before {{ content: none; }}
+    html[data-theme="mvp"] .admin-link.active, html[data-theme="terminal-paper"] .admin-link.active {{ background: var(--surface); border-color: var(--border-strong); color: var(--accent-strong); font-weight: 730; box-shadow: var(--shadow-soft); }}
+    html[data-theme="mvp"] .dashboard-hero, html[data-theme="terminal-paper"] .dashboard-hero {{ background: linear-gradient(135deg, var(--surface) 0%, var(--accent-soft) 100%); box-shadow: var(--shadow-card); }}
+    html[data-theme="mvp"] .dashboard-hero::after, html[data-theme="terminal-paper"] .dashboard-hero::after {{ content: none; }}
+    html[data-theme="mvp"] .metric-card, html[data-theme="terminal-paper"] .metric-card {{ border: 1px solid var(--border); background: var(--surface); box-shadow: var(--shadow-soft); }}
+    html[data-theme="mvp"] .status-badge, html[data-theme="terminal-paper"] .status-badge {{ border-color: var(--border); background: var(--surface-muted); color: var(--text); }}
+    html[data-theme="dark"] .theme-selector select:focus, html[data-theme="dark"] .theme-selector select:focus-visible {{ border-color: var(--accent); outline-color: var(--accent); box-shadow: 0 0 0 3px rgba(109, 93, 252, 0.14); }}
+    html[data-theme="dark"] th {{ background: var(--surface-strong); color: var(--text-strong); }}
+    html[data-theme="dark"] tbody tr:hover {{ background: rgba(109, 93, 252, 0.08); }}
+    html[data-theme="dark"] .table-card td[data-copy-column="phone-number"], html[data-theme="dark"] code {{ font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }}
+    html[data-theme="dark"] .hero-action {{ background: linear-gradient(135deg, var(--accent-strong), var(--accent)); box-shadow: var(--shadow-glow); }}
+    html[data-theme="dark"] .eyebrow {{ display: inline-flex; align-items: center; gap: 6px; color: var(--cyber-strong); background: var(--cyber-soft); border: 1px solid rgba(0, 191, 166, 0.28); border-radius: 999px; padding: 3px 8px; }}
+    html[data-theme="dark"] .eyebrow::before {{ content: "◈"; color: var(--cyber); }}
+    html[data-theme="dark"] .quick-link-card {{ transition: transform 140ms ease, border-color 140ms ease, box-shadow 140ms ease, background 140ms ease; }}
 
     /* Figma-inspired light operations admin */
-    :root, html[data-theme="calm-blue"] {{
+    :root, html[data-theme="mvp"] {{
       --bg: #eef3fb; --surface: #ffffff; --surface-muted: #f8fafe; --surface-strong: #f1f5ff;
       --sidebar-bg: #ffffff; --text-strong: #0f172a; --text: #172554; --muted: #7180a4;
       --border: #e3eaf7; --border-strong: #d9e3f5; --accent: #4661f2; --accent-strong: #2547e8;
@@ -991,6 +1029,24 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .admin-tree {{ margin: 0 0 0 34px; padding-left: 10px; border-left: 1px solid var(--border); }}
     .admin-link {{ display: block; padding: 7px 10px; font-size: 12px; }}
     .sidebar-footer {{ margin-top: auto; display: grid; gap: 10px; padding-top: 12px; border-top: 1px solid var(--border); }}
+    .theme-selector-wrap {{ position: relative; width: 100%; }}
+    .theme-selector-wrap .theme-selector {{ justify-content: flex-start; box-shadow: none; }}
+    .theme-menu {{ position: absolute; left: 0; right: 0; bottom: calc(100% + 6px); display: none; gap: 4px; padding: 6px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); box-shadow: var(--shadow-card); z-index: 80; }}
+    .theme-selector-wrap.open .theme-menu {{ display: grid; }}
+    .theme-menu button {{ justify-content: flex-start; min-height: 34px; padding: 7px 9px; border: 0; border-radius: 8px; background: transparent; box-shadow: none; color: var(--text); font-size: 13px; }}
+    .theme-menu button[aria-checked="true"] {{ background: var(--accent-soft); color: var(--accent-strong); font-weight: 800; }}
+    .theme-menu button[aria-checked="false"] .theme-check {{ visibility: hidden; }}
+    .theme-menu button small {{ margin-left: auto; color: var(--muted); font-size: 11px; font-weight: 700; }}
+    .theme-menu button:disabled {{ opacity: .62; }}
+    html[data-theme="dark"] .sidebar, html[data-theme="dark"] .breadcrumbs {{ background: var(--sidebar-bg); }}
+    html[data-theme="dark"] .side-link, html[data-theme="dark"] .sidebar-collapse {{ color: var(--text); }}
+    html[data-theme="dark"] .side-link:hover {{ background: var(--surface-muted); color: var(--text-strong); }}
+    html[data-theme="dark"] .side-link.active {{ background: var(--accent-soft); border-color: var(--border-strong); color: var(--accent); }}
+    html[data-theme="dark"] .current-user-selector {{ background: var(--surface-muted); border-color: var(--border); }}
+    html[data-theme="dark"] td, html[data-theme="dark"] tbody tr:nth-child(even) td, html[data-theme="dark"] .metric-card {{ background: var(--surface); border-color: var(--border); }}
+    html[data-theme="dark"] tbody tr:hover td {{ background: var(--surface-muted); }}
+    html[data-theme="dark"] .metric-label, html[data-theme="dark"] .quick-copy small {{ color: var(--muted); }}
+    html[data-theme="dark"] .quick-icon, html[data-theme="dark"] .metric-icon {{ background: var(--accent-soft); color: var(--accent); }}
     .current-user-selector, .theme-selector, .sidebar-collapse {{ display: flex; align-items: center; gap: 10px; width: 100%; min-height: 42px; padding: 8px 10px; border: 1px solid transparent; border-radius: 12px; background: transparent; color: var(--text); text-align: left; }}
     .sidebar-collapse {{ width: 36px; min-width: 36px; max-width: 36px; height: 36px; min-height: 36px; padding: 0; justify-content: center; justify-self: end; color: #223158; border-color: var(--border); background: var(--surface); box-shadow: var(--shadow-soft); overflow: hidden; }}
     .sidebar-collapse:hover {{ background: var(--accent-soft); border-color: var(--accent); color: var(--accent-strong); }}
@@ -1059,8 +1115,8 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .sidebar .side-link.active:not(.has-inline-icon)::before,
     .sidebar-collapsed .side-link:not(.has-inline-icon)::before,
     .sidebar-collapsed .side-link.active:not(.has-inline-icon)::before,
-    html[data-theme="calm-blue"] .side-link:not(.has-inline-icon)::before,
-    html[data-theme="calm-blue"] .side-link.active:not(.has-inline-icon)::before,
+    html[data-theme="mvp"] .side-link:not(.has-inline-icon)::before,
+    html[data-theme="mvp"] .side-link.active:not(.has-inline-icon)::before,
     html[data-theme="terminal-paper"] .side-link:not(.has-inline-icon)::before,
     html[data-theme="terminal-paper"] .side-link.active:not(.has-inline-icon)::before {{
       content: attr(data-icon) !important;
@@ -1085,7 +1141,7 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
 
     .sidebar .side-link.active:not(.has-inline-icon)::before,
     .sidebar-collapsed .side-link.active:not(.has-inline-icon)::before,
-    html[data-theme="calm-blue"] .side-link.active:not(.has-inline-icon)::before,
+    html[data-theme="mvp"] .side-link.active:not(.has-inline-icon)::before,
     html[data-theme="terminal-paper"] .side-link.active:not(.has-inline-icon)::before {{
       content: attr(data-icon) !important;
       color: var(--accent-strong) !important;
@@ -1322,17 +1378,48 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
       }});
       document.querySelectorAll("form").forEach(showFormSubmitError);
     }});
-    const themeSelect = document.querySelector("[data-theme-select]");
-    const savedTheme = localStorage.getItem("mvp-theme") || "calm-blue";
+    const themeLabels = {{ "mvp": "MVP", "dark": "Тёмная", "light-v2": "Светлая 2.0" }};
+    const themeAliases = {{ "calm-blue": "mvp", "cyber-sketch": "dark", "terminal-paper": "mvp" }};
+    const normalizeTheme = (theme) => themeAliases[theme] || (themeLabels[theme] ? theme : "mvp");
+    let savedTheme = normalizeTheme(localStorage.getItem("mvp-theme") || "mvp");
     document.documentElement.dataset.theme = savedTheme;
-    if (themeSelect) themeSelect.value = savedTheme;
-    if (themeSelect) {{
-      themeSelect.addEventListener("change", () => {{
-        const theme = themeSelect.value || "cyber-sketch";
+    localStorage.setItem("mvp-theme", savedTheme);
+    const updateThemeSelector = (theme) => {{
+      const labelText = `Тема: ${{themeLabels[theme] || themeLabels.mvp}} ▾`;
+      document.querySelectorAll("[data-theme-selector]").forEach((selector) => {{
+        selector.dataset.tooltip = labelText.replace(" ▾", "");
+        const current = selector.querySelector("[data-theme-current]");
+        if (current) current.textContent = labelText;
+        selector.querySelectorAll("[data-theme-option]").forEach((option) => {{
+          option.setAttribute("aria-checked", option.dataset.themeOption === theme ? "true" : "false");
+        }});
+      }});
+    }};
+    updateThemeSelector(savedTheme);
+    document.querySelectorAll("[data-theme-menu-toggle]").forEach((button) => {{
+      button.addEventListener("click", (event) => {{
+        event.stopPropagation();
+        const selector = button.closest("[data-theme-selector]");
+        const isOpen = selector && selector.classList.toggle("open");
+        button.setAttribute("aria-expanded", isOpen ? "true" : "false");
+      }});
+    }});
+    document.querySelectorAll("[data-theme-option]").forEach((option) => {{
+      option.addEventListener("click", (event) => {{
+        event.stopPropagation();
+        if (option.disabled) return;
+        const theme = normalizeTheme(option.dataset.themeOption);
         document.documentElement.dataset.theme = theme;
         localStorage.setItem("mvp-theme", theme);
+        updateThemeSelector(theme);
+        document.querySelectorAll("[data-theme-selector]").forEach((selector) => selector.classList.remove("open"));
+        document.querySelectorAll("[data-theme-menu-toggle]").forEach((toggle) => toggle.setAttribute("aria-expanded", "false"));
       }});
-    }}
+    }});
+    document.addEventListener("click", () => {{
+      document.querySelectorAll("[data-theme-selector]").forEach((selector) => selector.classList.remove("open"));
+      document.querySelectorAll("[data-theme-menu-toggle]").forEach((toggle) => toggle.setAttribute("aria-expanded", "false"));
+    }});
 
     const shell = document.querySelector(".app-shell");
     const savedSidebar = localStorage.getItem("mvp-sidebar-collapsed") === "true";
@@ -1355,29 +1442,6 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
         button.dataset.tooltip = collapsed ? "Развернуть" : "Свернуть";
         button.setAttribute("aria-label", sidebarAction);
         button.title = sidebarAction;
-      }});
-    }});
-    const updateThemeToggle = (theme) => {{
-      const isDark = theme === "cyber-sketch";
-      document.querySelectorAll("[data-theme-toggle]").forEach((button) => {{
-        const label = button.querySelector("[data-theme-label]");
-        const icon = button.querySelector("[data-theme-icon]");
-        const text = isDark ? "Тёмная тема" : "Светлая тема";
-        if (label) label.textContent = text;
-        if (icon) icon.textContent = isDark ? "☾" : "☼";
-        button.dataset.tooltip = text;
-        button.title = isDark ? "Переключить на светлую тему" : "Переключить на тёмную тему";
-        button.setAttribute("aria-pressed", isDark ? "true" : "false");
-      }});
-    }};
-    updateThemeToggle(savedTheme);
-    document.querySelectorAll("[data-theme-toggle]").forEach((button) => {{
-      button.addEventListener("click", () => {{
-        const currentTheme = document.documentElement.dataset.theme || "calm-blue";
-        const nextTheme = currentTheme === "cyber-sketch" ? "calm-blue" : "cyber-sketch";
-        document.documentElement.dataset.theme = nextTheme;
-        localStorage.setItem("mvp-theme", nextTheme);
-        updateThemeToggle(nextTheme);
       }});
     }});
     document.querySelectorAll(".admin-toggle").forEach((button) => {{
@@ -1822,7 +1886,7 @@ def login_page(repo: Repository, message: str | None = None, notice_type: str = 
     notice_class = "login-ok" if notice_type == "success" else "login-error"
     notice = f"<div class='{notice_class}'>{esc(message)}</div>" if message else ""
     html = f"""<!doctype html>
-<html lang='ru' data-theme='calm-blue'>
+<html lang='ru' data-theme='mvp'>
 <head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'><title>Вход · TeleRoute</title><style>body{{font-family:Arial,sans-serif;background:#eef2f7;color:#172554}}.login-body{{min-height:100vh;display:grid;place-items:center;padding:24px}}.login-card{{width:min(420px,100%);padding:28px;border:1px solid #e3eaf7;border-radius:18px;background:white;box-shadow:0 10px 24px rgba(32,50,90,.08)}}.brand-block{{display:flex;gap:12px;align-items:center}}.brand-mark{{display:grid;place-items:center;width:36px;height:36px;border-radius:11px;background:#4f46e5;color:white;font-weight:900}}.brand-copy strong,.brand-copy span{{display:block}}.brand-copy span,.muted{{color:#7180a4}}.login-form{{display:grid;gap:14px;margin-top:18px}}label{{display:grid;gap:6px;font-weight:700}}input{{border:1px solid #cdd6e8;border-radius:10px;padding:10px 12px;font:inherit}}.button{{border:0;border-radius:10px;background:#2547e8;color:white;font-weight:800;padding:10px 18px}}.login-error,.login-ok{{padding:10px 12px;border-radius:10px;font-weight:700}}.login-error{{background:#fff0f0;color:#b42318}}.login-ok{{background:#ecfdf3;color:#027a48}}</style></head>
 <body class='login-body'>
   <main class='login-shell'>
@@ -1844,7 +1908,7 @@ def login_page(repo: Repository, message: str | None = None, notice_type: str = 
 
 def change_password_page(message: str | None = None) -> bytes:
     notice = f"<div class='login-error'>{esc(message)}</div>" if message else ""
-    html = f"""<!doctype html><html lang='ru' data-theme='calm-blue'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'><title>Смена пароля · TeleRoute</title><style>body{{font-family:Arial,sans-serif;background:#eef2f7;color:#172554}}.login-body{{min-height:100vh;display:grid;place-items:center;padding:24px}}.login-card{{width:min(420px,100%);padding:28px;border:1px solid #e3eaf7;border-radius:18px;background:white;box-shadow:0 10px 24px rgba(32,50,90,.08)}}.login-form{{display:grid;gap:14px;margin-top:18px}}label{{display:grid;gap:6px;font-weight:700}}input{{border:1px solid #cdd6e8;border-radius:10px;padding:10px 12px;font:inherit}}.button{{border:0;border-radius:10px;background:#2547e8;color:white;font-weight:800;padding:10px 18px}}.login-error,.login-ok{{padding:10px 12px;border-radius:10px;font-weight:700}}.login-error{{background:#fff0f0;color:#b42318}}.login-ok{{background:#ecfdf3;color:#027a48}}</style></head><body class='login-body'><main class='login-card'><h1>Смена пароля</h1><p>Задайте новый пароль для продолжения работы.</p>{notice}<form method='post' action='/change-password' class='login-form'><label>Новый пароль <input name='password' type='password' autocomplete='new-password' required></label><label>Повтор нового пароля <input name='password_confirm' type='password' autocomplete='new-password' required></label><button class='button' type='submit'>Сохранить пароль</button></form><p><a href='/logout'>Выйти</a></p></main></body></html>"""
+    html = f"""<!doctype html><html lang='ru' data-theme='mvp'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'><title>Смена пароля · TeleRoute</title><style>body{{font-family:Arial,sans-serif;background:#eef2f7;color:#172554}}.login-body{{min-height:100vh;display:grid;place-items:center;padding:24px}}.login-card{{width:min(420px,100%);padding:28px;border:1px solid #e3eaf7;border-radius:18px;background:white;box-shadow:0 10px 24px rgba(32,50,90,.08)}}.login-form{{display:grid;gap:14px;margin-top:18px}}label{{display:grid;gap:6px;font-weight:700}}input{{border:1px solid #cdd6e8;border-radius:10px;padding:10px 12px;font:inherit}}.button{{border:0;border-radius:10px;background:#2547e8;color:white;font-weight:800;padding:10px 18px}}.login-error,.login-ok{{padding:10px 12px;border-radius:10px;font-weight:700}}.login-error{{background:#fff0f0;color:#b42318}}.login-ok{{background:#ecfdf3;color:#027a48}}</style></head><body class='login-body'><main class='login-card'><h1>Смена пароля</h1><p>Задайте новый пароль для продолжения работы.</p>{notice}<form method='post' action='/change-password' class='login-form'><label>Новый пароль <input name='password' type='password' autocomplete='new-password' required></label><label>Повтор нового пароля <input name='password_confirm' type='password' autocomplete='new-password' required></label><button class='button' type='submit'>Сохранить пароль</button></form><p><a href='/logout'>Выйти</a></p></main></body></html>"""
     return html.encode("utf-8")
 
 def section_for_get_path(path: str) -> str | None:
