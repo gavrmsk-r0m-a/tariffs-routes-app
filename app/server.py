@@ -1270,6 +1270,325 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
       white-space: nowrap;
     }}
 
+    /* RouteOps Control Center dark theme overrides */
+    html[data-theme="dark"] {{
+      color-scheme: dark;
+    }}
+
+    html[data-theme="dark"],
+    html[data-theme="dark"] body,
+    html[data-theme="dark"] .app-shell {{
+      background: #0B1020;
+      color: var(--text);
+    }}
+
+    html[data-theme="dark"] * {{
+      scrollbar-color: var(--border-strong) var(--surface);
+    }}
+
+    html[data-theme="dark"] *::-webkit-scrollbar {{
+      width: 10px;
+      height: 10px;
+    }}
+
+    html[data-theme="dark"] *::-webkit-scrollbar-track {{
+      background: var(--surface);
+      border-radius: 999px;
+    }}
+
+    html[data-theme="dark"] *::-webkit-scrollbar-thumb {{
+      background: var(--border-strong);
+      border: 2px solid var(--surface);
+      border-radius: 999px;
+    }}
+
+    html[data-theme="dark"] *::-webkit-scrollbar-thumb:hover {{
+      background: var(--accent);
+    }}
+
+    html[data-theme="dark"] .content {{
+      background:
+        radial-gradient(circle at 86% 0%, rgba(56, 189, 248, .10), transparent 24rem),
+        radial-gradient(circle at 8% 4%, rgba(14, 165, 233, .07), transparent 20rem);
+    }}
+
+    html[data-theme="dark"] .breadcrumbs {{
+      background: linear-gradient(180deg, #0b1224 0%, var(--bg) 100%);
+      border-bottom-color: var(--border);
+      color: var(--muted);
+    }}
+
+    html[data-theme="dark"] .breadcrumbs::after {{
+      color: var(--text-strong);
+    }}
+
+    html[data-theme="dark"] .sidebar {{
+      background: linear-gradient(180deg, #080D19 0%, #0A1020 100%);
+      border-right-color: var(--border);
+      overflow-y: auto;
+    }}
+
+    html[data-theme="dark"] .brand-mark {{
+      background: linear-gradient(135deg, var(--accent-strong), var(--accent));
+      box-shadow: 0 12px 28px rgba(14, 165, 233, .20);
+    }}
+
+    html[data-theme="dark"] .brand-copy strong,
+    html[data-theme="dark"] .quick-copy strong {{
+      color: var(--text-strong);
+    }}
+
+    html[data-theme="dark"] .brand-copy span,
+    html[data-theme="dark"] .quick-copy small,
+    html[data-theme="dark"] .event-feed small,
+    html[data-theme="dark"] .event-feed time {{
+      color: var(--muted);
+    }}
+
+    html[data-theme="dark"] .side-link,
+    html[data-theme="dark"] .admin-link {{
+      color: var(--text);
+    }}
+
+    html[data-theme="dark"] .side-icon,
+    html[data-theme="dark"] .nav-icon,
+    html[data-theme="dark"] .sidebar .side-link:not(.has-inline-icon)::before,
+    html[data-theme="dark"] .sidebar-collapsed .side-link:not(.has-inline-icon)::before {{
+      color: #7DD3FC !important;
+    }}
+
+    html[data-theme="dark"] .side-link:hover,
+    html[data-theme="dark"] .admin-link:hover {{
+      background: rgba(56, 189, 248, .10);
+      border-color: rgba(56, 189, 248, .28);
+      color: var(--text-strong);
+    }}
+
+    html[data-theme="dark"] .side-link.active,
+    html[data-theme="dark"] .sidebar-collapsed .side-link.active {{
+      background: linear-gradient(135deg, rgba(14, 165, 233, .22), rgba(56, 189, 248, .12)) !important;
+      border-color: rgba(56, 189, 248, .42) !important;
+      color: #E0F2FE;
+      box-shadow: inset 3px 0 0 var(--accent), 0 10px 24px rgba(0, 0, 0, .18);
+    }}
+
+    html[data-theme="dark"] .side-link.active .nav-icon,
+    html[data-theme="dark"] .side-link.active .side-icon,
+    html[data-theme="dark"] .sidebar .side-link.active:not(.has-inline-icon)::before,
+    html[data-theme="dark"] .sidebar-collapsed .side-link.active:not(.has-inline-icon)::before {{
+      color: var(--accent) !important;
+    }}
+
+    html[data-theme="dark"] .admin-tree,
+    html[data-theme="dark"] .current-user-selector,
+    html[data-theme="dark"] .theme-selector,
+    html[data-theme="dark"] .sidebar-collapse,
+    html[data-theme="dark"] .theme-menu,
+    html[data-theme="dark"] .current-user-menu {{
+      background: var(--surface-muted);
+      border-color: var(--border);
+      color: var(--text);
+    }}
+
+    html[data-theme="dark"] .button,
+    html[data-theme="dark"] button,
+    html[data-theme="dark"] .table-utility-button,
+    html[data-theme="dark"] .column-settings summary,
+    html[data-theme="dark"] .route-numbers-action {{
+      background: #101A2C;
+      border-color: var(--border-strong);
+      color: var(--text-strong);
+      box-shadow: none;
+    }}
+
+    html[data-theme="dark"] .button:hover,
+    html[data-theme="dark"] button:hover,
+    html[data-theme="dark"] .column-settings summary:hover {{
+      background: var(--accent-soft);
+      border-color: var(--accent);
+      color: #E0F2FE;
+    }}
+
+    html[data-theme="dark"] .hero-action,
+    html[data-theme="dark"] form button[type="submit"],
+    html[data-theme="dark"] .dictionary-add button[type="submit"] {{
+      background: linear-gradient(135deg, var(--accent-strong), var(--accent));
+      border-color: rgba(125, 211, 252, .55);
+      color: #03111F;
+      font-weight: 800;
+      box-shadow: var(--shadow-glow);
+    }}
+
+    html[data-theme="dark"] .card,
+    html[data-theme="dark"] details,
+    html[data-theme="dark"] fieldset,
+    html[data-theme="dark"] .filter-card,
+    html[data-theme="dark"] .form-card,
+    html[data-theme="dark"] .table-footer,
+    html[data-theme="dark"] .table-card,
+    html[data-theme="dark"] .journal-card,
+    html[data-theme="dark"] .dictionary-card,
+    html[data-theme="dark"] .dictionary-toolbar,
+    html[data-theme="dark"] .event-feed,
+    html[data-theme="dark"] .metric-card,
+    html[data-theme="dark"] .quick-link-card,
+    html[data-theme="dark"] .login-card {{
+      background: var(--surface);
+      border-color: var(--border);
+      color: var(--text);
+      box-shadow: var(--shadow-soft);
+    }}
+
+    html[data-theme="dark"] details[open] > summary,
+    html[data-theme="dark"] .table-card h2,
+    html[data-theme="dark"] .journal-card h2,
+    html[data-theme="dark"] .empty-state {{
+      background: var(--surface-muted);
+      border-color: var(--border);
+      color: var(--text-strong);
+    }}
+
+    html[data-theme="dark"] .filter-grid,
+    html[data-theme="dark"] .form-grid,
+    html[data-theme="dark"] details > form,
+    html[data-theme="dark"] details > .card {{
+      background: transparent;
+      color: var(--text);
+    }}
+
+    html[data-theme="dark"] input,
+    html[data-theme="dark"] select,
+    html[data-theme="dark"] textarea {{
+      background: #0E1728;
+      border-color: var(--border-strong);
+      color: var(--text-strong);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, .03);
+    }}
+
+    html[data-theme="dark"] input::placeholder,
+    html[data-theme="dark"] textarea::placeholder {{
+      color: #718096;
+    }}
+
+    html[data-theme="dark"] input:disabled,
+    html[data-theme="dark"] select:disabled,
+    html[data-theme="dark"] textarea:disabled {{
+      background: #0B1220;
+      color: #64748B;
+      border-color: #253244;
+      opacity: .72;
+    }}
+
+    html[data-theme="dark"] table,
+    html[data-theme="dark"] .table-card table,
+    html[data-theme="dark"] .journal-card table {{
+      background: var(--surface);
+      color: var(--text);
+    }}
+
+    html[data-theme="dark"] th {{
+      background: #1B2740;
+      border-bottom-color: var(--border-strong);
+      color: var(--text-strong);
+    }}
+
+    html[data-theme="dark"] th,
+    html[data-theme="dark"] td {{
+      border-right-color: var(--border);
+      border-bottom-color: var(--border);
+    }}
+
+    html[data-theme="dark"] td,
+    html[data-theme="dark"] tbody tr:nth-child(even) td {{
+      background: var(--surface);
+      color: var(--text);
+    }}
+
+    html[data-theme="dark"] tbody tr:nth-child(even) td {{
+      background: var(--surface-muted);
+    }}
+
+    html[data-theme="dark"] tbody tr:hover td {{
+      background: rgba(56, 189, 248, .10);
+      color: var(--text-strong);
+    }}
+
+    html[data-theme="dark"] td[data-col="actions"] .edit-action,
+    html[data-theme="dark"] td[data-col="actions"] details.edit-details > summary {{
+      background: #101A2C !important;
+      border-color: var(--border-strong) !important;
+    }}
+
+    html[data-theme="dark"] td[data-col="actions"] details.edit-details[open] > form {{
+      background: var(--surface) !important;
+      border-color: var(--border-strong) !important;
+      box-shadow: 0 28px 90px rgba(0, 0, 0, .58) !important;
+    }}
+
+    html[data-theme="dark"] td[data-col="actions"] details.edit-details[open]::before {{
+      background: rgba(3, 7, 18, .66);
+      backdrop-filter: blur(2px);
+    }}
+
+    html[data-theme="dark"] .admin-edit-cancel {{
+      background: #101A2C;
+      border-color: var(--border-strong);
+      color: var(--text);
+      box-shadow: none;
+    }}
+
+    html[data-theme="dark"] .dashboard-hero {{
+      background:
+        radial-gradient(circle at 84% 18%, rgba(56, 189, 248, .18), transparent 16rem),
+        linear-gradient(135deg, #111827 0%, #101A2C 60%, #0B1020 100%);
+      border-color: var(--border-strong);
+      box-shadow: var(--shadow-card);
+    }}
+
+    html[data-theme="dark"] .metric-icon,
+    html[data-theme="dark"] .quick-icon,
+    html[data-theme="dark"] .feed-icon {{
+      background: var(--accent-soft);
+      color: var(--accent);
+    }}
+
+    html[data-theme="dark"] .feed-icon.ok,
+    html[data-theme="dark"] .dot-status.ok span {{
+      background: var(--success);
+      color: #052E16;
+    }}
+
+    html[data-theme="dark"] .feed-icon.warn,
+    html[data-theme="dark"] .dot-status.warning span {{
+      background: var(--warning);
+      color: #331D03;
+    }}
+
+    html[data-theme="dark"] .feed-icon.danger,
+    html[data-theme="dark"] .dot-status.danger span {{
+      background: var(--danger);
+      color: #450A0A;
+    }}
+
+    html[data-theme="dark"] .status-badge {{
+      border: 1px solid rgba(56, 189, 248, .26);
+      border-radius: 999px;
+      background: var(--accent-soft);
+      color: #BAE6FD;
+      padding: 2px 7px;
+    }}
+
+    html[data-theme="dark"] .danger-action,
+    html[data-theme="dark"] form[action$="/deactivate"] button,
+    html[data-theme="dark"] button[onclick*="Деактив"],
+    html[data-theme="dark"] button[onclick*="Удал"],
+    html[data-theme="dark"] button[onclick*="Отключ"] {{
+      background: var(--danger-soft);
+      border-color: rgba(248, 113, 113, .48);
+      color: #FCA5A5;
+      box-shadow: none;
+    }}
+
     .review-required-icon {{
       display: inline-flex;
       align-items: center;
