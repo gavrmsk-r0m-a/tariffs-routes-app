@@ -754,7 +754,7 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     fieldset {{ border: 1px solid var(--border); border-radius: var(--radius-card); margin: 12px 0; padding: 12px; background: var(--surface); }}
     fieldset > legend {{ padding: 0 6px; color: var(--text); font-weight: 750; }}
     h1 + fieldset, h1 + p + fieldset {{ margin-top: 6px; }}
-    .required {{ color: var(--danger); font-weight: 760; }}
+    .required {{ display: inline-flex; align-items: baseline; color: var(--danger); font-weight: 760; line-height: 1; white-space: nowrap; }}
     .muted {{ color: var(--muted); font-weight: 500; }}
     .message-card, .error {{ border: 1px solid var(--danger); background: var(--danger-soft); color: var(--danger); padding: 14px; border-radius: var(--radius-card); }}
     .message-card h1 {{ border: 0; padding: 0; margin-bottom: 8px; }}
@@ -774,6 +774,8 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .filter-grid, .form-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, max-content)); gap: 10px 12px; align-items: end; padding: 14px; }}
     .filter-grid {{ display: flex; flex-wrap: wrap; gap: 10px; align-items: end; }}
     .filter-grid label, .form-grid label {{ min-width: 150px; }}
+    .filter-grid label:not(.checkbox-inline):not(.scope-card), .form-grid label:not(.checkbox-inline):not(.scope-card):not(.spillover-checkbox) {{ display: block; white-space: nowrap; }}
+    .filter-grid label:not(.checkbox-inline) > input, .filter-grid label:not(.checkbox-inline) > select, .filter-grid label:not(.checkbox-inline) > textarea, .form-grid label:not(.checkbox-inline):not(.scope-card):not(.spillover-checkbox) > input, .form-grid label:not(.checkbox-inline):not(.scope-card):not(.spillover-checkbox) > select, .form-grid label:not(.checkbox-inline):not(.scope-card):not(.spillover-checkbox) > textarea {{ display: block; margin-top: 4px; }}
     .filter-grid input, .filter-grid select, .form-grid input, .form-grid select {{ width: 100%; }}
     .form-grid .route-select-field {{ min-width: min(420px, 100%); width: clamp(420px, 44vw, 560px); grid-column: span 2; }}
     .form-grid .route-select-field .route-select {{ width: 100%; min-width: 0; font-size: 14px; }}
@@ -784,24 +786,27 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     #routing-event-form .routing-reason-field {{ width: 190px; }}
     #routing-event-form[data-current-scope='campaign_setting'] {{ grid-template-columns: minmax(0, 1fr); column-gap: 12px; }}
     #routing-event-form .provider-change-campaign-grid, #routing-event-form .provider-change-campaign-lower-grid {{ display: contents; }}
-    #routing-event-form[data-current-scope='campaign_setting'] .provider-change-campaign-grid {{ grid-column: 1 / -1; display: grid; grid-template-columns: minmax(170px, 190px) minmax(160px, 190px) minmax(220px, 1fr) minmax(0, 56px) minmax(240px, 1.15fr); gap: 12px; align-items: end; }}
+    #routing-event-form[data-current-scope='campaign_setting'] .provider-change-campaign-grid {{ grid-column: 1 / -1; display: grid; grid-template-columns: minmax(170px, 190px) minmax(220px, .95fr) minmax(260px, 1fr); gap: 12px; align-items: end; }}
     #routing-event-form[data-current-scope='campaign_setting'] .provider-change-campaign-lower-grid {{ grid-column: 1 / -1; display: grid; grid-template-columns: minmax(220px, .8fr) minmax(360px, 1.2fr); gap: 12px; align-items: end; }}
     #routing-event-form .provider-change-campaign-grid label, #routing-event-form .provider-change-campaign-lower-grid label {{ min-width: 0; width: auto; }}
-    #routing-event-form .campaign-server-field, #routing-event-form .campaign-id-field, #routing-event-form .campaign-change-type-field, #routing-event-form .campaign-company-field {{ min-width: 0; width: auto; }}
-    #routing-event-form .campaign-search-action-field {{ min-width: 0; width: 56px; display: grid; grid-template-rows: 18px auto; align-items: end; }}
-    #routing-event-form .campaign-search-action-field .button-label-spacer {{ display: block; min-height: 18px; }}
-    #routing-event-form .campaign-search-action-field .small-button {{ width: 56px; min-height: 34px; padding: 5px 10px; }}
+    #routing-event-form .campaign-server-field, #routing-event-form .campaign-id-field, #routing-event-form .campaign-change-type-field, #routing-event-form .campaign-company-field, #routing-event-form .campaign-id-action-field {{ min-width: 0; width: auto; }}
+    #routing-event-form .campaign-id-action-field {{ display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; align-items: end; }}
+    #routing-event-form .campaign-id-inline-action {{ display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; }}
+    #routing-event-form .campaign-id-inline-action input {{ width: 100%; }}
+    #routing-event-form .campaign-id-inline-action .small-button {{ width: 56px; min-height: 34px; padding: 5px 10px; }}
     #routing-event-form .field-error {{ display: block; min-height: 16px; color: var(--danger); font-size: 12px; font-weight: 600; }}
-    #routing-event-form .field-label {{ display: block; margin-bottom: 4px; font-weight: 650; }}
+    #routing-event-form .field-label {{ display: inline-flex; align-items: baseline; gap: 4px; margin-bottom: 4px; font-weight: 650; white-space: nowrap; }}
     #routing-event-form .multi-select {{ position: relative; min-width: 0; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }}
     #routing-event-form .multi-select > summary {{ min-height: 20px; padding: 7px 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 560; }}
     #routing-event-form .multi-select-panel {{ position: absolute; z-index: 20; inset-inline: 0; top: calc(100% + 4px); max-height: 280px; overflow: auto; padding: 8px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); box-shadow: var(--shadow-soft); }}
     #routing-event-form .multi-option {{ display: flex; gap: 8px; align-items: center; min-width: 0; padding: 6px 4px; font-weight: 560; cursor: pointer; }}
     #routing-event-form .multi-option input {{ width: auto; }}
     #routing-event-form .multi-option span {{ overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
-    @media (max-width: 1020px) {{ #routing-event-form, #routing-event-form[data-current-scope='campaign_setting'] {{ grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }} #routing-event-form[data-current-scope='campaign_setting'] .provider-change-campaign-grid, #routing-event-form[data-current-scope='campaign_setting'] .provider-change-campaign-lower-grid {{ grid-template-columns: repeat(2, minmax(0, 1fr)); overflow: visible; }} #routing-event-form .routing-provider-field, #routing-event-form .routing-reason-field, #routing-event-form .route-select-field, #routing-event-form .campaign-server-field, #routing-event-form .campaign-id-field, #routing-event-form .campaign-change-type-field, #routing-event-form .campaign-company-field {{ min-width: 0; }} }}
+    @media (max-width: 1020px) {{ #routing-event-form, #routing-event-form[data-current-scope='campaign_setting'] {{ grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }} #routing-event-form[data-current-scope='campaign_setting'] .provider-change-campaign-grid, #routing-event-form[data-current-scope='campaign_setting'] .provider-change-campaign-lower-grid {{ grid-template-columns: repeat(2, minmax(0, 1fr)); overflow: visible; }} #routing-event-form .routing-provider-field, #routing-event-form .routing-reason-field, #routing-event-form .route-select-field, #routing-event-form .campaign-server-field, #routing-event-form .campaign-id-field, #routing-event-form .campaign-id-action-field, #routing-event-form .campaign-change-type-field, #routing-event-form .campaign-company-field {{ min-width: 0; }} }}
     @media (max-width: 720px) {{ .form-grid .route-select-field {{ grid-column: 1 / -1; width: 100%; min-width: 0; }} }}
     .filter-grid .checkbox-inline, .form-grid .checkbox-inline {{ min-width: auto; display: flex; align-items: center; gap: 5px; align-self: center; font-weight: 560; }}
+    .form-grid .spillover-checkbox {{ min-width: 150px; min-height: 34px; display: inline-flex; align-items: center; gap: 8px; align-self: end; padding: 4px 0; font-weight: 720; white-space: nowrap; }}
+    .form-grid .spillover-checkbox input[type='checkbox'] {{ width: 22px; height: 22px; min-height: 22px; flex: 0 0 22px; margin: 0; border-color: var(--border-strong); accent-color: var(--accent); }}
     .form-grid .wide, .filter-grid .wide {{ grid-column: 1 / -1; }}
     .form-grid fieldset, .filter-grid fieldset {{ grid-column: 1 / -1; margin: 0; }}
     .form-grid textarea {{ min-width: min(620px, 100%); }}
@@ -4079,8 +4084,7 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
       <option value=''>—</option>
       {''.join(f"<option value='{v}' {'selected' if event and event['company_change_type'] == v else ''}>{label}</option>" for v, label in [('enable_autorotation','Включили авторотацию'),('disable_autorotation','Выключили авторотацию'),('set_campaign_route','Прописали ручной маршрут'),('remove_campaign_route','Убрали ручной маршрут')])}
     </select></label>
-    <label class='scope-field campaign-helper-field campaign-id-field' data-scopes='campaign_setting'>ID кампании <input name='campaign_id_search' id='campaign-id-search' value='{esc(event['campaign_id_search'] if event and 'campaign_id_search' in event.keys() else '')}'><span class='field-error' id='campaign-id-search-error' aria-live='polite'></span></label>
-    <div class='scope-field campaign-search-action-field' data-scopes='campaign_setting'><span class='button-label-spacer' aria-hidden='true'></span><button type='button' id='campaign-id-search-button' class='small-button'>OK</button></div>
+    <div class='scope-field campaign-helper-field campaign-id-action-field' data-scopes='campaign_setting'><span class='field-label'>ID кампании</span><div class='campaign-id-inline-action'><input name='campaign_id_search' id='campaign-id-search' value='{esc(event['campaign_id_search'] if event and 'campaign_id_search' in event.keys() else '')}'><button type='button' id='campaign-id-search-button' class='small-button'>OK</button></div><span class='field-error' id='campaign-id-search-error' aria-live='polite'></span></div>
   </div>
   <label class='scope-field' data-scopes='none server_priority'>GEO <span class='required'>*</span><select name='country_id' id='event-country'>{active_options(repo, 'countries', selected=event['country_id'] if event else None, empty='—')}</select></label>
   <fieldset class='scope-field' data-scopes='server_priority'><legend>Серверы <span class='required'>*</span></legend>{server_priority_server_boxes}</fieldset>
@@ -4089,7 +4093,7 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
   {old_route_field}
   <label class='scope-field route-select-field' data-scopes='server_priority'>Новый маршрут <span class='required'>*</span><select name='new_route_id' id='new-route' class='route-select'>{new_route_opts}</select></label>
   <span class='scope-field route-empty-message muted' data-scopes='server_priority' id='new-route-empty' hidden>Нет маршрутов для выбранного провайдера и GEO</span>
-  <label class='scope-field' data-scopes='server_priority'><input type='checkbox' name='has_overflow' id='has-overflow' value='1' {has_overflow_checked}> Есть перелив</label>
+  <label class='scope-field spillover-checkbox' data-scopes='server_priority'><input type='checkbox' name='has_overflow' id='has-overflow' value='1' {has_overflow_checked}> <span>Есть перелив</span></label>
   <label class='scope-field' data-scopes='server_priority' id='overflow-route-field'>Маршрут перелива <span class='required'>*</span><select name='overflow_route_id' id='overflow-route'>{overflow_opts}</select></label>
   <div class='provider-change-campaign-lower-grid'>
     <label class='routing-reason-field'>Причина <span class='required'>*</span><select name='reason' id='routing-reason' required>{routing_reason_options(event['reason'] if event else None, scope)}</select><span class='field-helper' id='routing-reason-helper'></span></label>
