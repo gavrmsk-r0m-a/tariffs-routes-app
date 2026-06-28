@@ -1037,7 +1037,8 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertIn("<span class='side-label'>Маршруты</span></a>", content)
         self.assertIn("href='/provider-changes'><span class='nav-icon'", content)
         self.assertIn("<span class='side-label'>Смена провайдеров</span></a>", content)
-        self.assertIn("href='/admin/company-routing-settings'>Схема маршрутизации кампаний</a>", content)
+        self.assertIn("href='/admin/company-routing-settings'><span class='nav-icon'", content)
+        self.assertIn("<span>Схема маршрутизации кампаний</span></a>", content)
         self.assertIn("admin-link active", content)
 
     def test_provider_changes_sidebar_link_renders_attributes_and_icon_safely(self):
@@ -1048,7 +1049,7 @@ class ServerSmokeTest(unittest.TestCase):
                 sidebar_item = content.split("href='/provider-changes'", 1)[0].rsplit("<a class='side-link", 1)[1]
                 sidebar_item += content.split("href='/provider-changes'", 1)[1].split("</a>", 1)[0] + "</a>"
                 self.assertIn("data-tooltip='Журнал изменений'", sidebar_item)
-                self.assertIn("<span class='nav-icon' aria-hidden='true'><svg", sidebar_item)
+                self.assertIn("<span class='material-symbols-rounded' aria-hidden='true'>sync_alt</span>", sidebar_item)
                 self.assertIn("<span class='side-label'>Смена провайдеров</span>", sidebar_item)
                 self.assertNotIn("data-icon='<svg", sidebar_item)
                 self.assertNotIn("viewBox='0 0 24 24' focusable='false' aria-hidden='true'><path", sidebar_item.split(">", 1)[0])
@@ -1712,12 +1713,12 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertEqual(captured["status"], "200 OK")
         self.assertIn("data-col='history'", content)
         self.assertIn("title='История'", content)
-        self.assertRegex(content, r"href='/phones/\d+/history'.*ⓘ")
+        self.assertRegex(content, r"href='/phones/\d+/history'.*material-symbols-rounded.*info")
 
         captured, content = self.request("/routes")
         self.assertEqual(captured["status"], "200 OK")
         self.assertIn("data-col='history'", content)
-        self.assertRegex(content, r"href='/routes/\d+/history'.*ⓘ")
+        self.assertRegex(content, r"href='/routes/\d+/history'.*material-symbols-rounded.*info")
 
         captured, content = self.request("/phones?export=csv")
         self.assertEqual(captured["status"], "200 OK")
@@ -2136,7 +2137,7 @@ class ServerSmokeTest(unittest.TestCase):
         captured, content = self.request("/companies")
         self.assertEqual(captured["status"].split()[0], "200")
         self.assertIn("data-col='history'", content)
-        self.assertRegex(content, r"href='/calling-companies/\d+/history'.*ⓘ")
+        self.assertRegex(content, r"href='/calling-companies/\d+/history'.*material-symbols-rounded.*info")
         self.assertIn("Журнал событий", content)
         self.assertIn("<a class='button table-utility-button' href='/calling-companies/history'>Журнал событий</a>", content)
         self.assertNotIn("href='/calling-companies/history' target='_blank'", content)

@@ -141,14 +141,7 @@ def copy_column_button(column: str) -> str:
     return f"<button class='copy-column-button' type='button' data-copy-action='{esc(column)}' title='Скопировать колонку' aria-label='Скопировать колонку'>{nav_icon('copy')}</button>"
 
 
-COPY_SUCCESS_ICON = """<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="-0.335 -0.335 16 16" id="Check-Square--Streamline-Ultimate" height="16" width="16">
-  <desc>
-    Check Square Streamline Icon: https://streamlinehq.com
-  </desc>
-  <path fill="#78eb7b" d="M10.41916225 4.4521258249999995c0.33802649999999995 0 0.61205025 0.27402374999999995 0.61205025 0.6120438624999999V12.408612999999999c0 0.33802649999999995 -0.27402374999999995 0.61205025 -0.61205025 0.61205025H3.0747253249999993c-0.33802011249999997 0 -0.6120438624999999 -0.27402374999999995 -0.6120438624999999 -0.61205025V5.0641696875c0 -0.3380775999999999 0.2739662625 -0.61210135 0.6120438624999999 -0.6120438624999999H10.41916225Z" stroke-width="0.67"></path>
-  <path stroke="#191919" stroke-linecap="round" stroke-linejoin="round" d="M14.091527624999998 1.0852618 6.441027249999999 10.571887374999998 3.3808845874999998 7.511699999999999" stroke-width="0.67"></path>
-  <path stroke="#191919" stroke-linecap="round" stroke-linejoin="round" d="M12.255185249999998 7.206313624999999v6.4263998749999995c0 0.33796262499999996 -0.27402374999999995 0.6119863749999999 -0.61205025 0.6119863749999999H1.8505609499999998c-0.33802649999999995 0 -0.61205025 -0.27402374999999995 -0.61205025 -0.6119863749999999V3.8400819625c0 -0.33802011249999997 0.27402374999999995 -0.6120438624999999 0.61205025 -0.6120438624999999H8.888972749999999" stroke-width="0.67"></path>
-</svg>"""
+COPY_SUCCESS_ICON = "<span class='material-symbols-rounded' aria-hidden='true'>check_circle</span>"
 COPY_SUCCESS_ICON_JS = json.dumps(COPY_SUCCESS_ICON)
 
 
@@ -186,7 +179,10 @@ def plain_text(value: object) -> str:
 
 
 def plain_title(value: object) -> str:
-    return esc(plain_text(value))
+    text = plain_text(value)
+    for icon_name in ("content_copy", "download", "view_column", "info", "edit"):
+        text = text.replace(f" {icon_name}", "").replace(icon_name, "")
+    return esc(re.sub(r"\s+", " ", text).strip())
 
 
 def clamp_cell(col: str, content_html: str, title: object, *, extra_attrs: str = "", classes: str = "") -> str:
@@ -324,26 +320,50 @@ class ForbiddenError(Exception):
     pass
 
 
-def svg_icon(path: str, view_box: str = "0 0 24 24") -> str:
-    normalized_path = path.replace('<path ', '<path fill="currentColor" ') if "fill=" not in path else path
-    normalized_path = normalized_path.replace(" 0.", " .").replace("-0.", "-.")
-    return f'<svg viewBox="{view_box}" focusable="false" aria-hidden="true">{normalized_path}</svg>'
+def material_icon(name: str) -> str:
+    return f"<span class='material-symbols-rounded' aria-hidden='true'>{esc(name)}</span>"
+
 
 SEMANTIC_ICONS = {
-    "dashboard": svg_icon('<path d="m12 2.9751 11 8.2 -0.85 1.175 -2.15 -1.625v10.275H4v-10.275l-2.15 1.625 -0.85 -1.175 11 -8.2Zm-4.25 9.075c0 0.8 0.43335 1.70835 1.3 2.725s1.85 2.01665 2.95 3c1.1 -0.98335 2.08335 -1.98335 2.95 -3 0.86665 -1.01665 1.3 -1.925 1.3 -2.725 0 -0.65 -0.2125 -1.1875 -0.6375 -1.6125 -0.425 -0.425 -0.9625 -0.6375 -1.6125 -0.6375 -0.38335 0 -0.75 0.09585 -1.1 0.2875 -0.35 0.19165 -0.65 0.42085 -0.9 0.6875 -0.25 -0.26665 -0.55 -0.49585 -0.9 -0.6875s-0.71665 -0.2875 -1.1 -0.2875c-0.65 0 -1.1875 0.2125 -1.6125 0.6375 -0.425 0.425 -0.6375 0.9625 -0.6375 1.6125Z"/>'),
-    "routes": svg_icon('<path d="M11.25 22v-4.75h-5.5L3 14.5l2.75 -2.75h5.5V9.5H4V4h7.25V2h1.5v2h5.5l2.75 2.75 -2.75 2.75h-5.5v2.25H20v5.5H12.75V22h-1.5Z"/>'),
-    "tariffs": svg_icon('<path d="m21.575 13.9 -7.65 7.675c-0.15 0.14165 -0.31875 0.2479 -0.50625 0.31875 -0.1875 0.07085 -0.375 0.10625 -0.5625 0.10625s-0.3729 -0.0375 -0.55625 -0.1125c-0.18335 -0.075 -0.35 -0.17915 -0.5 -0.3125L2.45 12.2c-0.133335 -0.13335 -0.241665 -0.29135 -0.325 -0.474 -0.083335 -0.1825 -0.125 -0.3745 -0.125 -0.576V3.5c0 -0.4125 0.146915 -0.765665 0.44075 -1.0595C2.734415 2.146835 3.0875 2 3.5 2h7.675c0.20115 0 0.3961 0.040585 0.58475 0.12175 0.1885 0.081335 0.3519 0.19075 0.49025 0.32825l9.325 9.325c0.1565 0.15 0.27065 0.31875 0.3425 0.50625 0.07165 0.1875 0.1075 0.375 0.1075 0.5625s-0.0375 0.3771 -0.1125 0.56875c-0.075 0.19165 -0.1875 0.35415 -0.3375 0.4875Zm-15.45 -6.5c0.35 0 0.65415 -0.12915 0.9125 -0.3875 0.25835 -0.25835 0.3875 -0.5625 0.3875 -0.9125s-0.12915 -0.65415 -0.3875 -0.9125c-0.25835 -0.258335 -0.5625 -0.3875 -0.9125 -0.3875s-0.65415 0.129165 -0.9125 0.3875c-0.258335 0.25835 -0.3875 0.5625 -0.3875 0.9125s0.129165 0.65415 0.3875 0.9125c0.25835 0.25835 0.5625 0.3875 0.9125 0.3875Z"/>'),
-    "phones": svg_icon('<path d="M6.85 19.175h1.5v-1.5h-1.5v1.5Zm0 -3.9h1.5v-4.15h-1.5v4.15Zm4.35 3.9h1.5v-4.25h-1.5v4.25Zm0 -6.55h1.5v-1.5h-1.5v1.5Zm4.55 6.55h1.5v-1.5h-1.5v1.5Zm0 -3.9h1.5v-4.15h-1.5v4.15ZM5.5 22c-0.4 0 -0.75 -0.15 -1.05 -0.45 -0.3 -0.3 -0.45 -0.65 -0.45 -1.05V7.975L9.975 2H18.5c0.4 0 0.75 0.15 1.05 0.45 0.3 0.3 0.45 0.65 0.45 1.05v17c0 0.4 -0.15 0.75 -0.45 1.05 -0.3 0.3 -0.65 0.45 -1.05 0.45H5.5Z"/>'),
-    "companies": svg_icon('<path d="M4.95 17.0502c-0.95 -0.95 -1.679165 -2.02915 -2.1875 -3.2375C2.254165 12.60435 2 11.33355 2 10.0002c0 -1.33335 0.254165 -2.60415 0.7625 -3.8125C3.270835 4.97936 4 3.900195 4.95 2.950195l0.875 0.875c-0.81665 0.833335 -1.45 1.779155 -1.9 2.837505 -0.45 1.05835 -0.675 2.17085 -0.675 3.3375 0 1.16665 0.225 2.27915 0.675 3.3375 0.45 1.05835 1.08335 2.00415 1.9 2.8375l-0.875 0.875Zm2.3 -2.3c-0.63335 -0.63335 -1.11665 -1.35835 -1.45 -2.175 -0.33335 -0.81665 -0.5 -1.675 -0.5 -2.575 0 -0.9 0.16665 -1.75835 0.5 -2.575 0.33335 -0.81665 0.81665 -1.54165 1.45 -2.175l0.875 0.875c-0.5 0.51665 -0.8875 1.10835 -1.1625 1.775 -0.275 0.66665 -0.4125 1.36665 -0.4125 2.1 0 0.73335 0.1375 1.42915 0.4125 2.0875 0.275 0.65835 0.6625 1.25415 1.1625 1.7875l-0.875 0.875Zm4 6.25v-8.85c-0.46665 -0.15 -0.8375 -0.425 -1.1125 -0.825 -0.275 -0.4 -0.4125 -0.84165 -0.4125 -1.325 0 -0.63335 0.22085 -1.17085 0.6625 -1.6125 0.44165 -0.44165 0.97915 -0.6625 1.6125 -0.6625 0.63335 0 1.17085 0.22085 1.6125 0.6625 0.44165 0.44165 0.6625 0.97915 0.6625 1.6125 0 0.48335 -0.1375 0.925 -0.4125 1.325 -0.275 0.4 -0.64585 0.675 -1.1125 0.825v8.85h-1.5Zm5.5 -6.25 -0.875 -0.875c0.5 -0.53335 0.8875 -1.12915 1.1625 -1.7875 0.275 -0.65835 0.4125 -1.35415 0.4125 -2.0875s-0.1375 -1.42915 -0.4125 -2.0875c-0.275 -0.65835 -0.6625 -1.25415 -1.1625 -1.7875l0.875 -0.875c0.63335 0.63335 1.11665 1.35835 1.45 2.175 0.33335 0.81665 0.5 1.675 0.5 2.575 0 0.9 -0.16665 1.75835 -0.5 2.575 -0.33335 0.81665 -0.81665 1.54165 -1.45 2.175Zm2.3 2.3 -0.875 -0.875c0.81665 -0.83335 1.45 -1.77915 1.9 -2.8375 0.45 -1.05835 0.675 -2.17085 0.675 -3.3375 0 -1.16665 -0.225 -2.27915 -0.675 -3.3375 -0.45 -1.05835 -1.08335 -2.00417 -1.9 -2.837505l0.875 -0.875c0.95 0.95 1.67915 2.029165 2.1875 3.237505C21.74585 7.39605 22 8.66685 22 10.0002c0 1.33335 -0.25415 2.60415 -0.7625 3.8125 -0.50835 1.20835 -1.2375 2.2875 -2.1875 3.2375Z"/>'),
-    "provider_changes": svg_icon('<path d="M10.75 21.9498c-1.2 -0.15 -2.32085 -0.50835 -3.3625 -1.075 -1.04165 -0.56665 -1.94165 -1.2875 -2.7 -2.1625 -0.758335 -0.875 -1.354165 -1.88335 -1.7875 -3.025 -0.433335 -1.14165 -0.65 -2.37085 -0.65 -3.6875 0 -1.46665 0.345835 -2.86665 1.0375 -4.2 0.691665 -1.33335 1.620835 -2.51665 2.7875 -3.549995h-3.05v-1.5H8.75V8.4748h-1.5v-3.225c-1.06665 0.85 -1.91665 1.8625 -2.55 3.0375 -0.633335 1.175 -0.95 2.4125 -0.95 3.7125 0 2.2 0.666665 4.07915 2 5.6375 1.33335 1.55835 3 2.4875 5 2.7875v1.525Zm-0.175 -5.7 -3.875 -3.875 1.05 -1.05 2.825 2.825 5.675 -5.675 1.05 1.05 -6.725 6.725Zm4.675 5v-5.725h1.5v3.225c1.06665 -0.86665 1.91665 -1.88335 2.55 -3.05 0.63335 -1.16665 0.95 -2.4 0.95 -3.7 0 -2.2 -0.66665 -4.07915 -2 -5.6375 -1.33335 -1.55833 -3 -2.487495 -5 -2.787495v-1.525c2.43335 0.3 4.45835 1.375 6.075 3.224995 1.61665 1.85 2.425 4.09165 2.425 6.725 0 1.46665 -0.34585 2.86665 -1.0375 4.2 -0.69165 1.33335 -1.62085 2.51665 -2.7875 3.55h3.05v1.5H15.25Z"/>'),
-    "admin": svg_icon('<path d="M20.4 6.8 17.2 10l-3.1-3.1 3.2-3.2a5 5 0 0 0-6.4 6.3l-7.1 7.1a2.2 2.2 0 0 0 3.1 3.1l7.1-7.1a5 5 0 0 0 6.4-6.3Z"/>'),
-    "admin_server_priorities": svg_icon('<path d="M5 21V4h8.575l0.475 2.15H20v9.25H13.6l-0.475 -2.125H6.5V21h-1.5Z"/>'),
-    "admin_company_routing_settings": svg_icon('<path d="M15.1 21v-3.125h-3.85v-10.25h-2.325v3.25H2V3h6.925v3.125H15.1V3H22v7.875H15.1v-3.25h-2.35v8.75h2.35v-3.25H22V21H15.1Z"/>'),
-    "copy": svg_icon('<path d="M3 18v-1.5h1.5v1.5H3Zm0 -4v-1.5h1.5v1.5H3Zm0 -4v-1.5h1.5v1.5H3Zm4 12v-1.5h1.5v1.5h-1.5Zm1.5 -4c-0.4 0 -0.75 -0.15 -1.05 -0.45 -0.3 -0.3 -0.45 -0.65 -0.45 -1.05V3.5c0 -0.4 0.15 -0.75 0.45 -1.05 0.3 -0.3 0.65 -0.45 1.05 -0.45h10c0.4 0 0.75 0.15 1.05 0.45 0.3 0.3 0.45 0.65 0.45 1.05v13c0 0.4 -0.15 0.75 -0.45 1.05 -0.3 0.3 -0.65 0.45 -1.05 0.45H8.5Zm2.5 4v-1.5h1.5v1.5h-1.5ZM4.5 22c-0.4125 0 -0.765585 -0.1469 -1.05925 -0.44075C3.146915 21.2656 3 20.9125 3 20.5h1.5v1.5Zm10.5 0v-1.5h1.5c0 0.41665 -0.14685 0.77085 -0.4405 1.0625 -0.29385 0.29165 -0.647 0.4375 -1.0595 0.4375ZM3 6c0 -0.4125 0.146915 -0.76565 0.44075 -1.0595C3.734415 4.646835 4.0875 4.5 4.5 4.5v1.5H3Z"/>'),
-    "import": svg_icon('<path d="M3.5 20c-0.4 0 -0.75 -0.15415 -1.05 -0.4625C2.15 19.22915 2 18.88335 2 18.5V5.5c0 -0.38335 0.15 -0.729165 0.45 -1.0375C2.75 4.154165 3.1 4 3.5 4h7.025l1.5 1.5H20.5c0.38335 0 0.72915 0.15415 1.0375 0.4625 0.30835 0.30835 0.4625 0.65415 0.4625 1.0375v11.5c0 0.38335 -0.15415 0.72915 -0.4625 1.0375 -0.30835 0.30835 -0.65415 0.4625 -1.0375 0.4625H3.5Zm7.75 -3h1.5V11.325l1.85 1.85 1.05 -1.05 -3.65 -3.65 -3.65 3.65 1.05 1.05 1.85 -1.85V17Z"/>'),
-    "export": svg_icon('<path d="M5.525 15.075h3.175v-1.25h-2.75v-3.65h2.75v-1.25h-3.175c-0.23365 0 -0.4296 0.0815 -0.58775 0.2445 -0.158165 0.16285 -0.23725 0.36465 -0.23725 0.6055v4.475c0 0.23365 0.079085 0.4296 0.23725 0.58775 0.15815 0.15815 0.3541 0.23725 0.58775 0.23725Zm4.15 0h3.425c0.23385 0 0.42975 -0.0791 0.58775 -0.23725 0.15815 -0.15815 0.23725 -0.3541 0.23725 -0.58775v-1.95c0 -0.21665 -0.0791 -0.4 -0.23725 -0.55 -0.158 -0.15 -0.3539 -0.225 -0.58775 -0.225h-2.175v-1.35h3v-1.25H10.5c-0.23365 0 -0.4296 0.0791 -0.58775 0.23725 -0.15815 0.158 -0.23725 0.3539 -0.23725 0.58775v1.95c0 0.23335 0.0791 0.42915 0.23725 0.5875 0.15815 0.15835 0.3541 0.2375 0.58775 0.2375h2.175v1.3h-3v1.25Zm6.775 0h1.425l1.875 -6.15H18.5L17.175 13.5 16 8.925h-1.25l1.7 6.15ZM3.5 20c-0.4 0 -0.75 -0.15 -1.05 -0.45 -0.3 -0.3 -0.45 -0.65 -0.45 -1.05V5.5c0 -0.4 0.15 -0.75 0.45 -1.05C2.75 4.15 3.1 4 3.5 4h17c0.4 0 0.75 0.15 1.05 0.45 0.3 0.3 0.45 0.65 0.45 1.05v13c0 0.4 -0.15 0.75 -0.45 1.05 -0.3 0.3 -0.65 0.45 -1.05 0.45H3.5Z"/>'),
-    "admin_users": svg_icon('<path d="M9 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Zm6.5.5a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM9 13c-3.6 0-6.3 2-6.3 4.4 0 .7.6 1.1 1.3 1.1h10c.7 0 1.3-.4 1.3-1.1C15.3 15 12.6 13 9 13Zm6.5.5c-.8 0-1.5.1-2.2.4 1.4.9 2.3 2.1 2.6 3.6H20c.7 0 1.3-.4 1.3-1.1 0-1.6-2.4-2.9-5.8-2.9Z"/>'),
-    "admin_dictionaries": svg_icon('<path d="M5 4h6c1.1 0 2 .9 2 2v14H7c-1.1 0-2-.9-2-2V4Zm8 2c0-1.1.9-2 2-2h4v14c0 1.1-.9 2-2 2h-4V6ZM7 7v2h4V7H7Zm0 4v2h4v-2H7Z"/>'),
+    "dashboard": material_icon("dashboard"),
+    "routes": material_icon("route"),
+    "tariffs": material_icon("sell"),
+    "phones": material_icon("dialpad"),
+    "companies": material_icon("campaign"),
+    "provider_changes": material_icon("sync_alt"),
+    "admin": material_icon("admin_panel_settings"),
+    "admin_server_priorities": material_icon("flag"),
+    "admin_company_routing_settings": material_icon("account_tree"),
+    "admin_users": material_icon("group"),
+    "admin_dictionaries": material_icon("database"),
+    "admin_route_naming": material_icon("rule"),
+    "admin_import_export": material_icon("import_export"),
+    "admin_currency_rates": material_icon("currency_exchange"),
+    "admin_provider_reasons": material_icon("manage_history"),
+    "admin_change_log": material_icon("history"),
+    "admin_settings": material_icon("settings"),
+    "admin_telegram": material_icon("send"),
+    "info": material_icon("info"),
+    "history": material_icon("info"),
+    "edit": material_icon("edit"),
+    "delete": material_icon("delete"),
+    "export": material_icon("download"),
+    "download": material_icon("download"),
+    "columns": material_icon("view_column"),
+    "copy": material_icon("content_copy"),
+    "add": material_icon("add"),
+    "save": material_icon("save"),
+    "cancel": material_icon("close"),
+    "show": material_icon("visibility"),
+    "hide": material_icon("visibility_off"),
+    "warning": material_icon("warning"),
+    "success": material_icon("check_circle"),
+    "inactive": material_icon("block"),
+    "error": material_icon("error"),
+    "user": material_icon("account_circle"),
+    "theme": material_icon("contrast"),
+    "collapse": material_icon("chevron_left"),
+    "check": material_icon("check"),
 }
 
 
@@ -360,7 +380,7 @@ def nav_icon_span(key: str) -> str:
 
 
 def user_icon_svg() -> str:
-    return svg_icon("<path d='M12 12.2a4.2 4.2 0 1 0 0-8.4 4.2 4.2 0 0 0 0 8.4Zm0 1.8c-4.1 0-7.4 2.3-7.4 5.1 0 .7.6 1.1 1.3 1.1h12.2c.7 0 1.3-.4 1.3-1.1 0-2.8-3.3-5.1-7.4-5.1Z'/>")
+    return nav_icon("user")
 
 NAV_ITEMS = [
     ("dashboard", "/dashboard", "Главная", ("Главная",)),
@@ -412,7 +432,7 @@ def sidebar(title: str) -> str:
 
     main_links = "".join(nav_link(key, href, label) for key, href, label, _ in NAV_ITEMS if can_read(key))
     admin_links = "".join(
-        f"<a class='admin-link {'active' if active_admin_href == href else ''}' href='{href}'>{esc(label)}</a>"
+        f"<a class='admin-link {'active' if active_admin_href == href else ''}' href='{href}'>{nav_icon_span(key)}<span>{esc(label)}</span></a>"
         for key, href, label, _ in ADMIN_NAV_ITEMS
         if can_read(key)
     )
@@ -430,7 +450,7 @@ def sidebar(title: str) -> str:
         <div class="brand-mark">⌁</div>
         <div class="brand-copy"><strong>TeleRoute</strong><span>Admin Panel</span></div>
       </div>
-      <button class="sidebar-collapse" type="button" data-sidebar-toggle data-tooltip="Свернуть" aria-label="Свернуть боковую панель" title="Свернуть боковую панель"><span class="sidebar-collapse-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M7 5l7 7-7 7M13 5l7 7-7 7"/></svg></span></button>
+      <button class="sidebar-collapse" type="button" data-sidebar-toggle data-tooltip="Свернуть" aria-label="Свернуть боковую панель" title="Свернуть боковую панель"><span class="sidebar-collapse-icon" aria-hidden="true">{nav_icon("collapse")}</span></button>
     </div>
     <nav class="side-nav" aria-label="Основная навигация">
       {main_links}
@@ -472,13 +492,13 @@ def current_user_selector() -> str:
     """
 
 def theme_selector() -> str:
-    return """
+    return f"""
         <div class="theme-selector-wrap" data-theme-selector data-tooltip="Тема: MVP">
-          <button class="theme-selector" type="button" data-theme-menu-toggle aria-haspopup="menu" aria-expanded="false"><span class="side-icon" aria-hidden="true">◐</span><span class="side-label" data-theme-current>Тема: MVP ▾</span></button>
+          <button class="theme-selector" type="button" data-theme-menu-toggle aria-haspopup="menu" aria-expanded="false"><span class="side-icon" aria-hidden="true">{nav_icon("theme")}</span><span class="side-label" data-theme-current>Тема: MVP ▾</span></button>
           <div class="theme-menu" data-theme-menu role="menu" aria-label="Выбор темы">
-            <button type="button" role="menuitemradio" data-theme-option="mvp" aria-checked="true"><span class="theme-check" aria-hidden="true">✓</span><span>MVP</span></button>
-            <button type="button" role="menuitemradio" data-theme-option="dark" aria-checked="false"><span class="theme-check" aria-hidden="true">✓</span><span>Тёмная</span></button>
-            <button type="button" role="menuitemradio" data-theme-option="light-v2" aria-checked="false" disabled title="Скоро"><span class="theme-check" aria-hidden="true">✓</span><span>Светлая 2.0</span><small>скоро</small></button>
+            <button type="button" role="menuitemradio" data-theme-option="mvp" aria-checked="true"><span class="theme-check" aria-hidden="true">{nav_icon("check")}</span><span>MVP</span></button>
+            <button type="button" role="menuitemradio" data-theme-option="dark" aria-checked="false"><span class="theme-check" aria-hidden="true">{nav_icon("check")}</span><span>Тёмная</span></button>
+            <button type="button" role="menuitemradio" data-theme-option="light-v2" aria-checked="false" disabled title="Скоро"><span class="theme-check" aria-hidden="true">{nav_icon("check")}</span><span>Светлая 2.0</span><small>скоро</small></button>
           </div>
         </div>
     """
@@ -525,6 +545,7 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
   <meta charset="utf-8">
   <title>{esc(title)}</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/core@1.0.0-beta20/dist/css/tabler.min.css">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,400,0,0">
   <style>
     html[data-theme="light-v2"] {{
       --bg: #f7f5ff;
@@ -669,7 +690,8 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .admin-toggle[aria-expanded="true"]::after {{ content: "⌄"; }}
     .admin-tree {{ display: none; margin: 4px 0 8px; padding: 6px; border: 1px solid var(--border); border-radius: 10px; background: color-mix(in srgb, var(--surface) 55%, transparent); }}
     .admin-tree.open {{ display: grid; gap: 2px; }}
-    .admin-link {{ display: block; padding: 6px 8px; font-size: 13px; line-height: 1.25; color: var(--text); }}
+    .admin-link {{ display: flex; align-items: center; gap: 8px; padding: 6px 8px; font-size: 13px; line-height: 1.25; color: var(--text); }}
+    .admin-link .nav-icon .material-symbols-rounded {{ font-size: 20px; }}
     .admin-link.active {{ background: linear-gradient(135deg, var(--accent-soft), var(--cyber-soft)); border-color: var(--accent); color: var(--accent-strong); font-weight: 730; box-shadow: var(--shadow-soft); }}
     .workspace {{ min-width: 0; padding: 20px 28px 42px; background: transparent; }}
     .topbar {{ display: flex; justify-content: flex-end; align-items: center; gap: 10px; min-height: 40px; margin: 0 0 10px; flex-wrap: wrap; }}
@@ -757,6 +779,28 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .required {{ display: inline-flex; align-items: baseline; color: var(--danger); font-weight: 760; line-height: 1; white-space: nowrap; }}
     .muted {{ color: var(--muted); font-weight: 500; }}
     .message-card, .error {{ border: 1px solid var(--danger); background: var(--danger-soft); color: var(--danger); padding: 14px; border-radius: var(--radius-card); }}
+
+    .material-symbols-rounded {{
+      font-family: 'Material Symbols Rounded';
+      font-weight: normal;
+      font-style: normal;
+      font-size: 1em;
+      line-height: 1;
+      letter-spacing: normal;
+      text-transform: none;
+      display: inline-block;
+      white-space: nowrap;
+      word-wrap: normal;
+      direction: ltr;
+      -webkit-font-feature-settings: 'liga';
+      -webkit-font-smoothing: antialiased;
+      font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+    }}
+    .sr-only {{ position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }}
+    .nav-icon .material-symbols-rounded {{ font-size: 22px; }}
+    .button .material-symbols-rounded, button .material-symbols-rounded, .action-icon .material-symbols-rounded, .history-link .material-symbols-rounded, .copy-column-button .material-symbols-rounded {{ font-size: 17px; }}
+    .metric-icon .material-symbols-rounded {{ font-size: 26px; }}
+    .quick-icon .material-symbols-rounded {{ font-size: 25px; }}
     .message-card h1 {{ border: 0; padding: 0; margin-bottom: 8px; }}
     .ok {{ border: 1px solid var(--cyber); background: var(--success-soft); color: var(--text-strong); padding: 12px 14px; border-radius: var(--radius-card); margin: 10px 0 14px; box-shadow: var(--shadow-soft); }}
     .grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }}
@@ -908,7 +952,7 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .action-button, .actions .button, .actions button, .compact-actions .button, .compact-actions button, td[data-col="actions"] .button, td[data-col="actions"] button {{ min-width: 30px; min-height: 30px; padding: 4px 7px; border-radius: 8px; font-size: 12px; line-height: 1; box-shadow: none; }}
     .edit-action, td[data-col="actions"] details.edit-details > summary {{ position: relative; width: 32px; min-width: 32px; height: 32px; min-height: 32px; padding: 0; display: inline-flex; align-items: center; justify-content: center; overflow: visible; color: transparent; font-size: 0; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--surface); box-shadow: none; list-style: none; }}
     .edit-action:hover, td[data-col="actions"] details.edit-details > summary:hover {{ background: var(--accent-soft); border-color: var(--accent); color: transparent; }}
-    .edit-action::before, td[data-col="actions"] details.edit-details > summary::before {{ content: "✏️"; color: var(--accent-strong); font-size: 14px; line-height: 1; }}
+    .edit-action::before, td[data-col="actions"] details.edit-details > summary::before {{ content: "edit"; font-family: 'Material Symbols Rounded'; font-size: 17px; color: var(--accent-strong); line-height: 1; }}
     td[data-col="actions"] details.edit-details > summary::-webkit-details-marker {{ display: none; }}
     td[data-col="actions"] details.edit-details > summary::marker {{ content: ""; display: none; }}
     td[data-col="actions"] details {{ position: relative; display: inline-block; margin: 0; border: 0; background: transparent; box-shadow: none; }}
@@ -1030,10 +1074,7 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .side-link {{ justify-content: flex-start; gap: 12px; min-height: 48px; padding: 10px 14px; border-radius: 12px; color: #223158; font-weight: 700; }}
     .side-icon {{ width: 22px; height: 22px; color: #7786ad; font-size: 18px; }}
     .nav-icon {{ display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; flex: 0 0 24px; color: #7786ad; }}
-    .nav-icon svg {{ width: 22px; height: 22px; display: block; fill: currentColor; }}
-    .metric-icon svg, .quick-icon svg, .feed-icon svg {{ width: 22px; height: 22px; display: block; fill: currentColor; }}
-    .metric-icon svg {{ width: 21px; height: 21px; }}
-    .feed-icon svg {{ width: 19px; height: 19px; }}
+    .nav-icon, .side-icon, .metric-icon, .quick-icon, .feed-icon {{ display: inline-flex; align-items: center; justify-content: center; }}
     .side-link:hover .nav-icon, .side-link.active .nav-icon {{ color: var(--accent-strong); }}
     .side-link.has-inline-icon::before, .side-link.has-inline-icon.active::before {{ content: none; display: none; }}
     .side-link::before {{ content: attr(data-icon); width: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center; color: #7786ad; font-size: 18px; position: static; flex: 0 0 22px; border-radius: 0; background: transparent; }}
@@ -1066,8 +1107,8 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .sidebar-collapse {{ width: 36px; min-width: 36px; max-width: 36px; height: 36px; min-height: 36px; padding: 0; justify-content: center; justify-self: end; color: #223158; border-color: var(--border); background: var(--surface); box-shadow: var(--shadow-soft); overflow: hidden; }}
     .sidebar-collapse:hover {{ background: var(--accent-soft); border-color: var(--accent); color: var(--accent-strong); }}
     .sidebar-collapse-icon {{ width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; transform: scaleX(-1); }}
-    .sidebar-collapse-icon svg {{ width: 18px; height: 18px; display: block; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }}
-    .current-user-selector {{ position: relative; background: #f4f6ff; border-color: #e2e8ff; }} .current-user-selector summary {{ display: flex; align-items: center; gap: 10px; cursor: pointer; list-style: none; }} .current-user-selector summary::-webkit-details-marker {{ display: none; }} .current-user-menu {{ position: absolute; left: 0; right: 0; bottom: calc(100% + 6px); display: grid; gap: 4px; padding: 6px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); box-shadow: var(--shadow-card); z-index: 50; }} .current-user-menu a {{ display: block; padding: 6px 8px; border-radius: 7px; color: var(--text); font-size: 12px; font-weight: 700; text-decoration: none; }} .current-user-menu a:hover {{ background: var(--accent-soft); color: var(--accent-strong); }} .current-user-menu .logout-link {{ color: #b42318; }} .user-icon {{ background: #4f46e5; color: #fff; border-radius: 9px; width: 32px; height: 32px; }} .user-icon svg {{ width: 19px; height: 19px; display: block; fill: currentColor; }} .login-body {{ min-height: 100vh; display: grid; place-items: center; padding: 24px; }} .login-shell {{ width: min(560px, 100%); }} .login-card {{ padding: 28px; border: 1px solid var(--border); border-radius: 18px; background: var(--surface); box-shadow: var(--shadow-card); }} .login-card h1 {{ margin-bottom: 6px; }} .login-users {{ display: grid; gap: 10px; margin: 20px 0; }} .login-user-card {{ display: flex; align-items: center; gap: 12px; padding: 12px; border: 1px solid var(--border); border-radius: 12px; cursor: pointer; }} .login-user-card:hover {{ border-color: var(--accent); background: var(--accent-soft); }} .login-user-card span strong, .login-user-card span small {{ display: block; }} .login-user-card span small, .muted {{ color: var(--muted); }} .login-error {{ padding: 10px 12px; border-radius: 10px; background: var(--danger-soft); color: #b42318; font-weight: 700; }}
+    .sidebar-collapse-icon .material-symbols-rounded {{ font-size: 20px; }}
+    .current-user-selector {{ position: relative; background: #f4f6ff; border-color: #e2e8ff; }} .current-user-selector summary {{ display: flex; align-items: center; gap: 10px; cursor: pointer; list-style: none; }} .current-user-selector summary::-webkit-details-marker {{ display: none; }} .current-user-menu {{ position: absolute; left: 0; right: 0; bottom: calc(100% + 6px); display: grid; gap: 4px; padding: 6px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); box-shadow: var(--shadow-card); z-index: 50; }} .current-user-menu a {{ display: block; padding: 6px 8px; border-radius: 7px; color: var(--text); font-size: 12px; font-weight: 700; text-decoration: none; }} .current-user-menu a:hover {{ background: var(--accent-soft); color: var(--accent-strong); }} .current-user-menu .logout-link {{ color: #b42318; }} .user-icon {{ background: #4f46e5; color: #fff; border-radius: 9px; width: 32px; height: 32px; }} .user-icon .material-symbols-rounded {{ font-size: 20px; }} .login-body {{ min-height: 100vh; display: grid; place-items: center; padding: 24px; }} .login-shell {{ width: min(560px, 100%); }} .login-card {{ padding: 28px; border: 1px solid var(--border); border-radius: 18px; background: var(--surface); box-shadow: var(--shadow-card); }} .login-card h1 {{ margin-bottom: 6px; }} .login-users {{ display: grid; gap: 10px; margin: 20px 0; }} .login-user-card {{ display: flex; align-items: center; gap: 12px; padding: 12px; border: 1px solid var(--border); border-radius: 12px; cursor: pointer; }} .login-user-card:hover {{ border-color: var(--accent); background: var(--accent-soft); }} .login-user-card span strong, .login-user-card span small {{ display: block; }} .login-user-card span small, .muted {{ color: var(--muted); }} .login-error {{ padding: 10px 12px; border-radius: 10px; background: var(--danger-soft); color: #b42318; font-weight: 700; }}
     .user-copy strong, .user-copy small {{ display: block; }} .user-copy small {{ color: var(--muted); }}
     .app-shell.sidebar-collapsed {{ grid-template-columns: 70px minmax(0, 1fr); }}
     .sidebar-collapsed .sidebar {{ padding-left: 8px; padding-right: 8px; }}
@@ -1118,7 +1159,7 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     th[data-col="actions"], td[data-col="actions"], .dictionary-workspace th:last-child {{ width: 78px; min-width: 78px; max-width: 82px; background: inherit; }}
     .edit-action, td[data-col="actions"] details.edit-details > summary {{ width: 30px; min-width: 30px; height: 30px; min-height: 30px; }}
     td[data-col="actions"] details.edit-details > summary {{ appearance: none; -webkit-appearance: none; }}
-    .edit-action::before, td[data-col="actions"] details.edit-details > summary::before {{ content: "✎"; font-size: 16px; }}
+    .edit-action::before, td[data-col="actions"] details.edit-details > summary::before {{ content: "edit"; font-family: 'Material Symbols Rounded'; font-size: 17px; }}
     @media (max-width: 900px) {{
       .app-shell {{ grid-template-columns: 1fr; }}
       .sidebar {{ position: static; height: auto; }}
@@ -1215,7 +1256,8 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
 
     td[data-col="actions"] .edit-action::before,
     td[data-col="actions"] details.edit-details > summary::before {{
-      content: "✎" !important;
+      content: "edit" !important;
+      font-family: 'Material Symbols Rounded' !important;
       position: absolute !important;
       inset: 0 !important;
       display: grid !important;
@@ -1718,16 +1760,7 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
       vertical-align: -2px;
     }}
 
-    .review-required-icon svg {{
-      width: 16px;
-      height: 16px;
-      display: block;
-      fill: none;
-      stroke: currentColor;
-      stroke-width: 1.8;
-      stroke-linecap: round;
-      stroke-linejoin: round;
-    }}
+    .review-required-icon .material-symbols-rounded {{ font-size: 18px; font-variation-settings: 'FILL' 1, 'wght' 500, 'GRAD' 0, 'opsz' 20; }}
 
     .connection-status {{ position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%); z-index: 10001; display: none; align-items: center; gap: 10px; max-width: min(560px, calc(100vw - 24px)); padding: 10px 12px; border: 1px solid var(--border-strong); border-radius: 12px; background: var(--surface); color: var(--text-strong); box-shadow: var(--shadow-card); font-weight: 720; }}
     .connection-status.is-visible {{ display: flex; }}
@@ -3476,7 +3509,7 @@ def dashboard_page(repo: Repository) -> bytes:
 
 
 def history_icon_link(href: str) -> str:
-    return f"<a class='history-link' href='{esc(href)}' title='История' aria-label='История'>ⓘ</a>"
+    return f"<a class='history-link' href='{esc(href)}' title='История' aria-label='История'>{nav_icon('info')}<span class='sr-only'>ⓘ</span></a>"
 
 
 def _json_dict(value: object) -> dict:
@@ -3707,13 +3740,8 @@ def routes_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
 def review_required_icon() -> str:
     return (
         "<span class='review-required-icon' title='Требует проверки' aria-label='Требует проверки'>"
-        "<svg viewBox='0 0 24 24' role='img' focusable='false' aria-hidden='true'>"
-        "<path d='M7 3.75h7.2L19 8.55v10.7A1.75 1.75 0 0 1 17.25 21H7a1.75 1.75 0 0 1-1.75-1.75V5.5A1.75 1.75 0 0 1 7 3.75Z'/>"
-        "<path d='M14 4v5h5'/>"
-        "<path d='M12 11.25v3.5'/>"
-        "<path d='M12 17.25h.01'/>"
-        "<path d='M9.05 18.5h5.9L12 8.85 9.05 18.5Z'/>"
-        "</svg>"
+        f"{nav_icon('warning')}"
+        "<span class='sr-only'>Требует проверки</span>"
         "</span>"
     )
 
