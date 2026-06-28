@@ -831,11 +831,12 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     #routing-event-form[data-current-scope='campaign_setting'] {{ grid-template-columns: minmax(0, 1fr); column-gap: 12px; }}
     #routing-event-form .provider-change-campaign-grid, #routing-event-form .provider-change-campaign-lower-grid {{ display: contents; }}
     #routing-event-form[data-current-scope='campaign_setting'] .provider-change-campaign-grid {{ grid-column: 1 / -1; display: grid; grid-template-columns: minmax(170px, 190px) minmax(220px, .95fr) minmax(260px, 1fr); gap: 12px; align-items: end; }}
-    #routing-event-form[data-current-scope='campaign_setting'] .provider-change-campaign-lower-grid {{ grid-column: 1 / -1; display: grid; grid-template-columns: minmax(220px, .8fr) minmax(360px, 1.2fr); gap: 12px; align-items: start; }}
-    #routing-event-form[data-current-scope='campaign_setting'] .provider-change-campaign-lower-grid > .routing-reason-field, #routing-event-form[data-current-scope='campaign_setting'] .provider-change-campaign-lower-grid > .campaign-company-field {{ align-self: start; }}
+    #routing-event-form[data-current-scope='campaign_setting'] .provider-change-campaign-lower-grid {{ grid-column: 1 / -1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; align-items: start; }}
+    #routing-event-form[data-current-scope='campaign_setting'] .provider-change-campaign-lower-grid > .routing-reason-field, #routing-event-form[data-current-scope='campaign_setting'] .provider-change-campaign-lower-grid > .campaign-company-field {{ align-self: start; min-width: 0; width: auto; }}
     #routing-event-form .provider-change-campaign-grid label, #routing-event-form .provider-change-campaign-lower-grid label {{ min-width: 0; width: auto; }}
     #routing-event-form .campaign-server-field, #routing-event-form .campaign-id-field, #routing-event-form .campaign-change-type-field, #routing-event-form .campaign-company-field, #routing-event-form .campaign-id-action-field {{ min-width: 0; width: auto; }}
-    #routing-event-form .campaign-company-field .multi-select {{ margin: 4px 0 0; box-shadow: none; }}
+    #routing-event-form .campaign-company-field {{ display: block; }}
+    #routing-event-form .campaign-company-field .multi-select {{ margin: 4px 0 0; box-shadow: none; width: 100%; box-sizing: border-box; }}
     #routing-event-form .campaign-id-action-field {{ display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; align-items: end; }}
     #routing-event-form .campaign-id-inline-action {{ display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; }}
     #routing-event-form .campaign-id-inline-action input {{ width: 100%; }}
@@ -843,7 +844,7 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     #routing-event-form .field-error {{ display: block; min-height: 16px; color: var(--danger); font-size: 12px; font-weight: 600; }}
     #routing-event-form .field-label {{ display: inline-flex; align-items: baseline; gap: 4px; margin-bottom: 4px; font-weight: 650; white-space: nowrap; }}
     #routing-event-form .multi-select {{ position: relative; min-width: 0; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }}
-    #routing-event-form .multi-select > summary {{ min-height: 20px; padding: 7px 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 560; }}
+    #routing-event-form .multi-select > summary {{ min-height: 32px; padding: 6px 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 560; box-sizing: border-box; }}
     #routing-event-form .multi-select-panel {{ position: absolute; z-index: 20; inset-inline: 0; top: calc(100% + 4px); max-height: 280px; overflow: auto; padding: 8px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); box-shadow: var(--shadow-soft); }}
     #routing-event-form .multi-option {{ display: flex; gap: 8px; align-items: center; min-width: 0; padding: 6px 4px; font-weight: 560; cursor: pointer; }}
     #routing-event-form .multi-option input {{ width: auto; }}
@@ -1015,7 +1016,7 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .modal-form-card > summary::-webkit-details-marker {{ display: none; }}
     .modal-form-card > summary::marker {{ content: ""; }}
     .modal-form-card[open]::before, .modal-overlay {{ content: ""; position: fixed; inset: 0; z-index: 980; background: rgba(0, 0, 0, 0.55); }}
-    .modal-form-card[open] > form, .modal-form-card[open] > .modal-body, .modal-card {{ position: fixed; left: 50%; top: 50%; z-index: 990; width: min(1040px, calc(100vw - 32px)); max-height: calc(100vh - 48px); overflow: auto; transform: translate(-50%, -50%); margin: 0; padding: 20px; border: 1px solid var(--border-strong); border-radius: 18px; background: var(--surface); color: var(--text); box-shadow: 0 24px 80px rgba(0,0,0,.28); box-sizing: border-box; }}
+    .modal-form-card[open] > form, .modal-form-card[open] > .modal-body, .modal-card {{ position: fixed; left: 50%; top: 50%; z-index: 990; width: min(1040px, calc(100vw - 32px)); max-height: calc(100vh - 48px); overflow: auto; scrollbar-gutter: stable; transform: translate(-50%, -50%); margin: 0; padding: 20px; border: 1px solid var(--border-strong); border-radius: 18px; background: var(--surface); color: var(--text); box-shadow: 0 24px 80px rgba(0,0,0,.28); box-sizing: border-box; }}
     .modal-card form, .modal-form-card[open] > form {{ display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }}
     .modal-card form label, .modal-card form fieldset, .modal-form-card[open] > form label, .modal-form-card[open] > form fieldset {{ min-width: 0; }}
     .modal-card form .wide, .modal-card form p, .modal-card form fieldset, .modal-form-card[open] > form .wide, .modal-form-card[open] > form p, .modal-form-card[open] > form fieldset {{ grid-column: 1 / -1; }}
