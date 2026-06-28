@@ -787,9 +787,11 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     #routing-event-form[data-current-scope='campaign_setting'] {{ grid-template-columns: minmax(0, 1fr); column-gap: 12px; }}
     #routing-event-form .provider-change-campaign-grid, #routing-event-form .provider-change-campaign-lower-grid {{ display: contents; }}
     #routing-event-form[data-current-scope='campaign_setting'] .provider-change-campaign-grid {{ grid-column: 1 / -1; display: grid; grid-template-columns: minmax(170px, 190px) minmax(220px, .95fr) minmax(260px, 1fr); gap: 12px; align-items: end; }}
-    #routing-event-form[data-current-scope='campaign_setting'] .provider-change-campaign-lower-grid {{ grid-column: 1 / -1; display: grid; grid-template-columns: minmax(220px, .8fr) minmax(360px, 1.2fr); gap: 12px; align-items: end; }}
+    #routing-event-form[data-current-scope='campaign_setting'] .provider-change-campaign-lower-grid {{ grid-column: 1 / -1; display: grid; grid-template-columns: minmax(220px, .8fr) minmax(360px, 1.2fr); gap: 12px; align-items: start; }}
+    #routing-event-form[data-current-scope='campaign_setting'] .provider-change-campaign-lower-grid > .routing-reason-field, #routing-event-form[data-current-scope='campaign_setting'] .provider-change-campaign-lower-grid > .campaign-company-field {{ align-self: start; }}
     #routing-event-form .provider-change-campaign-grid label, #routing-event-form .provider-change-campaign-lower-grid label {{ min-width: 0; width: auto; }}
     #routing-event-form .campaign-server-field, #routing-event-form .campaign-id-field, #routing-event-form .campaign-change-type-field, #routing-event-form .campaign-company-field, #routing-event-form .campaign-id-action-field {{ min-width: 0; width: auto; }}
+    #routing-event-form .campaign-company-field .multi-select {{ margin: 4px 0 0; box-shadow: none; }}
     #routing-event-form .campaign-id-action-field {{ display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; align-items: end; }}
     #routing-event-form .campaign-id-inline-action {{ display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; }}
     #routing-event-form .campaign-id-inline-action input {{ width: 100%; }}
