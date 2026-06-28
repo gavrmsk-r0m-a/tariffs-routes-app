@@ -52,7 +52,7 @@ DB_PATH = Path(os.environ.get("MVP_DB_PATH", DEFAULT_DB_PATH))
 ADMIN_ID = 1
 CURRENT_USER_COOKIE = "mvp_auth"
 FILTER_STATE_COOKIE = "mvp_filter_state"
-AUTH_COOKIE_SECRET = os.environ.get("MVP_AUTH_SECRET", "dev-mvp-auth-secret-change-me")
+AUTH_COOKIE_SECRET = os.environ.get("SECRET_KEY") or os.environ.get("MVP_AUTH_SECRET") or "dev-mvp-auth-secret-change-me"
 
 def sign_user_id(user_id: int) -> str:
     value = str(user_id)
@@ -1815,7 +1815,7 @@ def clear_current_user_cookie() -> tuple[str, str]:
 
 
 def is_public_path(path: str) -> bool:
-    return path in {"/login", "/logout", "/health", "/check"} or path.startswith("/static/")
+    return path in {"/login", "/logout", "/change-password", "/health", "/check"} or path.startswith("/static/")
 
 
 def login_page(repo: Repository, message: str | None = None) -> bytes:
@@ -1838,6 +1838,12 @@ def login_page(repo: Repository, message: str | None = None) -> bytes:
   </main>
 </body>
 </html>"""
+    return html.encode("utf-8")
+
+
+def change_password_page(message: str | None = None) -> bytes:
+    notice = f"<div class='login-error'>{esc(message)}</div>" if message else ""
+    html = f"""<!doctype html><html lang='ru' data-theme='calm-blue'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'><title>Смена пароля · TeleRoute</title><style>body{{font-family:Arial,sans-serif;background:#eef2f7;color:#172554}}.login-body{{min-height:100vh;display:grid;place-items:center;padding:24px}}.login-card{{width:min(420px,100%);padding:28px;border:1px solid #e3eaf7;border-radius:18px;background:white;box-shadow:0 10px 24px rgba(32,50,90,.08)}}.login-form{{display:grid;gap:14px;margin-top:18px}}label{{display:grid;gap:6px;font-weight:700}}input{{border:1px solid #cdd6e8;border-radius:10px;padding:10px 12px;font:inherit}}.button{{border:0;border-radius:10px;background:#2547e8;color:white;font-weight:800;padding:10px 18px}}.login-error{{padding:10px 12px;border-radius:10px;background:#fff0f0;color:#b42318;font-weight:700}}</style></head><body class='login-body'><main class='login-card'><h1>Смена пароля</h1><p>Задайте новый пароль для продолжения работы.</p>{notice}<form method='post' action='/change-password' class='login-form'><label>Новый пароль <input name='password' type='password' autocomplete='new-password' required></label><label>Повтор нового пароля <input name='password_confirm' type='password' autocomplete='new-password' required></label><button class='button' type='submit'>Сохранить пароль</button></form><p><a href='/logout'>Выйти</a></p></main></body></html>"""
     return html.encode("utf-8")
 
 def section_for_get_path(path: str) -> str | None:
@@ -3922,18 +3928,21 @@ def users_page(repo: Repository) -> bytes:
   <td>{user['id']}</td>
   <td><code>{esc(user['username'])}</code></td>
   <td>{esc(user['display_name'])}</td>
+  <td>{esc(user['email'] or '—')}</td>
   <td><span class='status-badge'>{esc(role_label(user['role_key']))}</span></td>
   <td>{'Да' if user['is_active'] else 'Нет'}</td>
+  <td>{'Да' if user['must_change_password'] else 'Нет'}</td>
   <td>{esc(user['created_at'])}</td>
   <td>{esc(user['updated_at'])}</td>
   <td data-col='actions' class='actions'>
     <details class='edit-details'><summary>Редактировать</summary>
       <form class='form-grid' method='post' action='/admin/users/{user['id']}/update'>
+        <label>Логин <input name='username' value='{esc(user['username'])}' required></label>
+        <label>Email <input name='email' type='email' value='{esc(user['email'] or '')}'></label>
         <label>Отображаемое имя <input name='display_name' value='{esc(user['display_name'])}' required></label>
         <label>Роль <select name='role_key'>{role_options(user['role_key'])}</select></label>
         <label>Активен <select name='is_active'><option value='1' {'selected' if user['is_active'] else ''}>Да</option><option value='0' {'selected' if not user['is_active'] else ''}>Нет</option></select></label>
-        <label>Новый пароль <input name='password' type='password' minlength='6' autocomplete='new-password'></label>
-        <label>Повторите пароль <input name='password_confirm' type='password' minlength='6' autocomplete='new-password'></label>
+        <fieldset><legend>Сбросить пароль</legend><label>Новый временный пароль <input name='password' type='password' minlength='6' autocomplete='new-password'></label><label>Повторите пароль <input name='password_confirm' type='password' minlength='6' autocomplete='new-password'></label><p class='muted'>При сбросе пользователь будет обязан сменить пароль при следующем входе.</p></fieldset>
         {permission_matrix_form(repo, int(user['id']))}
         <button>Сохранить</button>
       </form>
@@ -3942,13 +3951,15 @@ def users_page(repo: Repository) -> bytes:
 </tr>""")
     create_html = f"""<form class='form-grid' method='post' action='/admin/users/create'>
 <label>Логин <span class='required'>*</span><input name='username' placeholder='operator2' required></label>
+<label>Email <input name='email' type='email' placeholder='user@example.com'></label>
 <label>Отображаемое имя <span class='required'>*</span><input name='display_name' placeholder='Оператор' required></label>
 <label>Роль <select name='role_key'>{role_options('operator')}</select></label>
-<label>Пароль <span class='required'>*</span><input name='password' type='password' minlength='6' required autocomplete='new-password'></label>
+<label>Временный пароль <span class='required'>*</span><input name='password' type='password' minlength='6' required autocomplete='new-password'></label>
 <label>Повторите пароль <span class='required'>*</span><input name='password_confirm' type='password' minlength='6' required autocomplete='new-password'></label>
+<label class='checkbox-inline'><input type='checkbox' name='must_change_password' value='1' checked> Требовать смену пароля при первом входе</label>
 {permission_matrix_form(repo)}
 <button>Создать</button></form>"""
-    table_html = f"<table><thead><tr><th>ID</th><th>Логин</th><th>Отображаемое имя</th><th>Роль</th><th>Активен</th><th>Создан</th><th>Обновлён</th><th data-col='actions'>Действия</th></tr></thead><tbody>{''.join(rows)}</tbody></table>"
+    table_html = f"<table><thead><tr><th>ID</th><th>Логин</th><th>Отображаемое имя</th><th>Email</th><th>Роль</th><th>Активен</th><th>Смена пароля</th><th>Создан</th><th>Обновлён</th><th data-col='actions'>Действия</th></tr></thead><tbody>{''.join(rows)}</tbody></table>"
     body = f"""
 <h1>Пользователи</h1>
 <p class='muted'>Пользователи входят по логину и паролю. Права доступа берутся из индивидуальной матрицы; если она не заполнена, применяются права роли по умолчанию.</p>
@@ -4568,7 +4579,7 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
             raise BusinessRuleError("Пароль обязателен и должен быть не короче 6 символов")
         if password != password_confirm:
             raise BusinessRuleError("Пароли не совпадают")
-        new_user_id = repo.create_user(username, data.get("role_key") or "operator", display_name, password=password)
+        new_user_id = repo.create_user(username, data.get("role_key") or "operator", display_name, password=password, email=data.get("email"), must_change_password=data.get("must_change_password") == "1")
         save_user_permissions(repo, new_user_id, data)
         return "/admin/users"
     if path.startswith("/admin/users/") and path.endswith("/update"):
@@ -4581,6 +4592,8 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
             display_name=display_name,
             role_key=data.get("role_key") or "operator",
             is_active=data.get("is_active") == "1",
+            username=data.get("username"),
+            email=data.get("email"),
         )
         password = data.get("password", "")
         password_confirm = data.get("password_confirm", "")
@@ -4589,7 +4602,7 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
                 raise BusinessRuleError("Новый пароль должен быть не короче 6 символов")
             if password != password_confirm:
                 raise BusinessRuleError("Пароли не совпадают")
-            repo.update_user_password(user_id, password)
+            repo.update_user_password(user_id, password, must_change_password=True)
         save_user_permissions(repo, user_id, data)
         return "/admin/users"
     if path == "/routes/create":
@@ -5037,7 +5050,30 @@ def app(environ, start_response):
             if user is None:
                 start_response("401 Unauthorized", [*html_headers(), clear_current_user_cookie()])
                 return [login_page(repo, "Неверный логин или пароль")]
-            return redirect(start_response, safe_redirect_target(parsed.get("redirect_to") or "/routes"), [auth_cookie_header(int(user["id"]))])
+            target = "/change-password" if user["must_change_password"] else safe_redirect_target(parsed.get("redirect_to") or "/routes")
+            return redirect(start_response, target, [auth_cookie_header(int(user["id"]))])
+        if method == "GET" and path == "/change-password":
+            if current_user_id is None:
+                return redirect(start_response, "/login", [clear_current_user_cookie()] if cookie_id is not None else None)
+            start_response("200 OK", html_headers())
+            return [change_password_page()]
+        if method == "POST" and path == "/change-password":
+            if current_user_id is None:
+                return redirect(start_response, "/login", [clear_current_user_cookie()] if cookie_id is not None else None)
+            raw_size = int(environ.get("CONTENT_LENGTH") or "0")
+            raw_body = environ["wsgi.input"].read(raw_size).decode("utf-8")
+            parsed = {key: values[-1] for key, values in parse_qs(raw_body, keep_blank_values=True).items()}
+            password = parsed.get("password", "")
+            if not password:
+                start_response("400 Bad Request", html_headers())
+                return [change_password_page("Пароль не может быть пустым")]
+            if password != parsed.get("password_confirm", ""):
+                start_response("400 Bad Request", html_headers())
+                return [change_password_page("Пароли не совпадают")]
+            repo.update_user_password(current_user_id, password, must_change_password=False)
+            return redirect(start_response, "/routes")
+        if current_user is not None and current_user["must_change_password"] and path not in {"/change-password", "/logout"}:
+            return redirect(start_response, "/change-password")
         if not is_public_path(path) and current_user_id is None:
             return redirect(start_response, "/login", [clear_current_user_cookie()] if cookie_id is not None else None)
         if method == "POST":

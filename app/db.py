@@ -177,7 +177,10 @@ def _seed_default_users_if_empty(conn: sqlite3.Connection) -> None:
             values.append(role_key)
         if "role" in columns:
             insert_columns.append("role")
-            values.append("Admin" if role_key == "admin" else "User")
+            values.append(role_key)
+        if "must_change_password" in columns:
+            insert_columns.append("must_change_password")
+            values.append(0)
         if "password_hash" in columns and "password_salt" in columns:
             password_hash, password_salt = hash_password(password)
             insert_columns.extend(["password_hash", "password_salt"])
@@ -198,8 +201,11 @@ def run_lightweight_migrations(conn: sqlite3.Connection) -> None:
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             username TEXT NOT NULL UNIQUE,
+            email TEXT,
             display_name TEXT NOT NULL,
             role_key TEXT NOT NULL DEFAULT 'operator',
+            role TEXT,
+            must_change_password INTEGER NOT NULL DEFAULT 0 CHECK (must_change_password IN (0, 1)),
             is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -208,6 +214,9 @@ def run_lightweight_migrations(conn: sqlite3.Connection) -> None:
         )
     """)
     _add_column_if_missing(conn, "users", "role_key", "TEXT NOT NULL DEFAULT 'operator'")
+    _add_column_if_missing(conn, "users", "email", "TEXT")
+    _add_column_if_missing(conn, "users", "role", "TEXT")
+    _add_column_if_missing(conn, "users", "must_change_password", "INTEGER NOT NULL DEFAULT 0 CHECK (must_change_password IN (0, 1))")
     _add_column_if_missing(conn, "users", "display_name", "TEXT")
     _add_column_if_missing(conn, "users", "is_active", "INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1))")
     _add_column_if_missing(conn, "users", "created_at", "TEXT")
@@ -231,12 +240,13 @@ def run_lightweight_migrations(conn: sqlite3.Connection) -> None:
         _add_column_if_missing(conn, "server_route_priorities", "has_overflow", "INTEGER NOT NULL DEFAULT 0 CHECK (has_overflow IN (0, 1))")
         _add_column_if_missing(conn, "server_route_priorities", "overflow_route_id", "INTEGER REFERENCES routes(id) ON DELETE RESTRICT")
     conn.execute("UPDATE users SET display_name = username WHERE display_name IS NULL OR TRIM(display_name) = ''")
+    conn.execute("UPDATE users SET role = role_key WHERE role IS NULL OR TRIM(role) = ''")
     if "role" in _column_names(conn, "users"):
-        conn.execute("UPDATE users SET role_key = CASE WHEN role = 'Admin' THEN 'admin' ELSE 'operator' END WHERE role_key IS NULL OR role_key = ''")
+        conn.execute("UPDATE users SET role_key = CASE WHEN LOWER(role) = 'admin' THEN 'admin' WHEN LOWER(role) IN ('operator','duty','boss','guest') THEN LOWER(role) ELSE 'operator' END WHERE role_key IS NULL OR role_key = ''")
     _seed_default_users_if_empty(conn)
     for username, _display_name, _role_key, password in DEFAULT_USERS:
         row = conn.execute("SELECT id, password_hash, password_salt FROM users WHERE username = ?", (username,)).fetchone()
-        if row and (not row["password_hash"] or not row["password_salt"]):
+        if row and (not row["password_hash"] or (not row["password_salt"] and not str(row["password_hash"]).startswith("pbkdf2:"))):
             password_hash, password_salt = hash_password(password)
             conn.execute("UPDATE users SET password_hash = ?, password_salt = ? WHERE id = ?", (password_hash, password_salt, row["id"]))
     _add_column_if_missing(conn, "calling_companies", "line_count", "INTEGER NOT NULL DEFAULT 0 CHECK (line_count >= 0)")

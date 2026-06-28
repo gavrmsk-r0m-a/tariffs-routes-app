@@ -14,21 +14,46 @@ PHONE_RE = re.compile(r"^[1-9][0-9]{6,20}$")
 VALID_PHONE_STATUSES = {"used", "free", "problem", "unknown"}
 
 
-def hash_password(password: str, salt: bytes | None = None) -> tuple[str, str]:
-    if salt is None:
-        salt = os.urandom(16)
+def generate_password_hash(password: str) -> str:
+    salt = os.urandom(16)
     digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, 200_000)
-    return digest.hex(), salt.hex()
+    return f"pbkdf2:sha256:200000${salt.hex()}${digest.hex()}"
 
 
-def verify_password(password: str, password_hash: str | None, password_salt: str | None) -> bool:
-    if not password_hash or not password_salt:
-        return False
+def check_password_hash(password_hash: str, password: str) -> bool:
     try:
-        expected, _ = hash_password(password, bytes.fromhex(password_salt))
+        method, salt_hex, digest_hex = password_hash.split("$", 2)
+        _prefix, alg, iterations_text = method.split(":", 2)
+        if alg != "sha256":
+            return False
+        digest = hashlib.pbkdf2_hmac(alg, password.encode("utf-8"), bytes.fromhex(salt_hex), int(iterations_text))
+    except (ValueError, TypeError):
+        return False
+    return hmac.compare_digest(digest.hex(), digest_hex)
+
+
+def hash_password(password: str, salt: bytes | None = None) -> tuple[str, str]:
+    # Keep the legacy two-value return for older tests/callers, but store new
+    # passwords as a self-contained Werkzeug-style hash in password_hash.
+    if salt is not None:
+        digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, 200_000)
+        return digest.hex(), salt.hex()
+    return generate_password_hash(password), ""
+
+
+def verify_password(password: str, password_hash: str | None, password_salt: str | None = None) -> bool:
+    if not password_hash:
+        return False
+    if password_salt:
+        try:
+            expected, _ = hash_password(password, bytes.fromhex(password_salt))
+        except ValueError:
+            return False
+        return hmac.compare_digest(expected, password_hash)
+    try:
+        return check_password_hash(password_hash, password)
     except ValueError:
         return False
-    return hmac.compare_digest(expected, password_hash)
 
 
 def normalize_search_text(value: object) -> str | None:
@@ -233,7 +258,7 @@ class Repository:
             return "operator"
         return normalized or "operator"
 
-    def create_user(self, username: str, role: str = "admin", display_name: str | None = None, password: str | None = None) -> int:
+    def create_user(self, username: str, role: str = "admin", display_name: str | None = None, password: str | None = None, email: str | None = None, must_change_password: bool = False) -> int:
         username = username.strip()
         existing = self.conn.execute("SELECT id FROM users WHERE username = ?", (username,)).fetchone()
         if existing:
@@ -247,7 +272,13 @@ class Repository:
             values.append(role_key)
         if "role" in columns:
             insert_columns.append("role")
-            values.append("Admin" if role_key == "admin" else "User")
+            values.append(role_key)
+        if "email" in columns:
+            insert_columns.append("email")
+            values.append((email or "").strip() or None)
+        if "must_change_password" in columns:
+            insert_columns.append("must_change_password")
+            values.append(1 if must_change_password else 0)
         if "password_hash" in columns and "password_salt" in columns:
             password_hash, password_salt = hash_password(password) if password is not None else (None, None)
             insert_columns.extend(["password_hash", "password_salt"])
@@ -272,7 +303,7 @@ class Repository:
         return list(self.conn.execute(
             f"""
             SELECT id, username, COALESCE(NULLIF(display_name, ''), username) AS display_name,
-                   {role_expr} AS role_key, is_active, created_at, updated_at
+                   {role_expr} AS role_key, email, must_change_password, is_active, created_at, updated_at
             FROM users
             {where}
             ORDER BY is_active DESC, display_name COLLATE NOCASE, username COLLATE NOCASE
@@ -284,7 +315,7 @@ class Repository:
         return self.conn.execute(
             f"""
             SELECT id, username, COALESCE(NULLIF(display_name, ''), username) AS display_name,
-                   {role_expr} AS role_key, is_active, created_at, updated_at
+                   {role_expr} AS role_key, email, must_change_password, is_active, created_at, updated_at
             FROM users
             WHERE id = ?
             """,
@@ -298,7 +329,7 @@ class Repository:
         return self.conn.execute(
             f"""
             SELECT id, username, COALESCE(NULLIF(display_name, ''), username) AS display_name,
-                   {role_expr} AS role_key, is_active, created_at, updated_at{password_cols}
+                   {role_expr} AS role_key, email, must_change_password, is_active, created_at, updated_at{password_cols}
             FROM users
             WHERE username = ?
             """,
@@ -315,25 +346,33 @@ class Repository:
             ok = False
         return user if ok else None
 
-    def update_user_password(self, user_id: int, password: str) -> None:
+    def update_user_password(self, user_id: int, password: str, *, must_change_password: bool = False) -> None:
         columns = self._user_columns()
         if not {"password_hash", "password_salt"}.issubset(columns):
             return
         password_hash, password_salt = hash_password(password)
-        self.conn.execute("UPDATE users SET password_hash = ?, password_salt = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (password_hash, password_salt, user_id))
+        must_clause = ", must_change_password = ?" if "must_change_password" in columns else ""
+        params: tuple[object, ...] = (password_hash, password_salt, 1 if must_change_password else 0, user_id) if must_clause else (password_hash, password_salt, user_id)
+        self.conn.execute(f"UPDATE users SET password_hash = ?, password_salt = ?, updated_at = CURRENT_TIMESTAMP{must_clause} WHERE id = ?", params)
         self.conn.commit()
 
-    def update_user(self, user_id: int, *, display_name: str, role_key: str, is_active: bool) -> None:
+    def update_user(self, user_id: int, *, display_name: str, role_key: str, is_active: bool, username: str | None = None, email: str | None = None) -> None:
         columns = self._user_columns()
         assignments = ["display_name = ?", "is_active = ?", "updated_at = CURRENT_TIMESTAMP"]
         values: list[object] = [display_name.strip(), 1 if is_active else 0]
+        if username is not None:
+            assignments.append("username = ?")
+            values.append(username.strip())
+        if "email" in columns:
+            assignments.append("email = ?")
+            values.append((email or "").strip() or None)
         normalized_role = self._role_key(role_key)
         if "role_key" in columns:
             assignments.append("role_key = ?")
             values.append(normalized_role)
         if "role" in columns:
             assignments.append("role = ?")
-            values.append("Admin" if normalized_role == "admin" else "User")
+            values.append(normalized_role)
         values.append(user_id)
         self.conn.execute(f"UPDATE users SET {', '.join(assignments)} WHERE id = ?", tuple(values))
         self.conn.commit()

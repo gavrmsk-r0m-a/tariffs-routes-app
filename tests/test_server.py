@@ -439,6 +439,47 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertEqual(content.count('href="/logout"'), 1)
 
 
+    def test_must_change_password_redirects_until_changed(self):
+        conn = server.connect(server.DB_PATH)
+        try:
+            server.init_db(conn)
+            repo = server.Repository(conn)
+            user_id = repo.create_user("tempuser", "operator", "Temp", password="temp123", must_change_password=True)
+        finally:
+            conn.close()
+        captured, _ = self.request("/login", method="POST", body=urlencode({"username": "tempuser", "password": "temp123"}))
+        self.assertEqual(captured["status"], "303 See Other")
+        self.assertIn(("Location", "/change-password"), captured["headers"])
+        set_cookie = dict(captured["headers"]).get("Set-Cookie", "")
+        captured, _ = self.request("/routes", cookie=set_cookie, auto_login=False)
+        self.assertEqual(captured["status"], "303 See Other")
+        self.assertIn(("Location", "/change-password"), captured["headers"])
+        body = urlencode({"password": "newtemp123", "password_confirm": "newtemp123"})
+        captured, _ = self.request("/change-password", method="POST", body=body, cookie=set_cookie, auto_login=False)
+        self.assertEqual(captured["status"], "303 See Other")
+        conn = server.connect(server.DB_PATH)
+        try:
+            row = conn.execute("SELECT must_change_password FROM users WHERE id = ?", (user_id,)).fetchone()
+        finally:
+            conn.close()
+        self.assertEqual(row["must_change_password"], 0)
+        captured, _ = self.request("/login", method="POST", body=urlencode({"username": "tempuser", "password": "newtemp123"}))
+        self.assertEqual(captured["status"], "303 See Other")
+        self.assertIn(("Location", "/routes"), captured["headers"])
+
+    def test_inactive_user_cannot_login(self):
+        conn = server.connect(server.DB_PATH)
+        try:
+            server.init_db(conn)
+            repo = server.Repository(conn)
+            user_id = repo.create_user("inactive", "operator", "Inactive", password="inactive123")
+            repo.update_user(user_id, display_name="Inactive", role_key="operator", is_active=False)
+        finally:
+            conn.close()
+        captured, content = self.request("/login", method="POST", body=urlencode({"username": "inactive", "password": "inactive123"}))
+        self.assertEqual(captured["status"], "401 Unauthorized")
+        self.assertIn("Неверный логин или пароль", content)
+
     def test_logout_clears_selected_user_and_routes_require_login(self):
         cookie = self.user_cookie("admin")
         captured, _ = self.request("/logout", cookie=cookie)

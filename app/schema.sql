@@ -3,8 +3,11 @@ PRAGMA foreign_keys = ON;
 CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     username TEXT NOT NULL UNIQUE,
+    email TEXT,
     display_name TEXT NOT NULL,
     role_key TEXT NOT NULL DEFAULT 'operator',
+    role TEXT,
+    must_change_password INTEGER NOT NULL DEFAULT 0 CHECK (must_change_password IN (0, 1)),
     is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
     password_hash TEXT,
     password_salt TEXT,
