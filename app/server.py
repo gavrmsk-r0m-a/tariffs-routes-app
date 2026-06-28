@@ -967,6 +967,23 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
       color: var(--text);
       border-color: var(--border-strong);
     }}
+
+    .modal-form-card > summary {{ display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 36px; padding: 8px 14px; border: 1px solid var(--border-strong); border-radius: 10px; background: var(--accent-soft); color: var(--accent-strong); font-weight: 760; cursor: pointer; list-style: none; }}
+    .modal-form-card > summary::-webkit-details-marker {{ display: none; }}
+    .modal-form-card > summary::marker {{ content: ""; }}
+    .modal-form-card[open]::before, .modal-overlay {{ content: ""; position: fixed; inset: 0; z-index: 980; background: rgba(0, 0, 0, 0.55); }}
+    .modal-form-card[open] > form, .modal-form-card[open] > .modal-body, .modal-card {{ position: fixed; left: 50%; top: 50%; z-index: 990; width: min(860px, calc(100vw - 32px)); max-height: calc(100vh - 48px); overflow: auto; transform: translate(-50%, -50%); margin: 0; padding: 20px; border: 1px solid var(--border-strong); border-radius: 18px; background: var(--surface); color: var(--text); box-shadow: 0 24px 80px rgba(0,0,0,.28); box-sizing: border-box; }}
+    .modal-card form, .modal-form-card[open] > form {{ display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }}
+    .modal-card form label, .modal-card form fieldset, .modal-form-card[open] > form label, .modal-form-card[open] > form fieldset {{ min-width: 0; }}
+    .modal-card form .wide, .modal-card form p, .modal-card form fieldset, .modal-form-card[open] > form .wide, .modal-form-card[open] > form p, .modal-form-card[open] > form fieldset {{ grid-column: 1 / -1; }}
+    .modal-card h2 {{ margin: 0 0 4px; color: var(--text-strong); }}
+    .modal-description {{ margin: 0 0 16px; color: var(--muted); }}
+    .modal-actions {{ grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; padding-top: 12px; border-top: 1px solid var(--border); }}
+    .modal-cancel {{ background: var(--surface-muted); color: var(--text); border-color: var(--border-strong); }}
+    .modal-card input, .modal-card select, .modal-card textarea, .modal-form-card[open] input, .modal-form-card[open] select, .modal-form-card[open] textarea {{ width: 100%; box-sizing: border-box; background: var(--input-bg, var(--surface)); color: var(--text); border-color: var(--border-strong); }}
+    html[data-theme="dark"] .modal-card, html[data-theme="dark"] .modal-form-card[open] > form, html[data-theme="dark"] .modal-form-card[open] > .modal-body {{ background: var(--surface); border-color: var(--border-strong); color: var(--text); }}
+    html[data-theme="dark"] .modal-overlay, html[data-theme="dark"] .modal-form-card[open]::before {{ background: rgba(0, 0, 0, 0.55); }}
+    @media (max-width: 720px) {{ .modal-card form, .modal-form-card[open] > form {{ grid-template-columns: 1fr; }} .modal-card, .modal-form-card[open] > form, .modal-form-card[open] > .modal-body {{ width: calc(100vw - 18px); max-height: calc(100vh - 18px); padding: 14px; }} }}
     .danger-action, form[action$="/deactivate"] button {{ min-height: 28px; min-width: auto; padding: 4px 8px; color: var(--danger-strong, var(--danger)); border-color: var(--danger); background: var(--danger-soft); font-size: 12px; font-weight: 720; box-shadow: none; }}
     .danger-action:hover, form[action$="/deactivate"] button:hover {{ background: color-mix(in srgb, var(--danger-soft) 78%, var(--surface)); border-color: var(--danger); color: var(--danger); }}
     html[data-theme="mvp"] .side-link:hover, html[data-theme="mvp"] .admin-link:hover, html[data-theme="terminal-paper"] .side-link:hover, html[data-theme="terminal-paper"] .admin-link:hover {{ background: color-mix(in srgb, var(--surface) 78%, transparent); border-color: var(--border); color: var(--text-strong); }}
@@ -1880,6 +1897,97 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
         target.classList.toggle("open", !expanded);
       }});
     }});
+    function enhanceModalForm(form, closeCallback) {{
+      if (!form || form.dataset.modalEnhanced === "1") return;
+      form.dataset.modalEnhanced = "1";
+      const saveButton = form.querySelector('button[type="submit"], button:not([type]), input[type="submit"]');
+      const actions = document.createElement("div");
+      actions.className = "modal-actions";
+      const cancel = document.createElement("button");
+      cancel.type = "button";
+      cancel.className = "modal-cancel";
+      cancel.textContent = "Отмена";
+      if (saveButton) {{
+        saveButton.parentNode.insertBefore(actions, saveButton);
+        actions.appendChild(cancel);
+        actions.appendChild(saveButton);
+      }} else {{
+        form.appendChild(actions);
+        actions.appendChild(cancel);
+      }}
+      cancel.addEventListener("click", closeCallback);
+    }}
+    const modalDetails = Array.from(document.querySelectorAll("details.modal-form-card[data-modal-details]"));
+    modalDetails.forEach((details) => {{
+      const form = details.querySelector("form");
+      enhanceModalForm(form, () => details.removeAttribute("open"));
+      details.addEventListener("click", (event) => {{
+        if (details.open && event.target === details) details.removeAttribute("open");
+      }});
+    }});
+    document.addEventListener("keydown", (event) => {{
+      if (event.key !== "Escape") return;
+      const openDetails = modalDetails.find((details) => details.open);
+      if (openDetails) {{
+        openDetails.removeAttribute("open");
+        event.preventDefault();
+      }}
+    }});
+    function titleFromEditHref(href) {{
+      if (href.includes("/routes/")) return "Редактировать маршрут";
+      if (href.includes("/tariffs/")) return "Редактировать тариф";
+      if (href.includes("/phones/")) return "Редактировать номер";
+      if (href.includes("/companies/")) return "Редактировать кампанию";
+      if (href.includes("/provider-changes/")) return "Редактировать событие";
+      if (href.includes("/admin/users/")) return "Редактировать пользователя";
+      return "Редактировать";
+    }}
+    function closeRemoteModal() {{
+      document.querySelectorAll(".modal-overlay, .modal-card[data-remote-modal]").forEach((node) => node.remove());
+    }}
+    document.addEventListener("click", async (event) => {{
+      const link = event.target.closest("a.edit-action");
+      if (!link || !link.href) return;
+      event.preventDefault();
+      closeRemoteModal();
+      try {{
+        const response = await fetch(link.href, {{ headers: {{ "X-Requested-With": "fetch" }} }});
+        const text = await response.text();
+        const doc = new DOMParser().parseFromString(text, "text/html");
+        const form = doc.querySelector("form[action*='/update']");
+        if (!response.ok || !form) {{
+          window.location.href = link.href;
+          return;
+        }}
+        const overlay = document.createElement("div");
+        overlay.className = "modal-overlay";
+        const card = document.createElement("section");
+        card.className = "modal-card";
+        card.dataset.remoteModal = "1";
+        card.innerHTML = `<h2>${{titleFromEditHref(link.getAttribute("href") || "")}}</h2><p class="modal-description">Поля и сохранение работают как раньше.</p>`;
+        const importedForm = document.importNode(form, true);
+        card.appendChild(importedForm);
+        document.body.appendChild(overlay);
+        document.body.appendChild(card);
+        Array.from(doc.querySelectorAll("script")).forEach((script) => {{
+          if (!script.src && script.textContent.trim()) {{
+            const next = document.createElement("script");
+            next.textContent = script.textContent;
+            card.appendChild(next);
+          }}
+        }});
+        enhanceModalForm(importedForm, closeRemoteModal);
+        overlay.addEventListener("click", closeRemoteModal);
+      }} catch (error) {{
+        window.location.href = link.href;
+      }}
+    }});
+    document.addEventListener("keydown", (event) => {{
+      if (event.key === "Escape" && document.querySelector(".modal-card[data-remote-modal]")) {{
+        closeRemoteModal();
+        event.preventDefault();
+      }}
+    }});
     document.querySelectorAll('td[data-col="actions"] details > summary').forEach((summary) => {{
       const label = (summary.textContent || '').trim() || 'Редактировать';
       if (!summary.title) summary.title = label;
@@ -2504,7 +2612,7 @@ def filter_card(form_html: str, q: dict[str, str], keys: list[str] | tuple[str, 
 
 def form_card(summary: str, form_html: str, *, open_by_default: bool = False) -> str:
     open_attr = " open" if open_by_default else ""
-    return f"<details class='form-card'{open_attr}><summary class='form-summary'>{summary}</summary>{form_html}</details>"
+    return f"<details class='form-card modal-form-card'{open_attr} data-modal-details><summary class='form-summary'>{summary}</summary>{form_html}</details>"
 
 
 def table_page_container(inner_html: str) -> str:
@@ -3856,7 +3964,7 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
         ]
         readonly_html = "".join(f"<div><dt>{esc(label)}</dt><dd>{esc(value)}</dd></div>" for label, value in readonly_rows)
         return f"""
-<details class='form-card' open><summary class='form-summary'>Редактировать комментарий</summary>
+<details class='form-card modal-form-card' open data-modal-details><summary class='form-summary'>Редактировать комментарий</summary>
 <p class='muted wide'>Событие смены провайдеров является неизменяемым операционным событием. Для исправления типа, маршрута, кампании или авторотации создайте новое корректирующее событие.</p>
 <dl class='readonly-grid'>{readonly_html}</dl>
 <form method='post' action='/provider-changes/{event['id']}/update' class='form-grid' id='routing-event-form'>
@@ -3908,7 +4016,7 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
     provider_selected = event["provider_id"] if event else None
     error_html = f"<div class='error wide'>{esc(error_message)}</div>" if error_message else ""
     return f"""
-<details class='form-card' {'open' if is_existing_event or error_message else ''}><summary class='form-summary'>{'Редактировать событие' if is_existing_event else '+ Добавить событие'}</summary>
+<details class='form-card modal-form-card' {'open' if is_existing_event or error_message else ''} data-modal-details><summary class='form-summary'>{'Редактировать событие' if is_existing_event else '+ Добавить событие'}</summary>
 <form method='post' action='{action}' class='form-grid' id='routing-event-form' data-current-scope='{esc(scope)}' data-default-country-id='{esc(active_country_id_if_single(repo) or '')}'>
   {error_html}
   <fieldset><legend>Область применения</legend>
