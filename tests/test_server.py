@@ -62,6 +62,24 @@ class ServerSmokeTest(unittest.TestCase):
             conn.close()
         return f"{server.CURRENT_USER_COOKIE}={server.sign_user_id(user_id)}"
 
+    def grant_user_read(self, username, *sections):
+        self.request("/login")
+        conn = server.connect(server.DB_PATH)
+        try:
+            user_id = conn.execute("SELECT id FROM users WHERE username = ?", (username,)).fetchone()["id"]
+            for section in sections:
+                conn.execute(
+                    """
+                    INSERT INTO user_permissions(user_id, section_key, can_read, can_write, can_export)
+                    VALUES (?, ?, 1, 0, 0)
+                    ON CONFLICT(user_id, section_key) DO UPDATE SET can_read = excluded.can_read
+                    """,
+                    (user_id, section),
+                )
+            conn.commit()
+        finally:
+            conn.close()
+
 
 
     def test_provider_change_edit_form_contains_updated_at_original(self):
@@ -1032,14 +1050,18 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertEqual(captured["status"], "200 OK")
         self.assertIn("side-nav", content)
         self.assertIn("Администрирование</button>", content)
-        self.assertIn("admin-tree open", content)
         self.assertIn("href='/routes'><span class='nav-icon'", content)
         self.assertIn("<span class='side-label'>Маршруты</span></a>", content)
         self.assertIn("href='/provider-changes'><span class='nav-icon'", content)
         self.assertIn("<span class='side-label'>Смена провайдеров</span></a>", content)
+        self.assertIn("href='/admin/server-priorities'><span class='nav-icon'", content)
+        self.assertIn("<span class='side-label'>Приоритет по серверам</span></a>", content)
         self.assertIn("href='/admin/company-routing-settings'><span class='nav-icon'", content)
-        self.assertIn("<span>Схема маршрутизации кампаний</span></a>", content)
-        self.assertIn("admin-link active", content)
+        self.assertIn("<span class='side-label'>Схема маршрутизации кампаний</span></a>", content)
+        admin_tree = content.split('id="admin-nav"', 1)[1].split("</div>", 1)[0]
+        self.assertNotIn("Приоритет по серверам", admin_tree)
+        self.assertNotIn("Схема маршрутизации кампаний", admin_tree)
+        self.assertIn("side-link active", content)
 
     def test_provider_changes_sidebar_link_renders_attributes_and_icon_safely(self):
         for path in ("/dashboard", "/provider-changes"):
@@ -3417,20 +3439,38 @@ class RolePermissionTest(ServerSmokeTest):
     def test_admin_sees_all_main_navigation_and_admin_navigation(self):
         captured, content = self.request("/routes")
         self.assertEqual(captured["status"], "200 OK")
-        for label in ["Маршруты", "Тарифы", "Купленные номера", "Кампании прозвона", "Смена провайдеров", "Администрирование"]:
+        for label in [
+            "Маршруты",
+            "Тарифы",
+            "Купленные номера",
+            "Кампании прозвона",
+            "Смена провайдеров",
+            "Приоритет по серверам",
+            "Схема маршрутизации кампаний",
+            "HLR",
+            "Spam Checker",
+            "Администрирование",
+        ]:
             self.assertIn(label, content)
+        self.assertIn("side-link-disabled", content)
+        self.assertIn("title='Скоро'", content)
+        self.assertIn("fact_check", content)
+        self.assertIn("report", content)
         self.assertIn("href='/admin/users'", content)
 
     def test_operator_sees_working_sections_and_allowed_admin_navigation_only(self):
+        self.grant_user_read("duty", "admin_server_priorities", "admin_company_routing_settings")
         captured, content = self.request("/routes", cookie=self.user_cookie("duty"))
         self.assertEqual(captured["status"], "200 OK")
         for label in ["Маршруты", "Тарифы", "Купленные номера", "Кампании прозвона", "Смена провайдеров"]:
             self.assertIn(label, content)
-        self.assertIn("Администрирование</button>", content)
+        self.assertNotIn("Администрирование</button>", content)
         self.assertIn("href='/admin/server-priorities'", content)
         self.assertIn("Приоритет по серверам", content)
         self.assertIn("href='/admin/company-routing-settings'", content)
         self.assertIn("Схема маршрутизации кампаний", content)
+        self.assertNotIn("HLR", content)
+        self.assertNotIn("Spam Checker", content)
         self.assertNotIn("href='/admin/users'", content)
         self.assertNotIn("href='/admin/dictionaries'", content)
         self.assertNotIn("href='/admin/import'", content)

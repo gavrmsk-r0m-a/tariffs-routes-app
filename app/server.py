@@ -331,6 +331,8 @@ SEMANTIC_ICONS = {
     "phones": material_icon("sim_card"),
     "companies": material_icon("campaign"),
     "provider_changes": material_icon("sync_alt"),
+    "admin_hlr": material_icon("fact_check"),
+    "admin_spam_checker": material_icon("report"),
     "admin": material_icon("admin_panel_settings"),
     "admin_server_priorities": material_icon("flag"),
     "admin_company_routing_settings": material_icon("account_tree"),
@@ -389,11 +391,11 @@ NAV_ITEMS = [
     ("phones", "/phones", "Купленные номера", ("Купленные номера", "Редактировать номер")),
     ("companies", "/companies", "Кампании прозвона", ("Кампании прозвона", "Редактировать кампанию")),
     ("provider_changes", "/provider-changes", "Смена провайдеров", ("Смена провайдеров", "Редактировать событие")),
+    ("admin_server_priorities", "/admin/server-priorities", "Приоритет по серверам", ("Приоритет по серверам",)),
+    ("admin_company_routing_settings", "/admin/company-routing-settings", "Схема маршрутизации кампаний", ("Схема маршрутизации кампаний",)),
 ]
 
 ADMIN_NAV_ITEMS = [
-    ("admin_server_priorities", "/admin/server-priorities", "Приоритет по серверам", ("Приоритет по серверам",)),
-    ("admin_company_routing_settings", "/admin/company-routing-settings", "Схема маршрутизации кампаний", ("Схема маршрутизации кампаний",)),
     ("admin_route_naming", "/admin/naming-rules", "Правила нейминга маршрутов", ("Правила нейминга",)),
     ("admin_import_export", "/admin/import", "Импорт / экспорт", ("Импорт",)),
     ("admin_currency_rates", "/admin/currency-rates", "Курсы валют", ("Курсы валют",)),
@@ -430,7 +432,17 @@ def sidebar(title: str) -> str:
             f"{nav_icon_span(key)}<span class='side-label'>{esc(label)}</span></a>"
         )
 
+    def disabled_nav_item(key: str, label: str) -> str:
+        return (
+            f"<button class='side-link side-link-disabled has-inline-icon' type='button' disabled "
+            f"data-tooltip='Скоро' title='Скоро' aria-disabled='true'>"
+            f"{nav_icon_span(key)}<span class='side-label'>{esc(label)}</span></button>"
+        )
+
     main_links = "".join(nav_link(key, href, label) for key, href, label, _ in NAV_ITEMS if can_read(key))
+    if current_role_key() == "admin":
+        main_links += disabled_nav_item("admin_hlr", "HLR")
+        main_links += disabled_nav_item("admin_spam_checker", "Spam Checker")
     admin_links = "".join(
         f"<a class='admin-link {'active' if active_admin_href == href else ''}' href='{href}'>{nav_icon_span(key)}<span>{esc(label)}</span></a>"
         for key, href, label, _ in ADMIN_NAV_ITEMS
@@ -1083,6 +1095,8 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .side-link:hover {{ background: #f3f6ff; color: var(--accent-strong); }}
     .side-link.active {{ background: #eef1ff; border-color: #d5ddff; color: var(--accent-strong); box-shadow: none; }}
     .side-link.active .side-icon {{ color: var(--accent-strong); }}
+    .side-link-disabled, .side-link-disabled:hover, .side-link-disabled:disabled {{ color: var(--muted); background: transparent; border-color: transparent; box-shadow: none; cursor: not-allowed; opacity: .58; }}
+    .side-link-disabled .nav-icon, .side-link-disabled:hover .nav-icon {{ color: var(--muted); }}
     .admin-tree {{ margin: 0 0 0 34px; padding-left: 10px; border-left: 1px solid var(--border); }}
     .admin-link {{ display: block; padding: 7px 10px; font-size: 12px; }}
     .sidebar-footer {{ margin-top: auto; display: grid; gap: 10px; padding-top: 12px; border-top: 1px solid var(--border); }}
@@ -1099,6 +1113,8 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     html[data-theme="dark"] .side-link, html[data-theme="dark"] .sidebar-collapse {{ color: var(--text); }}
     html[data-theme="dark"] .side-link:hover {{ background: var(--surface-muted); color: var(--text-strong); }}
     html[data-theme="dark"] .side-link.active {{ background: var(--accent-soft); border-color: var(--border-strong); color: var(--accent); }}
+    html[data-theme="dark"] .side-link-disabled, html[data-theme="dark"] .side-link-disabled:hover, html[data-theme="dark"] .side-link-disabled:disabled {{ color: var(--muted); background: transparent; border-color: transparent; opacity: .55; }}
+    html[data-theme="dark"] .side-link-disabled .nav-icon, html[data-theme="dark"] .side-link-disabled:hover .nav-icon {{ color: var(--muted); }}
     html[data-theme="dark"] .current-user-selector {{ background: var(--surface-muted); border-color: var(--border); }}
     html[data-theme="dark"] td, html[data-theme="dark"] tbody tr:nth-child(even) td, html[data-theme="dark"] .metric-card {{ background: var(--surface); border-color: var(--border); }}
     html[data-theme="dark"] tbody tr:hover td {{ background: var(--surface-muted); }}
@@ -1895,32 +1911,38 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     const shell = document.querySelector(".app-shell");
     const savedSidebar = localStorage.getItem("mvp-sidebar-collapsed") === "true";
     if (shell) shell.classList.toggle("sidebar-collapsed", savedSidebar);
-    document.querySelectorAll("[data-sidebar-toggle]").forEach((button) => {{
-      const label = button.querySelector(".side-label");
-      const sidebarAction = savedSidebar ? "Развернуть боковую панель" : "Свернуть боковую панель";
-      button.dataset.tooltip = savedSidebar ? "Развернуть" : "Свернуть";
-      button.setAttribute("aria-label", sidebarAction);
-      button.title = sidebarAction;
-    }});
+    function updateSidebarToggleLabels(collapsed) {{
+      document.querySelectorAll("[data-sidebar-toggle]").forEach((button) => {{
+        const sidebarAction = collapsed ? "Развернуть боковую панель" : "Свернуть боковую панель";
+        button.dataset.tooltip = collapsed ? "Развернуть" : "Свернуть";
+        button.setAttribute("aria-label", sidebarAction);
+        button.title = sidebarAction;
+      }});
+    }}
+    updateSidebarToggleLabels(savedSidebar);
     document.querySelectorAll("[data-sidebar-toggle]").forEach((button) => {{
       button.addEventListener("click", () => {{
         if (!shell) return;
         const collapsed = !shell.classList.contains("sidebar-collapsed");
         shell.classList.toggle("sidebar-collapsed", collapsed);
         localStorage.setItem("mvp-sidebar-collapsed", collapsed ? "true" : "false");
-        const label = button.querySelector(".side-label");
-        const sidebarAction = collapsed ? "Развернуть боковую панель" : "Свернуть боковую панель";
-        button.dataset.tooltip = collapsed ? "Развернуть" : "Свернуть";
-        button.setAttribute("aria-label", sidebarAction);
-        button.title = sidebarAction;
+        updateSidebarToggleLabels(collapsed);
       }});
     }});
     document.querySelectorAll(".admin-toggle").forEach((button) => {{
       button.addEventListener("click", () => {{
         const target = document.getElementById(button.getAttribute("aria-controls"));
+        if (!target) return;
+        const wasCollapsed = shell && shell.classList.contains("sidebar-collapsed");
+        if (shell && shell.classList.contains("sidebar-collapsed")) {{
+          shell.classList.remove("sidebar-collapsed");
+          localStorage.setItem("mvp-sidebar-collapsed", "false");
+          updateSidebarToggleLabels(false);
+        }}
         const expanded = button.getAttribute("aria-expanded") === "true";
-        button.setAttribute("aria-expanded", expanded ? "false" : "true");
-        target.classList.toggle("open", !expanded);
+        const nextExpanded = wasCollapsed ? true : !expanded;
+        button.setAttribute("aria-expanded", nextExpanded ? "true" : "false");
+        target.classList.toggle("open", nextExpanded);
       }});
     }});
     function enhanceModalForm(form, closeCallback) {{
