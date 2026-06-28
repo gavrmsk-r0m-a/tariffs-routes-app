@@ -1087,13 +1087,16 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .metric-icon {{ width: 38px; height: 38px; border-radius: 13px; background: #eef1ff; color: var(--accent-strong); }}
     .metric-card.green .metric-icon {{ background: #eafaf1; color: #16a34a; }} .metric-card.violet .metric-icon {{ background: #f1edff; color: #7c3aed; }} .metric-card.orange .metric-icon {{ background: #fff7e8; color: #f97316; }}
     .sparkline {{ width: 96px; height: 32px; }} .sparkline polyline {{ fill: none; stroke: currentColor; stroke-width: 2; }}
-    .metric-label {{ min-height: 0; text-transform: none; letter-spacing: 0; font-size: 12px; color: #657399; }} .metric-value {{ font-size: 27px; margin: 4px 0 4px; }} .metric-hint {{ color: #16a34a; font-weight: 700; }} .metric-card.orange .metric-hint {{ color: #f97316; }}
+    .metric-label {{ min-height: 0; text-transform: none; letter-spacing: 0; font-size: 12px; color: var(--muted); }} .metric-value {{ font-size: 27px; margin: 4px 0 4px; }} .metric-hint {{ color: var(--muted); font-weight: 700; }} .metric-card.orange .metric-hint {{ color: var(--muted); }}
     .quick-links {{ grid-template-columns: repeat(3, minmax(240px, 1fr)); gap: 12px; }}
-    .quick-link-card {{ grid-template-columns: 44px 1fr 20px; align-items: center; gap: 14px; min-height: 72px; padding: 16px 20px; border: 1px solid var(--border); border-radius: 14px; box-shadow: var(--shadow-card); }}
-    .quick-icon {{ width: 40px; height: 40px; border-radius: 14px; background: #eef1ff; color: var(--accent-strong); }} .quick-copy strong {{ display:block; color: var(--text-strong); }} .quick-copy small {{ display:block; color: #586892; }} .quick-arrow {{ color: #a8b3d0; font-size: 22px; }}
-    .event-feed {{ overflow: hidden; background: #fff; border: 1px solid var(--border); border-radius: 14px; box-shadow: var(--shadow-card); }}
-    .event-feed article {{ display: grid; grid-template-columns: 42px 1fr 110px; align-items: center; gap: 12px; min-height: 66px; padding: 12px 24px; border-bottom: 1px solid var(--border); }} .event-feed article:last-child {{ border-bottom: 0; }}
-    .feed-icon {{ width: 34px; height: 34px; border-radius: 50%; background: #eef1ff; color: var(--accent-strong); }} .feed-icon.ok {{ background:#eafaf1; color:#16a34a; }} .feed-icon.warn {{ background:#fff7e8; color:#f59e0b; }} .event-feed small {{ display:block; color:#5f6f99; }} .event-feed time {{ color:#8b98ba; text-align:right; }}
+    .quick-link-card {{ grid-template-columns: 44px 1fr 20px; align-items: center; gap: 14px; min-height: 78px; padding: 16px 20px; border: 1px solid var(--border); border-radius: 14px; box-shadow: var(--shadow-card); }}
+    .quick-icon {{ width: 40px; height: 40px; border-radius: 14px; background: #eef1ff; color: var(--accent-strong); }} .quick-copy strong {{ display:block; color: var(--text-strong); }} .quick-copy small {{ display:block; color: var(--muted); }} .quick-arrow {{ color: var(--muted); font-size: 22px; }}
+    .dashboard-panel-title {{ display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 0 0 10px; }}
+    .dashboard-panel-title h2 {{ margin: 0; }}
+    .event-feed {{ overflow: hidden; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; box-shadow: var(--shadow-card); }}
+    .event-feed article {{ display: grid; grid-template-columns: 18px 1fr minmax(120px, auto); align-items: center; gap: 14px; min-height: 64px; padding: 12px 18px; border-bottom: 1px solid var(--border); }} .event-feed article:last-child {{ border-bottom: 0; }}
+    .feed-icon {{ width: 10px; height: 10px; border-radius: 50%; background: var(--accent); color: transparent; box-shadow: 0 0 0 5px var(--accent-soft); }} .feed-icon.ok {{ background: var(--success); box-shadow: 0 0 0 5px var(--success-soft); }} .feed-icon.warn {{ background: var(--warning); box-shadow: 0 0 0 5px var(--warning-soft); }} .feed-icon.neutral {{ background: var(--muted); box-shadow: 0 0 0 5px var(--surface-muted); }} .event-feed small {{ display:block; color: var(--muted); }} .event-feed time {{ color: var(--muted); text-align:right; white-space: nowrap; }}
+    .event-feed-empty {{ padding: 18px; color: var(--muted); background: var(--surface-muted); }}
     .content:has(> .table-page-container) {{ max-width: none; min-width: 0; }}
     .table-page-container {{ width: min(1580px, 100%); max-width: 100%; min-width: 0; margin-inline: auto; }}
     .table-page-container > *, .table-page-container details, .table-page-container fieldset {{ min-width: 0; }}
@@ -3393,13 +3396,69 @@ def dashboard_link(href: str, label: str, description: str, section: str) -> str
         return ""
     return f"<a class='quick-link-card' href='{esc(href)}'><span class='quick-icon'>{NAV_ICONS.get(section, '•')}</span><span class='quick-copy'><strong>{esc(label)}</strong><small>{esc(description)}</small></span><span class='quick-arrow'>→</span></a>"
 
+DASHBOARD_ENTITY_LABELS = {
+    "route": "Маршруты",
+    "tariff": "Тарифы",
+    "phone_number": "Купленные номера",
+    "calling_company": "Кампании прозвона",
+    "routing_event": "Смена провайдеров",
+    "server_priority": "Приоритет по серверам",
+    "company_routing_setting": "Схема маршрутизации кампаний",
+    "user": "Пользователи",
+    "dictionary": "Справочные значения",
+    "change_reason": "Справочные значения",
+}
+
+DASHBOARD_ENTITY_TONES = {
+    "route": "ok",
+    "tariff": "neutral",
+    "phone_number": "warn",
+    "calling_company": "ok",
+    "routing_event": "neutral",
+    "server_priority": "warn",
+    "company_routing_setting": "neutral",
+    "user": "neutral",
+    "dictionary": "neutral",
+    "change_reason": "neutral",
+}
+
+
+def dashboard_events(repo: Repository) -> str:
+    if not can_read("admin_change_log"):
+        return "<div class='event-feed-empty'>Лента событий недоступна для текущей роли.</div>"
+    rows = repo.conn.execute(
+        """
+        SELECT cl.changed_at, cl.entity_type, cl.change_type, cl.summary, u.username
+        FROM change_log cl
+        LEFT JOIN users u ON u.id = cl.changed_by
+        ORDER BY cl.changed_at DESC, cl.id DESC
+        LIMIT 8
+        """
+    ).fetchall()
+    if not rows:
+        return "<div class='event-feed-empty'>Событий пока нет.</div>"
+    items = []
+    for row in rows:
+        entity = row["entity_type"] or "—"
+        entity_label = DASHBOARD_ENTITY_LABELS.get(entity, entity)
+        tone = DASHBOARD_ENTITY_TONES.get(entity, "neutral")
+        title = row["summary"] or row["change_type"] or "Изменение"
+        actor = row["username"] or "система"
+        subtitle = f"{entity_label} · {row['change_type'] or 'изменение'} · {actor}"
+        items.append(
+            f"<article><span class='feed-icon {esc(tone)}' aria-hidden='true'></span>"
+            f"<div><strong>{esc(title)}</strong><small>{esc(subtitle)}</small></div>"
+            f"<time>{esc(row['changed_at'] or '—')}</time></article>"
+        )
+    return "".join(items)
+
 
 def dashboard_page(repo: Repository) -> bytes:
     metrics = "".join([
-        dashboard_metric(repo, "SELECT COUNT(*) FROM routes WHERE is_actual = 1", "Активные маршруты", "↗ +1 за неделю", nav_icon("routes"), "blue", "0,22 18,22 32,16 46,22 62,17 78,17 96,10"),
-        dashboard_metric(repo, "SELECT COUNT(*) FROM calling_companies WHERE is_active = 1", "Активные кампании", "↗ +1 за неделю", nav_icon("companies"), "green", "0,22 12,17 28,16 44,16 58,15 72,10 84,15 96,9"),
-        dashboard_metric(repo, "SELECT COUNT(*) FROM phone_numbers WHERE is_active = 1", "Купленные номера", "↗ +2 за неделю", nav_icon("phones"), "violet", "0,20 18,20 30,17 46,17 62,14 78,9 96,9"),
-        dashboard_metric(repo, "SELECT COUNT(*) FROM routing_events WHERE is_active = 1", "Смены провайдеров", "↘ −3 за неделю", nav_icon("provider_changes"), "orange", "0,8 16,10 32,10 48,12 64,12 80,14 96,14"),
+        dashboard_metric(repo, "SELECT COUNT(*) FROM routes WHERE is_actual = 1", "Активные маршруты", "Всего активных маршрутов", nav_icon("routes"), "blue", "0,22 18,22 32,16 46,22 62,17 78,17 96,10"),
+        dashboard_metric(repo, "SELECT COUNT(*) FROM calling_companies WHERE is_active = 1", "Активные кампании", "Всего активных кампаний", nav_icon("companies"), "green", "0,22 12,17 28,16 44,16 58,15 72,10 84,15 96,9"),
+        dashboard_metric(repo, "SELECT COUNT(*) FROM phone_numbers WHERE is_active = 1", "Купленные номера", "Всего активных номеров", nav_icon("phones"), "violet", "0,20 18,20 30,17 46,17 62,14 78,9 96,9"),
+        dashboard_metric(repo, "SELECT COUNT(*) FROM routing_events WHERE is_active = 1", "Смены провайдеров", "Активные записи смен", nav_icon("provider_changes"), "orange", "0,8 16,10 32,10 48,12 64,12 80,14 96,14"),
     ])
     work_links = "".join([
         dashboard_link("/routes", "Маршруты", "Управление маршрутами и номерами", "routes"),
@@ -3414,10 +3473,14 @@ def dashboard_page(repo: Repository) -> bytes:
         dashboard_link("/admin/users", "Пользователи", "Роли и доступы", "admin_users"),
         dashboard_link("/admin/dictionaries", "Справочные значения", "Страны, провайдеры, валюты и префиксы", "admin_dictionaries"),
     ])
+    feed = dashboard_events(repo)
     body = f"""
+<section class='dashboard-hero'>
+  <div><p class='eyebrow'>RouteOps Control Center</p><h1>Главная</h1><p class='hero-text'>Операционная панель маршрутов, номеров и смен провайдеров.</p></div>
+</section>
 <section class='metrics-grid'>{metrics}</section>
-<section class='dashboard-section'><h2>Быстрые переходы</h2><div class='quick-links'>{work_links}{admin_links}</div></section>
-<section class='dashboard-section'><h2>Лента событий</h2><div class='event-feed'><article><span class='feed-icon ok'>{nav_icon("routes")}</span><div><strong>Маршрут Mexico/Miatel/Demo_A@ активирован</strong><small>Маршруты · провайдер Miatel</small></div><time>2 мин назад</time></article><article><span class='feed-icon warn'>{nav_icon("phones")}</span><div><strong>14 номеров помечены «Требует проверки»</strong><small>Купленные номера · автопроверка</small></div><time>18 мин назад</time></article><article><span class='feed-icon info'>{nav_icon("companies")}</span><div><strong>Кампания "Mexico Demo 1" обновлена</strong><small>Кампании прозвона · ручное обновление</small></div><time>41 мин назад</time></article><article><span class='feed-icon neutral'>{nav_icon("provider_changes")}</span><div><strong>Изменён приоритет сервера EU2</strong><small>Смена провайдеров · авторотация серверов</small></div><time>1 ч назад</time></article><article><span class='feed-icon ok'>{nav_icon("admin")}</span><div><strong>Обновлён справочник префиксов</strong><small>Администрирование · справочники</small></div><time>3 ч назад</time></article></div></section>
+<section class='dashboard-section'><div class='dashboard-panel-title'><h2>Быстрые переходы</h2></div><div class='quick-links'>{work_links}{admin_links}</div></section>
+<section class='dashboard-section'><div class='dashboard-panel-title'><h2>Лента событий</h2></div><div class='event-feed'>{feed}</div></section>
 """
     return page("Главная", body)
 
