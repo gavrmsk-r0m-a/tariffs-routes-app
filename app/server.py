@@ -1123,17 +1123,17 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .current-user-selector, .theme-selector, .sidebar-collapse {{ display: flex; align-items: center; gap: 10px; width: 100%; min-height: 42px; padding: 8px 10px; border: 1px solid transparent; border-radius: 12px; background: transparent; color: var(--text); text-align: left; }}
     .sidebar-collapse {{ width: 36px; min-width: 36px; max-width: 36px; height: 36px; min-height: 36px; padding: 0; justify-content: center; justify-self: end; color: #223158; border-color: var(--border); background: var(--surface); box-shadow: var(--shadow-soft); overflow: hidden; }}
     .sidebar-collapse:hover {{ background: var(--accent-soft); border-color: var(--accent); color: var(--accent-strong); }}
-    .sidebar-collapse-icon {{ width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; transform: scaleX(-1); }}
+    .sidebar-collapse-icon {{ width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; }}
     .sidebar-collapse-icon .material-symbols-rounded {{ font-size: 20px; }}
     .current-user-selector {{ position: relative; background: #f4f6ff; border-color: #e2e8ff; }} .current-user-selector summary {{ display: flex; align-items: center; gap: 10px; cursor: pointer; list-style: none; }} .current-user-selector summary::-webkit-details-marker {{ display: none; }} .current-user-menu {{ position: absolute; left: 0; right: 0; bottom: calc(100% + 6px); display: grid; gap: 4px; padding: 6px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); box-shadow: var(--shadow-card); z-index: 50; }} .current-user-menu a {{ display: block; padding: 6px 8px; border-radius: 7px; color: var(--text); font-size: 12px; font-weight: 700; text-decoration: none; }} .current-user-menu a:hover {{ background: var(--accent-soft); color: var(--accent-strong); }} .current-user-menu .logout-link {{ color: #b42318; }} .user-icon {{ background: #4f46e5; color: #fff; border-radius: 9px; width: 32px; height: 32px; }} .user-icon .material-symbols-rounded {{ font-size: 20px; }} .login-body {{ min-height: 100vh; display: grid; place-items: center; padding: 24px; }} .login-shell {{ width: min(560px, 100%); }} .login-card {{ padding: 28px; border: 1px solid var(--border); border-radius: 18px; background: var(--surface); box-shadow: var(--shadow-card); }} .login-card h1 {{ margin-bottom: 6px; }} .login-users {{ display: grid; gap: 10px; margin: 20px 0; }} .login-user-card {{ display: flex; align-items: center; gap: 12px; padding: 12px; border: 1px solid var(--border); border-radius: 12px; cursor: pointer; }} .login-user-card:hover {{ border-color: var(--accent); background: var(--accent-soft); }} .login-user-card span strong, .login-user-card span small {{ display: block; }} .login-user-card span small, .muted {{ color: var(--muted); }} .login-error {{ padding: 10px 12px; border-radius: 10px; background: var(--danger-soft); color: #b42318; font-weight: 700; }}
     .user-copy strong, .user-copy small {{ display: block; }} .user-copy small {{ color: var(--muted); }}
     .app-shell.sidebar-collapsed {{ grid-template-columns: 70px minmax(0, 1fr); }}
     .sidebar-collapsed .sidebar {{ padding-left: 8px; padding-right: 8px; }}
-    .sidebar-collapsed .brand-copy, .sidebar-collapsed .side-label, .sidebar-collapsed .user-copy, .sidebar-collapsed .admin-tree {{ display: none; }}
+    .sidebar-collapsed .brand-copy, .sidebar-collapsed .side-label, .sidebar-collapsed .user-copy, .sidebar-collapsed .current-user-selector .logout-link, .sidebar-collapsed .admin-tree {{ display: none; }}
     .sidebar-collapsed .side-link {{ font-size: 0; gap: 0; }}
     .sidebar-collapsed .sidebar-head {{ grid-template-columns: 1fr; gap: 10px; }}
     .sidebar-collapsed .sidebar-collapse {{ order: -1; justify-self: center; }}
-    .sidebar-collapsed .sidebar-collapse-icon {{ transform: none; color: var(--accent-strong); }}
+    .sidebar-collapsed .sidebar-collapse-icon {{ transform: scaleX(-1); color: var(--accent-strong); }}
     .sidebar-collapsed .brand-block, .sidebar-collapsed .side-link, .sidebar-collapsed .current-user-selector, .sidebar-collapsed .theme-selector {{ justify-content: center; padding-left: 0; padding-right: 0; }}
     .sidebar-collapsed [data-tooltip] {{ position: relative; }}
     .sidebar-collapsed [data-tooltip]:hover::after {{ content: attr(data-tooltip); position: absolute; left: calc(100% + 10px); top: 50%; transform: translateY(-50%); z-index: 10000; pointer-events: none; white-space: nowrap; border-radius: 8px; padding: 7px 9px; background: #111827; color: #fff; font-size: 12px; box-shadow: var(--shadow-card); }}
@@ -1883,9 +1883,20 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
       }});
     }};
     updateThemeSelector(savedTheme);
+    function expandSidebarIfCollapsed() {{
+      if (!shell || !shell.classList.contains("sidebar-collapsed")) return false;
+      shell.classList.remove("sidebar-collapsed");
+      localStorage.setItem("mvp-sidebar-collapsed", "false");
+      updateSidebarToggleLabels(false);
+      return true;
+    }}
     document.querySelectorAll("[data-theme-menu-toggle]").forEach((button) => {{
       button.addEventListener("click", (event) => {{
         event.stopPropagation();
+        if (expandSidebarIfCollapsed()) {{
+          button.setAttribute("aria-expanded", "false");
+          return;
+        }}
         const selector = button.closest("[data-theme-selector]");
         const isOpen = selector && selector.classList.toggle("open");
         button.setAttribute("aria-expanded", isOpen ? "true" : "false");
@@ -1928,6 +1939,13 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
         localStorage.setItem("mvp-sidebar-collapsed", collapsed ? "true" : "false");
         updateSidebarToggleLabels(collapsed);
       }});
+    }});
+    document.querySelectorAll(".current-user-selector").forEach((selector) => {{
+      selector.addEventListener("click", (event) => {{
+        if (!expandSidebarIfCollapsed()) return;
+        event.preventDefault();
+        event.stopPropagation();
+      }}, true);
     }});
     document.querySelectorAll(".admin-toggle").forEach((button) => {{
       button.addEventListener("click", () => {{
