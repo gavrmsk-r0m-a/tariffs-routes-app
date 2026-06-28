@@ -1589,6 +1589,115 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
       box-shadow: none;
     }}
 
+    html[data-theme="dark"] details.filter-card,
+    html[data-theme="dark"] details.form-card,
+    html[data-theme="dark"] details.table-controls,
+    html[data-theme="dark"] .table-page-container details.filter-card,
+    html[data-theme="dark"] .table-page-container details.form-card,
+    html[data-theme="dark"] .filter-card,
+    html[data-theme="dark"] .form-card,
+    html[data-theme="dark"] .filter-panel,
+    html[data-theme="dark"] .form-panel,
+    html[data-theme="dark"] .dashboard-feed,
+    html[data-theme="dark"] .event-feed,
+    html[data-theme="dark"] .activity-feed,
+    html[data-theme="dark"] .timeline-card,
+    html[data-theme="dark"] .activity-list,
+    html[data-theme="dark"] .notice,
+    html[data-theme="dark"] .empty-state {{
+      background: var(--surface) !important;
+      border-color: var(--border) !important;
+      color: var(--text) !important;
+      box-shadow: var(--shadow-soft);
+    }}
+
+    html[data-theme="dark"] details.filter-card > summary,
+    html[data-theme="dark"] details.form-card > summary,
+    html[data-theme="dark"] details.table-controls > summary,
+    html[data-theme="dark"] details > summary,
+    html[data-theme="dark"] .filter-summary,
+    html[data-theme="dark"] .form-summary {{
+      background: var(--surface-muted) !important;
+      border-color: var(--border) !important;
+      color: var(--text-strong) !important;
+    }}
+
+    html[data-theme="dark"] details.filter-card > form,
+    html[data-theme="dark"] details.form-card > form,
+    html[data-theme="dark"] .filter-card .filter-grid,
+    html[data-theme="dark"] .form-card .form-grid,
+    html[data-theme="dark"] .filter-panel,
+    html[data-theme="dark"] .form-panel {{
+      background: var(--surface) !important;
+      color: var(--text) !important;
+    }}
+
+    html[data-theme="dark"] fieldset,
+    html[data-theme="dark"] .filter-grid fieldset,
+    html[data-theme="dark"] .form-grid fieldset {{
+      background: var(--surface-muted) !important;
+      border-color: var(--border) !important;
+      color: var(--text) !important;
+    }}
+
+    html[data-theme="dark"] .table-footer,
+    html[data-theme="dark"] .table-page-container .table-footer,
+    html[data-theme="dark"] .table-actions {{
+      background: var(--surface) !important;
+      border-color: var(--border) !important;
+      color: var(--text) !important;
+      box-shadow: var(--shadow-soft);
+    }}
+
+    html[data-theme="dark"] .table-footer .button,
+    html[data-theme="dark"] .table-footer button,
+    html[data-theme="dark"] .table-footer .table-utility-button,
+    html[data-theme="dark"] .table-footer .column-settings > summary,
+    html[data-theme="dark"] .table-actions .button,
+    html[data-theme="dark"] .table-actions button {{
+      background: var(--surface-muted) !important;
+      border: 1px solid var(--border-strong) !important;
+      color: var(--text-strong) !important;
+      box-shadow: none;
+    }}
+
+    html[data-theme="dark"] .table-footer .button:hover,
+    html[data-theme="dark"] .table-footer button:hover,
+    html[data-theme="dark"] .table-footer .table-utility-button:hover,
+    html[data-theme="dark"] .table-footer .column-settings > summary:hover,
+    html[data-theme="dark"] .table-actions .button:hover,
+    html[data-theme="dark"] .table-actions button:hover {{
+      background: var(--accent-soft) !important;
+      border-color: var(--accent) !important;
+      color: var(--text-strong) !important;
+    }}
+
+    html[data-theme="dark"] .column-settings-panel,
+    html[data-theme="dark"] .table-footer .column-settings-panel {{
+      background: var(--surface) !important;
+      border-color: var(--border-strong) !important;
+      color: var(--text) !important;
+      box-shadow: var(--shadow-card);
+    }}
+
+    html[data-theme="dark"] .activity-item,
+    html[data-theme="dark"] .event-feed article,
+    html[data-theme="dark"] .dashboard-feed article,
+    html[data-theme="dark"] .activity-feed article,
+    html[data-theme="dark"] .quick-copy {{
+      background: var(--surface) !important;
+      border-color: var(--border) !important;
+      color: var(--text) !important;
+    }}
+
+    html[data-theme="dark"] .activity-item:hover,
+    html[data-theme="dark"] .event-feed article:hover,
+    html[data-theme="dark"] .dashboard-feed article:hover,
+    html[data-theme="dark"] .activity-feed article:hover {{
+      background: var(--accent-soft) !important;
+      color: var(--text-strong) !important;
+    }}
+
     .review-required-icon {{
       display: inline-flex;
       align-items: center;
