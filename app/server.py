@@ -185,13 +185,27 @@ def plain_title(value: object) -> str:
     return esc(re.sub(r"\s+", " ", text).strip())
 
 
-def clamp_cell(col: str, content_html: str, title: object, *, extra_attrs: str = "", classes: str = "") -> str:
-    class_attr = f" class='{classes}'" if classes else ""
+def selectable_text(content_html: str, value: object, *, classes: str = "compound-value-cell") -> str:
+    text = plain_text(value)
+    class_attr = f" {classes}" if classes else ""
+    return (
+        f"<span class='selectable-text{class_attr}' data-select-value='{esc(text)}' "
+        "title='Повторный двойной клик — выделить всё значение'>"
+        f"{content_html}</span>"
+    )
+
+
+def clamp_cell(col: str, content_html: str, title: object, *, extra_attrs: str = "", classes: str = "", selectable: bool = False, select_value: object | None = None) -> str:
+    cell_classes = classes.split() if classes else []
+    if selectable and "selectable-cell" not in cell_classes:
+        cell_classes.append("selectable-cell")
+    class_attr = f" class='{' '.join(cell_classes)}'" if cell_classes else ""
     attrs = f" {extra_attrs.strip()}" if extra_attrs.strip() else ""
     title_text = plain_text(title)
     title_attr = f" title='{esc(title_text)}'" if len(title_text) > 60 else ""
     full_text_attr = f" data-full-text='{esc(title_text)}'" if len(title_text) > 60 else ""
-    return f"<td data-col='{esc(col)}'{class_attr}{attrs}{title_attr}{full_text_attr}><span class='cell-clamp'>{content_html}</span></td>"
+    inner_html = selectable_text(content_html, title_text if select_value is None else select_value) if selectable else content_html
+    return f"<td data-col='{esc(col)}'{class_attr}{attrs}{title_attr}{full_text_attr}><span class='cell-clamp'>{inner_html}</span></td>"
 
 
 SECTION_ALIASES = {"phones": "phone_numbers", "companies": "call_campaigns"}
@@ -1120,6 +1134,10 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     html[data-theme="dark"] tbody tr:hover td {{ background: var(--surface-muted); }}
     html[data-theme="dark"] .metric-label, html[data-theme="dark"] .quick-copy small {{ color: var(--muted); }}
     html[data-theme="dark"] .quick-icon, html[data-theme="dark"] .metric-icon {{ background: var(--accent-soft); color: var(--accent); }}
+    .selectable-cell, .selectable-text {{ cursor: text; }}
+    .selectable-cell:hover {{ background: color-mix(in srgb, var(--accent-soft) 62%, var(--surface)) !important; }}
+    .selectable-text::selection, .selectable-text *::selection, .data-table ::selection, .table-card table ::selection, .journal-card table ::selection {{ background: rgba(37, 99, 235, 0.22); color: var(--text-strong); }}
+    html[data-theme="dark"] .data-table ::selection, html[data-theme="dark"] .table-card table ::selection, html[data-theme="dark"] .journal-card table ::selection {{ background: rgba(56, 189, 248, 0.35); color: var(--text-strong); }}
     .current-user-selector, .theme-selector, .sidebar-collapse {{ display: flex; align-items: center; gap: 10px; width: 100%; min-height: 42px; padding: 8px 10px; border: 1px solid transparent; border-radius: 12px; background: transparent; color: var(--text); text-align: left; }}
     .sidebar-collapse {{ width: 36px; min-width: 36px; max-width: 36px; height: 36px; min-height: 36px; padding: 0; justify-content: center; justify-self: end; color: #223158; border-color: var(--border); background: var(--surface); box-shadow: var(--shadow-soft); overflow: hidden; }}
     .sidebar-collapse:hover {{ background: var(--accent-soft); border-color: var(--accent); color: var(--accent-strong); }}
@@ -2151,6 +2169,31 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
         }}, 1500);
       }});
     }});
+    (() => {{
+      let lastTarget = null;
+      let lastAt = 0;
+      const repeatMs = 1000;
+      function selectNodeText(node) {{
+        const selection = window.getSelection && window.getSelection();
+        if (!selection || !node) return;
+        const range = document.createRange();
+        range.selectNodeContents(node);
+        selection.removeAllRanges();
+        selection.addRange(range);
+      }}
+      document.addEventListener("dblclick", (event) => {{
+        const target = event.target.closest("[data-select-value]");
+        if (!target) return;
+        const now = Date.now();
+        if (target === lastTarget && now - lastAt <= repeatMs) {{
+          event.preventDefault();
+          event.stopPropagation();
+          selectNodeText(target);
+        }}
+        lastTarget = target;
+        lastAt = now;
+      }});
+    }})();
     const fullTextPopover = (() => {{
       let popover = null;
       let activeCell = null;
@@ -2733,7 +2776,7 @@ def data_table(table_key: str, columns: list[tuple[str, str]], rows_html: str) -
         f"<th data-col='{esc(key)}' title='{plain_title(label)}'>{label}</th>"
         for key, label in columns
     )
-    return f"<table data-table-key='{esc(table_key)}'><thead><tr>{header}</tr></thead><tbody>{rows_html}</tbody></table>"
+    return f"<table class='data-table' data-table-key='{esc(table_key)}'><thead><tr>{header}</tr></thead><tbody>{rows_html}</tbody></table>"
 
 
 def select_options(repo: Repository, sql: str, params: tuple = (), selected: object | None = None, empty: str | None = None) -> str:
@@ -3745,7 +3788,7 @@ def routes_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
         numbers = f'{numbers_label} <a class="button route-numbers-action" href="/routes/{route["id"]}/numbers">Показать номера</a>'
         edit = f"<a class='button edit-action' href='/routes/{route['id']}/edit' title='Редактировать' aria-label='Редактировать' data-tooltip='Редактировать'>Редактировать</a>" if can_write("routes") else ""
         history = history_icon_link(f"/routes/{route['id']}/history")
-        rows.append(f"<tr><td data-col='geo'>{esc(route['country_name'])}</td>{clamp_cell('route', esc(route['name']), route['name'], extra_attrs="data-copy-column='route-name'")}<td data-col='provider'>{esc(route['provider_name'])}</td><td data-col='prefix'>{esc(prefix)}</td><td data-col='actual'>{'Да' if route['is_actual'] else 'Нет'}</td>{clamp_cell('aon_pool', esc(route['aon_pool'] or '—'), route['aon_pool'] or '—')}{clamp_cell('comment', esc(route['comment']), route['comment'], classes='comment-cell')}<td data-col='numbers'>{numbers}</td><td data-col='history' class='history-cell'>{history}</td><td data-col='actions' class='actions'>{edit}</td></tr>")
+        rows.append(f"<tr><td data-col='geo'>{esc(route['country_name'])}</td>{clamp_cell('route', esc(route['name']), route['name'], extra_attrs="data-copy-column='route-name'", classes='route-name-cell', selectable=True)}<td data-col='provider'>{esc(route['provider_name'])}</td><td data-col='prefix'>{esc(prefix)}</td><td data-col='actual'>{'Да' if route['is_actual'] else 'Нет'}</td>{clamp_cell('aon_pool', esc(route['aon_pool'] or '—'), route['aon_pool'] or '—')}{clamp_cell('comment', esc(route['comment']), route['comment'], classes='comment-cell')}<td data-col='numbers'>{numbers}</td><td data-col='history' class='history-cell'>{history}</td><td data-col='actions' class='actions'>{edit}</td></tr>")
     filters_html = f"""<form class="filter-grid" method="get" action="/routes">
 <label>ГЕО <select name="country_id">{options(repo, 'countries', selected=q.get('country_id'), empty='Все')}</select></label>
 <label>Провайдер <select name="provider_id">{options(repo, 'providers', selected=q.get('provider_id'), empty='Все')}</select></label>
@@ -3879,7 +3922,7 @@ def phones_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
         actions = f"<a class='button edit-action' href='/phones/{phone['id']}/edit' title='Редактировать' aria-label='Редактировать' data-tooltip='Редактировать'>Редактировать</a>" if can_write("phones") else ""
         history = history_icon_link(f"/phones/{phone['id']}/history")
         review_marker = review_required_icon() if phone["review_required"] else ""
-        rows.append(f"""<tr><td data-col='number' data-copy-column='phone-number'><span class='phone-number-cell'>{esc(phone['number'])}{review_marker}</span></td><td data-col='geo'>{esc(phone['country_name'])}</td><td data-col='provider'>{esc(phone['provider_name'])}</td><td data-col='project'>{esc(phone['project_label'])}</td><td data-col='assignment'>{esc(assignment_label)}</td><td data-col='status'>{dot_status(STATUS_LABELS.get(phone['status'], phone['status']), 'danger' if phone['status'] == 'problem' else ('warning' if phone['status'] == 'unknown' else ('neutral' if phone['status'] == 'free' else 'ok')))}</td><td data-col='active'>{dot_status('Да' if phone['is_active'] else 'Нет', 'ok' if phone['is_active'] else 'danger')}</td>{clamp_cell('routes', esc(phone['route_names']), phone['route_names']) if phone['route_names'] else "<td data-col='routes'>—</td>"}<td data-col='connection'>{esc(phone['connection_cost'])}</td><td data-col='monthly'>{esc(phone['monthly_fee'])}</td><td data-col='currency'>{esc(phone['currency_code'])}</td><td data-col='phone_type'>{esc(phone['phone_type'])}</td><td data-col='tariff'>{esc(phone['tariff_label'])}</td><td data-col='created'>{esc(phone['created_at'])}</td><td data-col='updated'>{esc(phone['updated_at'])}</td><td data-col='deactivated'>{esc(phone['deactivated_at'])}</td>{clamp_cell('comment', esc(phone['comment'] or '—'), phone['comment'] or '—', classes='comment-cell')}<td data-col='history' class='history-cell'>{history}</td><td data-col='actions'>{actions}</td></tr>""")
+        rows.append(f"""<tr><td data-col='number' class='selectable-cell' data-copy-column='phone-number'>{selectable_text(f"{esc(phone['number'])}{review_marker}", phone['number'], classes='phone-number-cell compound-value-cell')}</td><td data-col='geo'>{esc(phone['country_name'])}</td><td data-col='provider'>{esc(phone['provider_name'])}</td><td data-col='project'>{esc(phone['project_label'])}</td><td data-col='assignment'>{esc(assignment_label)}</td><td data-col='status'>{dot_status(STATUS_LABELS.get(phone['status'], phone['status']), 'danger' if phone['status'] == 'problem' else ('warning' if phone['status'] == 'unknown' else ('neutral' if phone['status'] == 'free' else 'ok')))}</td><td data-col='active'>{dot_status('Да' if phone['is_active'] else 'Нет', 'ok' if phone['is_active'] else 'danger')}</td>{clamp_cell('routes', esc(phone['route_names']), phone['route_names'], selectable=True) if phone['route_names'] else "<td data-col='routes'>—</td>"}<td data-col='connection'>{esc(phone['connection_cost'])}</td><td data-col='monthly'>{esc(phone['monthly_fee'])}</td><td data-col='currency'>{esc(phone['currency_code'])}</td><td data-col='phone_type'>{esc(phone['phone_type'])}</td><td data-col='tariff'>{esc(phone['tariff_label'])}</td><td data-col='created'>{esc(phone['created_at'])}</td><td data-col='updated'>{esc(phone['updated_at'])}</td><td data-col='deactivated'>{esc(phone['deactivated_at'])}</td>{clamp_cell('comment', esc(phone['comment'] or '—'), phone['comment'] or '—', classes='comment-cell')}<td data-col='history' class='history-cell'>{history}</td><td data-col='actions'>{actions}</td></tr>""")
     filters_html = f"""<form class="filter-grid" method="get" action="/phones">
 <label>ГЕО <select name="country_id">{options(repo, 'countries', selected=q.get('country_id'), empty='Все')}</select></label>
 <label>Провайдер <select name="provider_id">{options(repo, 'providers', selected=q.get('provider_id'), empty='Все')}</select></label>
@@ -3911,7 +3954,7 @@ def companies_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
     for cc in records:
         actions = f"<a class='button edit-action' href='/companies/{cc['id']}/edit' title='Редактировать' aria-label='Редактировать' data-tooltip='Редактировать'>Редактировать</a>" if can_write("companies") else ""
         history = history_icon_link(f"/calling-companies/{cc['id']}/history")
-        rows.append(f"<tr><td data-col='server'>{esc(cc['server_name'])}</td><td data-col='geo'>{esc(cc['country_name'])}</td>{clamp_cell('company_name', esc(cc['company_name']), cc['company_name'])}<td data-col='company_id'>{esc(cc['company_id_external'])}</td><td data-col='lines'>{esc(cc['line_count'])}</td><td data-col='dial_sets'>{esc(cc['dial_set_count'])}</td><td data-col='autorotation'>{'Да' if cc['current_has_autorotation'] else 'Нет'}</td><td data-col='retry_interval'>{esc(cc['retry_interval_seconds'])}</td><td data-col='active'>{'Активна' if cc['is_active'] else 'Неактивна'}</td>{clamp_cell('comment', esc(cc['comment']), cc['comment'], classes='comment-cell')}<td data-col='history' class='history-cell'>{history}</td><td data-col='actions'>{actions}</td></tr>")
+        rows.append(f"<tr><td data-col='server'>{esc(cc['server_name'])}</td><td data-col='geo'>{esc(cc['country_name'])}</td>{clamp_cell('company_name', esc(cc['company_name']), cc['company_name'], selectable=True)}<td data-col='company_id' class='selectable-cell'>{selectable_text(esc(cc['company_id_external']), cc['company_id_external'])}</td><td data-col='lines'>{esc(cc['line_count'])}</td><td data-col='dial_sets'>{esc(cc['dial_set_count'])}</td><td data-col='autorotation'>{'Да' if cc['current_has_autorotation'] else 'Нет'}</td><td data-col='retry_interval'>{esc(cc['retry_interval_seconds'])}</td><td data-col='active'>{'Активна' if cc['is_active'] else 'Неактивна'}</td>{clamp_cell('comment', esc(cc['comment']), cc['comment'], classes='comment-cell')}<td data-col='history' class='history-cell'>{history}</td><td data-col='actions'>{actions}</td></tr>")
     filters_html = f"""<form class="filter-grid" method="get" action="/companies">
 <label>Сервер <select name="server_id">{options(repo, 'servers', selected=q.get('server_id'), empty='Все')}</select></label><label>ГЕО <select name="country_id">{options(repo, 'countries', selected=q.get('country_id'), empty='Все')}</select></label><label>Название кампании <input name="company" value="{esc(q.get('company'))}"></label><label>ID кампании <input name="external_id" value="{esc(q.get('external_id'))}"></label><label>Авторотация <select name="has_autorotation"><option value="">Все</option><option value="1" {'selected' if q.get('has_autorotation')=='1' else ''}>Да</option><option value="0" {'selected' if q.get('has_autorotation')=='0' else ''}>Нет</option></select></label><label>Активность <select name="is_active"><option value="">Все</option><option value="1" {'selected' if q.get('is_active')=='1' else ''}>Активна</option><option value="0" {'selected' if q.get('is_active')=='0' else ''}>Неактивна</option></select></label><button>Найти</button></form>"""
     create_html = f"""<form class="form-grid" method="post" action="/companies/create"><label>Сервер <span class="required">*</span><select name="server_id">{active_options(repo, 'servers')}</select></label><label>ГЕО <span class="required">*</span><select name="country_id">{active_options(repo, 'countries')}</select></label><label>ID кампании <span class="required">*</span><input name="company_id_external"></label><label>Название кампании <span class="required">*</span><input name="company_name"></label><label>Количество линий <span class="required">*</span><input name="line_count" value="0"></label><label>Количество наборов <span class="required">*</span><input name="dial_set_count" value="0"></label><label>Авторотация <span class="required">*</span><select name="has_autorotation"><option value="1">Да</option><option value="0">Нет</option></select></label><label>Интервал дозвона, сек. <span class="required">*</span><input name="retry_interval_seconds" value="0"></label><label>Активна <span class="required">*</span><select name="is_active"><option value="1">Да</option><option value="0">Нет</option></select></label><label>Комментарий <input name="comment"></label><button>Сохранить</button></form>"""
@@ -4555,7 +4598,7 @@ def provider_changes_page(repo: Repository, q: dict[str, str] | None = None, for
         server_text, campaign_text, details_text = provider_event_details(ev)
         actions = f"<a class='button edit-action' href='/provider-changes/{ev['id']}/edit' title='Редактировать' aria-label='Редактировать' data-tooltip='Редактировать'>Редактировать</a>" if can_write("provider_changes") else ""
         comment_text = (ev["comment"] or "").strip() or "—"
-        rows.append(f"<tr class='{'' if ev['is_active'] else 'inactive-row'}'><td data-col='event_at'>{esc(ev['event_at'])}</td><td data-col='scope'>{esc(ROUTING_SCOPE_LABELS.get(ev['apply_scope'], ev['apply_scope']))}</td><td data-col='geo'>{esc(ev['country_name'])}</td><td data-col='server'>{esc(server_text)}</td><td data-col='campaign'>{esc(campaign_text)}</td>{clamp_cell('details', details_text, details_text)}{clamp_cell('comment', esc(comment_text), comment_text)}{clamp_cell('reason', esc(ev['reason']), ev['reason'])}<td data-col='actions' class='actions'>{actions}</td></tr>")
+        rows.append(f"<tr class='{'' if ev['is_active'] else 'inactive-row'}'><td data-col='event_at'>{esc(ev['event_at'])}</td><td data-col='scope'>{esc(ROUTING_SCOPE_LABELS.get(ev['apply_scope'], ev['apply_scope']))}</td><td data-col='geo'>{esc(ev['country_name'])}</td><td data-col='server'>{esc(server_text)}</td><td data-col='campaign' class='selectable-cell'>{selectable_text(esc(campaign_text), campaign_text)}</td>{clamp_cell('details', details_text, html_to_csv_text(details_text), selectable=True)}{clamp_cell('comment', esc(comment_text), comment_text)}{clamp_cell('reason', esc(ev['reason']), ev['reason'])}<td data-col='actions' class='actions'>{actions}</td></tr>")
     if not rows:
         rows.append("<tr><td colspan='9'><div class='empty-state'>Событий пока нет</div></td></tr>")
     filters_html = f"""<form class='filter-grid' method='get' action='/provider-changes'>
@@ -4778,11 +4821,13 @@ def server_priorities_page(repo: Repository, q: dict[str, str] | None = None) ->
         current_overflow = esc(row["overflow_route_name"]) if row["has_overflow"] and row["overflow_route_id"] and row["overflow_route_name"] else "—"
         previous_overflow_id = previous_overflow_route_id(row)
         previous_overflow = esc(previous_overflow_names.get(previous_overflow_id)) if previous_overflow_id and previous_overflow_names.get(previous_overflow_id) else "—"
-        current_priority = f"{esc(current_route)}<br><span class='muted'>Перелив: {current_overflow}</span>" if row["current_route_id"] else "—<br><span class='muted'>Перелив: —</span>"
-        previous_priority = f"{esc(previous_route)}<br><span class='muted'>Перелив: {previous_overflow}</span>" if row["previous_route_id"] else "—<br><span class='muted'>Перелив: —</span>"
+        current_priority_value = f"{current_route}; Перелив: {plain_text(current_overflow)}" if row["current_route_id"] else "—; Перелив: —"
+        current_priority = selectable_text(f"{esc(current_route)}<br><span class='muted'>Перелив: {current_overflow}</span>", current_priority_value) if row["current_route_id"] else "—<br><span class='muted'>Перелив: —</span>"
+        previous_priority_value = f"{previous_route}; Перелив: {plain_text(previous_overflow)}" if row["previous_route_id"] else "—; Перелив: —"
+        previous_priority = selectable_text(f"{esc(previous_route)}<br><span class='muted'>Перелив: {previous_overflow}</span>", previous_priority_value) if row["previous_route_id"] else "—<br><span class='muted'>Перелив: —</span>"
         if row["server_id"] in server_rows:
             server_rows[row["server_id"]].append(
-                f"<tr><td data-col='geo'>{esc(row['country_name'])}</td><td data-col='current_priority'>{current_priority}</td><td data-col='previous_priority'>{previous_priority}</td></tr>"
+                f"<tr><td data-col='geo'>{esc(row['country_name'])}</td><td data-col='current_priority' class='selectable-cell'>{current_priority}</td><td data-col='previous_priority' class='selectable-cell'>{previous_priority}</td></tr>"
             )
     blocks = []
     for server_id in server_names:
@@ -4904,11 +4949,11 @@ def company_routing_settings_page(repo: Repository, q: dict[str, str] | None = N
         row = {
             "server": esc(setting["server_name"]),
             "geo": esc(setting["country_name"]),
-            "company_id": esc(setting["company_id_external"]),
-            "company_name": esc(setting["company_name"]),
+            "company_id": selectable_text(esc(setting["company_id_external"]), setting["company_id_external"]),
+            "company_name": selectable_text(esc(setting["company_name"]), setting["company_name"]),
             "routing_mode": esc(routing_mode_label(setting["routing_mode"])),
             "autorotation": "Да" if setting["has_autorotation"] else "Нет",
-            "route": f"{esc(route_label)}{provider_label}",
+            "route": selectable_text(f"{esc(route_label)}{provider_label}", route_label),
             "active": active_badge,
             "valid_from": esc(setting["valid_from"]),
             "valid_to": esc(setting["valid_to"] or "—"),
@@ -4917,7 +4962,7 @@ def company_routing_settings_page(repo: Repository, q: dict[str, str] | None = N
         }
         rows.append(
             "<tr>"
-            + "".join(f"<td data-col='{key}'>{row[key]}</td>" for key in COMPANY_ROUTING_SETTINGS_COLUMNS)
+            + "".join(f"<td data-col='{key}' class='selectable-cell'>{row[key]}</td>" if key in {'company_id', 'company_name', 'route'} else f"<td data-col='{key}'>{row[key]}</td>" for key in COMPANY_ROUTING_SETTINGS_COLUMNS)
             + "</tr>"
         )
     filters_html = f"""<form class="filter-grid" method="get" action="/admin/company-routing-settings">
