@@ -524,7 +524,7 @@ def theme_selector() -> str:
           <div class="theme-menu" data-theme-menu role="menu" aria-label="Выбор темы">
             <button type="button" role="menuitemradio" data-theme-option="mvp" aria-checked="true"><span class="theme-check" aria-hidden="true">{nav_icon("check")}</span><span>MVP</span></button>
             <button type="button" role="menuitemradio" data-theme-option="dark" aria-checked="false"><span class="theme-check" aria-hidden="true">{nav_icon("check")}</span><span>Тёмная</span></button>
-            <button type="button" role="menuitemradio" data-theme-option="light-v2" aria-checked="false" disabled title="Скоро"><span class="theme-check" aria-hidden="true">{nav_icon("check")}</span><span>Светлая 2.0</span><small>скоро</small></button>
+            <button type="button" role="menuitemradio" data-theme-option="light-v2" aria-checked="false"><span class="theme-check" aria-hidden="true">{nav_icon("check")}</span><span>Светлая 2.0</span></button>
           </div>
         </div>
     """
@@ -574,37 +574,47 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,400,0,0">
   <style>
     html[data-theme="light-v2"] {{
-      --bg: #f7f5ff;
-      --surface: #ffffff;
-      --surface-muted: #fbfaff;
-      --surface-strong: #f0edff;
-      --sidebar-bg: #f3f0ff;
-      --text-strong: #14111f;
-      --text: #312f44;
-      --muted: #68657d;
-      --border: #dfdaf4;
-      --border-strong: #c8bff0;
-      --accent: #6d5dfc;
-      --accent-strong: #4f46e5;
-      --accent-soft: #efedff;
-      --cyber: #00bfa6;
-      --cyber-strong: #009e8a;
-      --cyber-soft: #ddfff8;
-      --pink: #ff4fd8;
-      --pink-soft: #ffe8fa;
-      --warning: #f59e0b;
-      --warning-soft: #fff3d6;
-      --danger: #ef4444;
-      --danger-strong: #dc2626;
-      --danger-soft: #ffe3e3;
-      --success: var(--cyber);
-      --success-soft: var(--cyber-soft);
+      --bg: #F7F9F6;
+      --surface: #FFFFFF;
+      --surface-muted: #F3F7F4;
+      --surface-strong: #EEF5F1;
+      --sidebar-bg: #EEF5F1;
+      --text-strong: #1F2933;
+      --text: #2F3A43;
+      --muted: #667085;
+      --text-soft: #8A9590;
+      --border: #DDE5E1;
+      --border-strong: #C9D7D1;
+      --accent: #0F766E;
+      --accent-strong: #115E59;
+      --accent-hover: #115E59;
+      --accent-soft: #E3F3F0;
+      --accent-border: #B7DFD8;
+      --cyber: #0F766E;
+      --cyber-strong: #115E59;
+      --cyber-soft: #E3F3F0;
+      --pink: #6F7A3A;
+      --pink-soft: #EEF1DE;
+      --olive: #6F7A3A;
+      --olive-soft: #EEF1DE;
+      --warning: #D97706;
+      --warning-hover: #B45309;
+      --warning-soft: #FFF1DD;
+      --warning-border: #F5C98B;
+      --danger: #DC2626;
+      --danger-strong: #B91C1C;
+      --danger-soft: #FEE2E2;
+      --danger-border: #FCA5A5;
+      --success: #2F7D50;
+      --success-soft: #E8F3EA;
+      --success-border: #B9DEC0;
+      --input-bg: #FFFFFF;
       --focus: var(--accent);
-      --shadow-soft: 0 1px 2px rgba(20, 17, 31, 0.07);
-      --shadow-card: 0 16px 38px rgba(62, 51, 140, 0.12);
-      --shadow-glow: 0 0 0 1px rgba(109, 93, 252, 0.16), 0 14px 34px rgba(109, 93, 252, 0.12);
-      --radius-control: 8px;
-      --radius-card: 12px;
+      --shadow-soft: 0 1px 2px rgba(31, 41, 51, 0.06);
+      --shadow-card: 0 12px 28px rgba(31, 41, 51, 0.08);
+      --shadow-glow: 0 0 0 1px rgba(15, 118, 110, 0.14), 0 12px 26px rgba(15, 118, 110, 0.10);
+      --radius-control: 9px;
+      --radius-card: 14px;
     }}
     html[data-theme="mvp"] {{
       --bg: #f5f7fb;
@@ -689,12 +699,7 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     * {{ box-sizing: border-box; }}
     html {{ scrollbar-gutter: stable; }}
     body {{ font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 0; color: var(--text); background: var(--bg); font-size: 14px; line-height: 1.45; }}
-    html[data-theme="light-v2"] body {{ background:
-      radial-gradient(circle at 16% 10%, rgba(0, 191, 166, 0.12), transparent 24rem),
-      radial-gradient(circle at 88% 2%, rgba(255, 79, 216, 0.08), transparent 20rem),
-      linear-gradient(rgba(109, 93, 252, 0.035) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(109, 93, 252, 0.035) 1px, transparent 1px),
-      var(--bg); background-size: auto, auto, 28px 28px, 28px 28px, auto; }}
+    html[data-theme="light-v2"] body {{ background: var(--bg); }}
     .breadcrumbs {{ display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 10px; color: var(--muted); font-size: 12px; font-weight: 650; }}
     .breadcrumbs a {{ color: var(--accent-strong); text-decoration: none; }}
     .breadcrumbs a:hover {{ text-decoration: underline; }}
@@ -1796,6 +1801,49 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     }}
 
     .review-required-icon .material-symbols-rounded {{ font-size: 18px; font-variation-settings: 'FILL' 1, 'wght' 500, 'GRAD' 0, 'opsz' 20; }}
+
+    html[data-theme="light-v2"] ::selection {{ background: rgba(15, 118, 110, 0.22); color: #10201D; }}
+    html[data-theme="light-v2"] * {{ scrollbar-color: #B7C8C1 #F3F7F4; }}
+    html[data-theme="light-v2"] *::-webkit-scrollbar {{ width: 10px; height: 10px; }}
+    html[data-theme="light-v2"] *::-webkit-scrollbar-track {{ background: var(--surface-muted); border-radius: 999px; }}
+    html[data-theme="light-v2"] *::-webkit-scrollbar-thumb {{ background: #B7C8C1; border: 2px solid var(--surface-muted); border-radius: 999px; }}
+    html[data-theme="light-v2"] *::-webkit-scrollbar-thumb:hover {{ background: #91AAA0; }}
+    html[data-theme="light-v2"] .app-shell, html[data-theme="light-v2"] .content {{ background: var(--bg); }}
+    html[data-theme="light-v2"] .breadcrumbs {{ background: #EEF5F1; border-bottom-color: var(--border); color: var(--muted); }}
+    html[data-theme="light-v2"] .breadcrumbs a {{ color: var(--accent-strong); }}
+    html[data-theme="light-v2"] .sidebar {{ background: linear-gradient(180deg, #F3F7F4 0%, var(--sidebar-bg) 100%); border-right-color: var(--border-strong); }}
+    html[data-theme="light-v2"] .brand-mark, html[data-theme="light-v2"] .user-icon {{ background: linear-gradient(135deg, var(--accent), var(--accent-strong)); box-shadow: 0 8px 18px rgba(15, 118, 110, .18); }}
+    html[data-theme="light-v2"] .side-link {{ color: #31443D; }}
+    html[data-theme="light-v2"] .side-icon, html[data-theme="light-v2"] .nav-icon, html[data-theme="light-v2"] .side-link::before {{ color: #6D8179 !important; }}
+    html[data-theme="light-v2"] .side-link:hover, html[data-theme="light-v2"] .admin-link:hover {{ background: #E6F1ED; border-color: var(--accent-border); color: var(--accent-strong); }}
+    html[data-theme="light-v2"] .side-link.active, html[data-theme="light-v2"] .sidebar-collapsed .side-link.active {{ background: var(--accent-soft) !important; border-color: var(--accent-border) !important; color: var(--accent-strong); box-shadow: inset 3px 0 0 var(--accent); }}
+    html[data-theme="light-v2"] .side-link.active .side-icon, html[data-theme="light-v2"] .side-link.active .nav-icon, html[data-theme="light-v2"] .side-link.active::before {{ color: var(--accent-strong) !important; }}
+    html[data-theme="light-v2"] .side-link[href='/provider-changes'] .side-icon, html[data-theme="light-v2"] .side-link[href='/provider-changes'] .nav-icon {{ color: var(--warning) !important; }}
+    html[data-theme="light-v2"] .side-link[href='/provider-changes'].active {{ background: var(--warning-soft) !important; border-color: var(--warning-border) !important; color: var(--warning-hover); box-shadow: inset 3px 0 0 var(--warning); }}
+    html[data-theme="light-v2"] .side-link-disabled, html[data-theme="light-v2"] .side-link-disabled:hover, html[data-theme="light-v2"] .side-link-disabled:disabled {{ color: var(--text-soft); opacity: .72; background: transparent; }}
+    html[data-theme="light-v2"] .current-user-selector, html[data-theme="light-v2"] .theme-selector, html[data-theme="light-v2"] .sidebar-collapse {{ background: #F7FAF8; border-color: var(--border); color: var(--text); }}
+    html[data-theme="light-v2"] .theme-menu, html[data-theme="light-v2"] .current-user-menu, html[data-theme="light-v2"] .column-settings-panel {{ background: var(--surface); border-color: var(--border-strong); box-shadow: var(--shadow-card); }}
+    html[data-theme="light-v2"] .theme-menu button:hover, html[data-theme="light-v2"] .theme-menu button[aria-checked="true"], html[data-theme="light-v2"] .current-user-menu a:hover, html[data-theme="light-v2"] .column-settings-row:hover {{ background: var(--accent-soft); color: var(--accent-strong); }}
+    html[data-theme="light-v2"] .card, html[data-theme="light-v2"] details, html[data-theme="light-v2"] fieldset, html[data-theme="light-v2"] .filter-card, html[data-theme="light-v2"] .form-card, html[data-theme="light-v2"] .table-footer, html[data-theme="light-v2"] .table-card, html[data-theme="light-v2"] .journal-card, html[data-theme="light-v2"] .dictionary-card, html[data-theme="light-v2"] .dictionary-toolbar, html[data-theme="light-v2"] .event-feed, html[data-theme="light-v2"] .metric-card, html[data-theme="light-v2"] .quick-link-card, html[data-theme="light-v2"] .login-card {{ background: var(--surface); border-color: var(--border); box-shadow: var(--shadow-card); }}
+    html[data-theme="light-v2"] input, html[data-theme="light-v2"] select, html[data-theme="light-v2"] textarea {{ background: var(--input-bg); color: var(--text); border-color: var(--border-strong); }}
+    html[data-theme="light-v2"] input:focus, html[data-theme="light-v2"] select:focus, html[data-theme="light-v2"] textarea:focus {{ border-color: var(--accent); outline-color: var(--accent); box-shadow: 0 0 0 3px rgba(15, 118, 110, .14); }}
+    html[data-theme="light-v2"] input::placeholder, html[data-theme="light-v2"] textarea::placeholder {{ color: var(--text-soft); }}
+    html[data-theme="light-v2"] th {{ background: #EEF5F1; color: #52645D; border-bottom-color: var(--border-strong); }}
+    html[data-theme="light-v2"] th, html[data-theme="light-v2"] td {{ border-right-color: var(--border); }}
+    html[data-theme="light-v2"] td {{ background: var(--surface); border-bottom-color: var(--border); color: var(--text); }}
+    html[data-theme="light-v2"] tbody tr:nth-child(even) td {{ background: #FAFCFA; }}
+    html[data-theme="light-v2"] tbody tr:hover td, html[data-theme="light-v2"] .selectable-cell:hover {{ background: #EFF8F5 !important; }}
+    html[data-theme="light-v2"] form button[type="submit"], html[data-theme="light-v2"] .hero-action, html[data-theme="light-v2"] .modal-save, html[data-theme="light-v2"] .admin-edit-save {{ background: var(--accent); border-color: var(--accent); color: #fff; }}
+    html[data-theme="light-v2"] form button[type="submit"]:hover, html[data-theme="light-v2"] .hero-action:hover, html[data-theme="light-v2"] .modal-save:hover, html[data-theme="light-v2"] .admin-edit-save:hover {{ background: var(--accent-hover); border-color: var(--accent-hover); color: #fff; }}
+    html[data-theme="light-v2"] .metric-icon, html[data-theme="light-v2"] .quick-icon {{ background: var(--accent-soft); color: var(--accent-strong); }}
+    html[data-theme="light-v2"] .metric-card.green .metric-icon, html[data-theme="light-v2"] .feed-icon.ok, html[data-theme="light-v2"] .dot-status.ok span {{ background: var(--success); color: #fff; box-shadow: 0 0 0 5px var(--success-soft); }}
+    html[data-theme="light-v2"] .metric-card.orange .metric-icon, html[data-theme="light-v2"] .feed-icon.warn, html[data-theme="light-v2"] .dot-status.warning span {{ background: var(--warning); color: #fff; box-shadow: 0 0 0 5px var(--warning-soft); }}
+    html[data-theme="light-v2"] .dot-status.danger span, html[data-theme="light-v2"] .feed-icon.danger {{ background: var(--danger); box-shadow: 0 0 0 5px var(--danger-soft); }}
+    html[data-theme="light-v2"] .status-badge, html[data-theme="light-v2"] .badge {{ border: 1px solid var(--border); background: var(--surface-muted); color: var(--text); border-radius: 999px; padding: 2px 8px; }}
+    html[data-theme="light-v2"] .review-required-icon {{ color: var(--warning); }}
+    html[data-theme="light-v2"] .modal-form-card[open]::before, html[data-theme="light-v2"] .modal-overlay {{ background: rgba(31, 41, 51, .42); }}
+    html[data-theme="light-v2"] .modal-card, html[data-theme="light-v2"] .modal-form-card[open] > form, html[data-theme="light-v2"] .modal-form-card[open] > .modal-body {{ background: var(--surface); border-color: var(--border-strong); box-shadow: 0 24px 70px rgba(31, 41, 51, .22); }}
+    html[data-theme="light-v2"] .modal-cancel, html[data-theme="light-v2"] .admin-edit-cancel, html[data-theme="light-v2"] .danger-action {{ background: var(--danger-soft); border-color: var(--danger-border); color: var(--danger); }}
 
     .connection-status {{ position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%); z-index: 10001; display: none; align-items: center; gap: 10px; max-width: min(560px, calc(100vw - 24px)); padding: 10px 12px; border: 1px solid var(--border-strong); border-radius: 12px; background: var(--surface); color: var(--text-strong); box-shadow: var(--shadow-card); font-weight: 720; }}
     .connection-status.is-visible {{ display: flex; }}
