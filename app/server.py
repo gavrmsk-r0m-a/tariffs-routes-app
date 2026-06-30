@@ -1118,7 +1118,7 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
       --radius-control: 8px; --radius-card: 14px;
     }}
     body {{ background: var(--bg); color: var(--text); font-size: 14px; }}
-    .app-shell {{ grid-template-columns: 252px minmax(0, 1fr); background: var(--bg); }}
+    .app-shell {{ grid-template-columns: 260px minmax(0, 1fr); background: var(--bg); }}
     .workspace {{ padding: 0; min-width: 0; }}
     .content {{ padding: 18px 30px 42px; }}
     .content > h1:first-of-type {{ margin-bottom: 12px; padding-bottom: 8px; }}
@@ -1133,8 +1133,11 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .brand-mark {{ width: 36px; height: 36px; border-radius: 11px; background: linear-gradient(135deg,#4f46e5,#3525c8); color: #fff; box-shadow: 0 8px 18px rgba(79,70,229,.25); font-weight: 900; }}
     .brand-copy strong, .brand-copy span {{ display: block; }} .brand-copy strong {{ color: var(--text-strong); }} .brand-copy span {{ color: var(--muted); font-size: 12px; }}
     .app-title {{ display: none; }}
-    .side-nav {{ gap: 8px; flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: visible; overscroll-behavior: contain; padding-right: 2px; scrollbar-gutter: stable; }}
-    .side-link {{ justify-content: flex-start; gap: 12px; min-height: 48px; padding: 10px 14px; border-radius: 12px; color: #223158; font-weight: 700; }}
+    .side-nav {{ --sidebar-item-height: 40px; --sidebar-item-padding-y: 7px; --sidebar-item-padding-x: 12px; --sidebar-item-gap: 10px; display: grid; grid-auto-rows: min-content; align-content: start; gap: 6px; flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; padding-right: 10px; scrollbar-gutter: stable; }}
+    @supports (scrollbar-gutter: stable both-edges) {{
+      .side-nav {{ scrollbar-gutter: stable; }}
+    }}
+    .side-link {{ justify-content: flex-start; gap: var(--sidebar-item-gap); height: var(--sidebar-item-height); min-height: var(--sidebar-item-height); max-height: var(--sidebar-item-height); padding: var(--sidebar-item-padding-y) var(--sidebar-item-padding-x); line-height: 1.2; border-radius: 12px; color: #223158; font-weight: 700; }}
     .side-icon {{ width: 22px; height: 22px; color: #7786ad; font-size: 18px; }}
     .nav-icon {{ display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; flex: 0 0 24px; color: #7786ad; }}
     .nav-icon, .side-icon, .metric-icon, .quick-icon, .feed-icon {{ display: inline-flex; align-items: center; justify-content: center; }}
@@ -1185,8 +1188,8 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .sidebar-collapsed .sidebar {{ padding-left: 8px; padding-right: 8px; }}
     .sidebar-collapsed .brand-copy, .sidebar-collapsed .side-label, .sidebar-collapsed .user-copy, .sidebar-collapsed .current-user-selector .logout-link, .sidebar-collapsed .admin-tree {{ display: none; }}
     .sidebar-collapsed .sidebar {{ overflow: visible; }}
-    .sidebar-collapsed .side-nav {{ overflow: visible; padding-right: 0; }}
-    .sidebar-collapsed .side-link {{ font-size: 0; gap: 0; }}
+    .sidebar-collapsed .side-nav {{ overflow: visible; padding-right: 0; scrollbar-gutter: auto; }}
+    .sidebar-collapsed .side-link {{ font-size: 0; gap: 0; height: var(--sidebar-item-height); min-height: var(--sidebar-item-height); max-height: var(--sidebar-item-height); }}
     .sidebar-collapsed .sidebar-head {{ grid-template-columns: 1fr; gap: 10px; }}
     .sidebar-collapsed .sidebar-collapse {{ order: -1; justify-self: center; }}
     .sidebar-collapsed .sidebar-collapse-icon {{ transform: scaleX(-1); color: var(--accent-strong); }}
@@ -1971,7 +1974,7 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     html[data-theme="light-v2"] .brand-mark, html[data-theme="light-v2"] .user-icon {{ border-radius: 8px; background: var(--accent-strong); box-shadow: none; }}
     html[data-theme="light-v2"] .sidebar {{ background: #FFFFFF; border-right: 1px solid var(--border-strong); box-shadow: 1px 0 0 rgba(17, 24, 39, .025); }}
     html[data-theme="light-v2"] .side-link, html[data-theme="light-v2"] .admin-link, html[data-theme="light-v2"] .current-user-selector, html[data-theme="light-v2"] .theme-selector, html[data-theme="light-v2"] .sidebar-collapse {{ border-radius: 7px; }}
-    html[data-theme="light-v2"] .side-link {{ min-height: 44px; border: 1px solid transparent; border-left: 3px solid transparent; color: #2F3A45; font-weight: 680; letter-spacing: -0.003em; }}
+    html[data-theme="light-v2"] .side-link {{ height: var(--sidebar-item-height); min-height: var(--sidebar-item-height); max-height: var(--sidebar-item-height); border: 1px solid transparent; border-left: 3px solid transparent; color: #2F3A45; font-weight: 680; letter-spacing: -0.003em; }}
     html[data-theme="light-v2"] .side-link:hover, html[data-theme="light-v2"] .admin-link:hover {{ background: #F4F7F7; border-color: var(--border-strong); border-left-color: var(--accent-border); color: var(--accent-strong); box-shadow: none; }}
     html[data-theme="light-v2"] .side-link.active, html[data-theme="light-v2"] .sidebar-collapsed .side-link.active {{ background: #EFF6F5 !important; border-color: var(--border-strong) !important; border-left-color: var(--accent) !important; color: var(--accent-strong); box-shadow: none; }}
     html[data-theme="light-v2"] .current-user-selector, html[data-theme="light-v2"] .theme-selector, html[data-theme="light-v2"] .sidebar-collapse {{ background: #F7F9F9; border-color: var(--border-strong); box-shadow: none; }}
