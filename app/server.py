@@ -485,10 +485,6 @@ def sidebar(title: str) -> str:
         {admin_links}
       </div>
     </nav>
-    <div class="sidebar-footer">
-      {current_user_selector()}
-      {theme_selector()}
-    </div>
   </aside>"""
 
 def role_label(role_key: str | None) -> str:
@@ -510,11 +506,17 @@ def current_user_selector() -> str:
         return ""
     current_label = f"{current['display_name']} · {role_label(current['role_key'])}"
     return f"""
-        <div class="current-user-selector" data-tooltip="{esc(current_label)}">
-          <span class="side-icon user-icon" aria-hidden="true">{user_icon_svg()}</span>
-          <span class="user-copy"><strong>{esc(current_label)}</strong><small>Текущий пользователь</small></span>
-          <a class="logout-link" href="/logout">Выйти</a>
-        </div>
+        <details class="current-user-selector" data-tooltip="{esc(current_label)}">
+          <summary aria-label="Меню пользователя">
+            <span class="side-icon user-icon" aria-hidden="true">{user_icon_svg()}</span>
+            <span class="user-copy"><strong>{esc(current_label)}</strong><small>Текущий пользователь</small></span>
+            <span class="user-caret" aria-hidden="true">▾</span>
+          </summary>
+          <div class="current-user-menu">
+            <div class="current-user-menu-info"><strong>{esc(current['display_name'])}</strong><small>{esc(role_label(current['role_key']))} · Текущий пользователь</small></div>
+            <a class="logout-link" href="/logout">Выйти</a>
+          </div>
+        </details>
     """
 
 def theme_selector() -> str:
@@ -735,8 +737,10 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .admin-link .nav-icon .material-symbols-rounded {{ font-size: 20px; }}
     .admin-link.active {{ background: linear-gradient(135deg, var(--accent-soft), var(--cyber-soft)); border-color: var(--accent); color: var(--accent-strong); font-weight: 730; box-shadow: var(--shadow-soft); }}
     .workspace {{ min-width: 0; padding: 20px 28px 42px; background: transparent; }}
-    .topbar {{ display: flex; justify-content: flex-end; align-items: center; gap: 10px; min-height: 40px; margin: 0 0 10px; flex-wrap: wrap; }}
-    .current-user-selector label, .theme-selector {{ display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; font-weight: 700; }}
+    .page-top {{ display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin: 0 0 10px; }}
+    .page-crumbs {{ min-width: 0; }}
+    .topbar {{ display: flex; justify-content: flex-end; align-items: center; gap: 8px; min-height: 36px; margin: 0; flex-wrap: wrap; }}
+    .current-user-selector summary, .theme-selector {{ display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; font-weight: 700; }}
     .current-user-selector select {{ min-width: 190px; }}
     .theme-selector select {{ min-width: 138px; max-width: 150px; }}
     .content {{ max-width: 1460px; margin: 0 auto; }}
@@ -990,7 +994,9 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     td[data-col="actions"] {{ padding: 6px 8px; overflow: visible; }}
     .actions, .compact-actions, td[data-col="actions"] {{ white-space: nowrap; text-align: center; }}
     td[data-col="actions"] form {{ justify-content: center; }}
-    .route-numbers-action {{ min-height: 28px; padding: 4px 8px; font-size: 12px; box-shadow: none; }}
+    .route-numbers-cell {{ display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 190px; }}
+    .route-numbers-label {{ min-width: 0; text-align: left; }}
+    .route-numbers-action {{ margin-left: auto; min-height: 28px; padding: 4px 8px; font-size: 12px; box-shadow: none; white-space: nowrap; }}
     .action-button, .actions .button, .actions button, .compact-actions .button, .compact-actions button, td[data-col="actions"] .button, td[data-col="actions"] button {{ min-width: 30px; min-height: 30px; padding: 4px 7px; border-radius: 8px; font-size: 12px; line-height: 1; box-shadow: none; }}
     .edit-action, td[data-col="actions"] details.edit-details > summary {{ position: relative; width: 32px; min-width: 32px; height: 32px; min-height: 32px; padding: 0; display: inline-flex; align-items: center; justify-content: center; overflow: visible; color: transparent; font-size: 0; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--surface); box-shadow: none; list-style: none; }}
     .edit-action:hover, td[data-col="actions"] details.edit-details > summary:hover {{ background: var(--accent-soft); border-color: var(--accent); color: transparent; }}
@@ -1038,6 +1044,14 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     td[data-col="actions"] details.edit-details > form textarea {{
       width: 100%;
       box-sizing: border-box;
+    }}
+    td[data-col="actions"] details.edit-details > form label {{
+      display: grid;
+      gap: 5px;
+      width: 100%;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 760;
     }}
     .admin-edit-actions {{
       display: flex;
@@ -1101,9 +1115,10 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .app-shell {{ grid-template-columns: 252px minmax(0, 1fr); background: var(--bg); }}
     .workspace {{ padding: 0; min-width: 0; }}
     .content {{ padding: 18px 30px 42px; }}
-    .content > h1 {{ display: none; }}
-    .breadcrumbs {{ margin: -18px -30px 20px; padding: 12px 30px 10px; min-height: 60px; display: flex; align-content: center; border-bottom: 1px solid var(--border); background: #f3f6fc; }}
-    .breadcrumbs::after {{ content: attr(data-current); display: block; flex-basis: 100%; color: var(--text-strong); font-size: 16px; font-weight: 800; }}
+    .content > h1:first-of-type {{ margin-bottom: 12px; padding-bottom: 8px; }}
+    .page-top {{ margin: -18px -30px 14px; padding: 10px 30px; min-height: 56px; border-bottom: 1px solid var(--border); background: #f3f6fc; }}
+    .breadcrumbs {{ margin: 0; padding: 0; min-height: auto; display: flex; align-content: center; border-bottom: 0; background: transparent; }}
+    .breadcrumbs::after {{ content: none; }}
     .breadcrumbs .separator {{ font-size: 0; }} .breadcrumbs .separator::before {{ content: '›'; font-size: 12px; }}
     .sidebar {{ display: flex; flex-direction: column; gap: 18px; padding: 14px 12px; background: #fff; height: 100vh; overflow: visible; z-index: 100; }}
     .sidebar-head {{ display: grid; grid-template-columns: minmax(0, 1fr) 42px; gap: 8px; align-items: start; padding-bottom: 14px; border-bottom: 1px solid var(--border); }}
@@ -1111,7 +1126,7 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .brand-mark, .side-icon, .metric-icon, .quick-icon, .feed-icon {{ display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; }}
     .brand-mark {{ width: 36px; height: 36px; border-radius: 11px; background: linear-gradient(135deg,#4f46e5,#3525c8); color: #fff; box-shadow: 0 8px 18px rgba(79,70,229,.25); font-weight: 900; }}
     .brand-copy strong, .brand-copy span {{ display: block; }} .brand-copy strong {{ color: var(--text-strong); }} .brand-copy span {{ color: var(--muted); font-size: 12px; }}
-    .app-title, .topbar {{ display: none; }}
+    .app-title {{ display: none; }}
     .side-nav {{ gap: 8px; }}
     .side-link {{ justify-content: flex-start; gap: 12px; min-height: 48px; padding: 10px 14px; border-radius: 12px; color: #223158; font-weight: 700; }}
     .side-icon {{ width: 22px; height: 22px; color: #7786ad; font-size: 18px; }}
@@ -1128,10 +1143,10 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .side-link-disabled .nav-icon, .side-link-disabled:hover .nav-icon {{ color: var(--muted); }}
     .admin-tree {{ margin: 0 0 0 34px; padding-left: 10px; border-left: 1px solid var(--border); }}
     .admin-link {{ display: block; padding: 7px 10px; font-size: 12px; }}
-    .sidebar-footer {{ margin-top: auto; display: grid; gap: 10px; padding-top: 12px; border-top: 1px solid var(--border); }}
-    .theme-selector-wrap {{ position: relative; width: 100%; }}
-    .theme-selector-wrap .theme-selector {{ justify-content: flex-start; box-shadow: none; }}
-    .theme-menu {{ position: absolute; left: 0; right: 0; bottom: calc(100% + 6px); display: none; gap: 4px; padding: 6px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); box-shadow: var(--shadow-card); z-index: 80; }}
+    .sidebar-footer {{ display: none; }}
+    .theme-selector-wrap {{ position: relative; width: auto; }}
+    .theme-selector-wrap .theme-selector {{ justify-content: flex-start; box-shadow: none; min-height: 34px; padding: 6px 10px; white-space: nowrap; }}
+    .theme-menu {{ position: absolute; left: auto; right: 0; top: calc(100% + 6px); min-width: 180px; display: none; gap: 4px; padding: 6px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); box-shadow: var(--shadow-card); z-index: 80; }}
     .theme-selector-wrap.open .theme-menu {{ display: grid; }}
     .theme-menu button {{ justify-content: flex-start; min-height: 34px; padding: 7px 9px; border: 0; border-radius: 8px; background: transparent; box-shadow: none; color: var(--text); font-size: 13px; }}
     .theme-menu button[aria-checked="true"] {{ background: var(--accent-soft); color: var(--accent-strong); font-weight: 800; }}
@@ -1153,13 +1168,13 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .selectable-cell:hover {{ background: color-mix(in srgb, var(--accent-soft) 62%, var(--surface)) !important; }}
     .selectable-text::selection, .selectable-text *::selection, .data-table ::selection, .table-card table ::selection, .journal-card table ::selection {{ background: rgba(37, 99, 235, 0.22); color: var(--text-strong); }}
     html[data-theme="dark"] .data-table ::selection, html[data-theme="dark"] .table-card table ::selection, html[data-theme="dark"] .journal-card table ::selection {{ background: rgba(56, 189, 248, 0.35); color: var(--text-strong); }}
-    .current-user-selector, .theme-selector, .sidebar-collapse {{ display: flex; align-items: center; gap: 10px; width: 100%; min-height: 42px; padding: 8px 10px; border: 1px solid transparent; border-radius: 12px; background: transparent; color: var(--text); text-align: left; }}
+    .current-user-selector, .theme-selector, .sidebar-collapse {{ display: flex; align-items: center; gap: 10px; width: auto; min-height: 34px; padding: 8px 10px; border: 1px solid transparent; border-radius: 12px; background: transparent; color: var(--text); text-align: left; }}
     .sidebar-collapse {{ width: 36px; min-width: 36px; max-width: 36px; height: 36px; min-height: 36px; padding: 0; justify-content: center; justify-self: end; color: #223158; border-color: var(--border); background: var(--surface); box-shadow: var(--shadow-soft); overflow: hidden; }}
     .sidebar-collapse:hover {{ background: var(--accent-soft); border-color: var(--accent); color: var(--accent-strong); }}
     .sidebar-collapse-icon {{ width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; }}
     .sidebar-collapse-icon .material-symbols-rounded {{ font-size: 20px; }}
-    .current-user-selector {{ position: relative; background: #f4f6ff; border-color: #e2e8ff; }} .current-user-selector summary {{ display: flex; align-items: center; gap: 10px; cursor: pointer; list-style: none; }} .current-user-selector summary::-webkit-details-marker {{ display: none; }} .current-user-menu {{ position: absolute; left: 0; right: 0; bottom: calc(100% + 6px); display: grid; gap: 4px; padding: 6px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); box-shadow: var(--shadow-card); z-index: 50; }} .current-user-menu a {{ display: block; padding: 6px 8px; border-radius: 7px; color: var(--text); font-size: 12px; font-weight: 700; text-decoration: none; }} .current-user-menu a:hover {{ background: var(--accent-soft); color: var(--accent-strong); }} .current-user-menu .logout-link {{ color: #b42318; }} .user-icon {{ background: #4f46e5; color: #fff; border-radius: 9px; width: 32px; height: 32px; }} .user-icon .material-symbols-rounded {{ font-size: 20px; }} .login-body {{ min-height: 100vh; display: grid; place-items: center; padding: 24px; }} .login-shell {{ width: min(560px, 100%); }} .login-card {{ padding: 28px; border: 1px solid var(--border); border-radius: 18px; background: var(--surface); box-shadow: var(--shadow-card); }} .login-card h1 {{ margin-bottom: 6px; }} .login-users {{ display: grid; gap: 10px; margin: 20px 0; }} .login-user-card {{ display: flex; align-items: center; gap: 12px; padding: 12px; border: 1px solid var(--border); border-radius: 12px; cursor: pointer; }} .login-user-card:hover {{ border-color: var(--accent); background: var(--accent-soft); }} .login-user-card span strong, .login-user-card span small {{ display: block; }} .login-user-card span small, .muted {{ color: var(--muted); }} .login-error {{ padding: 10px 12px; border-radius: 10px; background: var(--danger-soft); color: #b42318; font-weight: 700; }}
-    .user-copy strong, .user-copy small {{ display: block; }} .user-copy small {{ color: var(--muted); }}
+    .current-user-selector {{ position: relative; background: #f4f6ff; border-color: #e2e8ff; padding: 0; }} .current-user-selector summary {{ display: flex; align-items: center; gap: 8px; cursor: pointer; list-style: none; padding: 6px 10px; }} .current-user-selector summary::-webkit-details-marker {{ display: none; }} .current-user-menu {{ position: absolute; left: 0; right: 0; top: calc(100% + 6px); display: grid; gap: 4px; padding: 6px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); box-shadow: var(--shadow-card); z-index: 50; }} .current-user-menu-info {{ display: grid; gap: 1px; padding: 6px 8px; border-bottom: 1px solid var(--border); }} .current-user-menu-info small {{ color: var(--muted); font-size: 12px; }} .current-user-menu a {{ display: block; padding: 6px 8px; border-radius: 7px; color: var(--text); font-size: 12px; font-weight: 700; text-decoration: none; }} .current-user-menu a:hover {{ background: var(--accent-soft); color: var(--accent-strong); }} .current-user-menu .logout-link {{ color: #b42318; }} .user-icon {{ background: #4f46e5; color: #fff; border-radius: 9px; width: 32px; height: 32px; }} .user-icon .material-symbols-rounded {{ font-size: 20px; }} .login-body {{ min-height: 100vh; display: grid; place-items: center; padding: 24px; }} .login-shell {{ width: min(560px, 100%); }} .login-card {{ padding: 28px; border: 1px solid var(--border); border-radius: 18px; background: var(--surface); box-shadow: var(--shadow-card); }} .login-card h1 {{ margin-bottom: 6px; }} .login-users {{ display: grid; gap: 10px; margin: 20px 0; }} .login-user-card {{ display: flex; align-items: center; gap: 12px; padding: 12px; border: 1px solid var(--border); border-radius: 12px; cursor: pointer; }} .login-user-card:hover {{ border-color: var(--accent); background: var(--accent-soft); }} .login-user-card span strong, .login-user-card span small {{ display: block; }} .login-user-card span small, .muted {{ color: var(--muted); }} .login-error {{ padding: 10px 12px; border-radius: 10px; background: var(--danger-soft); color: #b42318; font-weight: 700; }}
+    .user-copy strong, .user-copy small {{ display: block; white-space: nowrap; }} .user-copy small {{ color: var(--muted); }}
     .app-shell.sidebar-collapsed {{ grid-template-columns: 70px minmax(0, 1fr); }}
     .sidebar-collapsed .sidebar {{ padding-left: 8px; padding-right: 8px; }}
     .sidebar-collapsed .brand-copy, .sidebar-collapsed .side-label, .sidebar-collapsed .user-copy, .sidebar-collapsed .current-user-selector .logout-link, .sidebar-collapsed .admin-tree {{ display: none; }}
@@ -1167,7 +1182,7 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .sidebar-collapsed .sidebar-head {{ grid-template-columns: 1fr; gap: 10px; }}
     .sidebar-collapsed .sidebar-collapse {{ order: -1; justify-self: center; }}
     .sidebar-collapsed .sidebar-collapse-icon {{ transform: scaleX(-1); color: var(--accent-strong); }}
-    .sidebar-collapsed .brand-block, .sidebar-collapsed .side-link, .sidebar-collapsed .current-user-selector, .sidebar-collapsed .theme-selector {{ justify-content: center; padding-left: 0; padding-right: 0; }}
+    .sidebar-collapsed .brand-block, .sidebar-collapsed .side-link {{ justify-content: center; padding-left: 0; padding-right: 0; }}
     .sidebar-collapsed [data-tooltip] {{ position: relative; }}
     .sidebar-collapsed [data-tooltip]:hover::after {{ content: attr(data-tooltip); position: absolute; left: calc(100% + 10px); top: 50%; transform: translateY(-50%); z-index: 10000; pointer-events: none; white-space: nowrap; border-radius: 8px; padding: 7px 9px; background: #111827; color: #fff; font-size: 12px; box-shadow: var(--shadow-card); }}
     .metrics-grid {{ grid-template-columns: repeat(4, minmax(180px,1fr)); gap: 20px; margin: 8px 0 28px; }}
@@ -1427,7 +1442,13 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
       color: var(--muted);
     }}
 
+    html[data-theme="dark"] .page-top {{
+      background: linear-gradient(180deg, #0b1224 0%, var(--bg) 100%);
+      border-bottom-color: var(--border);
+    }}
+
     html[data-theme="dark"] .breadcrumbs::after {{
+      content: none;
       color: var(--text-strong);
     }}
 
@@ -2006,7 +2027,10 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     <main class="workspace">
       
       <div class="content">
-        {breadcrumbs(title)}
+        <div class="page-top">
+          <div class="page-crumbs">{breadcrumbs(title)}</div>
+          <div class="topbar" aria-label="Настройки интерфейса">{theme_selector()}{current_user_selector()}</div>
+        </div>
         {notice_html}
         {body}
       </div>
@@ -3977,7 +4001,7 @@ def routes_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
     for route in records:
         prefix = route["prefix"] or "—"
         numbers_label = "RND провайдера" if route["cli_source_type"] == "rnd" else f'{route["phone_count"]} номеров'
-        numbers = f'{numbers_label} <a class="button route-numbers-action" href="/routes/{route["id"]}/numbers">Показать номера</a>'
+        numbers = f'<div class="route-numbers-cell"><span class="route-numbers-label">{numbers_label}</span><a class="button route-numbers-action" href="/routes/{route["id"]}/numbers">Показать номера</a></div>'
         edit = f"<a class='button edit-action' href='/routes/{route['id']}/edit' title='Редактировать' aria-label='Редактировать' data-tooltip='Редактировать'>Редактировать</a>" if can_write("routes") else ""
         history = history_icon_link(f"/routes/{route['id']}/history")
         rows.append(f"<tr><td data-col='geo'>{esc(route['country_name'])}</td>{clamp_cell('route', esc(route['name']), route['name'], extra_attrs="data-copy-column='route-name'", classes='route-name-cell', selectable=True)}<td data-col='provider'>{esc(route['provider_name'])}</td><td data-col='prefix'>{esc(prefix)}</td><td data-col='actual'>{'Да' if route['is_actual'] else 'Нет'}</td>{clamp_cell('aon_pool', esc(route['aon_pool'] or '—'), route['aon_pool'] or '—')}{clamp_cell('comment', esc(route['comment']), route['comment'], classes='comment-cell')}<td data-col='numbers'>{numbers}</td><td data-col='history' class='history-cell'>{history}</td><td data-col='actions' class='actions'>{edit}</td></tr>")
@@ -5261,6 +5285,9 @@ def dictionaries_page(repo: Repository, q: dict[str, str] | None = None) -> byte
     def active_select(value: object) -> str:
         return f"""<select name='is_active'><option value='1' {'selected' if value else ''}>Активен</option><option value='0' {'selected' if not value else ''}>Неактивен</option></select>"""
 
+    def edit_field(label: str, control_html: str) -> str:
+        return f"<label>{label} {control_html}</label>"
+
     def row_class(row: sqlite3.Row) -> str:
         return " class='inactive-row'" if not row["is_active"] else ""
 
@@ -5310,17 +5337,17 @@ def dictionaries_page(repo: Repository, q: dict[str, str] | None = None) -> byte
         headers = ["GEO", "Код", "Активен", "Комментарий", "Действия"]
         source = list(repo.conn.execute("SELECT * FROM countries ORDER BY name"))
         for row in source:
-            rows.append(f"""<tr{row_class(row)}><td>{esc(row['name'])}</td><td>{esc(row['code'])}</td><td><span class='status-badge'>{active_label(row['is_active'])}</span></td><td class='muted'>—</td><td data-col='actions'><details class='edit-details'><summary title='Редактировать' aria-label='Редактировать'>Редактировать</summary><form method='post' action='/admin/dictionaries/countries/{row['id']}/update'><input name='name' value='{esc(row['name'])}'><input name='code' value='{esc(row['code'])}' placeholder='Код'>{active_select(row['is_active'])}<button>Сохранить</button></form></details></td></tr>""")
+            rows.append(f"""<tr{row_class(row)}><td>{esc(row['name'])}</td><td>{esc(row['code'])}</td><td><span class='status-badge'>{active_label(row['is_active'])}</span></td><td class='muted'>—</td><td data-col='actions'><details class='edit-details'><summary title='Редактировать' aria-label='Редактировать'>Редактировать</summary><form method='post' action='/admin/dictionaries/countries/{row['id']}/update'>{edit_field('Название GEO', f"<input name='name' value='{esc(row['name'])}'>")}{edit_field('Код GEO', f"<input name='code' value='{esc(row['code'])}' placeholder='Код'>")}{edit_field('Статус', active_select(row['is_active']))}<button>Сохранить</button></form></details></td></tr>""")
     elif active_section == "providers":
         headers = ["Название", "Активен", "Комментарий", "Действия"]
         source = list(repo.conn.execute("SELECT p.*, c.code AS currency_code FROM providers p LEFT JOIN currencies c ON c.id = p.default_currency_id ORDER BY p.name"))
         for row in source:
-            rows.append(f"""<tr{row_class(row)}><td>{esc(row['name'])}</td><td><span class='status-badge'>{active_label(row['is_active'])}</span></td><td>{esc(row['comment'])}</td><td data-col='actions'><details class='edit-details'><summary title='Редактировать' aria-label='Редактировать'>Редактировать</summary><form method='post' action='/admin/dictionaries/providers/{row['id']}/update'><input name='name' value='{esc(row['name'])}'><select name='default_currency_id'><option value=''>—</option>{options(repo, 'currencies', 'code', selected=row['default_currency_id'])}</select><input name='comment' value='{esc(row['comment'])}' placeholder='Комментарий'>{active_select(row['is_active'])}<button>Сохранить</button></form></details></td></tr>""")
+            rows.append(f"""<tr{row_class(row)}><td>{esc(row['name'])}</td><td><span class='status-badge'>{active_label(row['is_active'])}</span></td><td>{esc(row['comment'])}</td><td data-col='actions'><details class='edit-details'><summary title='Редактировать' aria-label='Редактировать'>Редактировать</summary><form method='post' action='/admin/dictionaries/providers/{row['id']}/update'>{edit_field('Название провайдера', f"<input name='name' value='{esc(row['name'])}'>")}{edit_field('Валюта провайдера', f"<select name='default_currency_id'><option value=''>—</option>{options(repo, 'currencies', 'code', selected=row['default_currency_id'])}</select>")}{edit_field('Комментарий', f"<input name='comment' value='{esc(row['comment'])}' placeholder='Комментарий'>")}{edit_field('Статус', active_select(row['is_active']))}<button>Сохранить</button></form></details></td></tr>""")
     elif active_section == "currencies":
         headers = ["Код валюты", "Активен", "Комментарий", "Действия"]
         source = list(repo.conn.execute("SELECT * FROM currencies ORDER BY code"))
         for row in source:
-            rows.append(f"""<tr{row_class(row)}><td>{esc(row['code'])}</td><td><span class='status-badge'>{active_label(row['is_active'])}</span></td><td>{esc(row['name'])}</td><td data-col='actions'><details class='edit-details'><summary title='Редактировать' aria-label='Редактировать'>Редактировать</summary><form method='post' action='/admin/dictionaries/currencies/{row['id']}/update'><input name='code' value='{esc(row['code'])}'><input name='name' value='{esc(row['name'])}' placeholder='Комментарий'>{active_select(row['is_active'])}<button>Сохранить</button></form></details></td></tr>""")
+            rows.append(f"""<tr{row_class(row)}><td>{esc(row['code'])}</td><td><span class='status-badge'>{active_label(row['is_active'])}</span></td><td>{esc(row['name'])}</td><td data-col='actions'><details class='edit-details'><summary title='Редактировать' aria-label='Редактировать'>Редактировать</summary><form method='post' action='/admin/dictionaries/currencies/{row['id']}/update'>{edit_field('Код валюты', f"<input name='code' value='{esc(row['code'])}'>")}{edit_field('Название валюты / комментарий', f"<input name='name' value='{esc(row['name'])}' placeholder='Комментарий'>")}{edit_field('Статус', active_select(row['is_active']))}<button>Сохранить</button></form></details></td></tr>""")
     elif active_section == "prefixes":
         headers = ["Префикс", "Провайдер", "Активен", "Комментарий", "Действия"]
         source = list(repo.conn.execute("""
@@ -5329,27 +5356,27 @@ def dictionaries_page(repo: Repository, q: dict[str, str] | None = None) -> byte
             ORDER BY p.name, COALESCE(pp.prefix, '')
         """))
         for row in source:
-            rows.append(f"""<tr{row_class(row)}><td>{esc(row['prefix'] or 'Без префикса')}</td><td>{esc(row['provider_name'])}</td><td><span class='status-badge'>{active_label(row['is_active'])}</span></td><td>{esc(row['name'])}</td><td data-col='actions'><details class='edit-details'><summary title='Редактировать' aria-label='Редактировать'>Редактировать</summary><form method='post' action='/admin/dictionaries/prefixes/{row['id']}/update'><select name='provider_id'>{options(repo, 'providers', selected=row['provider_id'])}</select><input name='prefix' value='{esc(row['prefix'])}' placeholder='Без префикса или цифры'><input name='name' value='{esc(row['name'])}' placeholder='Комментарий'>{active_select(row['is_active'])}<button>Сохранить</button></form></details></td></tr>""")
+            rows.append(f"""<tr{row_class(row)}><td>{esc(row['prefix'] or 'Без префикса')}</td><td>{esc(row['provider_name'])}</td><td><span class='status-badge'>{active_label(row['is_active'])}</span></td><td>{esc(row['name'])}</td><td data-col='actions'><details class='edit-details'><summary title='Редактировать' aria-label='Редактировать'>Редактировать</summary><form method='post' action='/admin/dictionaries/prefixes/{row['id']}/update'>{edit_field('Провайдер префикса', f"<select name='provider_id'>{options(repo, 'providers', selected=row['provider_id'])}</select>")}{edit_field('Префикс', f"<input name='prefix' value='{esc(row['prefix'])}' placeholder='Без префикса или цифры'>")}{edit_field('Комментарий', f"<input name='name' value='{esc(row['name'])}' placeholder='Комментарий'>")}{edit_field('Статус', active_select(row['is_active']))}<button>Сохранить</button></form></details></td></tr>""")
     elif active_section == "servers":
         headers = ["Сервер", "Активен", "Комментарий", "Действия"]
         source = list(repo.conn.execute("SELECT * FROM servers ORDER BY name"))
         for row in source:
-            rows.append(f"""<tr{row_class(row)}><td>{esc(row['name'])}</td><td><span class='status-badge'>{active_label(row['is_active'])}</span></td><td>{esc(row['comment'])}</td><td data-col='actions'><details class='edit-details'><summary title='Редактировать' aria-label='Редактировать'>Редактировать</summary><form method='post' action='/admin/dictionaries/servers/{row['id']}/update'><input name='name' value='{esc(row['name'])}'><input name='comment' value='{esc(row['comment'])}' placeholder='Комментарий'>{active_select(row['is_active'])}<button>Сохранить</button></form></details></td></tr>""")
+            rows.append(f"""<tr{row_class(row)}><td>{esc(row['name'])}</td><td><span class='status-badge'>{active_label(row['is_active'])}</span></td><td>{esc(row['comment'])}</td><td data-col='actions'><details class='edit-details'><summary title='Редактировать' aria-label='Редактировать'>Редактировать</summary><form method='post' action='/admin/dictionaries/servers/{row['id']}/update'>{edit_field('Название сервера', f"<input name='name' value='{esc(row['name'])}'>")}{edit_field('Комментарий', f"<input name='comment' value='{esc(row['comment'])}' placeholder='Комментарий'>")}{edit_field('Статус', active_select(row['is_active']))}<button>Сохранить</button></form></details></td></tr>""")
     elif active_section == "phone-types":
         headers = ["Тип номера", "Активен", "Комментарий", "Действия"]
         source = list(repo.conn.execute("SELECT * FROM phone_number_types ORDER BY name"))
         for row in source:
-            rows.append(f"""<tr{row_class(row)}><td>{esc(row['name'])}</td><td><span class='status-badge'>{active_label(row['is_active'])}</span></td><td>{esc(row['comment'])}</td><td data-col='actions'><details class='edit-details'><summary title='Редактировать' aria-label='Редактировать'>Редактировать</summary><form method='post' action='/admin/dictionaries/phone-types/{row['id']}/update'><input name='name' value='{esc(row['name'])}'><input name='comment' value='{esc(row['comment'])}' placeholder='Комментарий'>{active_select(row['is_active'])}<button>Сохранить</button></form></details></td></tr>""")
+            rows.append(f"""<tr{row_class(row)}><td>{esc(row['name'])}</td><td><span class='status-badge'>{active_label(row['is_active'])}</span></td><td>{esc(row['comment'])}</td><td data-col='actions'><details class='edit-details'><summary title='Редактировать' aria-label='Редактировать'>Редактировать</summary><form method='post' action='/admin/dictionaries/phone-types/{row['id']}/update'>{edit_field('Тип номера', f"<input name='name' value='{esc(row['name'])}'>")}{edit_field('Комментарий', f"<input name='comment' value='{esc(row['comment'])}' placeholder='Комментарий'>")}{edit_field('Статус', active_select(row['is_active']))}<button>Сохранить</button></form></details></td></tr>""")
     elif active_section == "projects":
         headers = ["Название проекта", "Активен", "Комментарий", "Действия"]
         source = list(repo.conn.execute("SELECT * FROM projects ORDER BY sort_order, name"))
         for row in source:
-            rows.append(f"""<tr{row_class(row)}><td>{esc(row['name'])}</td><td><span class='status-badge'>{active_label(row['is_active'])}</span></td><td>{esc(row['comment'])}</td><td data-col='actions'><details class='edit-details'><summary title='Редактировать' aria-label='Редактировать'>Редактировать</summary><form method='post' action='/admin/dictionaries/projects/{row['id']}/update'><input name='name' value='{esc(row['name'])}'><input name='comment' value='{esc(row['comment'])}' placeholder='Комментарий'>{active_select(row['is_active'])}<button>Сохранить</button></form></details></td></tr>""")
+            rows.append(f"""<tr{row_class(row)}><td>{esc(row['name'])}</td><td><span class='status-badge'>{active_label(row['is_active'])}</span></td><td>{esc(row['comment'])}</td><td data-col='actions'><details class='edit-details'><summary title='Редактировать' aria-label='Редактировать'>Редактировать</summary><form method='post' action='/admin/dictionaries/projects/{row['id']}/update'>{edit_field('Название проекта', f"<input name='name' value='{esc(row['name'])}'>")}{edit_field('Комментарий', f"<input name='comment' value='{esc(row['comment'])}' placeholder='Комментарий'>")}{edit_field('Статус', active_select(row['is_active']))}<button>Сохранить</button></form></details></td></tr>""")
     else:
         headers = ["Назначение", "Активен", "Комментарий", "Действия"]
         source = list(repo.conn.execute("SELECT * FROM phone_assignment_types ORDER BY sort_order, name"))
         for row in source:
-            rows.append(f"""<tr{row_class(row)}><td>{esc(row['name'])}</td><td><span class='status-badge'>{active_label(row['is_active'])}</span></td><td>{esc(row['comment'])}</td><td data-col='actions'><details class='edit-details'><summary title='Редактировать' aria-label='Редактировать'>Редактировать</summary><form method='post' action='/admin/dictionaries/phone-assignments/{row['id']}/update'><input name='name' value='{esc(row['name'])}'><input name='code' value='{esc(row['code'])}' readonly><input name='comment' value='{esc(row['comment'])}' placeholder='Комментарий'>{active_select(row['is_active'])}<button>Сохранить</button></form></details></td></tr>""")
+            rows.append(f"""<tr{row_class(row)}><td>{esc(row['name'])}</td><td><span class='status-badge'>{active_label(row['is_active'])}</span></td><td>{esc(row['comment'])}</td><td data-col='actions'><details class='edit-details'><summary title='Редактировать' aria-label='Редактировать'>Редактировать</summary><form method='post' action='/admin/dictionaries/phone-assignments/{row['id']}/update'>{edit_field('Назначение номера', f"<input name='name' value='{esc(row['name'])}'>")}{edit_field('Код / системное значение', f"<input name='code' value='{esc(row['code'])}' readonly>")}{edit_field('Комментарий', f"<input name='comment' value='{esc(row['comment'])}' placeholder='Комментарий'>")}{edit_field('Статус', active_select(row['is_active']))}<button>Сохранить</button></form></details></td></tr>""")
 
     header_html = "".join(f"<th>{esc(header)}</th>" for header in headers)
     table_html = f"<table><thead><tr>{header_html}</tr></thead><tbody>{''.join(rows)}</tbody></table>"
