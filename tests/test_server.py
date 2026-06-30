@@ -343,6 +343,8 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertIn('href="/logout"', content)
         self.assertIn("Текущий пользователь", content)
         self.assertIn("Admin · Админ", content)
+        summary = content.split('<summary aria-label="Меню пользователя">', 1)[1].split("</summary>", 1)[0]
+        self.assertNotIn("Текущий пользователь", summary)
 
     def test_app_pages_are_not_cached_and_include_connection_recovery_ui(self):
         captured, content = self.request("/routes")
@@ -493,9 +495,11 @@ class ServerSmokeTest(unittest.TestCase):
         cookie = self.user_cookie("duty")
         captured, content = self.request("/routes", cookie=cookie)
         self.assertEqual(captured["status"], "200 OK")
-        selector = content.split('<div class="current-user-selector"', 1)[1].split("</div>", 1)[0]
-        self.assertIn("Дежурный · Дежурный", selector)
-        self.assertIn("<small>Текущий пользователь</small>", selector)
+        selector = content.split('<details class="current-user-selector"', 1)[1].split("</details>", 1)[0]
+        summary = selector.split('<summary aria-label="Меню пользователя">', 1)[1].split("</summary>", 1)[0]
+        self.assertIn("Дежурный · Дежурный", summary)
+        self.assertNotIn("Текущий пользователь", summary)
+        self.assertIn("Текущий пользователь", selector)
         self.assertEqual(content.count('href="/logout"'), 1)
 
 
