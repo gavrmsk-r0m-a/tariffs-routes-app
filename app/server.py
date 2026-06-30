@@ -339,7 +339,7 @@ def material_icon(name: str) -> str:
 
 
 SEMANTIC_ICONS = {
-    "dashboard": material_icon("dashboard"),
+    "dashboard": material_icon("home"),
     "routes": material_icon("route"),
     "tariffs": material_icon("sell"),
     "phones": material_icon("sim_card"),
@@ -1974,16 +1974,29 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     html[data-theme="light-v2"] .brand-mark, html[data-theme="light-v2"] .user-icon {{ border-radius: 8px; background: var(--accent-strong); box-shadow: none; }}
     html[data-theme="light-v2"] .sidebar {{ background: #FFFFFF; border-right: 1px solid var(--border-strong); box-shadow: 1px 0 0 rgba(17, 24, 39, .025); }}
     html[data-theme="light-v2"] .side-link, html[data-theme="light-v2"] .admin-link, html[data-theme="light-v2"] .current-user-selector, html[data-theme="light-v2"] .theme-selector, html[data-theme="light-v2"] .sidebar-collapse {{ border-radius: 7px; }}
-    html[data-theme="light-v2"] .side-link {{ height: var(--sidebar-item-height); min-height: var(--sidebar-item-height); max-height: var(--sidebar-item-height); border: 1px solid transparent; border-left: 3px solid transparent; color: #2F3A45; font-weight: 680; letter-spacing: -0.003em; }}
+    html[data-theme="light-v2"] .side-link {{ height: var(--sidebar-item-height); min-height: var(--sidebar-item-height); max-height: var(--sidebar-item-height); border: 1px solid transparent; border-left: 3px solid transparent; color: #25313C; font-weight: 660; letter-spacing: -0.002em; }}
+    html[data-theme="light-v2"] .nav-icon {{ color: #5C6A76; }}
+    html[data-theme="light-v2"] .side-link-disabled, html[data-theme="light-v2"] .side-link-disabled:hover, html[data-theme="light-v2"] .side-link-disabled:disabled {{ color: #788692; opacity: .66; }}
+    html[data-theme="light-v2"] .side-link-disabled .nav-icon, html[data-theme="light-v2"] .side-link-disabled:hover .nav-icon {{ color: #8A96A1; }}
     html[data-theme="light-v2"] .side-link:hover, html[data-theme="light-v2"] .admin-link:hover {{ background: #F4F7F7; border-color: var(--border-strong); border-left-color: var(--accent-border); color: var(--accent-strong); box-shadow: none; }}
     html[data-theme="light-v2"] .side-link.active, html[data-theme="light-v2"] .sidebar-collapsed .side-link.active {{ background: #EFF6F5 !important; border-color: var(--border-strong) !important; border-left-color: var(--accent) !important; color: var(--accent-strong); box-shadow: none; }}
     html[data-theme="light-v2"] .current-user-selector, html[data-theme="light-v2"] .theme-selector, html[data-theme="light-v2"] .sidebar-collapse {{ background: #F7F9F9; border-color: var(--border-strong); box-shadow: none; }}
     html[data-theme="light-v2"] .theme-menu, html[data-theme="light-v2"] .current-user-menu, html[data-theme="light-v2"] .column-settings-panel {{ border-radius: 8px; border-color: var(--border-strong); box-shadow: var(--shadow-card-hover); }}
     html[data-theme="light-v2"] .card, html[data-theme="light-v2"] details, html[data-theme="light-v2"] fieldset, html[data-theme="light-v2"] .filter-card, html[data-theme="light-v2"] .form-card, html[data-theme="light-v2"] .table-footer, html[data-theme="light-v2"] .table-card, html[data-theme="light-v2"] .journal-card, html[data-theme="light-v2"] .dictionary-card, html[data-theme="light-v2"] .dictionary-toolbar, html[data-theme="light-v2"] .event-feed, html[data-theme="light-v2"] .metric-card, html[data-theme="light-v2"] .quick-link-card, html[data-theme="light-v2"] .login-card {{ border: 1px solid var(--border-strong); border-radius: var(--radius-card); background: var(--surface); box-shadow: var(--shadow-card); }}
     html[data-theme="light-v2"] .card:hover, html[data-theme="light-v2"] .metric-card:hover, html[data-theme="light-v2"] .quick-link-card:hover {{ transform: none; border-color: var(--border-ink); box-shadow: var(--shadow-card-hover); }}
-    html[data-theme="light-v2"] .metric-card {{ border-left: 3px solid var(--accent); background: #FFFFFF; }}
+    html[data-theme="light-v2"] .metric-card {{ border-left: 3px solid var(--accent-border); background: #FFFFFF; transition: border-color 140ms ease, background 140ms ease, box-shadow 140ms ease; }}
+    html[data-theme="light-v2"] .metric-card:hover, html[data-theme="light-v2"] .metric-card:focus-within {{ border-left-color: var(--accent); background: #FCFEFE; }}
+    html[data-theme="light-v2"] .metric-card.orange {{ border-left-color: var(--provider-border); }}
+    html[data-theme="light-v2"] .metric-card.orange:hover, html[data-theme="light-v2"] .metric-card.orange:focus-within {{ border-left-color: var(--provider-accent); }}
     html[data-theme="light-v2"] .metric-icon, html[data-theme="light-v2"] .quick-icon {{ border: 1px solid var(--accent-border); border-radius: 8px; background: #EEF7F6; color: var(--accent-strong); box-shadow: none; }}
-    html[data-theme="light-v2"] .quick-link-card {{ min-height: 76px; }}
+    html[data-theme="light-v2"] .quick-link-card {{ min-height: 76px; border-left: 3px solid rgba(167, 216, 210, .42); background: #FFFFFF; transition: border-color 140ms ease, background 140ms ease, box-shadow 140ms ease; }}
+    html[data-theme="light-v2"] .quick-link-card:hover, html[data-theme="light-v2"] .quick-link-card:focus-visible {{ border-color: var(--border-ink); border-left-color: var(--accent); background: #F7FBFA; color: var(--text-strong); outline: none; }}
+    html[data-theme="light-v2"] .quick-link-card:hover .quick-arrow, html[data-theme="light-v2"] .quick-link-card:focus-visible .quick-arrow {{ color: var(--accent-strong); }}
+    html[data-theme="light-v2"] .quick-link-card:hover .quick-icon, html[data-theme="light-v2"] .quick-link-card:focus-visible .quick-icon {{ border-color: var(--accent); color: var(--accent-strong); background: #EEF7F6; }}
+    html[data-theme="light-v2"] .quick-link-card.provider {{ border-left-color: rgba(242, 192, 120, .54); }}
+    html[data-theme="light-v2"] .quick-link-card.provider:hover, html[data-theme="light-v2"] .quick-link-card.provider:focus-visible {{ border-left-color: var(--provider-accent); background: #FFFCF7; }}
+    html[data-theme="light-v2"] .quick-link-card.provider:hover .quick-icon, html[data-theme="light-v2"] .quick-link-card.provider:focus-visible .quick-icon {{ border-color: var(--provider-border); background: var(--provider-soft); color: var(--provider-hover); }}
+    html[data-theme="light-v2"] .quick-link-card.provider:hover .quick-arrow, html[data-theme="light-v2"] .quick-link-card.provider:focus-visible .quick-arrow {{ color: var(--provider-hover); }}
     html[data-theme="light-v2"] .button, html[data-theme="light-v2"] button, html[data-theme="light-v2"] .column-settings summary, html[data-theme="light-v2"] .modal-form-card > summary {{ border-radius: var(--radius-control); border-color: var(--border-strong); background: #FFFFFF; color: var(--text-strong); box-shadow: none; font-weight: 720; }}
     html[data-theme="light-v2"] .button:hover, html[data-theme="light-v2"] button:hover, html[data-theme="light-v2"] .column-settings summary:hover {{ background: #F1F7F6; border-color: var(--accent); color: var(--accent-strong); box-shadow: none; }}
     html[data-theme="light-v2"] .button:active, html[data-theme="light-v2"] button:active {{ background: #E6F3F1; border-color: var(--accent-strong); }}
@@ -3729,7 +3742,8 @@ def dashboard_metric(repo: Repository, sql: str, label: str, hint: str, icon: st
 def dashboard_link(href: str, label: str, description: str, section: str) -> str:
     if not can_read(section):
         return ""
-    return f"<a class='quick-link-card' href='{esc(href)}'><span class='quick-icon'>{NAV_ICONS.get(section, '•')}</span><span class='quick-copy'><strong>{esc(label)}</strong><small>{esc(description)}</small></span><span class='quick-arrow'>→</span></a>"
+    tone_class = ' provider' if section == 'provider_changes' else ''
+    return f"<a class='quick-link-card{tone_class}' href='{esc(href)}'><span class='quick-icon'>{NAV_ICONS.get(section, '•')}</span><span class='quick-copy'><strong>{esc(label)}</strong><small>{esc(description)}</small></span><span class='quick-arrow'>→</span></a>"
 
 DASHBOARD_ENTITY_LABELS = {
     "route": "Маршруты",
