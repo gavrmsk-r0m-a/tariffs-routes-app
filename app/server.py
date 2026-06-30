@@ -576,16 +576,19 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     html[data-theme="light-v2"] {{
       --bg: #F3F7F4;
       --surface: #FFFFFF;
-      --surface-muted: #EEF5F1;
+      --surface-muted: #E9F2EE;
       --surface-soft: #EEF5F1;
-      --surface-strong: #E6F1ED;
+      --surface-strong: #E1ECE7;
+      --table-header-bg: #E3EEE9;
+      --table-row-alt: #F6FAF8;
+      --table-row-hover: #EAF6F2;
       --sidebar-bg: #EAF3EF;
       --text-strong: #1F2933;
       --text: #1F2933;
       --muted: #5F6F68;
       --text-soft: #7A8780;
-      --border: #D8E3DE;
-      --border-strong: #BFD0C9;
+      --border: #CCDAD4;
+      --border-strong: #AFC4BA;
       --accent: #0F766E;
       --accent-strong: #0A4F49;
       --accent-hover: #0B5F59;
@@ -612,11 +615,11 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
       --success-soft: #E8F3EA;
       --success-border: #B9DEC0;
       --input-bg: #FFFFFF;
-      --focus: var(--accent);
-      --shadow-soft: 0 3px 10px rgba(31, 41, 51, 0.07);
-      --shadow-card: 0 8px 24px rgba(31, 41, 51, 0.06);
-      --shadow-card-hover: 0 12px 28px rgba(31, 41, 51, 0.09);
-      --shadow-glow: 0 0 0 1px rgba(15, 118, 110, 0.14), 0 12px 26px rgba(15, 118, 110, 0.10);
+      --focus: #0F766E;
+      --shadow-soft: 0 3px 10px rgba(31, 41, 51, 0.08);
+      --shadow-card: 0 10px 28px rgba(31, 41, 51, 0.085);
+      --shadow-card-hover: 0 14px 32px rgba(31, 41, 51, 0.12);
+      --shadow-glow: 0 0 0 1px rgba(15, 118, 110, 0.18), 0 12px 26px rgba(15, 118, 110, 0.12);
       --radius-control: 9px;
       --radius-card: 14px;
     }}
@@ -1857,7 +1860,36 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     html[data-theme="light-v2"] .table-footer .button[aria-current="page"], html[data-theme="light-v2"] .pagination .active, html[data-theme="light-v2"] .button.active {{ background: var(--accent); border-color: var(--accent); color: #fff; }}
     html[data-theme="light-v2"] .modal-form-card[open]::before, html[data-theme="light-v2"] .modal-overlay {{ background: rgba(31, 41, 51, .42); }}
     html[data-theme="light-v2"] .modal-card, html[data-theme="light-v2"] .modal-form-card[open] > form, html[data-theme="light-v2"] .modal-form-card[open] > .modal-body {{ background: var(--surface); border-color: var(--border-strong); box-shadow: 0 24px 70px rgba(31, 41, 51, .22); }}
-    html[data-theme="light-v2"] .modal-cancel, html[data-theme="light-v2"] .admin-edit-cancel, html[data-theme="light-v2"] .danger-action {{ background: var(--danger-soft); border-color: var(--danger-border); color: var(--danger); }}
+    html[data-theme="light-v2"] .button, html[data-theme="light-v2"] button {{ background: var(--surface); border-color: var(--border-strong); color: var(--text-strong); box-shadow: 0 1px 2px rgba(31,41,51,.05); }}
+    html[data-theme="light-v2"] .button:hover, html[data-theme="light-v2"] button:hover {{ background: var(--accent-soft); border-color: var(--accent-border); color: var(--accent-strong); }}
+    html[data-theme="light-v2"] form button[type="submit"], html[data-theme="light-v2"] .hero-action, html[data-theme="light-v2"] .modal-save, html[data-theme="light-v2"] .admin-edit-save {{ background: linear-gradient(135deg, var(--accent), var(--accent-strong)); border-color: var(--accent); color: #fff; box-shadow: 0 6px 14px rgba(15,118,110,.16); }}
+    html[data-theme="light-v2"] .filter-grid button[type="submit"], html[data-theme="light-v2"] .filter-grid > button {{ background: var(--accent-soft); border-color: var(--accent-border); color: var(--accent-strong); box-shadow: none; }}
+    html[data-theme="light-v2"] .filter-grid button[type="submit"]:hover, html[data-theme="light-v2"] .filter-grid > button:hover {{ background: #D2ECE6; border-color: var(--accent); color: var(--accent-strong); }}
+    html[data-theme="light-v2"] .reset-filters, html[data-theme="light-v2"] .modal-cancel, html[data-theme="light-v2"] .admin-edit-cancel {{ background: var(--surface-muted); border-color: var(--border-strong); color: var(--text); box-shadow: none; }}
+    html[data-theme="light-v2"] .reset-filters:hover, html[data-theme="light-v2"] .modal-cancel:hover, html[data-theme="light-v2"] .admin-edit-cancel:hover {{ background: var(--surface-strong); border-color: var(--border-strong); color: var(--text-strong); }}
+    html[data-theme="light-v2"] .danger-action, html[data-theme="light-v2"] form[action$="/deactivate"] button, html[data-theme="light-v2"] button[onclick*="Удал"], html[data-theme="light-v2"] button[onclick*="Деактив"], html[data-theme="light-v2"] button[onclick*="Отключ"] {{ background: var(--danger-soft); border-color: var(--danger-border); color: var(--danger-strong); box-shadow: none; }}
+    html[data-theme="light-v2"] .filter-card {{ background: #F8FBF9; border-color: var(--border); box-shadow: 0 2px 8px rgba(31,41,51,.045); }}
+    html[data-theme="light-v2"] .filter-summary {{ color: var(--muted); background: #F4F8F6; border-bottom: 1px solid transparent; }}
+    html[data-theme="light-v2"] .filter-card[open] .filter-summary {{ border-bottom-color: var(--border); }}
+    html[data-theme="light-v2"] .form-card {{ border-color: var(--border-strong); }}
+    html[data-theme="light-v2"] th {{ background: var(--table-header-bg); color: #314A42; border-bottom-color: var(--border-strong); }}
+    html[data-theme="light-v2"] th, html[data-theme="light-v2"] td {{ border-right-color: #DDE8E3; }}
+    html[data-theme="light-v2"] td {{ border-bottom-color: #DDE8E3; }}
+    html[data-theme="light-v2"] tbody tr:nth-child(even) td {{ background: var(--table-row-alt); }}
+    html[data-theme="light-v2"] tbody tr:hover td, html[data-theme="light-v2"] .selectable-cell:hover {{ background: var(--table-row-hover) !important; }}
+    html[data-theme="light-v2"] .copy-column-button, html[data-theme="light-v2"] .edit-action, html[data-theme="light-v2"] td[data-col="actions"] details.edit-details > summary {{ background: #F7FBF9; border-color: var(--border); color: var(--accent-strong); box-shadow: none; }}
+    html[data-theme="light-v2"] .modal-form-card[open]::before, html[data-theme="light-v2"] .modal-overlay {{ background: rgba(31, 41, 51, .32); }}
+    html[data-theme="light-v2"] .modal-card, html[data-theme="light-v2"] .modal-form-card[open] > form, html[data-theme="light-v2"] .modal-form-card[open] > .modal-body {{ background: #fff; border-color: var(--border-strong); box-shadow: 0 22px 60px rgba(31, 41, 51, .20); }}
+    html[data-theme="light-v2"] .modal-card h2 {{ padding-bottom: 10px; border-bottom: 1px solid var(--border); }}
+    html[data-theme="light-v2"] .modal-actions, html[data-theme="light-v2"] .admin-edit-actions {{ background: #F8FBF9; margin: 6px -20px -20px; padding: 12px 20px; border-top-color: var(--border); }}
+    html[data-theme="light-v2"] .modal-card input, html[data-theme="light-v2"] .modal-card select, html[data-theme="light-v2"] .modal-card textarea, html[data-theme="light-v2"] .modal-form-card[open] input, html[data-theme="light-v2"] .modal-form-card[open] select, html[data-theme="light-v2"] .modal-form-card[open] textarea {{ border-color: var(--border-strong); }}
+    html[data-theme="light-v2"] fieldset {{ border-color: var(--border-strong); background: #FBFDFC; }}
+    html[data-theme="light-v2"] fieldset > legend {{ color: var(--accent-strong); font-weight: 820; }}
+    html[data-theme="light-v2"] .checkbox-list label, html[data-theme="light-v2"] .permission-matrix label {{ padding: 4px 6px; border-radius: 8px; background: #F7FBF9; border: 1px solid var(--border); }}
+    html[data-theme="light-v2"] .status-badge, html[data-theme="light-v2"] .badge {{ border: 1px solid var(--border-strong); background: var(--surface-muted); color: var(--text); border-radius: 999px; padding: 2px 8px; font-weight: 760; }}
+    html[data-theme="light-v2"] .status-badge.ok, html[data-theme="light-v2"] .status-badge.success, html[data-theme="light-v2"] .badge.ok, html[data-theme="light-v2"] .badge.success {{ background: var(--success-soft); border-color: var(--success-border); color: var(--success); }}
+    html[data-theme="light-v2"] .status-badge.warning, html[data-theme="light-v2"] .badge.warning, html[data-theme="light-v2"] .dot-status.warning {{ background: var(--warning-soft); border-color: var(--warning-border); color: var(--warning-hover); }}
+    html[data-theme="light-v2"] .status-badge.danger, html[data-theme="light-v2"] .badge.danger {{ background: var(--danger-soft); border-color: var(--danger-border); color: var(--danger-strong); }}
 
     .connection-status {{ position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%); z-index: 10001; display: none; align-items: center; gap: 10px; max-width: min(560px, calc(100vw - 24px)); padding: 10px 12px; border: 1px solid var(--border-strong); border-radius: 12px; background: var(--surface); color: var(--text-strong); box-shadow: var(--shadow-card); font-weight: 720; }}
     .connection-status.is-visible {{ display: flex; }}
