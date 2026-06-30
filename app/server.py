@@ -509,7 +509,7 @@ def current_user_selector() -> str:
         <details class="current-user-selector" data-tooltip="{esc(current_label)}">
           <summary aria-label="Меню пользователя">
             <span class="side-icon user-icon" aria-hidden="true">{user_icon_svg()}</span>
-            <span class="user-copy"><strong>{esc(current_label)}</strong><small>Текущий пользователь</small></span>
+            <span class="user-copy"><strong>{esc(current_label)}</strong></span>
             <span class="user-caret" aria-hidden="true">▾</span>
           </summary>
           <div class="current-user-menu">
@@ -1085,6 +1085,12 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .modal-card input, .modal-card select, .modal-card textarea, .modal-form-card[open] input, .modal-form-card[open] select, .modal-form-card[open] textarea {{ width: 100%; box-sizing: border-box; background: var(--input-bg, var(--surface)); color: var(--text); border-color: var(--border-strong); }}
     html[data-theme="dark"] .modal-card, html[data-theme="dark"] .modal-form-card[open] > form, html[data-theme="dark"] .modal-form-card[open] > .modal-body {{ background: var(--surface); border-color: var(--border-strong); color: var(--text); }}
     html[data-theme="dark"] .modal-overlay, html[data-theme="dark"] .modal-form-card[open]::before {{ background: rgba(0, 0, 0, 0.55); }}
+    .modal-form-card[open] > form.currency-rate-form {{ width: min(760px, calc(100vw - 32px)); grid-template-columns: minmax(220px, .85fr) minmax(320px, 1.15fr); align-items: end; }}
+    .currency-rate-form .currency-rate-value {{ min-width: 0; }}
+    .currency-rate-inline {{ display: grid; grid-template-columns: max-content minmax(130px, 1fr) max-content; align-items: center; gap: 8px; margin-top: 4px; white-space: nowrap; }}
+    .currency-rate-prefix, .currency-rate-suffix {{ color: var(--muted); font-size: 13px; font-weight: 700; }}
+    .currency-rate-actions {{ margin-top: 8px; }}
+    @media (max-width: 720px) {{ .modal-form-card[open] > form.currency-rate-form {{ grid-template-columns: 1fr; }} .currency-rate-inline {{ grid-template-columns: 1fr; align-items: stretch; white-space: normal; }} }}
     @media (max-width: 720px) {{ .modal-card form, .modal-form-card[open] > form {{ grid-template-columns: 1fr; }} .modal-card, .modal-form-card[open] > form, .modal-form-card[open] > .modal-body {{ width: calc(100vw - 18px); max-height: calc(100vh - 18px); padding: 14px; }} }}
     .danger-action, form[action$="/deactivate"] button {{ min-height: 28px; min-width: auto; padding: 4px 8px; color: var(--danger-strong, var(--danger)); border-color: var(--danger); background: var(--danger-soft); font-size: 12px; font-weight: 720; box-shadow: none; }}
     .danger-action:hover, form[action$="/deactivate"] button:hover {{ background: color-mix(in srgb, var(--danger-soft) 78%, var(--surface)); border-color: var(--danger); color: var(--danger); }}
@@ -1120,14 +1126,14 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .breadcrumbs {{ margin: 0; padding: 0; min-height: auto; display: flex; align-content: center; border-bottom: 0; background: transparent; }}
     .breadcrumbs::after {{ content: none; }}
     .breadcrumbs .separator {{ font-size: 0; }} .breadcrumbs .separator::before {{ content: '›'; font-size: 12px; }}
-    .sidebar {{ display: flex; flex-direction: column; gap: 18px; padding: 14px 12px; background: #fff; height: 100vh; overflow: visible; z-index: 100; }}
+    .sidebar {{ display: flex; flex-direction: column; gap: 14px; padding: 14px 12px; background: #fff; height: 100vh; max-height: 100vh; overflow: hidden; z-index: 100; box-sizing: border-box; }}
     .sidebar-head {{ display: grid; grid-template-columns: minmax(0, 1fr) 42px; gap: 8px; align-items: start; padding-bottom: 14px; border-bottom: 1px solid var(--border); }}
     .brand-block {{ display: flex; align-items: center; gap: 12px; padding: 0 0 0 10px; border-bottom: 0; }}
     .brand-mark, .side-icon, .metric-icon, .quick-icon, .feed-icon {{ display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; }}
     .brand-mark {{ width: 36px; height: 36px; border-radius: 11px; background: linear-gradient(135deg,#4f46e5,#3525c8); color: #fff; box-shadow: 0 8px 18px rgba(79,70,229,.25); font-weight: 900; }}
     .brand-copy strong, .brand-copy span {{ display: block; }} .brand-copy strong {{ color: var(--text-strong); }} .brand-copy span {{ color: var(--muted); font-size: 12px; }}
     .app-title {{ display: none; }}
-    .side-nav {{ gap: 8px; }}
+    .side-nav {{ gap: 8px; flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: visible; overscroll-behavior: contain; padding-right: 2px; scrollbar-gutter: stable; }}
     .side-link {{ justify-content: flex-start; gap: 12px; min-height: 48px; padding: 10px 14px; border-radius: 12px; color: #223158; font-weight: 700; }}
     .side-icon {{ width: 22px; height: 22px; color: #7786ad; font-size: 18px; }}
     .nav-icon {{ display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; flex: 0 0 24px; color: #7786ad; }}
@@ -1173,11 +1179,13 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .sidebar-collapse:hover {{ background: var(--accent-soft); border-color: var(--accent); color: var(--accent-strong); }}
     .sidebar-collapse-icon {{ width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; }}
     .sidebar-collapse-icon .material-symbols-rounded {{ font-size: 20px; }}
-    .current-user-selector {{ position: relative; background: #f4f6ff; border-color: #e2e8ff; padding: 0; }} .current-user-selector summary {{ display: flex; align-items: center; gap: 8px; cursor: pointer; list-style: none; padding: 6px 10px; }} .current-user-selector summary::-webkit-details-marker {{ display: none; }} .current-user-menu {{ position: absolute; left: 0; right: 0; top: calc(100% + 6px); display: grid; gap: 4px; padding: 6px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); box-shadow: var(--shadow-card); z-index: 50; }} .current-user-menu-info {{ display: grid; gap: 1px; padding: 6px 8px; border-bottom: 1px solid var(--border); }} .current-user-menu-info small {{ color: var(--muted); font-size: 12px; }} .current-user-menu a {{ display: block; padding: 6px 8px; border-radius: 7px; color: var(--text); font-size: 12px; font-weight: 700; text-decoration: none; }} .current-user-menu a:hover {{ background: var(--accent-soft); color: var(--accent-strong); }} .current-user-menu .logout-link {{ color: #b42318; }} .user-icon {{ background: #4f46e5; color: #fff; border-radius: 9px; width: 32px; height: 32px; }} .user-icon .material-symbols-rounded {{ font-size: 20px; }} .login-body {{ min-height: 100vh; display: grid; place-items: center; padding: 24px; }} .login-shell {{ width: min(560px, 100%); }} .login-card {{ padding: 28px; border: 1px solid var(--border); border-radius: 18px; background: var(--surface); box-shadow: var(--shadow-card); }} .login-card h1 {{ margin-bottom: 6px; }} .login-users {{ display: grid; gap: 10px; margin: 20px 0; }} .login-user-card {{ display: flex; align-items: center; gap: 12px; padding: 12px; border: 1px solid var(--border); border-radius: 12px; cursor: pointer; }} .login-user-card:hover {{ border-color: var(--accent); background: var(--accent-soft); }} .login-user-card span strong, .login-user-card span small {{ display: block; }} .login-user-card span small, .muted {{ color: var(--muted); }} .login-error {{ padding: 10px 12px; border-radius: 10px; background: var(--danger-soft); color: #b42318; font-weight: 700; }}
-    .user-copy strong, .user-copy small {{ display: block; white-space: nowrap; }} .user-copy small {{ color: var(--muted); }}
+    .current-user-selector {{ position: relative; background: #f4f6ff; border-color: #e2e8ff; padding: 0; min-height: 34px; }} .current-user-selector summary {{ display: flex; align-items: center; gap: 8px; cursor: pointer; list-style: none; min-height: 32px; padding: 3px 9px; }} .current-user-selector summary::-webkit-details-marker {{ display: none; }} .current-user-menu {{ position: absolute; left: 0; right: 0; top: calc(100% + 6px); display: grid; gap: 5px; padding: 7px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); box-shadow: var(--shadow-card); z-index: 50; }} .current-user-menu-info {{ display: grid; gap: 1px; padding: 6px 8px 8px; border-bottom: 1px solid var(--border); }} .current-user-menu-info small {{ color: var(--muted); font-size: 12px; }} .current-user-menu a {{ display: block; padding: 7px 8px; border-radius: 8px; color: var(--text); font-size: 12px; font-weight: 700; text-decoration: none; }} .current-user-menu a:hover {{ background: var(--accent-soft); color: var(--accent-strong); }} .current-user-menu .logout-link {{ margin-top: 1px; color: #b42318; background: #fff5f4; border: 1px solid #ffd8d3; }} .current-user-menu .logout-link:hover {{ background: #ffeceb; border-color: #fda29b; color: #9f1f17; }} .user-icon {{ background: #4f46e5; color: #fff; border-radius: 8px; width: 24px; height: 24px; }} .user-icon .material-symbols-rounded {{ font-size: 18px; }} .login-body {{ min-height: 100vh; display: grid; place-items: center; padding: 24px; }} .login-shell {{ width: min(560px, 100%); }} .login-card {{ padding: 28px; border: 1px solid var(--border); border-radius: 18px; background: var(--surface); box-shadow: var(--shadow-card); }} .login-card h1 {{ margin-bottom: 6px; }} .login-users {{ display: grid; gap: 10px; margin: 20px 0; }} .login-user-card {{ display: flex; align-items: center; gap: 12px; padding: 12px; border: 1px solid var(--border); border-radius: 12px; cursor: pointer; }} .login-user-card:hover {{ border-color: var(--accent); background: var(--accent-soft); }} .login-user-card span strong, .login-user-card span small {{ display: block; }} .login-user-card span small, .muted {{ color: var(--muted); }} .login-error {{ padding: 10px 12px; border-radius: 10px; background: var(--danger-soft); color: #b42318; font-weight: 700; }}
+    .user-copy strong, .user-copy small {{ display: block; white-space: nowrap; }} .user-copy strong {{ line-height: 1.1; }} .user-copy small {{ color: var(--muted); }}
     .app-shell.sidebar-collapsed {{ grid-template-columns: 70px minmax(0, 1fr); }}
     .sidebar-collapsed .sidebar {{ padding-left: 8px; padding-right: 8px; }}
     .sidebar-collapsed .brand-copy, .sidebar-collapsed .side-label, .sidebar-collapsed .user-copy, .sidebar-collapsed .current-user-selector .logout-link, .sidebar-collapsed .admin-tree {{ display: none; }}
+    .sidebar-collapsed .sidebar {{ overflow: visible; }}
+    .sidebar-collapsed .side-nav {{ overflow: visible; padding-right: 0; }}
     .sidebar-collapsed .side-link {{ font-size: 0; gap: 0; }}
     .sidebar-collapsed .sidebar-head {{ grid-template-columns: 1fr; gap: 10px; }}
     .sidebar-collapsed .sidebar-collapse {{ order: -1; justify-self: center; }}
@@ -5243,10 +5251,10 @@ def currency_rates_page(repo: Repository) -> bytes:
         ORDER BY c.code
     """):
         rows.append(f"<tr><td>{esc(rate['currency_code'])}</td><td>{esc(rate['rate_to_eur'])}</td><td>{esc(rate['rate_date'])}</td></tr>")
-    create_html = f"""<form class="form-grid" method="post" action="/admin/currency-rates/upsert">
-<label>Валюта провайдера <span class="required">*</span><select name="currency_id">{active_options(repo, 'currencies', 'code')}</select></label>
-<label>1 единица валюты провайдера = <input name="rate_to_eur" placeholder="0.92"> EUR</label>
-<button>Применить</button></form>"""
+    create_html = f"""<form class="form-grid currency-rate-form" method="post" action="/admin/currency-rates/upsert">
+<label class="currency-rate-currency">Валюта провайдера <span class="required">*</span><select name="currency_id">{active_options(repo, 'currencies', 'code')}</select></label>
+<label class="currency-rate-value"><span>Курс к EUR</span><span class="currency-rate-inline"><span class="currency-rate-prefix">1 единица валюты провайдера =</span><input name="rate_to_eur" placeholder="0.92"><span class="currency-rate-suffix">EUR</span></span></label>
+<div class="modal-actions currency-rate-actions"><button type="button" class="modal-cancel" data-modal-close>Отмена</button><button type="submit" class="modal-save">Применить</button></div></form>"""
     table_html = f"<table><thead><tr><th>Валюта</th><th>Курс к EUR</th><th>Дата курса</th></tr></thead><tbody>{''.join(rows)}</tbody></table>"
     body = f"""<h1>Администрирование → Курсы валют</h1>
 {form_card('Обновить курс', create_html, open_by_default=True)}
