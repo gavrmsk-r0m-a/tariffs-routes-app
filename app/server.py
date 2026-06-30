@@ -400,11 +400,11 @@ def user_icon_svg() -> str:
 
 NAV_ITEMS = [
     ("dashboard", "/dashboard", "Главная", ("Главная",)),
+    ("provider_changes", "/provider-changes", "Смена провайдеров", ("Смена провайдеров", "Редактировать событие")),
     ("routes", "/routes", "Маршруты", ("Маршруты", "Номера маршрута", "Редактировать маршрут")),
     ("tariffs", "/tariffs", "Тарифы", ("Тарифы",)),
     ("phones", "/phones", "Купленные номера", ("Купленные номера", "Редактировать номер")),
     ("companies", "/companies", "Кампании прозвона", ("Кампании прозвона", "Редактировать кампанию")),
-    ("provider_changes", "/provider-changes", "Смена провайдеров", ("Смена провайдеров", "Редактировать событие")),
     ("admin_server_priorities", "/admin/server-priorities", "Приоритет по серверам", ("Приоритет по серверам",)),
     ("admin_company_routing_settings", "/admin/company-routing-settings", "Схема маршрутизации кампаний", ("Схема маршрутизации кампаний",)),
 ]
@@ -2030,7 +2030,22 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     html[data-theme="light-v2"] .modal-card h2 {{ border-bottom: 1px solid var(--border-strong); }}
     html[data-theme="light-v2"] .modal-actions, html[data-theme="light-v2"] .admin-edit-actions {{ background: #F7F9F9; border-top: 1px solid var(--border-strong); }}
     html[data-theme="light-v2"] fieldset {{ background: #FAFBFB; border-color: var(--border-strong); }}
-    html[data-theme="light-v2"] .provider-changes-page #routing-event-form button:not([type="button"]), html[data-theme="light-v2"] .provider-changes-page .modal-save {{ background: var(--provider-accent); border-color: var(--provider-hover); box-shadow: none; }}
+    html[data-theme="light-v2"] .provider-changes-page #routing-event-form button:not([type="button"]), html[data-theme="light-v2"] .provider-changes-page .modal-save {{ background: var(--accent); border-color: var(--accent-strong); box-shadow: none; }}
+    html[data-theme="light-v2"] .provider-changes-page #routing-event-form button:not([type="button"]):hover, html[data-theme="light-v2"] .provider-changes-page .modal-save:hover {{ background: var(--accent-hover); border-color: var(--accent-hover); }}
+    html[data-theme="light-v2"] .side-link[href="/provider-changes"] {{ border-color: transparent; }}
+    html[data-theme="light-v2"] .side-link[href="/provider-changes"] .side-icon, html[data-theme="light-v2"] .side-link[href="/provider-changes"] .nav-icon {{ color: #5C6A76 !important; }}
+    html[data-theme="light-v2"] .side-link[href="/provider-changes"]:hover {{ background: #F4F7F7; border-color: var(--border-strong); border-left-color: var(--accent-border); color: var(--accent-strong); }}
+    html[data-theme="light-v2"] .side-link[href="/provider-changes"].active {{ background: #EFF6F5 !important; border-color: var(--border-strong) !important; border-left-color: var(--accent) !important; color: var(--accent-strong); box-shadow: none; }}
+    html[data-theme="light-v2"] .quick-link-card[href="/provider-changes"], html[data-theme="light-v2"] .quick-link-card.provider {{ border-left-color: rgba(167, 216, 210, .42); border-color: var(--border-strong); }}
+    html[data-theme="light-v2"] .quick-link-card[href="/provider-changes"] .quick-icon {{ border-color: var(--accent-border); background: #EEF7F6; color: var(--accent-strong); box-shadow: none; }}
+    html[data-theme="light-v2"] .quick-link-card[href="/provider-changes"]:hover, html[data-theme="light-v2"] .quick-link-card[href="/provider-changes"]:focus-visible, html[data-theme="light-v2"] .quick-link-card.provider:hover, html[data-theme="light-v2"] .quick-link-card.provider:focus-visible {{ border-color: var(--border-ink); border-left-color: var(--accent); background: #F7FBFA; color: var(--text-strong); }}
+    html[data-theme="light-v2"] .quick-link-card[href="/provider-changes"]:hover .quick-icon, html[data-theme="light-v2"] .quick-link-card[href="/provider-changes"]:focus-visible .quick-icon {{ border-color: var(--accent); background: #EEF7F6; color: var(--accent-strong); }}
+    html[data-theme="light-v2"] .quick-link-card[href="/provider-changes"]:hover .quick-arrow, html[data-theme="light-v2"] .quick-link-card[href="/provider-changes"]:focus-visible .quick-arrow {{ color: var(--accent-strong); }}
+    html[data-theme="light-v2"] .metric-card.green .metric-icon {{ background: #EEF7F6; border-color: var(--accent-border); color: var(--accent-strong); box-shadow: none; }}
+    html[data-theme="light-v2"] .metric-card.orange, html[data-theme="light-v2"] .metric-card.teal {{ border-left-color: var(--accent-border); box-shadow: var(--shadow-card); }}
+    html[data-theme="light-v2"] .metric-card.orange:hover, html[data-theme="light-v2"] .metric-card.orange:focus-within, html[data-theme="light-v2"] .metric-card.teal:hover, html[data-theme="light-v2"] .metric-card.teal:focus-within {{ border-left-color: var(--accent); background: #FCFEFE; }}
+    html[data-theme="light-v2"] .metric-card.orange .metric-icon, html[data-theme="light-v2"] .metric-card.teal .metric-icon {{ background: #EEF7F6; border-color: var(--accent-border); color: var(--accent-strong); box-shadow: none; }}
+    html[data-theme="light-v2"] .metric-card.orange .sparkline, html[data-theme="light-v2"] .metric-card.teal .sparkline {{ color: var(--accent); }}
 
 
     .connection-status {{ position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%); z-index: 10001; display: none; align-items: center; gap: 10px; max-width: min(560px, calc(100vw - 24px)); padding: 10px 12px; border: 1px solid var(--border-strong); border-radius: 12px; background: var(--surface); color: var(--text-strong); box-shadow: var(--shadow-card); font-weight: 720; }}
@@ -3742,8 +3757,7 @@ def dashboard_metric(repo: Repository, sql: str, label: str, hint: str, icon: st
 def dashboard_link(href: str, label: str, description: str, section: str) -> str:
     if not can_read(section):
         return ""
-    tone_class = ' provider' if section == 'provider_changes' else ''
-    return f"<a class='quick-link-card{tone_class}' href='{esc(href)}'><span class='quick-icon'>{NAV_ICONS.get(section, '•')}</span><span class='quick-copy'><strong>{esc(label)}</strong><small>{esc(description)}</small></span><span class='quick-arrow'>→</span></a>"
+    return f"<a class='quick-link-card' href='{esc(href)}'><span class='quick-icon'>{NAV_ICONS.get(section, '•')}</span><span class='quick-copy'><strong>{esc(label)}</strong><small>{esc(description)}</small></span><span class='quick-arrow'>→</span></a>"
 
 DASHBOARD_ENTITY_LABELS = {
     "route": "Маршруты",
@@ -3807,14 +3821,14 @@ def dashboard_page(repo: Repository) -> bytes:
         dashboard_metric(repo, "SELECT COUNT(*) FROM routes WHERE is_actual = 1", "Активные маршруты", "Всего активных маршрутов", nav_icon("routes"), "blue", "0,22 18,22 32,16 46,22 62,17 78,17 96,10"),
         dashboard_metric(repo, "SELECT COUNT(*) FROM calling_companies WHERE is_active = 1", "Активные кампании", "Всего активных кампаний", nav_icon("companies"), "green", "0,22 12,17 28,16 44,16 58,15 72,10 84,15 96,9"),
         dashboard_metric(repo, "SELECT COUNT(*) FROM phone_numbers WHERE is_active = 1", "Купленные номера", "Всего активных номеров", nav_icon("phones"), "violet", "0,20 18,20 30,17 46,17 62,14 78,9 96,9"),
-        dashboard_metric(repo, "SELECT COUNT(*) FROM routing_events WHERE is_active = 1", "Смены провайдеров", "Активные записи смен", nav_icon("provider_changes"), "orange", "0,8 16,10 32,10 48,12 64,12 80,14 96,14"),
+        dashboard_metric(repo, "SELECT COUNT(*) FROM routing_events WHERE is_active = 1", "Смены провайдеров", "Активные записи смен", nav_icon("provider_changes"), "teal", "0,8 16,10 32,10 48,12 64,12 80,14 96,14"),
     ])
     work_links = "".join([
+        dashboard_link("/provider-changes", "Смена провайдеров", "Операционный журнал изменений", "provider_changes"),
         dashboard_link("/routes", "Маршруты", "Управление маршрутами и номерами", "routes"),
         dashboard_link("/tariffs", "Тарифы", "Актуальные цены и приоритеты", "tariffs"),
         dashboard_link("/phones", "Купленные номера", "Пул номеров и статусы", "phones"),
         dashboard_link("/companies", "Кампании прозвона", "Кампании, серверы и авторотация", "companies"),
-        dashboard_link("/provider-changes", "Смена провайдеров", "Операционный журнал изменений", "provider_changes"),
     ])
     admin_links = "".join([
         dashboard_link("/admin/server-priorities", "Приоритет по серверам", "Текущий маршрут по GEO и серверу", "admin_server_priorities"),
