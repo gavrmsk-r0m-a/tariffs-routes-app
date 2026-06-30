@@ -606,7 +606,9 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
       --warning-soft: #FFF1DD;
       --warning-border: #F2C078;
       --provider-accent: #D97706;
+      --provider-hover: #B45309;
       --provider-soft: #FFF4E5;
+      --provider-border: #F2C078;
       --danger: #DC2626;
       --danger-strong: #B91C1C;
       --danger-soft: #FEE2E2;
@@ -1825,8 +1827,10 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     html[data-theme="light-v2"] .side-link:hover, html[data-theme="light-v2"] .admin-link:hover {{ background: #F3FAF7; border-color: var(--accent-border); color: var(--accent-strong); }}
     html[data-theme="light-v2"] .side-link.active, html[data-theme="light-v2"] .sidebar-collapsed .side-link.active {{ background: var(--accent-soft) !important; border-color: var(--accent-border) !important; color: var(--accent-strong); box-shadow: inset 4px 0 0 var(--accent), 0 6px 16px rgba(15, 118, 110, .10); }}
     html[data-theme="light-v2"] .side-link.active .side-icon, html[data-theme="light-v2"] .side-link.active .nav-icon, html[data-theme="light-v2"] .side-link.active::before {{ color: var(--accent-strong) !important; }}
-    html[data-theme="light-v2"] .side-link[href='/provider-changes'] .side-icon, html[data-theme="light-v2"] .side-link[href='/provider-changes'] .nav-icon {{ color: var(--warning) !important; }}
-    html[data-theme="light-v2"] .side-link[href='/provider-changes'].active {{ background: var(--warning-soft) !important; border-color: var(--warning-border) !important; color: var(--warning-hover); box-shadow: inset 4px 0 0 var(--warning), 0 6px 16px rgba(217, 119, 6, .12); }}
+    html[data-theme="light-v2"] .side-link[href='/provider-changes'] {{ border-color: rgba(217, 119, 6, .18); }}
+    html[data-theme="light-v2"] .side-link[href='/provider-changes'] .side-icon, html[data-theme="light-v2"] .side-link[href='/provider-changes'] .nav-icon {{ color: var(--provider-accent) !important; }}
+    html[data-theme="light-v2"] .side-link[href='/provider-changes']:hover {{ background: var(--provider-soft); border-color: var(--provider-border); color: var(--provider-hover); }}
+    html[data-theme="light-v2"] .side-link[href='/provider-changes'].active {{ background: var(--provider-soft) !important; border-color: var(--provider-border) !important; color: var(--provider-hover); box-shadow: inset 4px 0 0 var(--provider-accent), 0 6px 16px rgba(217, 119, 6, .12); }}
     html[data-theme="light-v2"] .side-link-disabled, html[data-theme="light-v2"] .side-link-disabled:hover, html[data-theme="light-v2"] .side-link-disabled:disabled {{ color: var(--text-soft); opacity: .72; background: transparent; }}
     html[data-theme="light-v2"] .current-user-selector, html[data-theme="light-v2"] .theme-selector, html[data-theme="light-v2"] .sidebar-collapse {{ background: #F3FAF7; border-color: var(--border); color: var(--text); }}
     html[data-theme="light-v2"] .theme-menu, html[data-theme="light-v2"] .current-user-menu, html[data-theme="light-v2"] .column-settings-panel {{ background: var(--surface); border-color: var(--border-strong); box-shadow: var(--shadow-card); }}
@@ -1845,6 +1849,8 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     html[data-theme="light-v2"] .metric-icon, html[data-theme="light-v2"] .quick-icon {{ background: var(--accent-soft); color: var(--accent-strong); box-shadow: 0 0 0 1px var(--accent-border) inset; }}
     html[data-theme="light-v2"] .metric-card.green .metric-icon, html[data-theme="light-v2"] .feed-icon.ok, html[data-theme="light-v2"] .dot-status.ok span {{ background: var(--accent); color: #fff; box-shadow: 0 0 0 5px var(--accent-soft); }}
     html[data-theme="light-v2"] .metric-card.orange .metric-icon, html[data-theme="light-v2"] .feed-icon.warn, html[data-theme="light-v2"] .dot-status.warning span {{ background: var(--provider-accent); color: #fff; box-shadow: 0 0 0 5px var(--provider-soft); }}
+    html[data-theme="light-v2"] .metric-card.orange {{ border-color: var(--provider-border); box-shadow: inset 0 4px 0 var(--provider-accent), var(--shadow-card); }}
+    html[data-theme="light-v2"] .metric-card.orange .sparkline {{ color: var(--provider-accent); }}
     html[data-theme="light-v2"] .dot-status.danger span, html[data-theme="light-v2"] .feed-icon.danger {{ background: var(--danger); box-shadow: 0 0 0 5px var(--danger-soft); }}
     html[data-theme="light-v2"] .status-badge, html[data-theme="light-v2"] .badge {{ border: 1px solid var(--border); background: var(--surface-muted); color: var(--text); border-radius: 999px; padding: 2px 8px; }}
     html[data-theme="light-v2"] .review-required-icon {{ color: var(--warning); }}
@@ -1852,11 +1858,21 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     html[data-theme="light-v2"] a:not(.side-link):not(.button) {{ color: var(--accent-strong); }}
     html[data-theme="light-v2"] a:not(.side-link):not(.button):hover {{ color: var(--accent-hover); }}
     html[data-theme="light-v2"] .card:hover, html[data-theme="light-v2"] .metric-card:hover, html[data-theme="light-v2"] .quick-link-card:hover {{ border-color: var(--accent-border); box-shadow: var(--shadow-card-hover); transform: translateY(-1px); }}
-    html[data-theme="light-v2"] .quick-link-card[href='/provider-changes']:hover, html[data-theme="light-v2"] .quick-link-card[href='/provider-changes'] .quick-icon {{ background: var(--provider-soft); border-color: var(--warning-border); color: var(--warning-hover); }}
-    html[data-theme="light-v2"] .quick-link-card[href='/provider-changes'] .quick-icon {{ box-shadow: 0 0 0 1px var(--warning-border) inset; }}
-    html[data-theme="light-v2"] .metric-card.orange {{ border-color: var(--warning-border); }}
+    html[data-theme="light-v2"] .quick-link-card[href='/provider-changes'] {{ border-color: var(--provider-border); }}
+    html[data-theme="light-v2"] .quick-link-card[href='/provider-changes']:hover {{ background: var(--provider-soft); border-color: var(--provider-accent); color: var(--provider-hover); }}
+    html[data-theme="light-v2"] .quick-link-card[href='/provider-changes'] .quick-icon {{ background: var(--provider-soft); border-color: var(--provider-border); color: var(--provider-hover); box-shadow: 0 0 0 1px var(--provider-border) inset; }}
+    html[data-theme="light-v2"] .quick-link-card[href='/provider-changes']:hover .quick-arrow {{ color: var(--provider-accent); }}
     html[data-theme="light-v2"] .sparkline polyline {{ stroke-width: 2.8; }}
     html[data-theme="light-v2"] .status-badge.warning, html[data-theme="light-v2"] .badge.warning, html[data-theme="light-v2"] .dot-status.warning {{ background: var(--warning-soft); border-color: var(--warning-border); color: var(--warning-hover); }}
+
+    html[data-theme="light-v2"] .provider-changes-page h1 {{ border-left: 4px solid var(--provider-accent); padding-left: 12px; }}
+    html[data-theme="light-v2"] .provider-changes-page .form-card, html[data-theme="light-v2"] .provider-changes-page .filter-card, html[data-theme="light-v2"] .provider-changes-page .journal-card {{ border-color: var(--provider-border); }}
+    html[data-theme="light-v2"] .provider-changes-page .form-summary {{ color: var(--provider-hover); }}
+    html[data-theme="light-v2"] .provider-changes-page .journal-card {{ box-shadow: inset 0 4px 0 var(--provider-accent), var(--shadow-card); }}
+    html[data-theme="light-v2"] .provider-changes-page th {{ background: linear-gradient(180deg, var(--provider-soft), #F8FBF9); }}
+    html[data-theme="light-v2"] .provider-changes-page #routing-event-form button:not([type="button"]), html[data-theme="light-v2"] .provider-changes-page .modal-save {{ background: linear-gradient(135deg, var(--provider-accent), var(--provider-hover)); border-color: var(--provider-accent); color: #fff; box-shadow: 0 6px 14px rgba(217,119,6,.16); }}
+    html[data-theme="light-v2"] .provider-changes-page #routing-event-form button:not([type="button"]):hover, html[data-theme="light-v2"] .provider-changes-page .modal-save:hover {{ background: var(--provider-hover); border-color: var(--provider-hover); color: #fff; }}
+    html[data-theme="light-v2"] .provider-changes-page .scope-card:has(input:checked), html[data-theme="light-v2"] .provider-changes-page .important-checkbox {{ border-color: var(--provider-border); background: var(--provider-soft); }}
     html[data-theme="light-v2"] .table-footer .button[aria-current="page"], html[data-theme="light-v2"] .pagination .active, html[data-theme="light-v2"] .button.active {{ background: var(--accent); border-color: var(--accent); color: #fff; }}
     html[data-theme="light-v2"] .modal-form-card[open]::before, html[data-theme="light-v2"] .modal-overlay {{ background: rgba(31, 41, 51, .42); }}
     html[data-theme="light-v2"] .modal-card, html[data-theme="light-v2"] .modal-form-card[open] > form, html[data-theme="light-v2"] .modal-form-card[open] > .modal-body {{ background: var(--surface); border-color: var(--border-strong); box-shadow: 0 24px 70px rgba(31, 41, 51, .22); }}
@@ -1889,6 +1905,15 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     html[data-theme="light-v2"] .status-badge, html[data-theme="light-v2"] .badge {{ border: 1px solid var(--border-strong); background: var(--surface-muted); color: var(--text); border-radius: 999px; padding: 2px 8px; font-weight: 760; }}
     html[data-theme="light-v2"] .status-badge.ok, html[data-theme="light-v2"] .status-badge.success, html[data-theme="light-v2"] .badge.ok, html[data-theme="light-v2"] .badge.success {{ background: var(--success-soft); border-color: var(--success-border); color: var(--success); }}
     html[data-theme="light-v2"] .status-badge.warning, html[data-theme="light-v2"] .badge.warning, html[data-theme="light-v2"] .dot-status.warning {{ background: var(--warning-soft); border-color: var(--warning-border); color: var(--warning-hover); }}
+
+    html[data-theme="light-v2"] .provider-changes-page h1 {{ border-left: 4px solid var(--provider-accent); padding-left: 12px; }}
+    html[data-theme="light-v2"] .provider-changes-page .form-card, html[data-theme="light-v2"] .provider-changes-page .filter-card, html[data-theme="light-v2"] .provider-changes-page .journal-card {{ border-color: var(--provider-border); }}
+    html[data-theme="light-v2"] .provider-changes-page .form-summary {{ color: var(--provider-hover); }}
+    html[data-theme="light-v2"] .provider-changes-page .journal-card {{ box-shadow: inset 0 4px 0 var(--provider-accent), var(--shadow-card); }}
+    html[data-theme="light-v2"] .provider-changes-page th {{ background: linear-gradient(180deg, var(--provider-soft), #F8FBF9); }}
+    html[data-theme="light-v2"] .provider-changes-page #routing-event-form button:not([type="button"]), html[data-theme="light-v2"] .provider-changes-page .modal-save {{ background: linear-gradient(135deg, var(--provider-accent), var(--provider-hover)); border-color: var(--provider-accent); color: #fff; box-shadow: 0 6px 14px rgba(217,119,6,.16); }}
+    html[data-theme="light-v2"] .provider-changes-page #routing-event-form button:not([type="button"]):hover, html[data-theme="light-v2"] .provider-changes-page .modal-save:hover {{ background: var(--provider-hover); border-color: var(--provider-hover); color: #fff; }}
+    html[data-theme="light-v2"] .provider-changes-page .scope-card:has(input:checked), html[data-theme="light-v2"] .provider-changes-page .important-checkbox {{ border-color: var(--provider-border); background: var(--provider-soft); }}
     html[data-theme="light-v2"] .status-badge.danger, html[data-theme="light-v2"] .badge.danger {{ background: var(--danger-soft); border-color: var(--danger-border); color: var(--danger-strong); }}
 
     .connection-status {{ position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%); z-index: 10001; display: none; align-items: center; gap: 10px; max-width: min(560px, calc(100vw - 24px)); padding: 10px 12px; border: 1px solid var(--border-strong); border-radius: 12px; background: var(--surface); color: var(--text-strong); box-shadow: var(--shadow-card); font-weight: 720; }}
@@ -2820,8 +2845,9 @@ def form_card(summary: str, form_html: str, *, open_by_default: bool = False) ->
     return f"<details class='form-card modal-form-card'{open_attr} data-modal-details><summary class='form-summary'>{summary}</summary>{form_html}</details>"
 
 
-def table_page_container(inner_html: str) -> str:
-    return f"<div class='table-page-container'>{inner_html}</div>"
+def table_page_container(inner_html: str, *, extra_class: str = "") -> str:
+    classes = f"table-page-container {extra_class}".strip()
+    return f"<div class='{classes}'>{inner_html}</div>"
 
 
 def table_card(table_html: str, *, title: str | None = None, extra_class: str = "") -> str:
@@ -4715,7 +4741,7 @@ def provider_changes_page(repo: Repository, q: dict[str, str] | None = None, for
 {table_card(journal_html, title='Журнал событий', extra_class='journal-card')}
 {table_footer(pagination_html, export_link('/provider-changes', q) + column_settings('provider_changes', [('event_at', 'Дата события'), ('scope', 'Область применения'), ('geo', 'GEO'), ('server', 'Сервер'), ('campaign', 'Кампания'), ('details', 'Детали'), ('comment', 'Комментарий'), ('reason', 'Причина'), ('actions', 'Действия')]))}
 """
-    return page("Смена провайдеров", table_page_container(body))
+    return page("Смена провайдеров", table_page_container(body, extra_class="provider-changes-page"))
 
 
 def admin_page(repo: Repository) -> bytes:
