@@ -574,25 +574,26 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,400,0,0">
   <style>
     html[data-theme="light-v2"] {{
-      --bg: #F7F9F6;
+      --bg: #F3F7F4;
       --surface: #FFFFFF;
-      --surface-muted: #F3F7F4;
-      --surface-strong: #EEF5F1;
-      --sidebar-bg: #EEF5F1;
+      --surface-muted: #EEF5F1;
+      --surface-soft: #EEF5F1;
+      --surface-strong: #E6F1ED;
+      --sidebar-bg: #EAF3EF;
       --text-strong: #1F2933;
-      --text: #2F3A43;
-      --muted: #667085;
-      --text-soft: #8A9590;
-      --border: #DDE5E1;
-      --border-strong: #C9D7D1;
+      --text: #1F2933;
+      --muted: #5F6F68;
+      --text-soft: #7A8780;
+      --border: #D8E3DE;
+      --border-strong: #BFD0C9;
       --accent: #0F766E;
-      --accent-strong: #115E59;
-      --accent-hover: #115E59;
-      --accent-soft: #E3F3F0;
-      --accent-border: #B7DFD8;
+      --accent-strong: #0A4F49;
+      --accent-hover: #0B5F59;
+      --accent-soft: #DDF3EE;
+      --accent-border: #A9D8CF;
       --cyber: #0F766E;
-      --cyber-strong: #115E59;
-      --cyber-soft: #E3F3F0;
+      --cyber-strong: #0A4F49;
+      --cyber-soft: #DDF3EE;
       --pink: #6F7A3A;
       --pink-soft: #EEF1DE;
       --olive: #6F7A3A;
@@ -600,7 +601,9 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
       --warning: #D97706;
       --warning-hover: #B45309;
       --warning-soft: #FFF1DD;
-      --warning-border: #F5C98B;
+      --warning-border: #F2C078;
+      --provider-accent: #D97706;
+      --provider-soft: #FFF4E5;
       --danger: #DC2626;
       --danger-strong: #B91C1C;
       --danger-soft: #FEE2E2;
@@ -610,8 +613,9 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
       --success-border: #B9DEC0;
       --input-bg: #FFFFFF;
       --focus: var(--accent);
-      --shadow-soft: 0 1px 2px rgba(31, 41, 51, 0.06);
-      --shadow-card: 0 12px 28px rgba(31, 41, 51, 0.08);
+      --shadow-soft: 0 3px 10px rgba(31, 41, 51, 0.07);
+      --shadow-card: 0 8px 24px rgba(31, 41, 51, 0.06);
+      --shadow-card-hover: 0 12px 28px rgba(31, 41, 51, 0.09);
       --shadow-glow: 0 0 0 1px rgba(15, 118, 110, 0.14), 0 12px 26px rgba(15, 118, 110, 0.10);
       --radius-control: 9px;
       --radius-card: 14px;
@@ -1802,45 +1806,55 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
 
     .review-required-icon .material-symbols-rounded {{ font-size: 18px; font-variation-settings: 'FILL' 1, 'wght' 500, 'GRAD' 0, 'opsz' 20; }}
 
-    html[data-theme="light-v2"] ::selection {{ background: rgba(15, 118, 110, 0.22); color: #10201D; }}
+    html[data-theme="light-v2"] ::selection {{ background: rgba(15, 118, 110, 0.28); color: #10201D; }}
     html[data-theme="light-v2"] * {{ scrollbar-color: #B7C8C1 #F3F7F4; }}
     html[data-theme="light-v2"] *::-webkit-scrollbar {{ width: 10px; height: 10px; }}
     html[data-theme="light-v2"] *::-webkit-scrollbar-track {{ background: var(--surface-muted); border-radius: 999px; }}
     html[data-theme="light-v2"] *::-webkit-scrollbar-thumb {{ background: #B7C8C1; border: 2px solid var(--surface-muted); border-radius: 999px; }}
     html[data-theme="light-v2"] *::-webkit-scrollbar-thumb:hover {{ background: #91AAA0; }}
     html[data-theme="light-v2"] .app-shell, html[data-theme="light-v2"] .content {{ background: var(--bg); }}
-    html[data-theme="light-v2"] .breadcrumbs {{ background: #EEF5F1; border-bottom-color: var(--border); color: var(--muted); }}
+    html[data-theme="light-v2"] .breadcrumbs {{ background: var(--surface-soft, #EEF5F1); border-bottom-color: var(--border); color: var(--muted); }}
     html[data-theme="light-v2"] .breadcrumbs a {{ color: var(--accent-strong); }}
-    html[data-theme="light-v2"] .sidebar {{ background: linear-gradient(180deg, #F3F7F4 0%, var(--sidebar-bg) 100%); border-right-color: var(--border-strong); }}
+    html[data-theme="light-v2"] .sidebar {{ background: linear-gradient(180deg, #EAF3EF 0%, var(--sidebar-bg) 100%); border-right-color: var(--border-strong); }}
     html[data-theme="light-v2"] .brand-mark, html[data-theme="light-v2"] .user-icon {{ background: linear-gradient(135deg, var(--accent), var(--accent-strong)); box-shadow: 0 8px 18px rgba(15, 118, 110, .18); }}
-    html[data-theme="light-v2"] .side-link {{ color: #31443D; }}
-    html[data-theme="light-v2"] .side-icon, html[data-theme="light-v2"] .nav-icon, html[data-theme="light-v2"] .side-link::before {{ color: #6D8179 !important; }}
-    html[data-theme="light-v2"] .side-link:hover, html[data-theme="light-v2"] .admin-link:hover {{ background: #E6F1ED; border-color: var(--accent-border); color: var(--accent-strong); }}
-    html[data-theme="light-v2"] .side-link.active, html[data-theme="light-v2"] .sidebar-collapsed .side-link.active {{ background: var(--accent-soft) !important; border-color: var(--accent-border) !important; color: var(--accent-strong); box-shadow: inset 3px 0 0 var(--accent); }}
+    html[data-theme="light-v2"] .side-link {{ color: #243A34; border-left: 3px solid transparent; }}
+    html[data-theme="light-v2"] .side-icon, html[data-theme="light-v2"] .nav-icon, html[data-theme="light-v2"] .side-link::before {{ color: #536C63 !important; }}
+    html[data-theme="light-v2"] .side-link:hover, html[data-theme="light-v2"] .admin-link:hover {{ background: #F3FAF7; border-color: var(--accent-border); color: var(--accent-strong); }}
+    html[data-theme="light-v2"] .side-link.active, html[data-theme="light-v2"] .sidebar-collapsed .side-link.active {{ background: var(--accent-soft) !important; border-color: var(--accent-border) !important; color: var(--accent-strong); box-shadow: inset 4px 0 0 var(--accent), 0 6px 16px rgba(15, 118, 110, .10); }}
     html[data-theme="light-v2"] .side-link.active .side-icon, html[data-theme="light-v2"] .side-link.active .nav-icon, html[data-theme="light-v2"] .side-link.active::before {{ color: var(--accent-strong) !important; }}
     html[data-theme="light-v2"] .side-link[href='/provider-changes'] .side-icon, html[data-theme="light-v2"] .side-link[href='/provider-changes'] .nav-icon {{ color: var(--warning) !important; }}
-    html[data-theme="light-v2"] .side-link[href='/provider-changes'].active {{ background: var(--warning-soft) !important; border-color: var(--warning-border) !important; color: var(--warning-hover); box-shadow: inset 3px 0 0 var(--warning); }}
+    html[data-theme="light-v2"] .side-link[href='/provider-changes'].active {{ background: var(--warning-soft) !important; border-color: var(--warning-border) !important; color: var(--warning-hover); box-shadow: inset 4px 0 0 var(--warning), 0 6px 16px rgba(217, 119, 6, .12); }}
     html[data-theme="light-v2"] .side-link-disabled, html[data-theme="light-v2"] .side-link-disabled:hover, html[data-theme="light-v2"] .side-link-disabled:disabled {{ color: var(--text-soft); opacity: .72; background: transparent; }}
-    html[data-theme="light-v2"] .current-user-selector, html[data-theme="light-v2"] .theme-selector, html[data-theme="light-v2"] .sidebar-collapse {{ background: #F7FAF8; border-color: var(--border); color: var(--text); }}
+    html[data-theme="light-v2"] .current-user-selector, html[data-theme="light-v2"] .theme-selector, html[data-theme="light-v2"] .sidebar-collapse {{ background: #F3FAF7; border-color: var(--border); color: var(--text); }}
     html[data-theme="light-v2"] .theme-menu, html[data-theme="light-v2"] .current-user-menu, html[data-theme="light-v2"] .column-settings-panel {{ background: var(--surface); border-color: var(--border-strong); box-shadow: var(--shadow-card); }}
     html[data-theme="light-v2"] .theme-menu button:hover, html[data-theme="light-v2"] .theme-menu button[aria-checked="true"], html[data-theme="light-v2"] .current-user-menu a:hover, html[data-theme="light-v2"] .column-settings-row:hover {{ background: var(--accent-soft); color: var(--accent-strong); }}
     html[data-theme="light-v2"] .card, html[data-theme="light-v2"] details, html[data-theme="light-v2"] fieldset, html[data-theme="light-v2"] .filter-card, html[data-theme="light-v2"] .form-card, html[data-theme="light-v2"] .table-footer, html[data-theme="light-v2"] .table-card, html[data-theme="light-v2"] .journal-card, html[data-theme="light-v2"] .dictionary-card, html[data-theme="light-v2"] .dictionary-toolbar, html[data-theme="light-v2"] .event-feed, html[data-theme="light-v2"] .metric-card, html[data-theme="light-v2"] .quick-link-card, html[data-theme="light-v2"] .login-card {{ background: var(--surface); border-color: var(--border); box-shadow: var(--shadow-card); }}
     html[data-theme="light-v2"] input, html[data-theme="light-v2"] select, html[data-theme="light-v2"] textarea {{ background: var(--input-bg); color: var(--text); border-color: var(--border-strong); }}
     html[data-theme="light-v2"] input:focus, html[data-theme="light-v2"] select:focus, html[data-theme="light-v2"] textarea:focus {{ border-color: var(--accent); outline-color: var(--accent); box-shadow: 0 0 0 3px rgba(15, 118, 110, .14); }}
     html[data-theme="light-v2"] input::placeholder, html[data-theme="light-v2"] textarea::placeholder {{ color: var(--text-soft); }}
-    html[data-theme="light-v2"] th {{ background: #EEF5F1; color: #52645D; border-bottom-color: var(--border-strong); }}
+    html[data-theme="light-v2"] th {{ background: #EAF3EF; color: #42574F; border-bottom-color: var(--border-strong); }}
     html[data-theme="light-v2"] th, html[data-theme="light-v2"] td {{ border-right-color: var(--border); }}
     html[data-theme="light-v2"] td {{ background: var(--surface); border-bottom-color: var(--border); color: var(--text); }}
-    html[data-theme="light-v2"] tbody tr:nth-child(even) td {{ background: #FAFCFA; }}
-    html[data-theme="light-v2"] tbody tr:hover td, html[data-theme="light-v2"] .selectable-cell:hover {{ background: #EFF8F5 !important; }}
+    html[data-theme="light-v2"] tbody tr:nth-child(even) td {{ background: #F7FBF8; }}
+    html[data-theme="light-v2"] tbody tr:hover td, html[data-theme="light-v2"] .selectable-cell:hover {{ background: #F0F8F5 !important; }}
     html[data-theme="light-v2"] form button[type="submit"], html[data-theme="light-v2"] .hero-action, html[data-theme="light-v2"] .modal-save, html[data-theme="light-v2"] .admin-edit-save {{ background: var(--accent); border-color: var(--accent); color: #fff; }}
     html[data-theme="light-v2"] form button[type="submit"]:hover, html[data-theme="light-v2"] .hero-action:hover, html[data-theme="light-v2"] .modal-save:hover, html[data-theme="light-v2"] .admin-edit-save:hover {{ background: var(--accent-hover); border-color: var(--accent-hover); color: #fff; }}
-    html[data-theme="light-v2"] .metric-icon, html[data-theme="light-v2"] .quick-icon {{ background: var(--accent-soft); color: var(--accent-strong); }}
-    html[data-theme="light-v2"] .metric-card.green .metric-icon, html[data-theme="light-v2"] .feed-icon.ok, html[data-theme="light-v2"] .dot-status.ok span {{ background: var(--success); color: #fff; box-shadow: 0 0 0 5px var(--success-soft); }}
-    html[data-theme="light-v2"] .metric-card.orange .metric-icon, html[data-theme="light-v2"] .feed-icon.warn, html[data-theme="light-v2"] .dot-status.warning span {{ background: var(--warning); color: #fff; box-shadow: 0 0 0 5px var(--warning-soft); }}
+    html[data-theme="light-v2"] .metric-icon, html[data-theme="light-v2"] .quick-icon {{ background: var(--accent-soft); color: var(--accent-strong); box-shadow: 0 0 0 1px var(--accent-border) inset; }}
+    html[data-theme="light-v2"] .metric-card.green .metric-icon, html[data-theme="light-v2"] .feed-icon.ok, html[data-theme="light-v2"] .dot-status.ok span {{ background: var(--accent); color: #fff; box-shadow: 0 0 0 5px var(--accent-soft); }}
+    html[data-theme="light-v2"] .metric-card.orange .metric-icon, html[data-theme="light-v2"] .feed-icon.warn, html[data-theme="light-v2"] .dot-status.warning span {{ background: var(--provider-accent); color: #fff; box-shadow: 0 0 0 5px var(--provider-soft); }}
     html[data-theme="light-v2"] .dot-status.danger span, html[data-theme="light-v2"] .feed-icon.danger {{ background: var(--danger); box-shadow: 0 0 0 5px var(--danger-soft); }}
     html[data-theme="light-v2"] .status-badge, html[data-theme="light-v2"] .badge {{ border: 1px solid var(--border); background: var(--surface-muted); color: var(--text); border-radius: 999px; padding: 2px 8px; }}
     html[data-theme="light-v2"] .review-required-icon {{ color: var(--warning); }}
+
+    html[data-theme="light-v2"] a:not(.side-link):not(.button) {{ color: var(--accent-strong); }}
+    html[data-theme="light-v2"] a:not(.side-link):not(.button):hover {{ color: var(--accent-hover); }}
+    html[data-theme="light-v2"] .card:hover, html[data-theme="light-v2"] .metric-card:hover, html[data-theme="light-v2"] .quick-link-card:hover {{ border-color: var(--accent-border); box-shadow: var(--shadow-card-hover); transform: translateY(-1px); }}
+    html[data-theme="light-v2"] .quick-link-card[href='/provider-changes']:hover, html[data-theme="light-v2"] .quick-link-card[href='/provider-changes'] .quick-icon {{ background: var(--provider-soft); border-color: var(--warning-border); color: var(--warning-hover); }}
+    html[data-theme="light-v2"] .quick-link-card[href='/provider-changes'] .quick-icon {{ box-shadow: 0 0 0 1px var(--warning-border) inset; }}
+    html[data-theme="light-v2"] .metric-card.orange {{ border-color: var(--warning-border); }}
+    html[data-theme="light-v2"] .sparkline polyline {{ stroke-width: 2.8; }}
+    html[data-theme="light-v2"] .status-badge.warning, html[data-theme="light-v2"] .badge.warning, html[data-theme="light-v2"] .dot-status.warning {{ background: var(--warning-soft); border-color: var(--warning-border); color: var(--warning-hover); }}
+    html[data-theme="light-v2"] .table-footer .button[aria-current="page"], html[data-theme="light-v2"] .pagination .active, html[data-theme="light-v2"] .button.active {{ background: var(--accent); border-color: var(--accent); color: #fff; }}
     html[data-theme="light-v2"] .modal-form-card[open]::before, html[data-theme="light-v2"] .modal-overlay {{ background: rgba(31, 41, 51, .42); }}
     html[data-theme="light-v2"] .modal-card, html[data-theme="light-v2"] .modal-form-card[open] > form, html[data-theme="light-v2"] .modal-form-card[open] > .modal-body {{ background: var(--surface); border-color: var(--border-strong); box-shadow: 0 24px 70px rgba(31, 41, 51, .22); }}
     html[data-theme="light-v2"] .modal-cancel, html[data-theme="light-v2"] .admin-edit-cancel, html[data-theme="light-v2"] .danger-action {{ background: var(--danger-soft); border-color: var(--danger-border); color: var(--danger); }}
