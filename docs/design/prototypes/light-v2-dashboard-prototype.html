@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>RouteOps Light 2.0 — Dashboard Prototype</title>
+  <link rel="stylesheet" href="light-v2-components.css">
+</head>
+<body>
+  <div class="prototype">
+    <aside class="sidebar">
+      <div class="brand"><div class="logo">R</div><div><strong>RouteOps</strong><span>Light 2.0 prototype</span></div></div>
+      <div class="nav-section">Операции</div>
+      <a class="nav-item active" href="#"><span class="nav-icon">⌁</span>Главная</a>
+      <a class="nav-item" href="#"><span class="nav-icon">⇄</span>Маршруты</a>
+      <a class="nav-item" href="#"><span class="nav-icon">₽</span>Тарифы</a>
+      <a class="nav-item provider" href="#"><span class="nav-icon">↯</span>Смена провайдеров</a>
+      <a class="nav-item" href="#"><span class="nav-icon">☏</span>Купленные номера</a>
+      <div class="nav-section">Инструменты</div>
+      <a class="nav-item" href="#"><span class="nav-icon">▦</span>Кампании</a>
+      <a class="nav-item disabled" href="#"><span class="nav-icon">HL</span>HLR Checker</a>
+      <a class="nav-item disabled" href="#"><span class="nav-icon">SP</span>Spam Checker</a>
+    </aside>
+    <main class="main">
+      <section class="topbar">
+        <div><div class="breadcrumbs">Главная / Операционный обзор</div><h1 class="title">Панель управления маршрутами</h1></div>
+        <input class="search" placeholder="Поиск по маршруту, провайдеру, стране">
+        <div class="actions"><button class="btn ghost icon">?</button><button class="btn secondary">Экспорт</button><div class="avatar">AK</div></div>
+      </section>
+
+      <section class="grid cards">
+        <article class="card metric"><span class="pill">Активно</span><div class="card-value">128</div><div class="card-label">рабочих маршрутов</div><p class="card-note">+12 маршрутов прошли проверку за последние 24 часа.</p></article>
+        <article class="card provider"><span class="pill warning">Provider attention</span><div class="card-value">7</div><div class="card-label">заявок на смену</div><p class="card-note">Orange используется только для provider/warning зон.</p></article>
+        <article class="card neutral"><span class="pill muted">Нейтрально</span><div class="card-value">94%</div><div class="card-label">доставка кампаний</div><p class="card-note">Спокойная карточка без конкуренции с главными метриками.</p></article>
+        <article class="card action"><div class="card-label">Быстрое действие</div><div class="card-value">＋</div><p class="card-note">Создать маршрут или запустить проверку номера.</p><button class="btn secondary">Создать</button></article>
+      </section>
+
+      <div class="section-title"><h2>Фильтры и рабочая таблица</h2><button class="btn primary">Новый маршрут</button></div>
+      <section class="panel filters">
+        <div class="field"><label>Статус</label><select><option>Все статусы</option><option>Активные</option></select></div>
+        <div class="field"><label>Провайдер</label><select><option>Все провайдеры</option><option>Provider A</option></select></div>
+        <div class="field"><label>Направление</label><input value="RU / KZ"></div>
+        <button class="btn secondary">Применить</button><button class="btn ghost">Сбросить</button>
+      </section>
+      <section class="panel" style="margin-top:14px">
+        <div class="table-wrap"><table>
+          <thead><tr><th>Маршрут</th><th>Провайдер</th><th>Цена</th><th>Статус</th><th>Последнее событие</th><th>Действия</th></tr></thead>
+          <tbody>
+            <tr><td>RU Mobile Premium</td><td>Nord Telecom</td><td>0.043 ₽</td><td><span class="pill">Активен</span></td><td>Проверен 12 минут назад</td><td><button class="btn table">Открыть</button> <button class="btn table">⋯</button></td></tr>
+            <tr><td>KZ Mixed Route</td><td>Steppe Link</td><td>0.038 ₽</td><td><span class="pill warning">Смена</span></td><td>Ожидает подтверждения</td><td><button class="btn table">Открыть</button> <button class="btn table">⋯</button></td></tr>
+            <tr><td>EU Fallback</td><td>Atlas Voice</td><td>0.051 ₽</td><td><span class="pill danger">Ошибка</span></td><td>Недоступен trunk #4</td><td><button class="btn table">Открыть</button> <button class="btn table">⋯</button></td></tr>
+          </tbody>
+        </table></div>
+      </section>
+
+      <section class="grid split">
+        <div><div class="section-title"><h2>Модальное окно</h2></div><div class="modal-backdrop"><div class="modal"><header><strong>Создать маршрут</strong><button class="btn ghost icon">×</button></header><div class="modal-body"><div class="field"><label>Название <span class="req">*</span></label><input placeholder="Например, RU Mobile Premium"></div><div class="field"><label>Провайдер <span class="req">*</span></label><select><option>Nord Telecom</option></select></div><label><input type="checkbox" checked> Запустить проверку после создания</label></div><footer><button class="btn ghost">Отмена</button><button class="btn primary">Создать</button></footer></div></div></div>
+        <div><div class="section-title"><h2>Лента событий</h2></div><div class="feed"><div class="event"><div class="dot">✓</div><div><strong>Маршрут активирован</strong><p class="card-note">RU Mobile Premium прошёл автоматическую проверку.</p></div><span class="pill">OK</span></div><div class="event warning"><div class="dot">↯</div><div><strong>Смена провайдера</strong><p class="card-note">Steppe Link ожидает подтверждения оператора.</p></div><span class="pill warning">Provider</span></div><div class="event"><div class="dot">i</div><div><strong>Импорт завершён</strong><p class="card-note">Добавлено 42 строки тарифов без ошибок.</p></div><span class="pill muted">Info</span></div></div></div>
+      </section>
+
+      <div class="section-title"><h2>Component showcase</h2></div>
+      <section class="panel showcase">
+        <button class="btn primary">Primary</button><button class="btn secondary">Secondary</button><button class="btn ghost">Ghost</button><button class="btn warning">Provider / warning</button><button class="btn danger">Danger</button><button class="btn icon secondary">＋</button><button class="btn table">Table action</button>
+        <span class="pill">Active</span><span class="pill warning">Warning</span><span class="pill danger">Danger</span><input placeholder="Input"><label><input type="checkbox" checked> Toggle-like checkbox</label>
+      </section>
+    </main>
+  </div>
+</body>
+</html>
