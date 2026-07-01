@@ -2284,6 +2284,27 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertIn(csv_text, content)
         self.assertIn("Режим «Заменить выбранный раздел» временно отключён", content)
 
+
+    def test_phone_import_requirements_and_csv_template(self):
+        self.request("/routes")
+        captured, content = self.request("/admin/import")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn('id="phone-import-requirements"', content)
+        self.assertIn("Требования к файлу", content)
+        self.assertIn("Скачать шаблон CSV", content)
+        self.assertIn("Номер, Страна, Провайдер, Проект, Назначение, Итоговый статус", content)
+        self.assertIn("Колонка «АП» игнорируется", content)
+        self.assertIn("АП в EUR» импортируется в «Абонплата»", content)
+
+        captured, template = self.request("/admin/import/template?entity=phone_numbers")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn(("Content-Type", "text/csv; charset=utf-8"), captured["headers"])
+        self.assertIn(("Content-Disposition", "attachment; filename=phone_numbers_import_template.csv"), captured["headers"])
+        self.assertTrue(template.startswith("\ufeffНомер,Страна,Провайдер,Проект,Назначение,Итоговый статус,АП,АП в EUR,Тариф,Комментарий,Создал,Создано"))
+        self.assertIn("Используется", template)
+        self.assertIn("Отключен", template)
+        self.assertIn("???", template)
+
     def test_import_apply_shows_summary(self):
         self.request("/routes")
         body = urlencode({"entity_type": "dictionaries", "mode": "append_update", "csv_data": "type,name\ncountry,Перу\n"})

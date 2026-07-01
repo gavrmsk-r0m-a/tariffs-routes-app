@@ -158,6 +158,24 @@ def csv_response(filename: str, headers: list[str], rows: list[list[object]]) ->
     return ("\ufeff" + output.getvalue()).encode("utf-8")
 
 
+
+
+PHONE_IMPORT_TEMPLATE_HEADERS = ["Номер", "Страна", "Провайдер", "Проект", "Назначение", "Итоговый статус", "АП", "АП в EUR", "Тариф", "Комментарий", "Создал", "Создано"]
+PHONE_IMPORT_TEMPLATE_ROWS = [
+    ["393331234567", "Италия", "Miatel", "Competitors", "ГЛ", "Используется", "", "46,63", "Базовый", "Рабочий номер", "admin_excel", "2026-06-01"],
+    ["52555000201", "Мексика", "Telmex", "REP", "АОН", "Отключен", "100", "12.50", "Архивный", "Отключен у провайдера", "legacy_admin", "2026-06-02"],
+    ["442071234567", "Великобритания", "", "ИТМ", "", "???", "", "?", "", "Нужна проверка справочных полей", "", "2026-06-03"],
+]
+
+
+def phone_import_template_csv() -> bytes:
+    output = io.StringIO(newline="")
+    writer = csv.writer(output, delimiter=",")
+    writer.writerow(PHONE_IMPORT_TEMPLATE_HEADERS)
+    writer.writerows(PHONE_IMPORT_TEMPLATE_ROWS)
+    return ("\ufeff" + output.getvalue()).encode("utf-8")
+
+
 def html_to_csv_text(value: object) -> str:
     text = "" if value is None else str(value)
     text = re.sub(r"</li>\s*<li[^>]*>", "; ", text)
@@ -2839,6 +2857,7 @@ def section_for_get_path(path: str) -> str | None:
         "/admin/company-routing-settings": "admin_company_routing_settings",
         "/admin/naming-rules": "admin_route_naming",
         "/admin/import": "admin_import_export",
+        "/admin/import/template": "admin_import_export",
         "/admin/currency-rates": "admin_currency_rates",
         "/admin/change-reasons": "admin_provider_reasons",
         "/admin/users": "admin_users",
@@ -5259,11 +5278,30 @@ def import_page(repo: Repository, preview_html: str = "", *, selected_entity: st
         return "selected" if selected_entity == value else ""
     def mode_sel(value: str) -> str:
         return "selected" if selected_mode == value else ""
-    body = f"""<h1>Администрирование → Импорт / экспорт</h1><form method="post" action="/admin/import/preview"><label>Раздел <span class="required">*</span><select name="entity_type" id="entity_type"><option value="routes" {sel('routes')}>Маршруты</option><option value="tariffs" {sel('tariffs')}>Тарифы</option><option value="phone_numbers" {sel('phone_numbers')}>Купленные номера</option><option value="calling_companies" {sel('calling_companies')}>Кампании прозвона</option><option value="dictionaries" {sel('dictionaries')}>Справочники</option></select></label><label>Режим <select name="mode" id="import_mode"><option value="append_update" {mode_sel('append_update')}>Дополнить / обновить</option></select></label><p class='muted'>Режим «Заменить выбранный раздел» временно отключён. Используйте «Дополнить / обновить».</p><br><textarea name="csv_data" rows="12" cols="110" placeholder="Вставьте CSV с заголовками">{esc(csv_data)}</textarea><br><button>Предпросмотр</button><button formaction="/admin/import/apply">{nav_icon("import")}<span>Импортировать</span></button></form>{preview_html}<script>
+    phone_requirements_hidden = "" if selected_entity == "phone_numbers" else " hidden"
+    phone_requirements = f"""<section id="phone-import-requirements" class="card"{phone_requirements_hidden}>
+<h2>Требования к файлу</h2>
+<p><a class="button" href="/admin/import/template?entity=phone_numbers">Скачать шаблон CSV</a></p>
+<p><strong>Поддерживаемые колонки:</strong> Номер, Страна, Провайдер, Проект, Назначение, Итоговый статус, АП, АП в EUR, Тариф, Комментарий, Создал, Создано.</p>
+<p><strong>Обязательные поля:</strong> Номер, Страна, Итоговый статус.</p>
+<p><strong>Справочные поля:</strong> Страна, Провайдер, Проект, Назначение, Тип номера, если используется; Валюта, если используется. Значения должны быть заранее заведены в справочники. Active и inactive/legacy значения импортируются, missing значения блокируют импорт.</p>
+<ul>
+<li>Пустой Провайдер, Проект или Назначение → номер получит «Требует проверки».</li>
+<li>Пустая АП в EUR / ? / Неизвестно → Абонплата = NULL; в UI отображается «???», и «Требует проверки» только из-за этого не ставится.</li>
+<li>Отключен → Активен у провайдера: Нет; Рабочий статус: Не используется.</li>
+<li>??? → Активен у провайдера: Да; Рабочий статус: Не известно; Требует проверки.</li>
+<li>Не используется / Не нужен / Свободен → Активен у провайдера: Да; Рабочий статус: Не известно; Требует проверки.</li>
+<li>Используется → Активен у провайдера: Да; Рабочий статус: Используется.</li>
+<li>Колонка «АП» игнорируется; «АП в EUR» импортируется в «Абонплата». Поддерживается запятая: 46,63 → 46.63. Значения ?, Неизвестно, пусто, - → NULL; NULL показывается как «???».</li>
+</ul>
+</section>"""
+    body = f"""<h1>Администрирование → Импорт / экспорт</h1><form method="post" action="/admin/import/preview"><label>Раздел <span class="required">*</span><select name="entity_type" id="entity_type"><option value="routes" {sel('routes')}>Маршруты</option><option value="tariffs" {sel('tariffs')}>Тарифы</option><option value="phone_numbers" {sel('phone_numbers')}>Купленные номера</option><option value="calling_companies" {sel('calling_companies')}>Кампании прозвона</option><option value="dictionaries" {sel('dictionaries')}>Справочники</option></select></label><label>Режим <select name="mode" id="import_mode"><option value="append_update" {mode_sel('append_update')}>Дополнить / обновить</option></select></label><p class='muted'>Режим «Заменить выбранный раздел» временно отключён. Используйте «Дополнить / обновить».</p>{phone_requirements}<br><textarea name="csv_data" rows="12" cols="110" placeholder="Вставьте CSV с заголовками">{esc(csv_data)}</textarea><br><button>Предпросмотр</button><button formaction="/admin/import/apply">{nav_icon("import")}<span>Импортировать</span></button></form>{preview_html}<script>
 const entity = document.getElementById('entity_type');
 const mode = document.getElementById('import_mode');
+const phoneRequirements = document.getElementById('phone-import-requirements');
 function syncImportMode() {{
   mode.value = 'append_update';
+  if (phoneRequirements) {{ phoneRequirements.hidden = entity.value !== 'phone_numbers'; }}
 }}
 entity.addEventListener('change', syncImportMode); syncImportMode();
 </script>"""
@@ -6184,6 +6222,11 @@ def app(environ, start_response):
                     extra_redirect_headers = [clear_current_user_cookie()]
             return redirect(start_response, location, extra_redirect_headers)
         require_permission("read", section_for_get_path(path))
+        if path == "/admin/import/template":
+            if q.get("entity") != "phone_numbers":
+                start_response("404 Not Found", html_headers()); return [page("404", "<h1>404</h1>")]
+            start_response("200 OK", csv_headers("phone_numbers_import_template.csv"))
+            return [phone_import_template_csv()]
         if path.startswith(("/routes/", "/phones/", "/companies/", "/tariffs/")) and path.endswith("/edit"):
             require_permission("write", section_for_write_path(path.replace("/edit", "/update")))
         if path.startswith("/provider-changes/") and path.endswith("/edit"):
