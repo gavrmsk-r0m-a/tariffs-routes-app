@@ -2282,7 +2282,7 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertEqual(captured["status"], "200 OK")
         self.assertIn('<option value="tariffs" selected>Тарифы</option>', content)
         self.assertIn(csv_text, content)
-        self.assertIn("replace.disabled = true", content)
+        self.assertIn("Режим «Заменить выбранный раздел» временно отключён", content)
 
     def test_import_apply_shows_summary(self):
         self.request("/routes")

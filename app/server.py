@@ -5259,13 +5259,11 @@ def import_page(repo: Repository, preview_html: str = "", *, selected_entity: st
         return "selected" if selected_entity == value else ""
     def mode_sel(value: str) -> str:
         return "selected" if selected_mode == value else ""
-    body = f"""<h1>Администрирование → Импорт / экспорт</h1><form method="post" action="/admin/import/preview"><label>Раздел <span class="required">*</span><select name="entity_type" id="entity_type"><option value="routes" {sel('routes')}>Маршруты</option><option value="tariffs" {sel('tariffs')}>Тарифы</option><option value="phone_numbers" {sel('phone_numbers')}>Купленные номера</option><option value="calling_companies" {sel('calling_companies')}>Кампании прозвона</option><option value="dictionaries" {sel('dictionaries')}>Справочники</option></select></label><label>Режим <select name="mode" id="import_mode"><option value="append_update" {mode_sel('append_update')}>Дополнить / обновить</option><option value="replace_section" {mode_sel('replace_section')}>Заменить выбранный раздел</option></select></label><p class='muted'>Для тарифов режим «Заменить выбранный раздел» недоступен: используйте только «Дополнить / обновить».</p><br><textarea name="csv_data" rows="12" cols="110" placeholder="Вставьте CSV с заголовками">{esc(csv_data)}</textarea><br><button>Предпросмотр</button><button formaction="/admin/import/apply">{nav_icon("import")}<span>Импортировать</span></button></form>{preview_html}<script>
+    body = f"""<h1>Администрирование → Импорт / экспорт</h1><form method="post" action="/admin/import/preview"><label>Раздел <span class="required">*</span><select name="entity_type" id="entity_type"><option value="routes" {sel('routes')}>Маршруты</option><option value="tariffs" {sel('tariffs')}>Тарифы</option><option value="phone_numbers" {sel('phone_numbers')}>Купленные номера</option><option value="calling_companies" {sel('calling_companies')}>Кампании прозвона</option><option value="dictionaries" {sel('dictionaries')}>Справочники</option></select></label><label>Режим <select name="mode" id="import_mode"><option value="append_update" {mode_sel('append_update')}>Дополнить / обновить</option></select></label><p class='muted'>Режим «Заменить выбранный раздел» временно отключён. Используйте «Дополнить / обновить».</p><br><textarea name="csv_data" rows="12" cols="110" placeholder="Вставьте CSV с заголовками">{esc(csv_data)}</textarea><br><button>Предпросмотр</button><button formaction="/admin/import/apply">{nav_icon("import")}<span>Импортировать</span></button></form>{preview_html}<script>
 const entity = document.getElementById('entity_type');
 const mode = document.getElementById('import_mode');
 function syncImportMode() {{
-  const replace = [...mode.options].find(o => o.value === 'replace_section');
-  if (entity.value === 'tariffs') {{ mode.value = 'append_update'; replace.disabled = true; }}
-  else {{ replace.disabled = false; }}
+  mode.value = 'append_update';
 }}
 entity.addEventListener('change', syncImportMode); syncImportMode();
 </script>"""
@@ -6148,20 +6146,25 @@ def app(environ, start_response):
             parsed["_raw"] = raw_body
             require_permission("write", section_for_write_path(path))
             if path == "/admin/import/preview":
-                if parsed["entity_type"] == "tariffs" and parsed.get("mode") == "replace_section":
-                    raise BusinessRuleError("Для тарифов доступен только режим Дополнить / обновить")
+                if parsed.get("mode") == "replace_section":
+                    raise BusinessRuleError("Режим замены раздела временно отключён. Используйте Дополнить / обновить.")
                 preview = preview_import(conn, parsed["entity_type"], parsed.get("csv_data", ""))
-                rows = "".join(f"<tr><td>{r['line']}</td><td>{esc(r['status'])}</td><td>{esc(r['action'])}</td><td>{esc(r['message'])}</td></tr>" for r in preview.rows)
-                info_blocks = ""
                 if parsed["entity_type"] == "phone_numbers":
-                    messages = "\n".join(str(r.get("message", "")) for r in preview.rows)
+                    rows = "".join(f"<tr><td>{r['line']}</td><td>{esc(r.get('number', ''))}</td><td>{esc(r['action'])}</td><td>{esc(r.get('working_status', ''))}</td><td>{esc(r.get('active_provider', ''))}</td><td>{esc(r.get('review_required', ''))}</td><td>{esc(r.get('review_reasons', ''))}</td><td>{esc(r.get('errors', ''))}</td><td>{esc(r.get('info', ''))}</td><td>{esc(r['message'])}</td></tr>" for r in preview.rows)
+                    info_blocks = ""
                     if preview.error_rows:
-                        info_blocks += "<p class='flash error'>Есть ошибки справочников. Импорт заблокирован до исправления файла или добавления значений в справочники.</p>"
-                    if "историческое справочное значение" in messages:
+                        info_blocks += "<p class='flash error'>Есть ошибки. Импорт заблокирован до исправления файла.</p>"
+                    if preview.legacy_info_rows:
                         info_blocks += "<p class='muted'>В файле есть исторические справочные значения. Они будут импортированы.</p>"
-                    if "Требует проверки:" in messages:
-                        info_blocks += "<p class='muted'>Часть номеров будет импортирована со статусом ‘Требует проверки’ из-за пустых справочных полей.</p>"
-                html_preview = f"<h2>Предпросмотр</h2>{info_blocks}<p>Всего: {preview.total_rows}, новых: {preview.new_rows}, дублей: {preview.duplicate_rows}, ошибок: {preview.error_rows}</p><table><tr><th>Строка</th><th>Статус</th><th>Действие</th><th>Комментарий</th></tr>{rows}</table>"
+                    if preview.review_required_rows:
+                        info_blocks += "<p class='muted'>Часть номеров будет импортирована со статусом ‘Требует проверки’.</p>"
+                    duplicate_in_file_rows = sum(1 for r in preview.rows if r.get("action") == "duplicate_in_file")
+                    update_rows = sum(1 for r in preview.rows if r.get("action") == "update")
+                    summary = f"Всего: {preview.total_rows}, будет создано: {preview.new_rows}, будет обновлено: {update_rows}, дублей внутри файла: {duplicate_in_file_rows}, ошибок: {preview.error_rows}, legacy/info значений: {preview.legacy_info_rows}, требуют проверки: {preview.review_required_rows}"
+                    html_preview = f"<h2>Предпросмотр</h2>{info_blocks}<p>{summary}</p><table><tr><th>Строка</th><th>Номер</th><th>Действие</th><th>Рабочий статус</th><th>Активен у провайдера</th><th>Требует проверки</th><th>Причины проверки</th><th>Errors</th><th>Info / legacy</th><th>Сообщение</th></tr>{rows}</table>"
+                else:
+                    rows = "".join(f"<tr><td>{r['line']}</td><td>{esc(r['status'])}</td><td>{esc(r['action'])}</td><td>{esc(r['message'])}</td></tr>" for r in preview.rows)
+                    html_preview = f"<h2>Предпросмотр</h2><p>Всего: {preview.total_rows}, новых: {preview.new_rows}, дублей: {preview.duplicate_rows}, ошибок: {preview.error_rows}</p><table><tr><th>Строка</th><th>Статус</th><th>Действие</th><th>Комментарий</th></tr>{rows}</table>"
                 start_response("200 OK", html_headers())
                 return [import_page(repo, html_preview, selected_entity=parsed["entity_type"], selected_mode=parsed.get("mode", "append_update"), csv_data=parsed.get("csv_data", ""))]
             if path == "/admin/import/apply":
@@ -6169,7 +6172,8 @@ def app(environ, start_response):
                 extra = ""
                 if parsed["entity_type"] == "phone_numbers":
                     extra = f"<li>требуют проверки {result.review_required_rows}</li><li>исторических справочных значений {result.legacy_info_rows}</li>"
-                notice = f"<h2>Импорт завершён</h2><ul><li>создано {result.created_rows}</li><li>обновлено {result.updated_rows}</li><li>пропущено {result.skipped_rows}</li><li>ошибок {result.error_rows}</li>{extra}</ul>"
+                warning = "<p class='flash warning'>Во время применения возникли ошибки. Проверьте данные.</p>" if result.error_rows else ""
+                notice = f"<h2>Импорт завершён</h2>{warning}<ul><li>создано {result.created_rows}</li><li>обновлено {result.updated_rows}</li><li>пропущено {result.skipped_rows}</li><li>ошибок {result.error_rows}</li>{extra}</ul>"
                 start_response("200 OK", html_headers())
                 return [import_page(repo, notice, selected_entity=parsed["entity_type"], selected_mode=parsed.get("mode", "append_update"), csv_data=parsed.get("csv_data", ""))]
             location = handle_post(repo, path, parsed)

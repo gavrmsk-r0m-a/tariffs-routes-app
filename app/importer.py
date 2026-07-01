@@ -76,7 +76,7 @@ def _map_final_status(value: str) -> tuple[str, bool, bool]:
 def preview_import(conn: sqlite3.Connection, entity_type: str, csv_text: str) -> ImportPreview:
     rows = parse_csv(csv_text)
     preview = ImportPreview(entity_type=entity_type, total_rows=len(rows))
-    seen_keys: set[tuple] = set()
+    seen_keys: dict[tuple, int] = {}
     for idx, row in enumerate(rows, start=2):
         try:
             key = _business_key(conn, entity_type, row)
@@ -89,19 +89,35 @@ def preview_import(conn: sqlite3.Connection, entity_type: str, csv_text: str) ->
                 preview.duplicate_rows += 1
                 if entity_type == "phone_numbers":
                     preview.error_rows += 1
-                preview.rows.append({"line": idx, "status": "duplicate_in_file", "action": "skip", "message": str(key)})
+                    preview.rows.append(_phone_preview_row(idx, "duplicate_in_file", "duplicate_in_file", f"Номер уже встречался в строке {seen_keys[key]} этого файла.", phone_values, key, errors=[f"Номер уже встречался в строке {seen_keys[key]} этого файла."]))
+                else:
+                    preview.rows.append({"line": idx, "status": "duplicate_in_file", "action": "skip", "message": str(key)})
                 continue
-            seen_keys.add(key)
+            seen_keys[key] = idx
+            if entity_type == "phone_numbers":
+                if _phone_review_reasons(phone_values):
+                    preview.review_required_rows += 1
+                if phone_values.get("reference_legacy"):
+                    preview.legacy_info_rows += 1
             exists = _exists(conn, entity_type, key)
             if exists:
                 preview.duplicate_rows += 1
-                preview.rows.append({"line": idx, "status": "duplicate_in_db", "action": "update", "message": _phone_preview_message(phone_values, key) if entity_type == "phone_numbers" else str(key)})
+                if entity_type == "phone_numbers":
+                    preview.rows.append(_phone_preview_row(idx, "update", "update", "Строка обновит существующий номер.", phone_values, key))
+                else:
+                    preview.rows.append({"line": idx, "status": "duplicate_in_db", "action": "update", "message": str(key)})
             else:
                 preview.new_rows += 1
-                preview.rows.append({"line": idx, "status": "new", "action": "create", "message": _phone_preview_message(phone_values, key) if entity_type == "phone_numbers" else str(key)})
+                if entity_type == "phone_numbers":
+                    preview.rows.append(_phone_preview_row(idx, "create", "create", "Строка создаст новый номер.", phone_values, key))
+                else:
+                    preview.rows.append({"line": idx, "status": "new", "action": "create", "message": str(key)})
         except Exception as exc:  # preview should collect row errors
             preview.error_rows += 1
-            preview.rows.append({"line": idx, "status": "error", "action": "skip", "message": str(exc)})
+            if entity_type == "phone_numbers":
+                preview.rows.append({"line": idx, "status": "error", "action": "error", "number": _first(row, "number", "номер"), "working_status": "", "active_provider": "", "review_required": "Нет", "review_reasons": "", "errors": str(exc), "info": "", "message": str(exc)})
+            else:
+                preview.rows.append({"line": idx, "status": "error", "action": "skip", "message": str(exc)})
     return preview
 
 
@@ -114,11 +130,11 @@ def apply_import(
     duplicate_action: str = "update",
     mode: str = "append_update",
 ) -> ImportPreview:
-    if entity_type == "tariffs" and mode == "replace_section":
-        raise BusinessRuleError("Для тарифов доступен только режим Дополнить / обновить")
+    if mode == "replace_section":
+        raise BusinessRuleError("Режим замены раздела временно отключён. Используйте Дополнить / обновить.")
     preview = preview_import(conn, entity_type, csv_text)
     if entity_type == "phone_numbers" and preview.error_rows:
-        raise BusinessRuleError("Есть ошибки справочников. Импорт заблокирован до исправления файла или добавления значений в справочники.")
+        raise BusinessRuleError("Импорт невозможен: в предпросмотре есть ошибки. Исправьте файл и повторите предпросмотр.")
     if mode == "replace_section":
         _clear_section(conn, entity_type)
     repo = Repository(conn)
@@ -158,8 +174,11 @@ def apply_import(
                 preview.updated_rows += 1
             else:
                 preview.created_rows += 1
-        except Exception:
+        except Exception as exc:
             preview.skipped_rows += 1
+            if entity_type == "phone_numbers":
+                preview.error_rows += 1
+                preview.rows.append({"line": 0, "status": "error", "action": "error", "message": str(exc), "errors": str(exc)})
             continue
     conn.commit()
     return preview
@@ -217,7 +236,7 @@ def _resolve_reference(conn: sqlite3.Connection, table: str, value: str, label: 
     else:
         row = conn.execute(f"SELECT id, {code_column} AS value, is_active FROM {table} WHERE {code_column} = ?", (text,)).fetchone()
     if row is None:
-        raise BusinessRuleError(f"{label} отсутствует в справочнике: {text}")
+        raise BusinessRuleError(f"Значение ‘{text}’ не найдено в справочнике {label}. Исправьте файл или добавьте значение в справочник вручную.")
     return row["id"], not bool(row["is_active"])
 
 
@@ -233,7 +252,7 @@ def _resolve_assignment_code(conn: sqlite3.Connection, value: str) -> tuple[str 
         (value, value),
     ).fetchone()
     if row is None:
-        raise BusinessRuleError(f"Назначение номера отсутствует в справочнике: {value}")
+        raise BusinessRuleError(f"Значение ‘{value}’ не найдено в справочнике Назначение. Исправьте файл или добавьте значение в справочник вручную.")
     return str(row["code"]), not bool(row["is_active"])
 
 
@@ -277,6 +296,44 @@ def _phone_import_values(conn: sqlite3.Connection, row: dict[str, str]) -> dict[
     }
 
 
+
+
+def _phone_review_reasons(values: dict) -> list[str]:
+    reasons = []
+    if values.get("empty_provider"):
+        reasons.append("пустой провайдер")
+    if values.get("empty_project"):
+        reasons.append("пустой проект")
+    if values.get("empty_assignment"):
+        reasons.append("пустое назначение")
+    if values.get("status_review_required"):
+        reasons.append("статус требует проверки")
+    return reasons
+
+
+def _phone_preview_row(line: int, status: str, action: str, base_message: str, values: dict, key: tuple, *, errors: list[str] | None = None) -> dict:
+    reasons = _phone_review_reasons(values)
+    info = []
+    if values.get("reference_legacy"):
+        info.append("Историческое значение / legacy")
+    if values.get("imported_created_by"):
+        info.append(f"Создал в Excel: {values['imported_created_by']}")
+    message = _phone_preview_message(values, key)
+    if base_message:
+        message = f"{base_message} {message}"
+    return {
+        "line": line,
+        "status": status,
+        "action": action,
+        "number": key[0] if key else "",
+        "working_status": str(values.get("status") or ""),
+        "active_provider": "Да" if values.get("is_active") else "Нет",
+        "review_required": "Да" if reasons else "Нет",
+        "review_reasons": ", ".join(reasons),
+        "errors": "; ".join(errors or []),
+        "info": "; ".join(info),
+        "message": message,
+    }
 
 def _phone_preview_message(values: dict, key: tuple) -> str:
     notes = []
