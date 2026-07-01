@@ -123,10 +123,13 @@ def _rebuild_phone_numbers_if_needed(conn: sqlite3.Connection) -> None:
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             country_id INTEGER NOT NULL REFERENCES countries(id) ON DELETE RESTRICT,
             provider_id INTEGER REFERENCES providers(id) ON DELETE RESTRICT,
+            country_label TEXT,
+            provider_label TEXT,
             number TEXT NOT NULL,
             normalized_number TEXT NOT NULL UNIQUE,
             project_label TEXT,
             assignment_type TEXT NOT NULL,
+            assignment_label TEXT,
             phone_type TEXT,
             tariff_label TEXT,
             {PHONE_STATUS_SQL},
@@ -135,6 +138,7 @@ def _rebuild_phone_numbers_if_needed(conn: sqlite3.Connection) -> None:
             outgoing_rate NUMERIC CHECK (outgoing_rate IS NULL OR outgoing_rate >= 0),
             incoming_rate NUMERIC CHECK (incoming_rate IS NULL OR incoming_rate >= 0),
             currency_id INTEGER REFERENCES currencies(id) ON DELETE RESTRICT,
+            currency_label TEXT,
             comment TEXT,
             is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
             review_required INTEGER NOT NULL DEFAULT 0 CHECK (review_required IN (0, 1)),
@@ -149,16 +153,20 @@ def _rebuild_phone_numbers_if_needed(conn: sqlite3.Connection) -> None:
     """)
     conn.execute(f"""
         INSERT INTO phone_numbers_new(
-            id, country_id, provider_id, number, normalized_number, project_label,
-            assignment_type, phone_type, tariff_label, status, connection_cost, monthly_fee,
-            outgoing_rate, incoming_rate, currency_id, comment, is_active, review_required, created_by,
+            id, country_id, provider_id, country_label, provider_label, number, normalized_number, project_label,
+            assignment_type, assignment_label, phone_type, tariff_label, status, connection_cost, monthly_fee,
+            outgoing_rate, incoming_rate, currency_id, currency_label, comment, is_active, review_required, created_by,
             created_at, updated_by, updated_at, deactivated_at
         )
-        SELECT id, country_id, provider_id, number, normalized_number, project_label,
-            assignment_type, phone_type, tariff_label, {_phone_status_expr("status")}, connection_cost, monthly_fee,
-            outgoing_rate, incoming_rate, currency_id, comment, is_active, review_required, created_by,
-            created_at, updated_by, updated_at, deactivated_at
-        FROM phone_numbers
+        SELECT pn.id, pn.country_id, pn.provider_id, c.name, p.name, pn.number, pn.normalized_number, pn.project_label,
+            pn.assignment_type, pat.name, pn.phone_type, pn.tariff_label, {_phone_status_expr("pn.status")}, pn.connection_cost, pn.monthly_fee,
+            pn.outgoing_rate, pn.incoming_rate, pn.currency_id, cur.code, pn.comment, pn.is_active, pn.review_required, pn.created_by,
+            pn.created_at, pn.updated_by, pn.updated_at, pn.deactivated_at
+        FROM phone_numbers pn
+        JOIN countries c ON c.id = pn.country_id
+        LEFT JOIN providers p ON p.id = pn.provider_id
+        LEFT JOIN currencies cur ON cur.id = pn.currency_id
+        LEFT JOIN phone_assignment_types pat ON pat.code = pn.assignment_type
     """)
     conn.execute("DROP TABLE phone_numbers")
     conn.execute("ALTER TABLE phone_numbers_new RENAME TO phone_numbers")
@@ -252,6 +260,10 @@ def run_lightweight_migrations(conn: sqlite3.Connection) -> None:
     _add_column_if_missing(conn, "calling_companies", "line_count", "INTEGER NOT NULL DEFAULT 0 CHECK (line_count >= 0)")
     _add_column_if_missing(conn, "calling_companies", "dial_set_count", "INTEGER NOT NULL DEFAULT 0 CHECK (dial_set_count >= 0)")
     _add_column_if_missing(conn, "calling_companies", "retry_interval_seconds", "INTEGER NOT NULL DEFAULT 0 CHECK (retry_interval_seconds >= 0)")
+    _add_column_if_missing(conn, "phone_numbers", "country_label", "TEXT")
+    _add_column_if_missing(conn, "phone_numbers", "provider_label", "TEXT")
+    _add_column_if_missing(conn, "phone_numbers", "assignment_label", "TEXT")
+    _add_column_if_missing(conn, "phone_numbers", "currency_label", "TEXT")
     _add_column_if_missing(conn, "phone_numbers", "phone_type", "TEXT")
     _add_column_if_missing(conn, "phone_numbers", "tariff_label", "TEXT")
     _add_column_if_missing(conn, "phone_numbers", "deactivated_at", "TEXT")
@@ -322,6 +334,13 @@ def run_lightweight_migrations(conn: sqlite3.Connection) -> None:
     conn.execute("CREATE INDEX IF NOT EXISTS idx_company_routing_settings_company_id ON company_routing_settings(calling_company_id)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_company_routing_settings_country_id ON company_routing_settings(country_id)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_company_routing_settings_server_id ON company_routing_settings(server_id)")
+    conn.execute("""
+        UPDATE phone_numbers
+        SET country_label = COALESCE(country_label, (SELECT name FROM countries WHERE countries.id = phone_numbers.country_id)),
+            provider_label = COALESCE(provider_label, (SELECT name FROM providers WHERE providers.id = phone_numbers.provider_id)),
+            assignment_label = COALESCE(assignment_label, (SELECT name FROM phone_assignment_types WHERE phone_assignment_types.code = phone_numbers.assignment_type)),
+            currency_label = COALESCE(currency_label, (SELECT code FROM currencies WHERE currencies.id = phone_numbers.currency_id))
+    """)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_company_routing_settings_route_id ON company_routing_settings(route_id)")
     conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_company_routing_settings_one_active ON company_routing_settings(calling_company_id) WHERE is_active = 1 AND valid_to IS NULL")
     conn.execute("""
