@@ -55,6 +55,58 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
             created_by=self.admin_id,
         )
 
+
+    def test_dictionary_rename_without_updating_linked_records_keeps_phone_snapshots(self):
+        phone_id = self.create_phone(number="393331234570")
+        before = self.repo.list_phone_numbers({"number_like": "393331234570"})[0]
+        self.assertEqual(before["provider_name"], "Miatel")
+        self.assertEqual(before["assignment_type_label"], "ГЛ")
+
+        self.conn.execute("UPDATE providers SET name = ?, normalized_name = ? WHERE id = ?", ("Miatel New", "miatel new", self.provider_id))
+        assignment_id = self.conn.execute("SELECT id FROM phone_assignment_types WHERE code = 'gl'").fetchone()["id"]
+        self.conn.execute("UPDATE phone_assignment_types SET name = ? WHERE id = ?", ("ГЛ NEW", assignment_id))
+        self.conn.commit()
+
+        after = self.repo.list_phone_numbers({"number_like": "393331234570"})[0]
+        self.assertEqual(after["provider_name"], "Miatel")
+        self.assertEqual(after["assignment_type_label"], "ГЛ")
+
+        new_phone_id = self.repo.create_phone_number(
+            country_id=self.country_id, provider_id=self.provider_id, number="393331234571",
+            assignment_type="gl", status="used", created_by=self.admin_id, currency_id=self.currency_id,
+        )
+        new_row = self.repo.list_phone_numbers({"number_like": "393331234571"})[0]
+        self.assertEqual(new_row["provider_name"], "Miatel New")
+        self.assertEqual(new_row["assignment_type_label"], "ГЛ NEW")
+
+    def test_dictionary_rename_with_updating_linked_records_refreshes_phone_snapshots(self):
+        self.create_phone(number="393331234572")
+        old = self.conn.execute("SELECT name FROM providers WHERE id = ?", (self.provider_id,)).fetchone()["name"]
+        self.conn.execute("UPDATE providers SET name = ?, normalized_name = ? WHERE id = ?", ("Miatel Fixed", "miatel fixed", self.provider_id))
+        counts = self.repo.update_dictionary_snapshots("providers", self.provider_id, old, "Miatel Fixed")
+        self.conn.commit()
+
+        row = self.repo.list_phone_numbers({"number_like": "393331234572"})[0]
+        self.assertEqual(row["provider_name"], "Miatel Fixed")
+        self.assertEqual(counts["Купленные номера"], 1)
+
+    def test_inactive_dictionary_rename_does_not_reactivate_value(self):
+        project_id = self.conn.execute("SELECT id FROM projects WHERE name = 'ИТМ'").fetchone()["id"]
+        self.conn.execute("UPDATE projects SET is_active = 0 WHERE id = ?", (project_id,))
+        self.conn.commit()
+        self.repo.create_phone_number(
+            country_id=self.country_id, provider_id=self.provider_id, number="393331234573",
+            assignment_type="gl", status="used", created_by=self.admin_id, project_label="ИТМ",
+        )
+
+        self.conn.execute("UPDATE projects SET name = ?, is_active = 0 WHERE id = ?", ("ИТМ legacy", project_id))
+        self.conn.commit()
+
+        phone = self.repo.list_phone_numbers({"number_like": "393331234573"})[0]
+        project = self.conn.execute("SELECT is_active FROM projects WHERE id = ?", (project_id,)).fetchone()
+        self.assertEqual(phone["project_label"], "ИТМ")
+        self.assertEqual(project["is_active"], 0)
+
     def test_routing_event_created_with_updated_at(self):
         event_id = self._create_basic_routing_event()
         updated_at = self.conn.execute("SELECT updated_at FROM routing_events WHERE id = ?", (event_id,)).fetchone()["updated_at"]

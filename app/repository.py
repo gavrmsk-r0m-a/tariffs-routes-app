@@ -258,6 +258,56 @@ class Repository:
             return "operator"
         return normalized or "operator"
 
+
+    def _phone_snapshot_labels(self, country_id: int, provider_id: int | None, assignment_type: str | None, currency_id: int | None) -> dict[str, str | None]:
+        def one(sql: str, params: tuple[object, ...]) -> str | None:
+            row = self.conn.execute(sql, params).fetchone()
+            return str(row[0]) if row and row[0] is not None else None
+        return {
+            "country_label": one("SELECT name FROM countries WHERE id = ?", (country_id,)),
+            "provider_label": one("SELECT name FROM providers WHERE id = ?", (provider_id,)) if provider_id else None,
+            "assignment_label": one("SELECT name FROM phone_assignment_types WHERE code = ?", (assignment_type,)) if assignment_type else None,
+            "currency_label": one("SELECT code FROM currencies WHERE id = ?", (currency_id,)) if currency_id else None,
+        }
+
+    def dictionary_rename_preview(self, kind: str, entity_id: int) -> dict[str, int]:
+        if kind == "countries":
+            return {"Купленные номера": self.conn.execute("SELECT COUNT(*) FROM phone_numbers WHERE country_id = ?", (entity_id,)).fetchone()[0], "Маршруты": self.conn.execute("SELECT COUNT(*) FROM routes WHERE country_id = ?", (entity_id,)).fetchone()[0], "Тарифы": self.conn.execute("SELECT COUNT(*) FROM tariffs WHERE country_id = ?", (entity_id,)).fetchone()[0]}
+        if kind == "providers":
+            return {"Купленные номера": self.conn.execute("SELECT COUNT(*) FROM phone_numbers WHERE provider_id = ?", (entity_id,)).fetchone()[0], "Маршруты": self.conn.execute("SELECT COUNT(*) FROM routes WHERE provider_id = ?", (entity_id,)).fetchone()[0], "Тарифы": self.conn.execute("SELECT COUNT(*) FROM tariffs WHERE provider_id = ?", (entity_id,)).fetchone()[0]}
+        if kind == "currencies":
+            return {"Купленные номера": self.conn.execute("SELECT COUNT(*) FROM phone_numbers WHERE currency_id = ?", (entity_id,)).fetchone()[0], "Тарифы": self.conn.execute("SELECT COUNT(*) FROM tariffs WHERE provider_currency_id = ?", (entity_id,)).fetchone()[0]}
+        if kind == "phone-types":
+            row = self.conn.execute("SELECT name FROM phone_number_types WHERE id = ?", (entity_id,)).fetchone()
+            return {"Купленные номера": self.conn.execute("SELECT COUNT(*) FROM phone_numbers WHERE phone_type = ?", (row["name"] if row else None,)).fetchone()[0]}
+        if kind == "projects":
+            row = self.conn.execute("SELECT name FROM projects WHERE id = ?", (entity_id,)).fetchone()
+            return {"Купленные номера": self.conn.execute("SELECT COUNT(*) FROM phone_numbers WHERE project_label = ?", (row["name"] if row else None,)).fetchone()[0], "Маршруты": self.conn.execute("SELECT COUNT(*) FROM routes WHERE project_label = ?", (row["name"] if row else None,)).fetchone()[0]}
+        if kind == "phone-assignments":
+            row = self.conn.execute("SELECT code FROM phone_assignment_types WHERE id = ?", (entity_id,)).fetchone()
+            return {"Купленные номера": self.conn.execute("SELECT COUNT(*) FROM phone_numbers WHERE assignment_type = ?", (row["code"] if row else None,)).fetchone()[0]}
+        return {}
+
+    def update_dictionary_snapshots(self, kind: str, entity_id: int, old_label: str | None, new_label: str | None) -> dict[str, int]:
+        counts = self.dictionary_rename_preview(kind, entity_id)
+        if kind == "countries":
+            self.conn.execute("UPDATE phone_numbers SET country_label = ? WHERE country_id = ?", (new_label, entity_id))
+        elif kind == "providers":
+            self.conn.execute("UPDATE phone_numbers SET provider_label = ? WHERE provider_id = ?", (new_label, entity_id))
+        elif kind == "currencies":
+            code = self.conn.execute("SELECT code FROM currencies WHERE id = ?", (entity_id,)).fetchone()
+            self.conn.execute("UPDATE phone_numbers SET currency_label = ? WHERE currency_id = ?", (code["code"] if code else new_label, entity_id))
+        elif kind == "phone-types" and old_label != new_label:
+            self.conn.execute("UPDATE phone_numbers SET phone_type = ? WHERE phone_type = ?", (new_label, old_label))
+        elif kind == "projects" and old_label != new_label:
+            self.conn.execute("UPDATE phone_numbers SET project_label = ? WHERE project_label = ?", (new_label, old_label))
+            self.conn.execute("UPDATE routes SET project_label = ? WHERE project_label = ?", (new_label, old_label))
+        elif kind == "phone-assignments":
+            row = self.conn.execute("SELECT code FROM phone_assignment_types WHERE id = ?", (entity_id,)).fetchone()
+            if row:
+                self.conn.execute("UPDATE phone_numbers SET assignment_label = ? WHERE assignment_type = ?", (new_label, row["code"]))
+        return counts
+
     def create_user(self, username: str, role: str = "admin", display_name: str | None = None, password: str | None = None, email: str | None = None, must_change_password: bool = False) -> int:
         username = username.strip()
         existing = self.conn.execute("SELECT id FROM users WHERE username = ?", (username,)).fetchone()
@@ -506,22 +556,26 @@ class Repository:
         normalized = validate_phone_number(number)
         if not is_active and deactivated_at is None:
             deactivated_at = created_at or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        labels = self._phone_snapshot_labels(country_id, provider_id, assignment_type, currency_id)
         cur = self.conn.execute(
             """
             INSERT INTO phone_numbers(
-                country_id, provider_id, number, normalized_number, project_label,
-                assignment_type, phone_type, tariff_label, status, connection_cost, monthly_fee, outgoing_rate,
-                incoming_rate, currency_id, comment, is_active, review_required, created_by, created_at, deactivated_at
+                country_id, provider_id, country_label, provider_label, number, normalized_number, project_label,
+                assignment_type, assignment_label, phone_type, tariff_label, status, connection_cost, monthly_fee, outgoing_rate,
+                incoming_rate, currency_id, currency_label, comment, is_active, review_required, created_by, created_at, deactivated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP), ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP), ?)
             """,
             (
                 country_id,
                 provider_id,
+                labels["country_label"],
+                labels["provider_label"],
                 number,
                 normalized,
                 project_label,
                 assignment_type,
+                labels["assignment_label"],
                 phone_type,
                 tariff_label,
                 normalize_phone_status(status),
@@ -530,6 +584,7 @@ class Repository:
                 outgoing_rate,
                 incoming_rate,
                 currency_id,
+                labels["currency_label"],
                 comment,
                 1 if is_active else 0,
                 1 if review_required else 0,
@@ -881,8 +936,8 @@ class Repository:
         return list(
             self.conn.execute(
                 f"""
-                SELECT pn.*, c.name AS country_name, p.name AS provider_name, cur.code AS currency_code,
-                    pat.name AS assignment_type_label,
+                SELECT pn.*, COALESCE(pn.country_label, c.name) AS country_name, COALESCE(pn.provider_label, p.name) AS provider_name, COALESCE(pn.currency_label, cur.code) AS currency_code,
+                    COALESCE(pn.assignment_label, pat.name, pn.assignment_type) AS assignment_type_label,
                     COALESCE((
                         SELECT GROUP_CONCAT(r.name, ', ')
                         FROM route_phone_numbers rpn
@@ -1005,19 +1060,20 @@ class Repository:
         final_status = normalize_phone_status(status)
         if requested_active == 0 and int(existing["is_active"]) == 1 and existing["status"] == "used":
             final_status = "problem"
+        labels = self._phone_snapshot_labels(country_id, provider_id, assignment_type, currency_id)
         self.conn.execute(
             """
             UPDATE phone_numbers
-            SET number = ?, normalized_number = ?, country_id = ?, provider_id = ?, project_label = ?,
-                assignment_type = ?, status = ?, is_active = ?, connection_cost = ?, monthly_fee = ?,
-                currency_id = ?, phone_type = ?, tariff_label = ?, comment = ?, review_required = ?,
+            SET number = ?, normalized_number = ?, country_id = ?, provider_id = ?, country_label = ?, provider_label = ?, project_label = ?,
+                assignment_type = ?, assignment_label = ?, status = ?, is_active = ?, connection_cost = ?, monthly_fee = ?,
+                currency_id = ?, currency_label = ?, phone_type = ?, tariff_label = ?, comment = ?, review_required = ?,
                 deactivated_at = CASE WHEN ? = 0 AND deactivated_at IS NULL THEN CURRENT_TIMESTAMP ELSE deactivated_at END,
                 updated_by = ?, updated_at = CURRENT_TIMESTAMP
             WHERE id = ?
             """,
             (
-                normalized, normalized, country_id, provider_id, project_label, assignment_type, final_status,
-                requested_active, connection_cost, monthly_fee, currency_id, phone_type, tariff_label, comment,
+                normalized, normalized, country_id, provider_id, labels["country_label"], labels["provider_label"], project_label, assignment_type, labels["assignment_label"], final_status,
+                requested_active, connection_cost, monthly_fee, currency_id, labels["currency_label"], phone_type, tariff_label, comment,
                 final_review_required, requested_active, updated_by, phone_id,
             ),
         )
