@@ -130,7 +130,7 @@ def _rebuild_phone_numbers_if_needed(conn: sqlite3.Connection) -> None:
             number TEXT NOT NULL,
             normalized_number TEXT NOT NULL UNIQUE,
             project_label TEXT,
-            assignment_type TEXT NOT NULL,
+            assignment_type TEXT,
             assignment_label TEXT,
             phone_type TEXT,
             tariff_label TEXT,
