@@ -2070,6 +2070,85 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     html[data-theme="light-v2"] .metric-card.orange .metric-icon, html[data-theme="light-v2"] .metric-card.teal .metric-icon {{ background: #EEF7F6; border-color: var(--accent-border); color: var(--accent-strong); box-shadow: none; }}
     html[data-theme="light-v2"] .metric-card.orange .sparkline, html[data-theme="light-v2"] .metric-card.teal .sparkline {{ color: var(--accent); }}
 
+    /* Light 2.0 strict admin redesign: final system overrides. */
+    html[data-theme="light-v2"] {{
+      --bg: #F2F4F5;
+      --surface: #FFFFFF;
+      --surface-muted: #F7F8F8;
+      --surface-soft: #EEF1F1;
+      --surface-strong: #E6EAEB;
+      --table-header-bg: #E9EDEE;
+      --table-row-alt: #FAFBFB;
+      --table-row-hover: #EDF6F3;
+      --sidebar-bg: #FFFFFF;
+      --text-strong: #111820;
+      --text: #26323D;
+      --muted: #5F6D78;
+      --text-soft: #788691;
+      --border: #D8DFE2;
+      --border-strong: #B7C2C8;
+      --border-ink: #87949B;
+      --accent: #1E6B4E;
+      --accent-strong: #174F3B;
+      --accent-hover: #123F31;
+      --accent-soft: #EAF4EF;
+      --accent-border: #AACFC0;
+      --warning: #D27A12;
+      --warning-hover: #A85B08;
+      --warning-soft: #FFF4E4;
+      --warning-border: #E9B766;
+      --success: #23734D;
+      --success-soft: #E8F5EE;
+      --success-border: #A8D4BD;
+      --shadow-card: 0 1px 2px rgba(16,24,32,.07), 0 8px 22px rgba(16,24,32,.045);
+      --shadow-card-hover: 0 2px 4px rgba(16,24,32,.08), 0 12px 28px rgba(16,24,32,.07);
+      --radius-control: 5px;
+      --radius-card: 9px;
+    }}
+    html[data-theme="light-v2"] .content {{ padding: 18px 28px 38px; }}
+    html[data-theme="light-v2"] .page-top {{ background: #EEF1F2; border-bottom-color: var(--border-strong); }}
+    html[data-theme="light-v2"] .sidebar {{ padding: 12px 10px; overflow: hidden; scrollbar-gutter: stable; }}
+    html[data-theme="light-v2"] .sidebar-head {{ padding-bottom: 12px; }}
+    html[data-theme="light-v2"] .side-nav {{ --sidebar-item-height: 36px; gap: 4px; padding-right: 8px; scrollbar-gutter: stable both-edges; }}
+    html[data-theme="light-v2"] .side-link {{ padding: 6px 10px; font-size: 13px; }}
+    html[data-theme="light-v2"] .admin-tree {{ margin-left: 30px; padding: 4px 0 4px 8px; border-radius: 0; background: transparent; border-top: 0; border-right: 0; border-bottom: 0; }}
+    html[data-theme="light-v2"] .admin-link {{ min-height: 30px; padding: 5px 8px; border-radius: 5px; font-size: 12px; }}
+    html[data-theme="light-v2"] .filter-card, html[data-theme="light-v2"] .form-card {{ border-radius: var(--radius-card); }}
+    html[data-theme="light-v2"] .filter-card {{ background: #FFFFFF; }}
+    html[data-theme="light-v2"] .filter-summary, html[data-theme="light-v2"] .form-summary {{ padding: 10px 14px; background: #F3F5F5; color: var(--text-strong); font-size: 13px; font-weight: 780; }}
+    html[data-theme="light-v2"] .filter-grid, html[data-theme="light-v2"] .form-grid {{ padding: 12px 14px; gap: 10px; align-items: end; }}
+    html[data-theme="light-v2"] .table-page-container .filter-grid {{ grid-template-columns: repeat(auto-fit, minmax(min(170px, 100%), 1fr)); }}
+    html[data-theme="light-v2"] label {{ gap: 5px; font-size: 12px; font-weight: 740; color: #34424D; }}
+    html[data-theme="light-v2"] input, html[data-theme="light-v2"] select, html[data-theme="light-v2"] textarea {{ min-height: 31px; padding: 5px 8px; font-size: 13px; }}
+    html[data-theme="light-v2"] .button, html[data-theme="light-v2"] button {{ min-height: 31px; padding: 5px 10px; font-size: 13px; }}
+    html[data-theme="light-v2"] .reset-filters:hover, html[data-theme="light-v2"] .modal-cancel:hover, html[data-theme="light-v2"] .admin-edit-cancel:hover {{ background: var(--warning-soft); border-color: var(--warning-border); color: var(--warning-hover); }}
+    html[data-theme="light-v2"] .table-card, html[data-theme="light-v2"] .journal-card {{ overflow: hidden; }}
+    html[data-theme="light-v2"] .table-scroll {{ max-height: calc(100vh - 260px); }}
+    html[data-theme="light-v2"] table {{ font-size: 13px; line-height: 1.28; }}
+    html[data-theme="light-v2"] th {{ height: 34px; padding: 7px 10px; background: var(--table-header-bg); color: #33414B; border-bottom: 1px solid var(--border-ink); border-right-color: #CCD5D9; }}
+    html[data-theme="light-v2"] td {{ height: 38px; padding: 6px 10px; border-bottom-color: var(--border); border-right-color: #E1E7E9; vertical-align: middle; }}
+    html[data-theme="light-v2"] tbody tr:hover td {{ background: var(--table-row-hover) !important; }}
+    html[data-theme="light-v2"] .table-footer {{ display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 10px; min-height: 42px; margin: 0; padding: 7px 10px; border-top: 0; border-radius: 0 0 var(--radius-card) var(--radius-card); background: #F3F5F5; box-shadow: none; }}
+    html[data-theme="light-v2"] .table-card + .table-footer {{ margin-top: -1px; }}
+    html[data-theme="light-v2"] .table-footer-summary, html[data-theme="light-v2"] .pagination {{ display: flex; align-items: center; flex-wrap: wrap; gap: 6px; min-width: 0; }}
+    html[data-theme="light-v2"] .table-footer-tools {{ display: flex; align-items: center; justify-content: flex-end; gap: 6px; }}
+    html[data-theme="light-v2"] .table-footer .muted, html[data-theme="light-v2"] .pagination .muted {{ font-size: 12px; font-weight: 700; color: var(--muted); }}
+    html[data-theme="light-v2"] .table-footer .button, html[data-theme="light-v2"] .table-utility-button, html[data-theme="light-v2"] .column-settings summary {{ min-height: 28px; padding: 4px 8px; font-size: 12px; }}
+    html[data-theme="light-v2"] .export-action-icon {{ margin-right: 2px; color: var(--accent-strong); }}
+    html[data-theme="light-v2"] .dot-status span {{ width: 8px !important; height: 8px !important; min-width: 8px !important; border: 1px solid rgba(17,24,32,.18) !important; box-shadow: 0 0 0 2px #fff !important; }}
+    html[data-theme="light-v2"] .dot-status.ok span {{ background: var(--success) !important; }}
+    html[data-theme="light-v2"] .dot-status.warning span {{ background: var(--warning) !important; }}
+    html[data-theme="light-v2"] .dot-status.danger span {{ background: var(--danger) !important; }}
+    html[data-theme="light-v2"] .dot-status.neutral span {{ background: #9AA6AD !important; }}
+    html[data-theme="light-v2"] .modal-card, html[data-theme="light-v2"] .modal-form-card[open] > form, html[data-theme="light-v2"] .modal-form-card[open] > .modal-body {{ padding: 18px; border-radius: 10px; }}
+    html[data-theme="light-v2"] .modal-card form, html[data-theme="light-v2"] .modal-form-card[open] > form {{ gap: 10px 12px; }}
+    html[data-theme="light-v2"] .modal-actions, html[data-theme="light-v2"] .admin-edit-actions {{ justify-content: flex-start; gap: 8px; margin: 8px -18px -18px; padding: 12px 18px; }}
+    html[data-theme="light-v2"] .modal-save, html[data-theme="light-v2"] .admin-edit-save {{ order: 1; }}
+    html[data-theme="light-v2"] .modal-cancel, html[data-theme="light-v2"] .admin-edit-cancel {{ order: 2; }}
+    html[data-theme="light-v2"] .metric-card {{ min-height: 138px; padding: 16px; border-radius: var(--radius-card); }}
+    html[data-theme="light-v2"] .metric-value {{ font-size: 26px; }}
+    html[data-theme="light-v2"] .quick-link-card {{ border-radius: var(--radius-card); padding: 13px 16px; }}
+
 
     .connection-status {{ position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%); z-index: 10001; display: none; align-items: center; gap: 10px; max-width: min(560px, calc(100vw - 24px)); padding: 10px 12px; border: 1px solid var(--border-strong); border-radius: 12px; background: var(--surface); color: var(--text-strong); box-shadow: var(--shadow-card); font-weight: 720; }}
     .connection-status.is-visible {{ display: flex; }}
