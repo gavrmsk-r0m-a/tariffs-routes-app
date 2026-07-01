@@ -6151,12 +6151,24 @@ def app(environ, start_response):
                     raise BusinessRuleError("Для тарифов доступен только режим Дополнить / обновить")
                 preview = preview_import(conn, parsed["entity_type"], parsed.get("csv_data", ""))
                 rows = "".join(f"<tr><td>{r['line']}</td><td>{esc(r['status'])}</td><td>{esc(r['action'])}</td><td>{esc(r['message'])}</td></tr>" for r in preview.rows)
-                html_preview = f"<h2>Предпросмотр</h2><p>Всего: {preview.total_rows}, новых: {preview.new_rows}, дублей: {preview.duplicate_rows}, ошибок: {preview.error_rows}</p><table><tr><th>Строка</th><th>Статус</th><th>Действие</th><th>Комментарий</th></tr>{rows}</table>"
+                info_blocks = ""
+                if parsed["entity_type"] == "phone_numbers":
+                    messages = "\n".join(str(r.get("message", "")) for r in preview.rows)
+                    if preview.error_rows:
+                        info_blocks += "<p class='flash error'>Есть ошибки справочников. Импорт заблокирован до исправления файла или добавления значений в справочники.</p>"
+                    if "историческое справочное значение" in messages:
+                        info_blocks += "<p class='muted'>В файле есть исторические справочные значения. Они будут импортированы.</p>"
+                    if "Требует проверки:" in messages:
+                        info_blocks += "<p class='muted'>Часть номеров будет импортирована со статусом ‘Требует проверки’ из-за пустых справочных полей.</p>"
+                html_preview = f"<h2>Предпросмотр</h2>{info_blocks}<p>Всего: {preview.total_rows}, новых: {preview.new_rows}, дублей: {preview.duplicate_rows}, ошибок: {preview.error_rows}</p><table><tr><th>Строка</th><th>Статус</th><th>Действие</th><th>Комментарий</th></tr>{rows}</table>"
                 start_response("200 OK", html_headers())
                 return [import_page(repo, html_preview, selected_entity=parsed["entity_type"], selected_mode=parsed.get("mode", "append_update"), csv_data=parsed.get("csv_data", ""))]
             if path == "/admin/import/apply":
                 result = apply_import(conn, parsed["entity_type"], parsed.get("csv_data", ""), user_id=current_actor_id(), mode=parsed.get("mode", "append_update"))
-                notice = f"<h2>Импорт завершён</h2><ul><li>создано {result.created_rows}</li><li>обновлено {result.updated_rows}</li><li>пропущено {result.skipped_rows}</li><li>ошибок {result.error_rows}</li></ul>"
+                extra = ""
+                if parsed["entity_type"] == "phone_numbers":
+                    extra = f"<li>требуют проверки {result.review_required_rows}</li><li>исторических справочных значений {result.legacy_info_rows}</li>"
+                notice = f"<h2>Импорт завершён</h2><ul><li>создано {result.created_rows}</li><li>обновлено {result.updated_rows}</li><li>пропущено {result.skipped_rows}</li><li>ошибок {result.error_rows}</li>{extra}</ul>"
                 start_response("200 OK", html_headers())
                 return [import_page(repo, notice, selected_entity=parsed["entity_type"], selected_mode=parsed.get("mode", "append_update"), csv_data=parsed.get("csv_data", ""))]
             location = handle_post(repo, path, parsed)

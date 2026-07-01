@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
 from typing import Iterable
 
-from app.repository import BusinessRuleError, Repository, normalize_phone_status, validate_phone_number
+from app.repository import BusinessRuleError, Repository, normalize_phone_status, normalize_provider_name, validate_phone_number
 
 
 @dataclass
@@ -20,6 +20,8 @@ class ImportPreview:
     created_rows: int = 0
     updated_rows: int = 0
     skipped_rows: int = 0
+    review_required_rows: int = 0
+    legacy_info_rows: int = 0
     rows: list[dict] = field(default_factory=list)
 
 
@@ -79,19 +81,24 @@ def preview_import(conn: sqlite3.Connection, entity_type: str, csv_text: str) ->
         try:
             key = _business_key(conn, entity_type, row)
             if entity_type == "phone_numbers":
-                _phone_import_values(conn, row)
+                phone_values = _phone_import_values(conn, row)
+                phone_values.update(_phone_reference_ids(conn, row))
+            else:
+                phone_values = {}
             if key in seen_keys:
                 preview.duplicate_rows += 1
+                if entity_type == "phone_numbers":
+                    preview.error_rows += 1
                 preview.rows.append({"line": idx, "status": "duplicate_in_file", "action": "skip", "message": str(key)})
                 continue
             seen_keys.add(key)
             exists = _exists(conn, entity_type, key)
             if exists:
                 preview.duplicate_rows += 1
-                preview.rows.append({"line": idx, "status": "duplicate_in_db", "action": "update", "message": str(key)})
+                preview.rows.append({"line": idx, "status": "duplicate_in_db", "action": "update", "message": _phone_preview_message(phone_values, key) if entity_type == "phone_numbers" else str(key)})
             else:
                 preview.new_rows += 1
-                preview.rows.append({"line": idx, "status": "new", "action": "create", "message": str(key)})
+                preview.rows.append({"line": idx, "status": "new", "action": "create", "message": _phone_preview_message(phone_values, key) if entity_type == "phone_numbers" else str(key)})
         except Exception as exc:  # preview should collect row errors
             preview.error_rows += 1
             preview.rows.append({"line": idx, "status": "error", "action": "skip", "message": str(exc)})
@@ -110,6 +117,8 @@ def apply_import(
     if entity_type == "tariffs" and mode == "replace_section":
         raise BusinessRuleError("Для тарифов доступен только режим Дополнить / обновить")
     preview = preview_import(conn, entity_type, csv_text)
+    if entity_type == "phone_numbers" and preview.error_rows:
+        raise BusinessRuleError("Есть ошибки справочников. Импорт заблокирован до исправления файла или добавления значений в справочники.")
     if mode == "replace_section":
         _clear_section(conn, entity_type)
     repo = Repository(conn)
@@ -138,6 +147,13 @@ def apply_import(
                 _apply_dictionary(repo, row)
             else:
                 raise BusinessRuleError(f"Unsupported import type: {entity_type}")
+            if entity_type == "phone_numbers":
+                imported_for_count = _phone_import_values(conn, row)
+                refs_for_count = _phone_reference_ids(conn, row)
+                if bool(refs_for_count["empty_provider"]) or bool(imported_for_count["empty_project"]) or bool(imported_for_count["empty_assignment"]) or bool(imported_for_count["status_review_required"]):
+                    preview.review_required_rows += 1
+                if bool(refs_for_count["reference_legacy"]):
+                    preview.legacy_info_rows += 1
             if exists:
                 preview.updated_rows += 1
             else:
@@ -158,12 +174,11 @@ def _business_key(conn: sqlite3.Connection, entity_type: str, row: dict[str, str
         return (country, name)
     if entity_type == "phone_numbers":
         country = _first(row, "country", "страна", "гео", "GEO")
-        project = _first(row, "project", "project_label", "проект")
         number = _first(row, "number", "номер")
-        if not country or not project or not number:
-            raise BusinessRuleError("country, project, and number are required")
-        validate_phone_number(number)
-        return (number,)
+        if not country or not number:
+            raise BusinessRuleError("country and number are required")
+        normalized = validate_phone_number(number)
+        return (normalized,)
     if entity_type == "calling_companies":
         server = _first(row, "server", "сервер")
         country = _first(row, "country", "страна", "гео")
@@ -193,36 +208,45 @@ def _parse_bool(value: str, *, default: bool = True) -> bool:
     return value.strip().lower() not in {"0", "no", "false", "нет", "неактивна", "inactive"}
 
 
-def _active_name_exists(conn: sqlite3.Connection, table: str, name: str) -> bool:
-    return conn.execute(f"SELECT 1 FROM {table} WHERE name = ? AND is_active = 1", (name,)).fetchone() is not None
+def _resolve_reference(conn: sqlite3.Connection, table: str, value: str, label: str, *, code_column: str = "name", normalized_provider: bool = False) -> tuple[int | str, bool]:
+    text = value.strip()
+    if not text:
+        raise BusinessRuleError(f"{label} обязателен")
+    if normalized_provider:
+        row = conn.execute(f"SELECT id, is_active FROM {table} WHERE normalized_name = ?", (normalize_provider_name(text),)).fetchone()
+    else:
+        row = conn.execute(f"SELECT id, {code_column} AS value, is_active FROM {table} WHERE {code_column} = ?", (text,)).fetchone()
+    if row is None:
+        raise BusinessRuleError(f"{label} отсутствует в справочнике: {text}")
+    return row["id"], not bool(row["is_active"])
 
 
-def _resolve_assignment_code(conn: sqlite3.Connection, value: str) -> str:
+def _resolve_assignment_code(conn: sqlite3.Connection, value: str) -> tuple[str | None, bool]:
     value = value.strip()
     if not value:
-        value = "gl"
+        return None, False
     row = conn.execute(
         """
-        SELECT code FROM phone_assignment_types
-        WHERE is_active = 1 AND (code = ? OR name = ?)
+        SELECT code, is_active FROM phone_assignment_types
+        WHERE code = ? OR name = ?
         """,
         (value, value),
     ).fetchone()
     if row is None:
-        raise BusinessRuleError(f"Назначение номера отсутствует в активном справочнике: {value}")
-    return str(row["code"])
+        raise BusinessRuleError(f"Назначение номера отсутствует в справочнике: {value}")
+    return str(row["code"]), not bool(row["is_active"])
 
 
 def _phone_import_values(conn: sqlite3.Connection, row: dict[str, str]) -> dict[str, str | None | bool]:
     project = _first(row, "project", "project_label", "проект") or None
-    if not project:
-        raise BusinessRuleError("Проект обязателен для импорта номеров")
-    if project and not _active_name_exists(conn, "projects", project):
-        raise BusinessRuleError(f"Проект отсутствует в активном справочнике: {project}")
+    project_legacy = False
+    if project:
+        _, project_legacy = _resolve_reference(conn, "projects", project, "Проект")
     phone_type = _first(row, "phone_type", "тип номера") or None
-    if phone_type and not _active_name_exists(conn, "phone_number_types", phone_type):
-        raise BusinessRuleError(f"Тип номера отсутствует в активном справочнике: {phone_type}")
-    assignment = _resolve_assignment_code(conn, _first(row, "assignment_type", "назначение"))
+    phone_type_legacy = False
+    if phone_type:
+        _, phone_type_legacy = _resolve_reference(conn, "phone_number_types", phone_type, "Тип номера")
+    assignment, assignment_legacy = _resolve_assignment_code(conn, _first(row, "assignment_type", "назначение"))
     has_final_status = _has_any(row, "Итоговый статус", "final_status")
     if has_final_status:
         status, is_active, status_review_required = _map_final_status(_first(row, "Итоговый статус", "final_status"))
@@ -234,6 +258,9 @@ def _phone_import_values(conn: sqlite3.Connection, row: dict[str, str]) -> dict[
     return {
         "project_label": project,
         "assignment_type": assignment,
+        "reference_legacy": project_legacy or phone_type_legacy or assignment_legacy,
+        "empty_project": project is None,
+        "empty_assignment": assignment is None,
         "status": status,
         "is_active": is_active,
         "status_review_required": status_review_required,
@@ -247,6 +274,44 @@ def _phone_import_values(conn: sqlite3.Connection, row: dict[str, str]) -> dict[
         "incoming_rate": _first(row, "incoming_rate") or None,
     }
 
+
+
+def _phone_preview_message(values: dict, key: tuple) -> str:
+    notes = []
+    reasons = []
+    if values.get("reference_legacy"):
+        notes.append("историческое справочное значение")
+    if values.get("empty_provider"):
+        reasons.append("пустой провайдер")
+    if values.get("empty_project"):
+        reasons.append("пустой проект")
+    if values.get("empty_assignment"):
+        reasons.append("пустое назначение")
+    if values.get("status_review_required"):
+        reasons.append("статус требует проверки")
+    if reasons:
+        notes.append("Требует проверки: " + ", ".join(reasons))
+    return f"{key}" + ("; " + "; ".join(notes) if notes else "")
+
+
+def _phone_reference_ids(conn: sqlite3.Connection, row: dict[str, str]) -> dict[str, int | None]:
+    country_name = _first(row, "country", "страна", "гео", "GEO")
+    country_id, country_legacy = _resolve_reference(conn, "countries", country_name, "ГЕО")
+    provider_name = _first(row, "provider", "провайдер")
+    provider_id = None
+    provider_legacy = False
+    if provider_name:
+        provider_id, provider_legacy = _resolve_reference(conn, "providers", provider_name, "Провайдер", normalized_provider=True)
+    currency_code = _first(row, "currency", "валюта") or "EUR"
+    currency_id, currency_legacy = _resolve_reference(conn, "currencies", currency_code, "Валюта", code_column="code")
+    values = _phone_import_values(conn, row)
+    return {
+        "country_id": int(country_id),
+        "provider_id": int(provider_id) if provider_id is not None else None,
+        "currency_id": int(currency_id),
+        "reference_legacy": country_legacy or provider_legacy or currency_legacy or bool(values["reference_legacy"]),
+        "empty_provider": not bool(provider_name),
+    }
 
 def _exists(conn: sqlite3.Connection, entity_type: str, key: tuple) -> bool:
     if entity_type == "routes":
@@ -323,14 +388,12 @@ def _apply_phone(repo: Repository, row: dict[str, str], user_id: int, *, exists:
     country_name = _first(row, "country", "страна", "гео", "GEO")
     if not country_name:
         raise BusinessRuleError("ГЕО обязателен для импорта номеров")
-    country_id = repo.get_or_create_country(country_name)
-    provider_name = _first(row, "provider", "провайдер")
-    provider_id = repo.get_or_create_provider(provider_name) if provider_name else None
-    review_required = provider_id is None
-    currency_code = _first(row, "currency", "валюта") or "EUR"
-    currency_id = repo.get_or_create_currency(currency_code)
+    refs = _phone_reference_ids(repo.conn, row)
+    country_id = int(refs["country_id"])
+    provider_id = refs["provider_id"]
     imported = _phone_import_values(repo.conn, row)
-    review_required = review_required or bool(imported["status_review_required"])
+    review_required = bool(refs["empty_provider"]) or bool(imported["empty_project"]) or bool(imported["empty_assignment"]) or bool(imported["status_review_required"])
+    currency_id = int(refs["currency_id"])
     is_active = bool(imported["is_active"])
     deactivated_at_expr = "CURRENT_TIMESTAMP" if not is_active else "NULL"
     data = {
@@ -363,7 +426,7 @@ def _apply_phone(repo: Repository, row: dict[str, str], user_id: int, *, exists:
             (
                 data["country_id"], data["provider_id"], data["project_label"], data["assignment_type"],
                 data["status"], data["is_active"], data["connection_cost"], data["monthly_fee"], data["outgoing_rate"], data["incoming_rate"], data["currency_id"], data["phone_type"], data["tariff_label"],
-                data["comment"], data["review_required"], data["is_active"], data["is_active"], user_id, number,
+                data["comment"], data["review_required"], data["is_active"], data["is_active"], user_id, validate_phone_number(number),
             ),
         )
         repo.conn.commit()

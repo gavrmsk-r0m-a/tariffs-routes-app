@@ -12,9 +12,15 @@ class ImporterTest(unittest.TestCase):
         self.conn.row_factory = sqlite3.Row
         self.conn.execute("PRAGMA foreign_keys = ON")
         init_db(self.conn)
+        self.repo = Repository(self.conn)
+        self.repo.create_country('Италия')
+        self.repo.create_country('A')
+        self.repo.create_country('B')
+        self.repo.create_currency('EUR', 'EUR')
+        usd_id = self.repo.create_currency('USD', 'USD')
+        self.repo.create_provider('Miatel', default_currency_id=usd_id)
         self.conn.execute("INSERT INTO projects(name, is_active) VALUES ('Alpha', 1)")
         self.conn.commit()
-        self.repo = Repository(self.conn)
         self.admin_id = self.repo.create_user("admin", "Admin")
 
     def tearDown(self):
@@ -22,7 +28,7 @@ class ImporterTest(unittest.TestCase):
 
     def test_routes_preview_detects_duplicate_business_key(self):
         country_id = self.repo.create_country("Мексика")
-        provider_id = self.repo.create_provider("Miatel")
+        provider_id = self.conn.execute("SELECT id FROM providers WHERE name = ?", ("Miatel",)).fetchone()["id"]
         self.repo.create_route(
             country_id=country_id,
             provider_id=provider_id,
@@ -45,9 +51,10 @@ class ImporterTest(unittest.TestCase):
         preview = preview_import(self.conn, "phone_numbers", csv_text)
         self.assertEqual(preview.error_rows, 1)
         self.assertEqual(preview.new_rows, 1)
-        apply_import(self.conn, "phone_numbers", csv_text, user_id=self.admin_id)
+        with self.assertRaises(BusinessRuleError):
+            apply_import(self.conn, "phone_numbers", csv_text, user_id=self.admin_id)
         rows = self.conn.execute("SELECT number FROM phone_numbers").fetchall()
-        self.assertEqual([row["number"] for row in rows], ["393331234568"])
+        self.assertEqual([row["number"] for row in rows], [])
 
     def test_calling_company_import_requires_external_id(self):
         csv_text = "server,country,company_name,company_id_external,has_autorotation\nEU1,Мексика,CC No Id,,yes\nEU1,Мексика,CC Good,1001,yes\n"
@@ -116,8 +123,8 @@ class ImporterTest(unittest.TestCase):
 """
         preview = preview_import(self.conn, "phone_numbers", csv_text)
         self.assertEqual(preview.error_rows, 2)
-        result = apply_import(self.conn, "phone_numbers", csv_text, user_id=self.admin_id)
-        self.assertEqual(result.created_rows, 0)
+        with self.assertRaises(BusinessRuleError):
+            apply_import(self.conn, "phone_numbers", csv_text, user_id=self.admin_id)
 
     def test_phone_import_uses_ap_eur_and_ignores_ap(self):
         self.conn.execute("INSERT INTO projects(name, is_active) VALUES ('Competitors', 1)")
@@ -141,7 +148,6 @@ class ImporterTest(unittest.TestCase):
         self.conn.commit()
         cases = [
             "project,number\nCompetitors,393331234569\n",
-            "country,number\nИталия,393331234569\n",
             "country,project\nИталия,Competitors\n",
         ]
         for csv_text in cases:
@@ -160,7 +166,7 @@ class ImporterTest(unittest.TestCase):
         row = self.conn.execute("SELECT provider_id, review_required, assignment_type, status, is_active FROM phone_numbers WHERE number = '393331234570'").fetchone()
         self.assertIsNone(row["provider_id"])
         self.assertEqual(row["review_required"], 1)
-        self.assertEqual(row["assignment_type"], "gl")
+        self.assertIsNone(row["assignment_type"])
         self.assertEqual(row["status"], "unknown")
         self.assertEqual(row["is_active"], 1)
 
@@ -176,7 +182,7 @@ class ImporterTest(unittest.TestCase):
             WHERE pn.number = '393331234571'
         """).fetchone()
         self.assertEqual(row["provider_name"], "Miatel")
-        self.assertEqual(row["review_required"], 0)
+        self.assertEqual(row["review_required"], 1)
 
 
     def test_phone_import_maps_old_statuses_to_new_statuses(self):
@@ -209,9 +215,12 @@ class ImportReplaceModeTest(unittest.TestCase):
         self.conn.row_factory = sqlite3.Row
         self.conn.execute("PRAGMA foreign_keys = ON")
         init_db(self.conn)
+        self.repo = Repository(self.conn)
+        self.repo.create_country('A')
+        self.repo.create_country('B')
+        self.repo.create_currency('EUR', 'EUR')
         self.conn.execute("INSERT INTO projects(name, is_active) VALUES ('Alpha', 1)")
         self.conn.commit()
-        self.repo = Repository(self.conn)
         self.admin_id = self.repo.create_user("admin2", "Admin")
 
     def tearDown(self):
@@ -222,3 +231,87 @@ class ImportReplaceModeTest(unittest.TestCase):
         apply_import(self.conn, "phone_numbers", "country,project,number,assignment_type,status\nB,Alpha,2222222,gl,used\n", user_id=self.admin_id, mode="replace_section")
         rows = self.conn.execute("SELECT number FROM phone_numbers ORDER BY number").fetchall()
         self.assertEqual([row["number"] for row in rows], ["2222222"])
+
+class PhoneNumbersProductionSafeImportTest(unittest.TestCase):
+    def setUp(self):
+        self.conn = sqlite3.connect(":memory:")
+        self.conn.row_factory = sqlite3.Row
+        self.conn.execute("PRAGMA foreign_keys = ON")
+        init_db(self.conn)
+        self.repo = Repository(self.conn)
+        self.repo.create_country("Мексика")
+        self.repo.create_currency("EUR", "EUR")
+        self.repo.create_provider("Miatel")
+        self.conn.execute("INSERT INTO projects(name, is_active) VALUES ('Мех. деп.', 1), ('Legacy project', 0)")
+        self.conn.execute("INSERT INTO phone_assignment_types(code, name, is_active) VALUES ('leaflets', 'Leaflets', 0)")
+        self.conn.commit()
+        self.admin_id = self.repo.create_user("import-admin", "Import Admin")
+
+    def tearDown(self):
+        self.conn.close()
+
+    def test_active_reference_imports_without_review_required(self):
+        csv_text = "Номер,Страна,Провайдер,Проект,Назначение,Итоговый статус,АП в EUR\n52555000101,Мексика,Miatel,Мех. деп.,АОН,Используется,10\n"
+        preview = preview_import(self.conn, "phone_numbers", csv_text)
+        self.assertEqual(preview.error_rows, 0)
+        result = apply_import(self.conn, "phone_numbers", csv_text, user_id=self.admin_id)
+        self.assertEqual(result.created_rows, 1)
+        row = self.conn.execute("SELECT assignment_type, review_required FROM phone_numbers WHERE number = '52555000101'").fetchone()
+        self.assertEqual(row["assignment_type"], "aon")
+        self.assertEqual(row["review_required"], 0)
+
+    def test_inactive_legacy_reference_imports_and_does_not_set_review_required(self):
+        csv_text = "Номер,Страна,Провайдер,Проект,Назначение,Итоговый статус\n52555000102,Мексика,Miatel,Legacy project,Leaflets,Используется\n"
+        preview = preview_import(self.conn, "phone_numbers", csv_text)
+        self.assertEqual(preview.error_rows, 0)
+        self.assertIn("историческое", preview.rows[0]["message"])
+        result = apply_import(self.conn, "phone_numbers", csv_text, user_id=self.admin_id)
+        self.assertEqual(result.created_rows, 1)
+        row = self.conn.execute("SELECT project_label, assignment_type, review_required FROM phone_numbers WHERE number = '52555000102'").fetchone()
+        self.assertEqual(row["project_label"], "Legacy project")
+        self.assertEqual(row["assignment_type"], "leaflets")
+        self.assertEqual(row["review_required"], 0)
+
+    def test_missing_reference_blocks_apply_and_is_not_created(self):
+        csv_text = "Номер,Страна,Провайдер,Проект,Назначение,Итоговый статус\n52555000103,Мексика,Maitell,Мех. деп.,Leafletss,Используется\n"
+        preview = preview_import(self.conn, "phone_numbers", csv_text)
+        self.assertEqual(preview.error_rows, 1)
+        with self.assertRaises(BusinessRuleError):
+            apply_import(self.conn, "phone_numbers", csv_text, user_id=self.admin_id)
+        self.assertIsNone(self.conn.execute("SELECT 1 FROM providers WHERE name = 'Maitell'").fetchone())
+        self.assertIsNone(self.conn.execute("SELECT 1 FROM phone_assignment_types WHERE name = 'Leafletss'").fetchone())
+
+    def test_empty_provider_project_assignment_import_as_null_review_and_no_placeholder_dictionaries(self):
+        csv_text = "Номер,Страна,Провайдер,Проект,Назначение,Итоговый статус\n52555000104,Мексика,,,,Используется\n"
+        preview = preview_import(self.conn, "phone_numbers", csv_text)
+        self.assertEqual(preview.error_rows, 0)
+        self.assertIn("пустой провайдер", preview.rows[0]["message"])
+        self.assertIn("пустой проект", preview.rows[0]["message"])
+        self.assertIn("пустое назначение", preview.rows[0]["message"])
+        result = apply_import(self.conn, "phone_numbers", csv_text, user_id=self.admin_id)
+        self.assertEqual(result.created_rows, 1)
+        row = self.conn.execute("SELECT provider_id, project_label, assignment_type, review_required FROM phone_numbers WHERE number = '52555000104'").fetchone()
+        self.assertIsNone(row["provider_id"])
+        self.assertIsNone(row["project_label"])
+        self.assertIsNone(row["assignment_type"])
+        self.assertEqual(row["review_required"], 1)
+        self.assertIsNone(self.conn.execute("SELECT 1 FROM providers WHERE name = 'Unknown'").fetchone())
+        self.assertIsNone(self.conn.execute("SELECT 1 FROM phone_assignment_types WHERE name = 'Пустые'").fetchone())
+
+    def test_duplicate_number_inside_file_blocks_apply(self):
+        csv_text = "Номер,Страна,Провайдер,Проект,Назначение,Итоговый статус\n52555000105,Мексика,Miatel,Мех. деп.,АОН,Используется\n52555000105,Мексика,Miatel,Мех. деп.,АОН,Используется\n"
+        preview = preview_import(self.conn, "phone_numbers", csv_text)
+        self.assertEqual(preview.error_rows, 1)
+        self.assertEqual(preview.rows[1]["status"], "duplicate_in_file")
+        with self.assertRaises(BusinessRuleError):
+            apply_import(self.conn, "phone_numbers", csv_text, user_id=self.admin_id)
+        self.assertEqual(self.conn.execute("SELECT COUNT(*) AS c FROM phone_numbers WHERE number = '52555000105'").fetchone()["c"], 0)
+
+    def test_apply_revalidates_references_before_writing(self):
+        csv_text = "Номер,Страна,Провайдер,Проект,Назначение,Итоговый статус\n52555000106,Мексика,Miatel,Мех. деп.,АОН,Используется\n"
+        self.assertEqual(preview_import(self.conn, "phone_numbers", csv_text).error_rows, 0)
+        self.conn.execute("DELETE FROM providers WHERE name = 'Miatel'")
+        self.conn.commit()
+        with self.assertRaises(BusinessRuleError):
+            apply_import(self.conn, "phone_numbers", csv_text, user_id=self.admin_id)
+        self.assertIsNone(self.conn.execute("SELECT 1 FROM phone_numbers WHERE number = '52555000106'").fetchone())
