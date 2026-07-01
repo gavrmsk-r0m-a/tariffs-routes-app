@@ -116,20 +116,19 @@ def paginate_rows(rows: list, q: dict[str, str], base_path: str) -> tuple[list, 
         current = 1
     start = (current - 1) * PAGE_SIZE
     visible = rows[start:start + PAGE_SIZE]
-    if total <= PAGE_SIZE:
-        return visible, f"<p class='muted'>Всего записей: {total}</p>"
 
     def page_href(page_number: int) -> str:
         params = {key: value for key, value in q.items() if key not in {"page", "limit", "export"} and value not in (None, "")}
         params["page"] = str(page_number)
         return base_path + "?" + urlencode(params)
 
-    previous_link = f"<a class='button' href='{esc(page_href(current - 1))}'>← Назад</a>" if current > 1 else ""
-    next_link = f"<a class='button' href='{esc(page_href(current + 1))}'>Вперёд →</a>" if current < page_count else ""
+    previous_link = f"<a class='button pagination-button' href='{esc(page_href(current - 1))}' aria-label='Предыдущая страница'>←</a>" if current > 1 else "<span class='button pagination-button disabled' aria-disabled='true'>←</span>"
+    next_link = f"<a class='button pagination-button' href='{esc(page_href(current + 1))}' aria-label='Следующая страница'>→</a>" if current < page_count else "<span class='button pagination-button disabled' aria-disabled='true'>→</span>"
+    summary = f"<span class='table-status-item'>Всего записей: {total}</span><span class='table-status-item table-selection-status' data-selected-count hidden>Выбрано: <strong>0</strong></span><span class='table-status-item'>Страница {current} из {page_count}</span>"
     return visible, (
-        "<nav class='pagination' aria-label='Пагинация'>"
-        f"<span class='muted'>Всего записей: {total}. Страница {current} из {page_count}</span> "
-        f"{previous_link} {next_link}</nav>"
+        "<nav class='pagination table-status-nav' aria-label='Статус и пагинация таблицы'>"
+        f"<span class='table-status-summary'>{summary}</span>"
+        f"<span class='pagination-controls'>{previous_link}{next_link}</span></nav>"
     )
 
 
@@ -139,7 +138,8 @@ def export_link(base_path: str, q: dict[str, str]) -> str:
         return ""
     params = {key: value for key, value in q.items() if key not in {"page", "limit", "export"} and value not in (None, "")}
     params["export"] = "csv"
-    return f"<span class='action-icon export-action-icon' aria-hidden='true'>{nav_icon('export')}</span><a class='button export-button table-utility-button' href='{esc(base_path + '?' + urlencode(params))}'>Экспорт</a>"
+    href = esc(base_path + '?' + urlencode(params))
+    return f"<a class='button export-button table-utility-button icon-button' href='{href}' title='Экспорт CSV' aria-label='Экспорт CSV' data-tooltip='Экспорт CSV'>{nav_icon('export')}<span class='sr-only'>Экспорт</span></a><a class='sr-only' href='{href}'>Экспорт</a>"
 
 
 def copy_column_button(column: str) -> str:
@@ -2150,6 +2150,125 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     html[data-theme="light-v2"] .quick-link-card {{ border-radius: var(--radius-card); padding: 13px 16px; }}
 
 
+    /* Light 2.0 second iteration: graphite workbench visual system. */
+    html[data-theme="light-v2"] {{
+      --bg: #ECEFF1;
+      --surface: #FFFFFF;
+      --surface-muted: #F5F6F7;
+      --surface-soft: #EEF0F2;
+      --surface-strong: #E1E5E8;
+      --table-header-bg: #E3E7EA;
+      --table-row-alt: #F8F9FA;
+      --table-row-hover: #E8EEF2;
+      --text-strong: #0B1117;
+      --text: #18232D;
+      --muted: #44515C;
+      --text-soft: #5A6670;
+      --border: #C8D0D5;
+      --border-strong: #9EAAB2;
+      --border-ink: #6F7B84;
+      --accent: #26323A;
+      --accent-strong: #111820;
+      --accent-hover: #0A0F14;
+      --accent-soft: #ECEFF1;
+      --accent-border: #AEB8BF;
+      --warning: #D48A1F;
+      --warning-hover: #9B5D0D;
+      --warning-soft: #FFF3DD;
+      --warning-border: #E3B058;
+      --success: #23734D;
+      --success-soft: #E8F3ED;
+      --success-border: #9AC8AE;
+      --focus: #111820;
+      --shadow-card: 0 1px 2px rgba(11,17,23,.08), 0 8px 20px rgba(11,17,23,.05);
+      --shadow-card-hover: 0 2px 4px rgba(11,17,23,.10), 0 14px 30px rgba(11,17,23,.075);
+      --radius-control: 4px;
+      --radius-card: 7px;
+    }}
+    html[data-theme="light-v2"] body,
+    html[data-theme="light-v2"] .app-shell {{ background: var(--bg); color: var(--text); }}
+    html[data-theme="light-v2"] .page-top {{ background: #E6EAED; border-bottom: 1px solid var(--border-strong); }}
+    html[data-theme="light-v2"] .sidebar {{ background: #FFFFFF; border-right: 1px solid var(--border-strong); }}
+    html[data-theme="light-v2"] .side-link {{ color: #1B2630; border-radius: 5px; font-weight: 740; }}
+    html[data-theme="light-v2"] .side-link:hover {{ background: #F1F3F4; border-color: var(--border); color: var(--text-strong); }}
+    html[data-theme="light-v2"] .side-link.active {{ position: relative; background: #E7EAED !important; border-color: var(--border-strong) !important; border-left-color: #111820 !important; color: #0B1117 !important; box-shadow: inset 3px 0 0 #111820; }}
+    html[data-theme="light-v2"] .side-link.active .nav-icon,
+    html[data-theme="light-v2"] .side-link.active .side-icon,
+    html[data-theme="light-v2"] .side-link.active::before {{ color: #111820 !important; }}
+    html[data-theme="light-v2"] .admin-tree {{ background: transparent; border-left-color: var(--border-strong); }}
+    html[data-theme="light-v2"] .admin-link {{ color: #26323A; }}
+    html[data-theme="light-v2"] .admin-link.active {{ background: #ECEFF1; border-color: var(--border-strong); color: #0B1117; box-shadow: inset 2px 0 0 #111820; }}
+    html[data-theme="light-v2"] .filter-card,
+    html[data-theme="light-v2"] .table-page-container > .form-card,
+    html[data-theme="light-v2"] .dictionary-add {{ border: 1px solid var(--border-strong); border-radius: var(--radius-card); background: #FFFFFF; box-shadow: 0 1px 2px rgba(11,17,23,.06); margin: 8px 0 10px; overflow: hidden; }}
+    html[data-theme="light-v2"] .filter-card > .filter-summary,
+    html[data-theme="light-v2"] .table-page-container > .form-card > .form-summary,
+    html[data-theme="light-v2"] .dictionary-add > summary {{ min-height: 38px; padding: 8px 12px; background: #F0F2F3; border-bottom: 1px solid var(--border-strong); color: var(--text-strong); font-size: 12px; letter-spacing: .035em; text-transform: uppercase; }}
+    html[data-theme="light-v2"] .filter-card .filter-grid,
+    html[data-theme="light-v2"] .table-page-container > .form-card .form-grid {{ display: flex; flex-wrap: wrap; align-items: end; gap: 8px; padding: 9px 10px; }}
+    html[data-theme="light-v2"] .filter-card label {{ flex: 0 1 176px; color: var(--text-strong); font-weight: 780; }}
+    html[data-theme="light-v2"] label {{ color: #26323A; font-weight: 760; }}
+    html[data-theme="light-v2"] input, html[data-theme="light-v2"] select, html[data-theme="light-v2"] textarea {{ border-color: var(--border-strong); color: var(--text-strong); background: #FFFFFF; }}
+    html[data-theme="light-v2"] .muted,
+    html[data-theme="light-v2"] .metric-label,
+    html[data-theme="light-v2"] .metric-hint,
+    html[data-theme="light-v2"] .quick-copy small {{ color: var(--muted); font-weight: 650; }}
+    html[data-theme="light-v2"] .button,
+    html[data-theme="light-v2"] button,
+    html[data-theme="light-v2"] .column-settings summary {{ border-radius: var(--radius-control); border-color: var(--border-strong); background: #FFFFFF; color: var(--text-strong); box-shadow: none; min-height: 31px; }}
+    html[data-theme="light-v2"] .button:hover,
+    html[data-theme="light-v2"] button:hover,
+    html[data-theme="light-v2"] .column-settings summary:hover {{ background: #EEF0F2; border-color: var(--border-ink); color: #0B1117; }}
+    html[data-theme="light-v2"] form button[type="submit"],
+    html[data-theme="light-v2"] .modal-save,
+    html[data-theme="light-v2"] .admin-edit-save,
+    html[data-theme="light-v2"] .hero-action {{ background: #111820; border-color: #111820; color: #FFFFFF; }}
+    html[data-theme="light-v2"] form button[type="submit"]:hover,
+    html[data-theme="light-v2"] .modal-save:hover,
+    html[data-theme="light-v2"] .admin-edit-save:hover,
+    html[data-theme="light-v2"] .hero-action:hover {{ background: #000000; border-color: #000000; color: #FFFFFF; }}
+    html[data-theme="light-v2"] .table-card,
+    html[data-theme="light-v2"] .journal-card {{ border: 1px solid var(--border-ink); border-radius: var(--radius-card) var(--radius-card) 0 0; box-shadow: none; background: #FFFFFF; }}
+    html[data-theme="light-v2"] .table-card h2,
+    html[data-theme="light-v2"] .journal-card h2 {{ background: #E6EAED; border-bottom: 1px solid var(--border-ink); color: var(--text-strong); }}
+    html[data-theme="light-v2"] table {{ border-collapse: separate; border-spacing: 0; font-size: 13px; color: var(--text); }}
+    html[data-theme="light-v2"] th {{ height: 32px; background: #DDE2E5; color: #111820; border-right: 1px solid var(--border-strong); border-bottom: 1px solid var(--border-ink); font-weight: 820; text-transform: uppercase; letter-spacing: .035em; }}
+    html[data-theme="light-v2"] td {{ height: 36px; color: #18232D; border-right: 1px solid #C9D1D6; border-bottom: 1px solid #C9D1D6; font-weight: 500; background: #FFFFFF; }}
+    html[data-theme="light-v2"] tbody tr:nth-child(even) td {{ background: #F8F9FA; }}
+    html[data-theme="light-v2"] tbody tr:hover td,
+    html[data-theme="light-v2"] .selectable-cell:hover {{ background: #E8EEF2 !important; }}
+    html[data-theme="light-v2"] .table-footer.table-status-action-bar {{ min-height: 38px; margin: 0 0 14px; padding: 5px 8px; border: 1px solid var(--border-ink); border-top: 0; border-radius: 0 0 var(--radius-card) var(--radius-card); background: #E6EAED; box-shadow: none; }}
+    html[data-theme="light-v2"] .table-status-nav,
+    html[data-theme="light-v2"] .table-status-summary,
+    html[data-theme="light-v2"] .pagination-controls {{ display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }}
+    html[data-theme="light-v2"] .table-status-item {{ display: inline-flex; align-items: center; gap: 3px; min-height: 24px; padding: 2px 8px; border-right: 1px solid var(--border-strong); color: #26323A; font-size: 12px; font-weight: 720; }}
+    html[data-theme="light-v2"] .pagination-button,
+    html[data-theme="light-v2"] .icon-button {{ width: 28px; min-width: 28px; min-height: 28px; padding: 0; }}
+    html[data-theme="light-v2"] .pagination-button.disabled {{ opacity: .46; cursor: not-allowed; }}
+    html[data-theme="light-v2"] .export-button {{ color: #111820; background: #FFFFFF; }}
+    html[data-theme="light-v2"] .modal-card,
+    html[data-theme="light-v2"] .modal-form-card[open] > form,
+    html[data-theme="light-v2"] .modal-form-card[open] > .modal-body {{ padding: 0; border-radius: 8px; border-color: var(--border-ink); background: #FFFFFF; color: var(--text); }}
+    html[data-theme="light-v2"] .modal-card h2,
+    html[data-theme="light-v2"] .modal-form-card[open] > form > h2 {{ margin: 0; padding: 13px 16px; border-bottom: 1px solid var(--border-strong); background: #F0F2F3; }}
+    html[data-theme="light-v2"] .modal-card form,
+    html[data-theme="light-v2"] .modal-form-card[open] > form {{ gap: 10px 12px; padding: 14px 16px 0; }}
+    html[data-theme="light-v2"] .modal-actions,
+    html[data-theme="light-v2"] .admin-edit-actions {{ justify-content: flex-start; gap: 8px; margin: 10px -16px 0; padding: 10px 16px; border-top: 1px solid var(--border-strong); background: #F0F2F3; }}
+    html[data-theme="light-v2"] .modal-cancel,
+    html[data-theme="light-v2"] .admin-edit-cancel {{ background: #FFFFFF; color: #26323A; border-color: var(--border-strong); }}
+    html[data-theme="light-v2"] .modal-cancel:hover,
+    html[data-theme="light-v2"] .admin-edit-cancel:hover {{ background: var(--warning-soft); border-color: var(--warning-border); color: var(--warning-hover); }}
+    html[data-theme="light-v2"] .metric-card {{ border: 1px solid var(--border-strong); border-left: 3px solid #111820; background: #FFFFFF; box-shadow: var(--shadow-card); }}
+    html[data-theme="light-v2"] .metric-card.green .metric-icon,
+    html[data-theme="light-v2"] .metric-card.orange .metric-icon,
+    html[data-theme="light-v2"] .metric-card.teal .metric-icon {{ background: #ECEFF1; border-color: var(--border-strong); color: #111820; box-shadow: none; }}
+    html[data-theme="light-v2"] .quick-link-card {{ border: 1px solid var(--border-strong); border-left: 3px solid #111820; border-radius: var(--radius-card); background: #FFFFFF; box-shadow: var(--shadow-card); }}
+    html[data-theme="light-v2"] .quick-link-card:hover,
+    html[data-theme="light-v2"] .quick-link-card:focus-visible {{ background: #F4F6F7; border-color: var(--border-ink); border-left-color: #000; color: var(--text-strong); box-shadow: var(--shadow-card-hover); transform: translateY(-1px); }}
+    html[data-theme="light-v2"] .quick-icon {{ background: #ECEFF1; border: 1px solid var(--border-strong); color: #111820; }}
+
+
     .connection-status {{ position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%); z-index: 10001; display: none; align-items: center; gap: 10px; max-width: min(560px, calc(100vw - 24px)); padding: 10px 12px; border: 1px solid var(--border-strong); border-radius: 12px; background: var(--surface); color: var(--text-strong); box-shadow: var(--shadow-card); font-weight: 720; }}
     .connection-status.is-visible {{ display: flex; }}
     .connection-status.is-offline {{ border-color: var(--danger); background: var(--danger-soft); color: var(--danger); }}
@@ -3126,8 +3245,10 @@ def column_settings(table_key: str, columns: list[tuple[str, str]]) -> str:
 </details>"""
 
 
-def table_footer(summary_html: str, utility_html: str) -> str:
-    return f"<div class='table-footer'><div class='table-footer-summary'>{summary_html}</div><div class='table-footer-tools'>{utility_html}</div></div>"
+def table_footer(summary_html: str, utility_html: str = "") -> str:
+    if not summary_html:
+        summary_html = "<nav class='pagination table-status-nav' aria-label='Статус таблицы'><span class='table-status-summary'><span class='table-status-item'>Всего записей: 0</span><span class='table-status-item table-selection-status' data-selected-count hidden>Выбрано: <strong>0</strong></span><span class='table-status-item'>Страница 1 из 1</span></span></nav>"
+    return f"<div class='table-footer table-status-action-bar'><div class='table-footer-summary'>{summary_html}</div><div class='table-footer-tools'>{utility_html}</div></div>"
 
 def data_table(table_key: str, columns: list[tuple[str, str]], rows_html: str) -> str:
     header = "".join(
@@ -5088,8 +5209,9 @@ def users_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
 {f"<div class='notice ok'>{esc(q.get('notice'))}</div>" if q.get('notice') else ""}
 <p class='muted'>Пользователи входят по логину и паролю. Права доступа берутся из индивидуальной матрицы; если она не заполнена, применяются права роли по умолчанию.</p>
 {form_card('+ Создать пользователя', create_html)}
-{table_card(table_html)}"""
-    return page("Пользователи", body)
+{table_card(table_html)}
+{table_footer(f"<nav class='pagination table-status-nav' aria-label='Статус таблицы'><span class='table-status-summary'><span class='table-status-item'>Всего записей: {len(rows)}</span><span class='table-status-item table-selection-status' data-selected-count hidden>Выбрано: <strong>0</strong></span><span class='table-status-item'>Страница 1 из 1</span></span></nav>")}"""
+    return page("Пользователи", table_page_container(body))
 
 def server_priorities_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
     q = q or {}
@@ -5557,9 +5679,10 @@ def dictionaries_page(repo: Repository, q: dict[str, str] | None = None) -> byte
     <div class='dictionary-toolbar'><h2>Справочник: {esc(titles[active_section])}</h2><span class='dictionary-total'>Всего записей: {len(source)}</span></div>
     <details class='dictionary-add'><summary>+ Добавить значение</summary>{add_form(active_section)}</details>
     {table_card(table_html)}
+    {table_footer(f"<nav class='pagination table-status-nav' aria-label='Статус таблицы'><span class='table-status-summary'><span class='table-status-item'>Всего записей: {len(source)}</span><span class='table-status-item table-selection-status' data-selected-count hidden>Выбрано: <strong>0</strong></span><span class='table-status-item'>Страница 1 из 1</span></span></nav>")}
   </section>
 </div>"""
-    return page("Справочные значения", body)
+    return page("Справочные значения", table_page_container(body))
 
 
 def telegram_page(repo: Repository) -> bytes:
