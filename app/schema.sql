@@ -184,7 +184,7 @@ CREATE TABLE IF NOT EXISTS phone_numbers (
     assignment_label TEXT,
     phone_type TEXT,
     tariff_label TEXT,
-    status TEXT NOT NULL DEFAULT 'unknown' CHECK (status IN ('used', 'free', 'problem', 'unknown')),
+    status TEXT NOT NULL DEFAULT 'unknown' CHECK (status IN ('used', 'unused', 'free', 'problem', 'unknown')),
     connection_cost NUMERIC CHECK (connection_cost IS NULL OR connection_cost >= 0),
     monthly_fee NUMERIC CHECK (monthly_fee IS NULL OR monthly_fee >= 0),
     outgoing_rate NUMERIC CHECK (outgoing_rate IS NULL OR outgoing_rate >= 0),

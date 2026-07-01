@@ -11,7 +11,7 @@ from datetime import datetime
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
 PHONE_RE = re.compile(r"^[1-9][0-9]{6,20}$")
-VALID_PHONE_STATUSES = {"used", "free", "problem", "unknown"}
+VALID_PHONE_STATUSES = {"used", "unused", "free", "problem", "unknown"}
 
 
 def generate_password_hash(password: str) -> str:

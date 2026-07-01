@@ -81,6 +81,61 @@ class ImporterTest(unittest.TestCase):
         self.assertEqual(bad_preview.error_rows, 1)
 
 
+
+    def test_phone_import_maps_excel_final_statuses(self):
+        self.conn.execute("INSERT INTO projects(name, is_active) VALUES ('Competitors', 1)")
+        self.conn.commit()
+        csv_text = """country,provider,project,number,assignment_type,Итоговый статус
+Италия,Miatel,Competitors,393331234580,gl,Отключен
+Италия,Miatel,Competitors,393331234581,gl,???
+Италия,Miatel,Competitors,393331234582,gl,Не используется
+Италия,Miatel,Competitors,393331234583,gl,Не нужен
+Италия,Miatel,Competitors,393331234584,gl,Свободен
+Италия,Miatel,Competitors,393331234585,gl,Используется
+"""
+        preview = preview_import(self.conn, "phone_numbers", csv_text)
+        self.assertEqual(preview.error_rows, 0)
+        result = apply_import(self.conn, "phone_numbers", csv_text, user_id=self.admin_id)
+        self.assertEqual(result.created_rows, 6)
+        rows = self.conn.execute("SELECT number, status, is_active, review_required FROM phone_numbers WHERE number BETWEEN '393331234580' AND '393331234585' ORDER BY number").fetchall()
+        self.assertEqual([(r["status"], r["is_active"], r["review_required"]) for r in rows], [
+            ("unused", 0, 0),
+            ("unknown", 1, 1),
+            ("unknown", 1, 1),
+            ("unknown", 1, 1),
+            ("unknown", 1, 1),
+            ("used", 1, 0),
+        ])
+
+    def test_phone_import_rejects_empty_or_unknown_excel_final_status(self):
+        self.conn.execute("INSERT INTO projects(name, is_active) VALUES ('Competitors', 1)")
+        self.conn.commit()
+        csv_text = """country,project,number,assignment_type,Итоговый статус
+Италия,Competitors,393331234586,gl,
+Италия,Competitors,393331234587,gl,Другое
+"""
+        preview = preview_import(self.conn, "phone_numbers", csv_text)
+        self.assertEqual(preview.error_rows, 2)
+        result = apply_import(self.conn, "phone_numbers", csv_text, user_id=self.admin_id)
+        self.assertEqual(result.created_rows, 0)
+
+    def test_phone_import_uses_ap_eur_and_ignores_ap(self):
+        self.conn.execute("INSERT INTO projects(name, is_active) VALUES ('Competitors', 1)")
+        self.conn.commit()
+        csv_text = """country;provider;project;number;assignment_type;Итоговый статус;АП;АП в EUR
+Италия;Miatel;Competitors;393331234588;gl;Используется;999;46,63
+Италия;Miatel;Competitors;393331234589;gl;Используется;999;?
+Италия;Miatel;Competitors;393331234590;gl;Используется;999;Неизвестно
+Италия;Miatel;Competitors;393331234591;gl;Используется;999;
+Италия;Miatel;Competitors;393331234592;gl;Используется;999;-
+"""
+        result = apply_import(self.conn, "phone_numbers", csv_text, user_id=self.admin_id)
+        self.assertEqual(result.created_rows, 5)
+        rows = self.conn.execute("SELECT number, monthly_fee, review_required FROM phone_numbers WHERE number BETWEEN '393331234588' AND '393331234592' ORDER BY number").fetchall()
+        self.assertEqual(str(rows[0]["monthly_fee"]), "46.63")
+        self.assertTrue(all(row["monthly_fee"] is None for row in rows[1:]))
+        self.assertTrue(all(row["review_required"] == 0 for row in rows))
+
     def test_phone_import_requires_country_project_and_number(self):
         self.conn.execute("INSERT INTO projects(name, is_active) VALUES ('Competitors', 1)")
         self.conn.commit()

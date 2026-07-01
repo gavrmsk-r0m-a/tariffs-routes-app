@@ -147,7 +147,7 @@ class ServerSmokeTest(unittest.TestCase):
 
     def test_phone_status_options_expose_only_simplified_statuses(self):
         html = server.phone_status_options(empty="Все")
-        for label in ("Используется", "Свободен", "Проблемный", "Неизвестно"):
+        for label in ("Используется", "Не используется", "Свободен", "Проблемный", "Не известно"):
             self.assertIn(label, html)
         for old_value in ("reserved", "blocked", "disabled"):
             self.assertNotIn(f"value='{old_value}'", html)
@@ -1689,6 +1689,16 @@ class ServerSmokeTest(unittest.TestCase):
         phone_row = content[content.index("525550009909"):content.index("525550009909") + 300]
         self.assertNotIn("Требует проверки", phone_row)
 
+
+
+    def test_phones_page_displays_unknown_monthly_fee_as_question_marks(self):
+        self.request("/routes")
+        body = urlencode({"number": "525550009910", "country_id": "1", "provider_id": "1", "assignment_type": "gl", "status": "used", "is_active": "1", "monthly_fee": ""})
+        captured, _ = self.request("/phones/create", method="POST", body=body)
+        self.assertEqual(captured["status"], "303 See Other")
+        captured, content = self.request("/phones?number=525550009910")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("<td data-col='monthly'>???</td>", content)
 
     def test_phones_review_required_filter_shows_only_review_numbers(self):
         self.request("/routes")

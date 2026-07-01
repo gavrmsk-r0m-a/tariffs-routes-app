@@ -41,13 +41,14 @@ DEFAULT_PHONE_ASSIGNMENTS = (
     ("ivr", "IVR", 8),
 )
 
-PHONE_STATUS_SQL = "status TEXT NOT NULL DEFAULT 'unknown' CHECK (status IN ('used', 'free', 'problem', 'unknown'))"
+PHONE_STATUS_SQL = "status TEXT NOT NULL DEFAULT 'unknown' CHECK (status IN ('used', 'unused', 'free', 'problem', 'unknown'))"
 
 
 def _phone_status_expr(column: str = "status") -> str:
     return (
         f"CASE "
         f"WHEN {column} = 'used' THEN 'used' "
+        f"WHEN {column} = 'unused' THEN 'unused' "
         f"WHEN {column} IN ('free', 'reserved') THEN 'free' "
         f"WHEN {column} IN ('blocked', 'disabled') THEN 'problem' "
         f"WHEN {column} = 'unknown' THEN 'unknown' "
@@ -110,9 +111,10 @@ def _rebuild_phone_numbers_if_needed(conn: sqlite3.Connection) -> None:
         or "'reserved'" in table_sql
         or "'blocked'" in table_sql
         or "'problem'" not in table_sql
+        or "'unused'" not in table_sql
     )
     invalid_status = conn.execute(
-        "SELECT 1 FROM phone_numbers WHERE COALESCE(status, '') NOT IN ('used', 'free', 'problem', 'unknown') LIMIT 1"
+        "SELECT 1 FROM phone_numbers WHERE COALESCE(status, '') NOT IN ('used', 'unused', 'free', 'problem', 'unknown') LIMIT 1"
     ).fetchone()
     if not (needs_assignment_rebuild or needs_status_rebuild or invalid_status):
         return
