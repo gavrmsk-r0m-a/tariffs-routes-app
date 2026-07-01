@@ -26,6 +26,60 @@ class ImporterTest(unittest.TestCase):
     def tearDown(self):
         self.conn.close()
 
+
+    def test_phone_preview_create_update_duplicate_and_apply_block(self):
+        csv_create = "country,provider,project,number,assignment_type,Итоговый статус\nИталия,Miatel,Alpha,393331239001,gl,Используется\n"
+        preview = preview_import(self.conn, "phone_numbers", csv_create)
+        self.assertEqual(preview.rows[0]["action"], "create")
+        self.assertEqual(preview.rows[0]["working_status"], "used")
+        self.assertEqual(preview.rows[0]["active_provider"], "Да")
+        apply_import(self.conn, "phone_numbers", csv_create, user_id=self.admin_id)
+        preview_update = preview_import(self.conn, "phone_numbers", csv_create)
+        self.assertEqual(preview_update.rows[0]["action"], "update")
+        dup_csv = csv_create + "Италия,Miatel,Alpha,393331239001,gl,Используется\n"
+        dup_preview = preview_import(self.conn, "phone_numbers", dup_csv)
+        self.assertEqual(dup_preview.error_rows, 1)
+        self.assertEqual(dup_preview.rows[1]["action"], "duplicate_in_file")
+        self.assertIn("Номер уже встречался в строке 2 этого файла.", dup_preview.rows[1]["errors"])
+        with self.assertRaisesRegex(BusinessRuleError, "Импорт невозможен"):
+            apply_import(self.conn, "phone_numbers", dup_csv, user_id=self.admin_id)
+
+    def test_phone_missing_reference_errors_and_does_not_autocreate_provider(self):
+        csv_text = "country,provider,project,number,assignment_type,Итоговый статус\nИталия,NoSuchProvider,Alpha,393331239002,gl,Используется\n"
+        preview = preview_import(self.conn, "phone_numbers", csv_text)
+        self.assertEqual(preview.error_rows, 1)
+        self.assertIn("Значение ‘NoSuchProvider’ не найдено в справочнике Провайдер", preview.rows[0]["errors"])
+        with self.assertRaisesRegex(BusinessRuleError, "Импорт невозможен"):
+            apply_import(self.conn, "phone_numbers", csv_text, user_id=self.admin_id)
+        self.assertIsNone(self.conn.execute("SELECT id FROM providers WHERE name = 'NoSuchProvider'").fetchone())
+
+    def test_phone_legacy_info_allowed_and_empty_fields_require_review(self):
+        self.conn.execute("INSERT INTO phone_assignment_types(code, name, is_active) VALUES ('old', 'Old Assignment', 0)")
+        self.conn.commit()
+        legacy_csv = "country,provider,project,number,assignment_type,Итоговый статус\nИталия,Miatel,Alpha,393331239003,old,Используется\n"
+        legacy_preview = preview_import(self.conn, "phone_numbers", legacy_csv)
+        self.assertEqual(legacy_preview.error_rows, 0)
+        self.assertEqual(legacy_preview.legacy_info_rows, 1)
+        self.assertIn("legacy", legacy_preview.rows[0]["info"])
+        self.assertEqual(legacy_preview.rows[0]["review_required"], "Нет")
+        empty_csv = "country,provider,project,number,assignment_type,Итоговый статус\nИталия,,,393331239004,,???\n"
+        empty_preview = preview_import(self.conn, "phone_numbers", empty_csv)
+        self.assertEqual(empty_preview.error_rows, 0)
+        self.assertEqual(empty_preview.rows[0]["review_required"], "Да")
+        self.assertIn("пустой провайдер", empty_preview.rows[0]["review_reasons"])
+        self.assertIn("пустой проект", empty_preview.rows[0]["review_reasons"])
+        self.assertIn("пустое назначение", empty_preview.rows[0]["review_reasons"])
+        self.assertEqual(empty_preview.rows[0]["working_status"], "unknown")
+        self.assertEqual(empty_preview.rows[0]["active_provider"], "Да")
+        result = apply_import(self.conn, "phone_numbers", empty_csv, user_id=self.admin_id)
+        self.assertEqual(result.created_rows, 1)
+        row = self.conn.execute("SELECT review_required, provider_id, project_label, assignment_type FROM phone_numbers WHERE number = '393331239004'").fetchone()
+        self.assertEqual((row["review_required"], row["provider_id"], row["project_label"], row["assignment_type"]), (1, None, None, None))
+
+    def test_replace_section_is_blocked_for_imports(self):
+        with self.assertRaisesRegex(BusinessRuleError, "Режим замены раздела временно отключён"):
+            apply_import(self.conn, "phone_numbers", "country,number\nИталия,393331239005\n", user_id=self.admin_id, mode="replace_section")
+
     def test_routes_preview_detects_duplicate_business_key(self):
         country_id = self.repo.create_country("Мексика")
         provider_id = self.conn.execute("SELECT id FROM providers WHERE name = ?", ("Miatel",)).fetchone()["id"]
@@ -269,11 +323,12 @@ class ImportReplaceModeTest(unittest.TestCase):
     def tearDown(self):
         self.conn.close()
 
-    def test_replace_phone_numbers_clears_only_phone_section(self):
+    def test_replace_phone_numbers_is_forbidden_and_does_not_clear_section(self):
         apply_import(self.conn, "phone_numbers", "country,project,number,assignment_type,status\nA,Alpha,1111111,gl,used\n", user_id=self.admin_id)
-        apply_import(self.conn, "phone_numbers", "country,project,number,assignment_type,status\nB,Alpha,2222222,gl,used\n", user_id=self.admin_id, mode="replace_section")
+        with self.assertRaisesRegex(BusinessRuleError, "Режим замены раздела временно отключён"):
+            apply_import(self.conn, "phone_numbers", "country,project,number,assignment_type,status\nB,Alpha,2222222,gl,used\n", user_id=self.admin_id, mode="replace_section")
         rows = self.conn.execute("SELECT number FROM phone_numbers ORDER BY number").fetchall()
-        self.assertEqual([row["number"] for row in rows], ["2222222"])
+        self.assertEqual([row["number"] for row in rows], ["1111111"])
 
 class PhoneNumbersProductionSafeImportTest(unittest.TestCase):
     def setUp(self):
