@@ -88,6 +88,49 @@ class ImporterTest(unittest.TestCase):
         self.assertEqual(bad_preview.error_rows, 1)
 
 
+    def test_phone_import_saves_excel_created_by_and_keeps_audit_user(self):
+        self.repo.create_country('Мексика')
+        self.conn.execute("INSERT INTO projects(name, is_active) VALUES ('Мех. деп.', 1)")
+        self.conn.commit()
+        csv_text = "Номер,Страна,Провайдер,Проект,Назначение,Итоговый статус,АП в EUR,Создал\n52555000201,Мексика,Miatel,Мех. деп.,АОН,Используется,10,old_admin\n"
+        preview = preview_import(self.conn, "phone_numbers", csv_text)
+        self.assertEqual(preview.error_rows, 0)
+        self.assertIn("Создал в Excel: old_admin", preview.rows[0]["message"])
+        apply_import(self.conn, "phone_numbers", csv_text, user_id=self.admin_id)
+        row = self.conn.execute("SELECT id, imported_created_by, review_required FROM phone_numbers WHERE number = '52555000201'").fetchone()
+        self.assertEqual(row["imported_created_by"], "old_admin")
+        self.assertEqual(row["review_required"], 0)
+        history = self.conn.execute("SELECT changed_by, comment FROM phone_number_history WHERE phone_number_id = ? AND action = 'created'", (row["id"],)).fetchone()
+        self.assertEqual(history["changed_by"], self.admin_id)
+        self.assertIn("Создал в Excel: old_admin", history["comment"])
+
+    def test_phone_import_missing_or_empty_created_by_does_not_fail_or_require_review(self):
+        csv_missing = "country,provider,project,number,assignment_type,Итоговый статус\nИталия,Miatel,Alpha,393331234593,gl,Используется\n"
+        csv_empty = "country,provider,project,number,assignment_type,Итоговый статус,Создал\nИталия,Miatel,Alpha,393331234594,gl,Используется,\n"
+        self.assertEqual(preview_import(self.conn, "phone_numbers", csv_missing).error_rows, 0)
+        self.assertEqual(preview_import(self.conn, "phone_numbers", csv_empty).error_rows, 0)
+        apply_import(self.conn, "phone_numbers", csv_missing, user_id=self.admin_id)
+        apply_import(self.conn, "phone_numbers", csv_empty, user_id=self.admin_id)
+        rows = self.conn.execute("SELECT number, imported_created_by, review_required FROM phone_numbers WHERE number IN ('393331234593', '393331234594') ORDER BY number").fetchall()
+        self.assertEqual([(r["imported_created_by"], r["review_required"]) for r in rows], [(None, 0), (None, 0)])
+
+    def test_phone_import_update_created_by_behaviour(self):
+        create_csv = "country,provider,project,number,assignment_type,Итоговый статус,Создал\nИталия,Miatel,Alpha,393331234595,gl,Используется,legacy_one\n"
+        apply_import(self.conn, "phone_numbers", create_csv, user_id=self.admin_id)
+        missing_csv = "country,provider,project,number,assignment_type,Итоговый статус\nИталия,Miatel,Alpha,393331234595,gl,Используется\n"
+        apply_import(self.conn, "phone_numbers", missing_csv, user_id=self.admin_id)
+        self.assertEqual(self.conn.execute("SELECT imported_created_by FROM phone_numbers WHERE number = '393331234595'").fetchone()["imported_created_by"], "legacy_one")
+        empty_csv = "country,provider,project,number,assignment_type,Итоговый статус,Создал\nИталия,Miatel,Alpha,393331234595,gl,Используется,\n"
+        apply_import(self.conn, "phone_numbers", empty_csv, user_id=self.admin_id)
+        self.assertEqual(self.conn.execute("SELECT imported_created_by FROM phone_numbers WHERE number = '393331234595'").fetchone()["imported_created_by"], "legacy_one")
+        update_csv = "country,provider,project,number,assignment_type,Итоговый статус,Создал\nИталия,Miatel,Alpha,393331234595,gl,Используется,legacy_two\n"
+        apply_import(self.conn, "phone_numbers", update_csv, user_id=self.admin_id)
+        row = self.conn.execute("SELECT id, imported_created_by FROM phone_numbers WHERE number = '393331234595'").fetchone()
+        self.assertEqual(row["imported_created_by"], "legacy_two")
+        history = self.conn.execute("SELECT changed_by, comment FROM phone_number_history WHERE phone_number_id = ? AND action = 'updated' ORDER BY id DESC", (row["id"],)).fetchone()
+        self.assertEqual(history["changed_by"], self.admin_id)
+        self.assertIn("Создал в Excel: было legacy_one, стало legacy_two", history["comment"])
+
 
     def test_phone_import_maps_excel_final_statuses(self):
         self.conn.execute("INSERT INTO projects(name, is_active) VALUES ('Competitors', 1)")

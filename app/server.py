@@ -5533,6 +5533,7 @@ def phone_edit_page(repo: Repository, phone_id: int) -> bytes:
 <label>Тип номера <select name='phone_type'>{phone_type_options(repo, selected=phone['phone_type'], empty='—')}</select></label>
 <label>Тариф <input name='tariff_label' value='{esc(phone['tariff_label'])}'></label>
 <label>Комментарий <input name='comment' value='{esc(phone['comment'])}'></label>
+{f"<p class='muted'><strong>Создал в Excel:</strong> {esc(phone['imported_created_by'])}</p>" if phone['imported_created_by'] else ""}
 <label class='important-checkbox'><input type='checkbox' name='review_required' value='1' {'checked' if phone['review_required'] else ''}> <span>Требует проверки</span></label>
 <p class='muted'>Поле «Маршрутов» не редактируется и считается автоматически.</p>
 <button>Сохранить</button></form>"""

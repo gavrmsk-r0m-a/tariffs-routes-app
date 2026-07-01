@@ -144,6 +144,7 @@ def _rebuild_phone_numbers_if_needed(conn: sqlite3.Connection) -> None:
             comment TEXT,
             is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
             review_required INTEGER NOT NULL DEFAULT 0 CHECK (review_required IN (0, 1)),
+            imported_created_by TEXT,
             created_by INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_by INTEGER REFERENCES users(id) ON DELETE RESTRICT,
@@ -157,12 +158,12 @@ def _rebuild_phone_numbers_if_needed(conn: sqlite3.Connection) -> None:
         INSERT INTO phone_numbers_new(
             id, country_id, provider_id, country_label, provider_label, number, normalized_number, project_label,
             assignment_type, assignment_label, phone_type, tariff_label, status, connection_cost, monthly_fee,
-            outgoing_rate, incoming_rate, currency_id, currency_label, comment, is_active, review_required, created_by,
+            outgoing_rate, incoming_rate, currency_id, currency_label, comment, is_active, review_required, imported_created_by, created_by,
             created_at, updated_by, updated_at, deactivated_at
         )
         SELECT pn.id, pn.country_id, pn.provider_id, c.name, p.name, pn.number, pn.normalized_number, pn.project_label,
             pn.assignment_type, pat.name, pn.phone_type, pn.tariff_label, {_phone_status_expr("pn.status")}, pn.connection_cost, pn.monthly_fee,
-            pn.outgoing_rate, pn.incoming_rate, pn.currency_id, cur.code, pn.comment, pn.is_active, pn.review_required, pn.created_by,
+            pn.outgoing_rate, pn.incoming_rate, pn.currency_id, cur.code, pn.comment, pn.is_active, pn.review_required, pn.imported_created_by, pn.created_by,
             pn.created_at, pn.updated_by, pn.updated_at, pn.deactivated_at
         FROM phone_numbers pn
         JOIN countries c ON c.id = pn.country_id
@@ -270,6 +271,7 @@ def run_lightweight_migrations(conn: sqlite3.Connection) -> None:
     _add_column_if_missing(conn, "phone_numbers", "tariff_label", "TEXT")
     _add_column_if_missing(conn, "phone_numbers", "deactivated_at", "TEXT")
     _add_column_if_missing(conn, "phone_numbers", "review_required", "INTEGER NOT NULL DEFAULT 0 CHECK (review_required IN (0, 1))")
+    _add_column_if_missing(conn, "phone_numbers", "imported_created_by", "TEXT")
     _add_column_if_missing(conn, "routes", "aon_pool", "TEXT")
     _add_column_if_missing(conn, "routes", "rnd_type", "TEXT CHECK (rnd_type IN ('local', 'nonlocal') OR rnd_type IS NULL)")
     _add_column_if_missing(conn, "routes", "rnd_pool_owner", "TEXT")
