@@ -79,10 +79,15 @@ FILTER_DEFAULT_VALUES = {
 _REQUEST_CONTEXT: dict[str, object] = {}
 STATUS_LABELS = {
     "used": "Используется",
+    "unused": "Не используется",
     "free": "Свободен",
     "problem": "Проблемный",
-    "unknown": "Неизвестно",
+    "unknown": "Не известно",
 }
+
+
+def display_monthly_fee(value: object) -> str:
+    return "???" if value is None or str(value).strip() == "" else str(value)
 
 
 def phone_status_options(selected: str | None = None, *, empty: str | None = None) -> str:
@@ -4088,7 +4093,7 @@ def route_number_rows(repo: Repository, route_id: int, *, selectable: bool = Fal
     numbers = repo.route_numbers(route_id)
     rows = []
     for phone in numbers:
-        cost = f"Подкл: {phone['connection_cost'] or '—'} / Абон: {phone['monthly_fee'] or '—'} / Исх: {phone['outgoing_rate'] or '—'} / Вх: {phone['incoming_rate'] or '—'}"
+        cost = f"Подкл: {phone['connection_cost'] or '—'} / Абон: {display_monthly_fee(phone['monthly_fee'])} / Исх: {phone['outgoing_rate'] or '—'} / Вх: {phone['incoming_rate'] or '—'}"
         select_cell = f"<td><input type='checkbox' name='link_ids' value='{phone['link_id']}'></td>" if selectable else ""
         rows.append(f"<tr>{select_cell}<td>{esc(phone['number'])}</td><td>{esc(STATUS_LABELS.get(phone['status'], phone['status']))}</td><td>{esc(ASSIGNMENT_LABELS.get(phone['assignment_type'], phone['assignment_type']))}</td><td>{esc(cost)}</td><td class='comment-cell'>{esc(phone['link_comment'] or phone['phone_comment'])}</td></tr>")
     select_header = "<th></th>" if selectable else ""
@@ -4177,7 +4182,7 @@ def phones_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
         actions = f"<a class='button edit-action' href='/phones/{phone['id']}/edit' title='Редактировать' aria-label='Редактировать' data-tooltip='Редактировать'>Редактировать</a>" if can_write("phones") else ""
         history = history_icon_link(f"/phones/{phone['id']}/history")
         review_marker = review_required_icon() if phone["review_required"] else ""
-        rows.append(f"""<tr><td data-col='number' class='selectable-cell' data-copy-column='phone-number'>{selectable_text(f"{esc(phone['number'])}{review_marker}", phone['number'], classes='phone-number-cell compound-value-cell')}</td><td data-col='geo'>{esc(phone['country_name'])}</td><td data-col='provider'>{esc(phone['provider_name'])}</td><td data-col='project'>{esc(phone['project_label'])}</td><td data-col='assignment'>{esc(assignment_label)}</td><td data-col='status'>{dot_status(STATUS_LABELS.get(phone['status'], phone['status']), 'danger' if phone['status'] == 'problem' else ('warning' if phone['status'] == 'unknown' else ('neutral' if phone['status'] == 'free' else 'ok')))}</td><td data-col='active'>{dot_status('Да' if phone['is_active'] else 'Нет', 'ok' if phone['is_active'] else 'danger')}</td>{clamp_cell('routes', esc(phone['route_names']), phone['route_names'], selectable=True) if phone['route_names'] else "<td data-col='routes'>—</td>"}<td data-col='connection'>{esc(phone['connection_cost'])}</td><td data-col='monthly'>{esc(phone['monthly_fee'])}</td><td data-col='currency'>{esc(phone['currency_code'])}</td><td data-col='phone_type'>{esc(phone['phone_type'])}</td><td data-col='tariff'>{esc(phone['tariff_label'])}</td><td data-col='created'>{esc(phone['created_at'])}</td><td data-col='updated'>{esc(phone['updated_at'])}</td><td data-col='deactivated'>{esc(phone['deactivated_at'])}</td>{clamp_cell('comment', esc(phone['comment'] or '—'), phone['comment'] or '—', classes='comment-cell')}<td data-col='history' class='history-cell'>{history}</td><td data-col='actions'>{actions}</td></tr>""")
+        rows.append(f"""<tr><td data-col='number' class='selectable-cell' data-copy-column='phone-number'>{selectable_text(f"{esc(phone['number'])}{review_marker}", phone['number'], classes='phone-number-cell compound-value-cell')}</td><td data-col='geo'>{esc(phone['country_name'])}</td><td data-col='provider'>{esc(phone['provider_name'])}</td><td data-col='project'>{esc(phone['project_label'])}</td><td data-col='assignment'>{esc(assignment_label)}</td><td data-col='status'>{dot_status(STATUS_LABELS.get(phone['status'], phone['status']), 'danger' if phone['status'] == 'problem' else ('warning' if phone['status'] == 'unknown' else ('neutral' if phone['status'] == 'free' else 'ok')))}</td><td data-col='active'>{dot_status('Да' if phone['is_active'] else 'Нет', 'ok' if phone['is_active'] else 'danger')}</td>{clamp_cell('routes', esc(phone['route_names']), phone['route_names'], selectable=True) if phone['route_names'] else "<td data-col='routes'>—</td>"}<td data-col='connection'>{esc(phone['connection_cost'])}</td><td data-col='monthly'>{esc(display_monthly_fee(phone['monthly_fee']))}</td><td data-col='currency'>{esc(phone['currency_code'])}</td><td data-col='phone_type'>{esc(phone['phone_type'])}</td><td data-col='tariff'>{esc(phone['tariff_label'])}</td><td data-col='created'>{esc(phone['created_at'])}</td><td data-col='updated'>{esc(phone['updated_at'])}</td><td data-col='deactivated'>{esc(phone['deactivated_at'])}</td>{clamp_cell('comment', esc(phone['comment'] or '—'), phone['comment'] or '—', classes='comment-cell')}<td data-col='history' class='history-cell'>{history}</td><td data-col='actions'>{actions}</td></tr>""")
     filters_html = f"""<form class="filter-grid" method="get" action="/phones">
 <label>ГЕО <select name="country_id">{options(repo, 'countries', selected=q.get('country_id'), empty='Все')}</select></label>
 <label>Провайдер <select name="provider_id">{options(repo, 'providers', selected=q.get('provider_id'), empty='Все')}</select></label>
@@ -5523,7 +5528,7 @@ def phone_edit_page(repo: Repository, phone_id: int) -> bytes:
 <label>Рабочий статус <select name='status'>{phone_status_options(phone['status'])}</select></label>
 <label>Активен у провайдера <select name='is_active'><option value='1' {'selected' if phone['is_active'] else ''}>Да</option><option value='0' {'selected' if not phone['is_active'] else ''}>Нет</option></select></label>
 <label>Стоимость подключения <input name='connection_cost' value='{esc(phone['connection_cost'])}'></label>
-<label>Абонентская плата <input name='monthly_fee' value='{esc(phone['monthly_fee'])}'></label>
+<label>Абонентская плата <input name='monthly_fee' value='{esc(phone['monthly_fee'] or '')}'></label>
 <label>Валюта <select name='currency_id'><option value=''>—</option>{active_options(repo, 'currencies', 'code', selected=phone['currency_id'])}</select></label>
 <label>Тип номера <select name='phone_type'>{phone_type_options(repo, selected=phone['phone_type'], empty='—')}</select></label>
 <label>Тариф <input name='tariff_label' value='{esc(phone['tariff_label'])}'></label>

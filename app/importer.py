@@ -4,6 +4,7 @@ import csv
 import io
 import sqlite3
 from dataclasses import dataclass, field
+from decimal import Decimal, InvalidOperation
 from typing import Iterable
 
 from app.repository import BusinessRuleError, Repository, normalize_phone_status, validate_phone_number
@@ -40,6 +41,35 @@ def _first(row: dict[str, str], *names: str) -> str:
             return lowered[name.lower()].strip()
     return ""
 
+
+
+def _has_any(row: dict[str, str], *names: str) -> bool:
+    lowered = {k.lower() for k in row}
+    return any(name in row or name.lower() in lowered for name in names)
+
+
+def _parse_monthly_fee(value: str) -> str | None:
+    text = (value or "").strip()
+    if text in {"", "?", "-"} or text.casefold() == "неизвестно":
+        return None
+    normalized = text.replace(" ", "").replace(",", ".")
+    try:
+        return str(Decimal(normalized))
+    except InvalidOperation as exc:
+        raise BusinessRuleError(f"Некорректная АП в EUR: {value}") from exc
+
+
+def _map_final_status(value: str) -> tuple[str, bool, bool]:
+    text = (value or "").strip().casefold()
+    if not text:
+        raise BusinessRuleError("Итоговый статус обязателен для импорта номеров")
+    if text == "отключен":
+        return "unused", False, False
+    if text == "используется":
+        return "used", True, False
+    if text in {"???", "не используется", "не нужен", "свободен"}:
+        return "unknown", True, True
+    raise BusinessRuleError(f"Неизвестный Итоговый статус: {value}")
 
 def preview_import(conn: sqlite3.Connection, entity_type: str, csv_text: str) -> ImportPreview:
     rows = parse_csv(csv_text)
@@ -193,13 +223,22 @@ def _phone_import_values(conn: sqlite3.Connection, row: dict[str, str]) -> dict[
     if phone_type and not _active_name_exists(conn, "phone_number_types", phone_type):
         raise BusinessRuleError(f"Тип номера отсутствует в активном справочнике: {phone_type}")
     assignment = _resolve_assignment_code(conn, _first(row, "assignment_type", "назначение"))
+    has_final_status = _has_any(row, "Итоговый статус", "final_status")
+    if has_final_status:
+        status, is_active, status_review_required = _map_final_status(_first(row, "Итоговый статус", "final_status"))
+    else:
+        status = normalize_phone_status(_first(row, "status", "статус"))
+        is_active = _parse_bool(_first(row, "is_active", "активен"), default=True)
+        status_review_required = False
+    monthly_fee = _parse_monthly_fee(_first(row, "АП в EUR", "monthly_fee"))
     return {
         "project_label": project,
         "assignment_type": assignment,
-        "status": normalize_phone_status(_first(row, "status", "статус")),
-        "is_active": _parse_bool(_first(row, "is_active", "активен"), default=True),
+        "status": status,
+        "is_active": is_active,
+        "status_review_required": status_review_required,
         "connection_cost": _first(row, "connection_fee", "connection_cost", "стоимость подключения") or None,
-        "monthly_fee": _first(row, "monthly_fee", "абонплата") or None,
+        "monthly_fee": monthly_fee,
         "phone_type": phone_type,
         "tariff_label": _first(row, "tariff_label", "тариф") or None,
         "comment": _first(row, "comment", "комментарий") or None,
@@ -291,6 +330,7 @@ def _apply_phone(repo: Repository, row: dict[str, str], user_id: int, *, exists:
     currency_code = _first(row, "currency", "валюта") or "EUR"
     currency_id = repo.get_or_create_currency(currency_code)
     imported = _phone_import_values(repo.conn, row)
+    review_required = review_required or bool(imported["status_review_required"])
     is_active = bool(imported["is_active"])
     deactivated_at_expr = "CURRENT_TIMESTAMP" if not is_active else "NULL"
     data = {
