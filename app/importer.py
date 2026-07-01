@@ -272,6 +272,8 @@ def _phone_import_values(conn: sqlite3.Connection, row: dict[str, str]) -> dict[
         "created_at": _first(row, "created_at", "дата создания") or None,
         "outgoing_rate": _first(row, "outgoing_rate") or None,
         "incoming_rate": _first(row, "incoming_rate") or None,
+        "has_imported_created_by": _has_any(row, "Создал", "imported_created_by", "source_created_by", "legacy_created_by"),
+        "imported_created_by": _first(row, "Создал", "imported_created_by", "source_created_by", "legacy_created_by") or None,
     }
 
 
@@ -291,6 +293,8 @@ def _phone_preview_message(values: dict, key: tuple) -> str:
         reasons.append("статус требует проверки")
     if reasons:
         notes.append("Требует проверки: " + ", ".join(reasons))
+    if values.get("imported_created_by"):
+        notes.append(f"Создал в Excel: {values['imported_created_by']}")
     return f"{key}" + ("; " + "; ".join(notes) if notes else "")
 
 
@@ -413,25 +417,44 @@ def _apply_phone(repo: Repository, row: dict[str, str], user_id: int, *, exists:
         "outgoing_rate": imported["outgoing_rate"],
         "incoming_rate": imported["incoming_rate"],
         "review_required": review_required,
+        "has_imported_created_by": imported["has_imported_created_by"],
+        "imported_created_by": imported["imported_created_by"],
     }
     if exists:
+        existing = repo.conn.execute("SELECT id, imported_created_by FROM phone_numbers WHERE normalized_number = ?", (validate_phone_number(number),)).fetchone()
+        imported_created_by = existing["imported_created_by"] if existing else None
+        should_update_imported_created_by = bool(data["has_imported_created_by"] and data["imported_created_by"])
+        if should_update_imported_created_by:
+            imported_created_by = data["imported_created_by"]
         repo.conn.execute(
             f"""
             UPDATE phone_numbers SET country_id = ?, provider_id = ?, project_label = ?, assignment_type = ?,
                 status = ?, is_active = ?, connection_cost = ?, monthly_fee = ?, outgoing_rate = ?, incoming_rate = ?, currency_id = ?, phone_type = ?, tariff_label = ?,
-                comment = ?, review_required = CASE WHEN ? = 1 THEN 1 ELSE review_required END, deactivated_at = CASE WHEN ? = 0 AND deactivated_at IS NULL THEN {deactivated_at_expr} WHEN ? = 1 THEN NULL ELSE deactivated_at END,
+                comment = ?, review_required = CASE WHEN ? = 1 THEN 1 ELSE review_required END, imported_created_by = ?, deactivated_at = CASE WHEN ? = 0 AND deactivated_at IS NULL THEN {deactivated_at_expr} WHEN ? = 1 THEN NULL ELSE deactivated_at END,
                 updated_by = ?, updated_at = CURRENT_TIMESTAMP
             WHERE normalized_number = ?
             """,
             (
                 data["country_id"], data["provider_id"], data["project_label"], data["assignment_type"],
                 data["status"], data["is_active"], data["connection_cost"], data["monthly_fee"], data["outgoing_rate"], data["incoming_rate"], data["currency_id"], data["phone_type"], data["tariff_label"],
-                data["comment"], data["review_required"], data["is_active"], data["is_active"], user_id, validate_phone_number(number),
+                data["comment"], data["review_required"], imported_created_by, data["is_active"], data["is_active"], user_id, validate_phone_number(number),
             ),
+        )
+        details = "Номер импортирован/обновлён"
+        if should_update_imported_created_by:
+            old_label = existing["imported_created_by"] if existing and existing["imported_created_by"] else "—"
+            if old_label != imported_created_by:
+                details += f". Создал в Excel: было {old_label}, стало {imported_created_by}"
+            else:
+                details += f". Создал в Excel: {imported_created_by}"
+        repo.conn.execute(
+            "INSERT INTO phone_number_history(phone_number_id, action, changed_by, field_name, new_value, comment) VALUES (?, 'updated', ?, 'import', ?, ?)",
+            (existing["id"], user_id, details, details),
         )
         repo.conn.commit()
     else:
-        repo.create_phone_number(number=number, created_by=user_id, deactivated_at=(data["created_at"] if not is_active else None), **data)
+        create_data = {k: v for k, v in data.items() if k not in {"has_imported_created_by"}}
+        repo.create_phone_number(number=number, created_by=user_id, deactivated_at=(data["created_at"] if not is_active else None), **create_data)
 
 
 def _apply_company(repo: Repository, row: dict[str, str], user_id: int, *, exists: bool) -> None:

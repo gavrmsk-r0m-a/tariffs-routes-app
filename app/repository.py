@@ -552,6 +552,7 @@ class Repository:
         review_required: bool = False,
         created_at: str | None = None,
         deactivated_at: str | None = None,
+        imported_created_by: str | None = None,
     ) -> int:
         normalized = validate_phone_number(number)
         if not is_active and deactivated_at is None:
@@ -562,9 +563,9 @@ class Repository:
             INSERT INTO phone_numbers(
                 country_id, provider_id, country_label, provider_label, number, normalized_number, project_label,
                 assignment_type, assignment_label, phone_type, tariff_label, status, connection_cost, monthly_fee, outgoing_rate,
-                incoming_rate, currency_id, currency_label, comment, is_active, review_required, created_by, created_at, deactivated_at
+                incoming_rate, currency_id, currency_label, comment, is_active, review_required, imported_created_by, created_by, created_at, deactivated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP), ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP), ?)
             """,
             (
                 country_id,
@@ -588,6 +589,7 @@ class Repository:
                 comment,
                 1 if is_active else 0,
                 1 if review_required else 0,
+                imported_created_by,
                 created_by,
                 created_at,
                 deactivated_at,
@@ -599,9 +601,9 @@ class Repository:
             INSERT INTO phone_number_history(phone_number_id, action, changed_by, field_name, new_value, comment)
             VALUES (?, 'created', ?, 'number', ?, ?)
             """,
-            (phone_id, created_by, number, comment),
+            (phone_id, created_by, number, (f"{comment}. " if comment else "") + (f"Создал в Excel: {imported_created_by}" if imported_created_by else "")),
         )
-        self._change_log("phone_number", phone_id, "phone_number.created", created_by, new_values={"number": number})
+        self._change_log("phone_number", phone_id, "phone_number.created", created_by, new_values={"number": number, "imported_created_by": imported_created_by})
         self.conn.commit()
         return phone_id
 
@@ -1160,6 +1162,7 @@ class Repository:
             ("incoming_rate", "Входящий тариф", _empty_label, "money"),
             ("currency_id", "Валюта", self._currency_label, "default"),
             ("tariff_label", "Тариф", _empty_label, "optional_text"),
+            ("imported_created_by", "Создал в Excel", _empty_label, "optional_text"),
         ]
         changes: list[str] = []
         for key, label, formatter, kind in specs:

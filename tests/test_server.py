@@ -1640,6 +1640,32 @@ class ServerSmokeTest(unittest.TestCase):
         finally:
             conn.close()
 
+    def test_phone_edit_and_history_render_imported_created_by(self):
+        self.request("/routes")
+        conn = server.connect(server.DB_PATH)
+        try:
+            conn.execute("""
+                INSERT INTO phone_numbers(country_id, provider_id, number, normalized_number, project_label, assignment_type, status, is_active, review_required, imported_created_by, created_by)
+                VALUES (1, 1, '525550009920', '525550009920', 'Demo', 'gl', 'used', 1, 0, 'old_admin', 1)
+            """)
+            phone_id = conn.execute("SELECT id FROM phone_numbers WHERE number = '525550009920'").fetchone()["id"]
+            conn.execute("""
+                INSERT INTO phone_number_history(phone_number_id, action, changed_by, field_name, new_value, comment)
+                VALUES (?, 'created', 1, 'number', '525550009920', 'Создал в Excel: old_admin')
+            """, (phone_id,))
+            conn.commit()
+        finally:
+            conn.close()
+        captured, content = self.request(f"/phones/{phone_id}/edit")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("Создал в Excel:", content)
+        self.assertIn("old_admin", content)
+        captured, history = self.request(f"/phones/{phone_id}/history")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("Admin", history)
+        self.assertIn("Создал в Excel: old_admin", history)
+
+
     def test_reactivation_review_can_be_cleared_from_phone_edit(self):
         self.request("/routes")
         body = urlencode({"number": "525550009909", "country_id": "1", "provider_id": "1", "assignment_type": "gl", "status": "used", "is_active": "1", "connection_cost": "50", "monthly_fee": "50"})
