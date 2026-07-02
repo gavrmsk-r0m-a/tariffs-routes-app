@@ -2283,6 +2283,89 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     html[data-theme="light-v2"] .quick-icon {{ background: var(--accent-soft); border: 1px solid var(--border-strong); color: var(--accent-strong); }}
 
 
+    /* Light 2.0 final blue polish: remove orange accents, normalize modal footers and option states. */
+    html[data-theme="light-v2"] {{
+      --provider-accent: var(--accent);
+      --provider-hover: var(--accent-hover);
+      --provider-soft: var(--accent-soft);
+      --provider-border: var(--accent-border);
+      --table-row-hover: #EFF6FF;
+    }}
+    html[data-theme="light-v2"] ::selection {{ background: rgba(37, 99, 235, .22); color: var(--text-strong); }}
+    html[data-theme="light-v2"] input:focus,
+    html[data-theme="light-v2"] select:focus,
+    html[data-theme="light-v2"] textarea:focus {{ box-shadow: 0 0 0 3px rgba(37, 99, 235, .16); }}
+    html[data-theme="light-v2"] .provider-changes-page h1 {{ border-left: 4px solid var(--accent) !important; padding-left: 12px; }}
+    html[data-theme="light-v2"] .provider-changes-page .form-summary {{ color: var(--accent-strong); }}
+    html[data-theme="light-v2"] .provider-changes-page .journal-card {{ box-shadow: inset 3px 0 0 var(--accent), var(--shadow-card); }}
+    html[data-theme="light-v2"] .side-link[href="/provider-changes"],
+    html[data-theme="light-v2"] .quick-link-card[href="/provider-changes"] {{ border-color: var(--border-strong); }}
+    html[data-theme="light-v2"] .side-link[href="/provider-changes"] .side-icon,
+    html[data-theme="light-v2"] .side-link[href="/provider-changes"] .nav-icon {{ color: #667085 !important; }}
+    html[data-theme="light-v2"] .side-link[href="/provider-changes"]:hover,
+    html[data-theme="light-v2"] .side-link[href="/provider-changes"].active {{ background: var(--accent-soft) !important; border-color: var(--accent-border) !important; border-left-color: var(--accent) !important; color: var(--accent-strong) !important; box-shadow: inset 3px 0 0 var(--accent); }}
+    html[data-theme="light-v2"] .quick-link-card {{ border: 1px solid var(--border-strong) !important; border-left: 3px solid var(--border-strong) !important; background: #fff; }}
+    html[data-theme="light-v2"] .quick-link-card::before {{ display: none; }}
+    html[data-theme="light-v2"] .quick-link-card:hover,
+    html[data-theme="light-v2"] .quick-link-card:focus-visible,
+    html[data-theme="light-v2"] .quick-link-card.active {{ background: var(--accent-soft) !important; border-color: var(--border-ink) !important; border-left-color: var(--accent) !important; color: var(--text-strong) !important; }}
+    html[data-theme="light-v2"] .quick-link-card:hover .quick-arrow,
+    html[data-theme="light-v2"] .quick-link-card:focus-visible .quick-arrow {{ color: var(--accent-strong); }}
+    html[data-theme="light-v2"] .quick-link-card[href="/provider-changes"] .quick-icon {{ background: var(--accent-soft); border-color: var(--accent-border); color: var(--accent-strong); box-shadow: none; }}
+    html[data-theme="light-v2"] .modal-card form,
+    html[data-theme="light-v2"] .modal-form-card[open] > form {{ align-items: start; }}
+    html[data-theme="light-v2"] .modal-actions,
+    html[data-theme="light-v2"] .admin-edit-actions {{ grid-column: 1 / -1; display: flex; justify-content: flex-start !important; align-items: center; gap: 8px; width: auto; margin: 12px -16px 0 !important; padding: 12px 16px !important; border-top: 1px solid var(--border-strong); background: #F8FAFC !important; }}
+    html[data-theme="light-v2"] .modal-cancel:hover,
+    html[data-theme="light-v2"] .admin-edit-cancel:hover,
+    html[data-theme="light-v2"] .reset-filters:hover {{ background: var(--accent-soft) !important; border-color: var(--accent-border) !important; color: var(--accent-strong) !important; }}
+    html[data-theme="light-v2"] .scope-cards {{ grid-column: 1 / -1; grid-template-columns: repeat(3, minmax(0, 1fr)); width: 100%; }}
+    html[data-theme="light-v2"] .scope-card {{ position: relative; align-items: flex-start; min-height: 62px; padding: 10px 12px 10px 14px; border: 1px solid var(--border-strong); border-left: 3px solid var(--border-strong); background: #fff; }}
+    html[data-theme="light-v2"] .scope-card-indicator {{ width: 10px; height: 10px; flex: 0 0 10px; margin-top: 3px; border-radius: 3px; border-color: var(--border-strong); background: var(--surface); }}
+    html[data-theme="light-v2"] .scope-card-indicator::after {{ content: none; }}
+    html[data-theme="light-v2"] .scope-card:hover {{ background: var(--accent-soft); border-color: var(--accent-border); border-left-color: var(--accent); }}
+    html[data-theme="light-v2"] .scope-card.selected,
+    html[data-theme="light-v2"] .scope-card:has(input:checked),
+    html[data-theme="light-v2"] .provider-changes-page .scope-card:has(input:checked) {{ background: var(--accent-soft) !important; border-color: var(--accent-border) !important; border-left-color: var(--accent) !important; box-shadow: inset 3px 0 0 var(--accent); color: var(--text-strong); }}
+    html[data-theme="light-v2"] .scope-card.selected .scope-card-indicator,
+    html[data-theme="light-v2"] .scope-card:has(input:checked) .scope-card-indicator {{ background: var(--accent); border-color: var(--accent); }}
+    html[data-theme="light-v2"] #routing-event-form {{ width: min(1100px, calc(100vw - 32px)); grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }}
+    html[data-theme="light-v2"] #routing-event-form > fieldset:first-of-type {{ grid-column: 1 / -1; }}
+    html[data-theme="light-v2"] #routing-event-form label,
+    html[data-theme="light-v2"] #routing-event-form .scope-field {{ min-width: 0 !important; width: auto !important; }}
+    html[data-theme="light-v2"] #routing-event-form .route-select-field,
+    html[data-theme="light-v2"] #routing-event-form .wide {{ grid-column: 1 / -1; width: auto; }}
+    html[data-theme="light-v2"] #routing-event-form fieldset.scope-field[data-scopes="server_priority"] {{ grid-column: 3 / 5; grid-row: span 2; background: #F8FAFC; border-color: var(--border-strong); }}
+    html[data-theme="light-v2"] #routing-event-form .server-checkbox-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(72px, 1fr)); gap: 6px; }}
+    html[data-theme="light-v2"] #routing-event-form .server-checkbox-item {{ min-height: 30px; justify-content: center; padding: 5px 8px; border-radius: 999px; background: #fff; }}
+    html[data-theme="light-v2"] #routing-event-form .server-checkbox-item:has(input:checked) {{ background: var(--accent-soft); border-color: var(--accent); color: var(--accent-strong); }}
+    html[data-theme="light-v2"] #routing-event-form[data-current-scope='campaign_setting'] .provider-change-campaign-grid {{ grid-template-columns: minmax(150px, .8fr) minmax(150px, .8fr) minmax(210px, 1fr) minmax(240px, 1.15fr); }}
+    html[data-theme="light-v2"] #routing-event-form .campaign-id-inline-action {{ grid-template-columns: minmax(0, 1fr) auto; align-items: end; }}
+    html[data-theme="light-v2"] .important-checkbox {{ background: #fff !important; border-color: var(--border-strong) !important; }}
+    html[data-theme="light-v2"] .important-checkbox:has(input:checked) {{ background: var(--accent-soft) !important; border-color: var(--accent-border) !important; }}
+    html[data-theme="light-v2"] .safe-rename-block {{ display: grid; gap: 8px; }}
+    html[data-theme="light-v2"] .safe-rename-option {{ display: grid !important; grid-template-columns: 10px minmax(0, 1fr); align-items: start; gap: 10px; padding: 10px 12px; border: 1px solid var(--border-strong); border-left: 3px solid var(--border-strong); border-radius: var(--radius-card); background: #fff; cursor: pointer; white-space: normal !important; }}
+    html[data-theme="light-v2"] .safe-rename-option input[type="radio"] {{ position: absolute; opacity: 0; pointer-events: none; }}
+    html[data-theme="light-v2"] .safe-rename-indicator {{ width: 10px; height: 10px; margin-top: 4px; border: 1px solid var(--border-strong); border-radius: 3px; background: #fff; }}
+    html[data-theme="light-v2"] .safe-rename-option strong,
+    html[data-theme="light-v2"] .safe-rename-option .muted {{ display: block; }}
+    html[data-theme="light-v2"] .safe-rename-option:hover,
+    html[data-theme="light-v2"] .safe-rename-option:has(input:checked) {{ background: var(--accent-soft); border-color: var(--accent-border); border-left-color: var(--accent); color: var(--text-strong); }}
+    html[data-theme="light-v2"] .safe-rename-option:has(input:checked) {{ box-shadow: inset 3px 0 0 var(--accent); }}
+    html[data-theme="light-v2"] .safe-rename-option:has(input:checked) .safe-rename-indicator {{ background: var(--accent); border-color: var(--accent); }}
+    html[data-theme="light-v2"] .dictionary-card {{ position: relative; border-left: 3px solid var(--border-strong); }}
+    html[data-theme="light-v2"] .dictionary-card:hover {{ background: var(--accent-soft); border-color: var(--accent-border); border-left-color: var(--accent); color: var(--accent-strong); }}
+    html[data-theme="light-v2"] .dictionary-card.active {{ background: linear-gradient(90deg, #DBEAFE 0%, #EFF6FF 100%) !important; border-color: var(--accent-border) !important; border-left-color: var(--accent) !important; box-shadow: inset 3px 0 0 var(--accent); color: var(--accent-hover); }}
+    html[data-theme="light-v2"] .permission-matrix label,
+    html[data-theme="light-v2"] .checkbox-list label,
+    html[data-theme="light-v2"] label.checkbox-inline {{ display: inline-flex; align-items: center; gap: 8px; background: #fff; border: 1px solid var(--border); border-radius: 7px; padding: 6px 8px; }}
+    @media (max-width: 1020px) {{
+      html[data-theme="light-v2"] #routing-event-form,
+      html[data-theme="light-v2"] #routing-event-form[data-current-scope='campaign_setting'] .provider-change-campaign-grid,
+      html[data-theme="light-v2"] #routing-event-form[data-current-scope='campaign_setting'] .provider-change-campaign-lower-grid {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }}
+      html[data-theme="light-v2"] #routing-event-form fieldset.scope-field[data-scopes="server_priority"] {{ grid-column: 1 / -1; }}
+    }}
+
     .connection-status {{ position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%); z-index: 10001; display: none; align-items: center; gap: 10px; max-width: min(560px, calc(100vw - 24px)); padding: 10px 12px; border: 1px solid var(--border-strong); border-radius: 12px; background: var(--surface); color: var(--text-strong); box-shadow: var(--shadow-card); font-weight: 720; }}
     .connection-status.is-visible {{ display: flex; }}
     .connection-status.is-offline {{ border-color: var(--danger); background: var(--danger-soft); color: var(--danger); }}
@@ -5594,8 +5677,8 @@ def dictionaries_page(repo: Repository, q: dict[str, str] | None = None) -> byte
         counts = repo.dictionary_rename_preview(section, int(entity_id))
         count_items = "".join(f"<li>{esc(label)}: {count}</li>" for label, count in counts.items()) or "<li>Связанные записи не найдены</li>"
         return f"""<fieldset class='safe-rename-block'><legend>Что сделать со связанными записями?</legend>
-<label><input type='radio' name='rename_mode' value='dictionary_only' checked> Только переименовать справочник<br><span class='muted'>Новые записи будут использовать новое название. Уже связанные записи сохранят текущее отображаемое значение.</span></label>
-<label><input type='radio' name='rename_mode' value='update_linked'> Переименовать справочник и обновить связанные записи<br><span class='muted'>Все связанные записи будут показывать новое название. Используйте для исправления опечаток или неправильных названий.</span></label>
+<label class='safe-rename-option'><input type='radio' name='rename_mode' value='dictionary_only' checked><span class='safe-rename-indicator' aria-hidden='true'></span><span><strong>Только переименовать справочник</strong><span class='muted'>Новые записи будут использовать новое название. Уже связанные записи сохранят текущее отображаемое значение.</span></span></label>
+<label class='safe-rename-option'><input type='radio' name='rename_mode' value='update_linked'><span class='safe-rename-indicator' aria-hidden='true'></span><span><strong>Переименовать справочник и обновить связанные записи</strong><span class='muted'>Все связанные записи будут показывать новое название. Используйте для исправления опечаток или неправильных названий.</span></span></label>
 <div class='notice warning'><strong>Preview массового обновления:</strong><ul>{count_items}</ul><label><input type='checkbox' name='confirm_update_linked' value='1'> Подтверждаю обновление связанных записей, если выбран массовый режим.</label></div>
 </fieldset>"""
 
