@@ -2161,60 +2161,63 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     html[data-theme="light-v2"] .quick-link-card {{ border-radius: var(--radius-card); padding: 13px 16px; }}
 
 
-    /* Light 2.0 second iteration: graphite workbench visual system. */
+    /* Light 2.0 blue accent system: compact Light 2.0 rhythm with MVP-inspired primary actions. */
     html[data-theme="light-v2"] {{
-      --bg: #ECEFF1;
+      --bg: #F4F7FB;
       --surface: #FFFFFF;
-      --surface-muted: #F5F6F7;
-      --surface-soft: #EEF0F2;
-      --surface-strong: #E1E5E8;
-      --table-header-bg: #E3E7EA;
-      --table-row-alt: #F8F9FA;
-      --table-row-hover: #E8EEF2;
-      --text-strong: #0B1117;
-      --text: #18232D;
-      --muted: #44515C;
-      --text-soft: #5A6670;
-      --border: #C8D0D5;
-      --border-strong: #9EAAB2;
-      --border-ink: #6F7B84;
-      --accent: #26323A;
-      --accent-strong: #111820;
-      --accent-hover: #0A0F14;
-      --accent-soft: #ECEFF1;
-      --accent-border: #AEB8BF;
-      --warning: #D48A1F;
-      --warning-hover: #9B5D0D;
-      --warning-soft: #FFF3DD;
-      --warning-border: #E3B058;
-      --success: #23734D;
-      --success-soft: #E8F3ED;
-      --success-border: #9AC8AE;
-      --focus: #111820;
-      --shadow-card: 0 1px 2px rgba(11,17,23,.08), 0 8px 20px rgba(11,17,23,.05);
-      --shadow-card-hover: 0 2px 4px rgba(11,17,23,.10), 0 14px 30px rgba(11,17,23,.075);
+      --surface-muted: #F8FAFC;
+      --surface-soft: #EFF6FF;
+      --surface-strong: #E7EEF8;
+      --table-header-bg: #EEF3FA;
+      --table-row-alt: #FAFCFF;
+      --table-row-hover: #EFF6FF;
+      --text-strong: #0F172A;
+      --text: #1E293B;
+      --muted: #475569;
+      --text-soft: #64748B;
+      --border: #D6DEE9;
+      --border-strong: #B8C5D6;
+      --border-ink: #8EA0B8;
+      --accent: #2563EB;
+      --accent-strong: #1D4ED8;
+      --accent-hover: #1E40AF;
+      --accent-soft: #EFF6FF;
+      --accent-border: #93C5FD;
+      --cyber: #0EA5E9;
+      --cyber-strong: #0284C7;
+      --cyber-soft: #E0F2FE;
+      --warning: #D97706;
+      --warning-hover: #B45309;
+      --warning-soft: #FFF7ED;
+      --warning-border: #FDBA74;
+      --success: #16A34A;
+      --success-soft: #ECFDF3;
+      --success-border: #86EFAC;
+      --focus: #2563EB;
+      --shadow-card: 0 1px 2px rgba(15,23,42,.06), 0 8px 20px rgba(37,99,235,.06);
+      --shadow-card-hover: 0 2px 4px rgba(15,23,42,.08), 0 14px 30px rgba(37,99,235,.10);
       --radius-control: 4px;
       --radius-card: 7px;
     }}
     html[data-theme="light-v2"] body,
     html[data-theme="light-v2"] .app-shell {{ background: var(--bg); color: var(--text); }}
-    html[data-theme="light-v2"] .page-top {{ background: #E6EAED; border-bottom: 1px solid var(--border-strong); }}
+    html[data-theme="light-v2"] .page-top {{ background: #EEF4FB; border-bottom: 1px solid var(--border); }}
     html[data-theme="light-v2"] .sidebar {{ background: #FFFFFF; border-right: 1px solid var(--border-strong); }}
     html[data-theme="light-v2"] .side-link {{ color: #1B2630; border-radius: 5px; font-weight: 740; }}
-    html[data-theme="light-v2"] .side-link:hover {{ background: #F1F3F4; border-color: var(--border); color: var(--text-strong); }}
-    html[data-theme="light-v2"] .side-link.active {{ position: relative; background: #E7EAED !important; border-color: var(--border-strong) !important; border-left-color: #111820 !important; color: #0B1117 !important; box-shadow: inset 3px 0 0 #111820; }}
+    html[data-theme="light-v2"] .side-link:hover {{ background: var(--accent-soft); border-color: var(--accent-border); color: var(--accent-strong); }}
+    html[data-theme="light-v2"] .side-link.active {{ position: relative; background: linear-gradient(90deg, #DBEAFE 0%, #EFF6FF 100%) !important; border-color: var(--accent-border) !important; border-left-color: var(--accent) !important; color: var(--accent-hover) !important; box-shadow: inset 3px 0 0 var(--accent); }}
     html[data-theme="light-v2"] .side-link.active .nav-icon,
     html[data-theme="light-v2"] .side-link.active .side-icon,
-    html[data-theme="light-v2"] .side-link.active::before {{ color: #111820 !important; }}
+    html[data-theme="light-v2"] .side-link.active::before {{ color: var(--accent) !important; }}
     html[data-theme="light-v2"] .admin-tree {{ background: transparent; border-left-color: var(--border-strong); }}
     html[data-theme="light-v2"] .admin-link {{ color: #26323A; }}
-    html[data-theme="light-v2"] .admin-link.active {{ background: #ECEFF1; border-color: var(--border-strong); color: #0B1117; box-shadow: inset 2px 0 0 #111820; }}
+    html[data-theme="light-v2"] .admin-link.active {{ background: var(--accent-soft); border-color: var(--accent-border); color: var(--accent-hover); box-shadow: inset 2px 0 0 var(--accent); }}
     html[data-theme="light-v2"] .filter-card,
     html[data-theme="light-v2"] .table-page-container > .form-card,
     html[data-theme="light-v2"] .dictionary-add {{ border: 1px solid var(--border-strong); border-radius: var(--radius-card); background: #FFFFFF; box-shadow: 0 1px 2px rgba(11,17,23,.06); margin: 8px 0 10px; overflow: hidden; }}
     html[data-theme="light-v2"] .filter-card > .filter-summary,
     html[data-theme="light-v2"] .table-page-container > .form-card > .form-summary,
-    html[data-theme="light-v2"] .dictionary-add > summary {{ min-height: 38px; padding: 8px 12px; background: #F0F2F3; border-bottom: 1px solid var(--border-strong); color: var(--text-strong); font-size: 12px; letter-spacing: .035em; text-transform: uppercase; }}
+    html[data-theme="light-v2"] .dictionary-add > summary {{ min-height: 38px; padding: 8px 12px; background: #F1F6FD; border-bottom: 1px solid var(--border); color: var(--text-strong); font-size: 12px; letter-spacing: .035em; text-transform: uppercase; }}
     html[data-theme="light-v2"] .filter-card .filter-grid,
     html[data-theme="light-v2"] .table-page-container > .form-card .form-grid {{ display: flex; flex-wrap: wrap; align-items: end; gap: 8px; padding: 9px 10px; }}
     html[data-theme="light-v2"] .filter-card label {{ flex: 0 1 176px; color: var(--text-strong); font-weight: 780; }}
@@ -2229,26 +2232,26 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     html[data-theme="light-v2"] .column-settings summary {{ border-radius: var(--radius-control); border-color: var(--border-strong); background: #FFFFFF; color: var(--text-strong); box-shadow: none; min-height: 31px; }}
     html[data-theme="light-v2"] .button:hover,
     html[data-theme="light-v2"] button:hover,
-    html[data-theme="light-v2"] .column-settings summary:hover {{ background: #EEF0F2; border-color: var(--border-ink); color: #0B1117; }}
+    html[data-theme="light-v2"] .column-settings summary:hover {{ background: var(--accent-soft); border-color: var(--accent-border); color: var(--accent-strong); }}
     html[data-theme="light-v2"] form button[type="submit"],
     html[data-theme="light-v2"] .modal-save,
     html[data-theme="light-v2"] .admin-edit-save,
-    html[data-theme="light-v2"] .hero-action {{ background: #111820; border-color: #111820; color: #FFFFFF; }}
+    html[data-theme="light-v2"] .hero-action {{ background: var(--accent); border-color: var(--accent-strong); color: #FFFFFF; }}
     html[data-theme="light-v2"] form button[type="submit"]:hover,
     html[data-theme="light-v2"] .modal-save:hover,
     html[data-theme="light-v2"] .admin-edit-save:hover,
-    html[data-theme="light-v2"] .hero-action:hover {{ background: #000000; border-color: #000000; color: #FFFFFF; }}
+    html[data-theme="light-v2"] .hero-action:hover {{ background: var(--accent-hover); border-color: var(--accent-hover); color: #FFFFFF; }}
     html[data-theme="light-v2"] .table-card,
     html[data-theme="light-v2"] .journal-card {{ border: 1px solid var(--border-ink); border-radius: var(--radius-card) var(--radius-card) 0 0; box-shadow: none; background: #FFFFFF; }}
     html[data-theme="light-v2"] .table-card h2,
-    html[data-theme="light-v2"] .journal-card h2 {{ background: #E6EAED; border-bottom: 1px solid var(--border-ink); color: var(--text-strong); }}
+    html[data-theme="light-v2"] .journal-card h2 {{ background: #EEF3FA; border-bottom: 1px solid var(--border); color: var(--text-strong); }}
     html[data-theme="light-v2"] table {{ border-collapse: separate; border-spacing: 0; font-size: 13px; color: var(--text); }}
-    html[data-theme="light-v2"] th {{ height: 32px; background: #DDE2E5; color: #111820; border-right: 1px solid var(--border-strong); border-bottom: 1px solid var(--border-ink); font-weight: 820; text-transform: uppercase; letter-spacing: .035em; }}
+    html[data-theme="light-v2"] th {{ height: 32px; background: var(--table-header-bg); color: var(--text-strong); border-right: 1px solid var(--border-strong); border-bottom: 1px solid var(--border-ink); font-weight: 820; text-transform: uppercase; letter-spacing: .035em; }}
     html[data-theme="light-v2"] td {{ height: 36px; color: #18232D; border-right: 1px solid #C9D1D6; border-bottom: 1px solid #C9D1D6; font-weight: 500; background: #FFFFFF; }}
     html[data-theme="light-v2"] tbody tr:nth-child(even) td {{ background: #F8F9FA; }}
     html[data-theme="light-v2"] tbody tr:hover td,
-    html[data-theme="light-v2"] .selectable-cell:hover {{ background: #E8EEF2 !important; }}
-    html[data-theme="light-v2"] .table-footer.table-status-action-bar {{ min-height: 38px; margin: 0 0 14px; padding: 5px 8px; border: 1px solid var(--border-ink); border-top: 0; border-radius: 0 0 var(--radius-card) var(--radius-card); background: #E6EAED; box-shadow: none; }}
+    html[data-theme="light-v2"] .selectable-cell:hover {{ background: var(--table-row-hover) !important; }}
+    html[data-theme="light-v2"] .table-footer.table-status-action-bar {{ min-height: 38px; margin: 0 0 14px; padding: 5px 8px; border: 1px solid var(--border-ink); border-top: 0; border-radius: 0 0 var(--radius-card) var(--radius-card); background: #EEF3FA; box-shadow: none; }}
     html[data-theme="light-v2"] .table-status-nav,
     html[data-theme="light-v2"] .table-status-summary,
     html[data-theme="light-v2"] .pagination-controls {{ display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }}
@@ -2256,28 +2259,28 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     html[data-theme="light-v2"] .pagination-button,
     html[data-theme="light-v2"] .icon-button {{ width: 28px; min-width: 28px; min-height: 28px; padding: 0; }}
     html[data-theme="light-v2"] .pagination-button.disabled {{ opacity: .46; cursor: not-allowed; }}
-    html[data-theme="light-v2"] .export-button {{ color: #111820; background: #FFFFFF; }}
+    html[data-theme="light-v2"] .export-button {{ color: var(--accent-strong); background: #FFFFFF; }}
     html[data-theme="light-v2"] .modal-card,
     html[data-theme="light-v2"] .modal-form-card[open] > form,
-    html[data-theme="light-v2"] .modal-form-card[open] > .modal-body {{ padding: 0; border-radius: 8px; border-color: var(--border-ink); background: #FFFFFF; color: var(--text); }}
+    html[data-theme="light-v2"] .modal-form-card[open] > .modal-body {{ padding: 0; border-radius: 8px; border-color: var(--border-strong); background: #FFFFFF; color: var(--text); }}
     html[data-theme="light-v2"] .modal-card h2,
-    html[data-theme="light-v2"] .modal-form-card[open] > form > h2 {{ margin: 0; padding: 13px 16px; border-bottom: 1px solid var(--border-strong); background: #F0F2F3; }}
+    html[data-theme="light-v2"] .modal-form-card[open] > form > h2 {{ margin: 0; padding: 13px 16px; border-bottom: 1px solid var(--border-strong); background: #F8FAFC; }}
     html[data-theme="light-v2"] .modal-card form,
     html[data-theme="light-v2"] .modal-form-card[open] > form {{ gap: 10px 12px; padding: 14px 16px 0; }}
     html[data-theme="light-v2"] .modal-actions,
-    html[data-theme="light-v2"] .admin-edit-actions {{ justify-content: flex-start; gap: 8px; margin: 10px -16px 0; padding: 10px 16px; border-top: 1px solid var(--border-strong); background: #F0F2F3; }}
+    html[data-theme="light-v2"] .admin-edit-actions {{ justify-content: flex-start; gap: 8px; margin: 10px -16px 0; padding: 10px 16px; border-top: 1px solid var(--border-strong); background: #F8FAFC; }}
     html[data-theme="light-v2"] .modal-cancel,
     html[data-theme="light-v2"] .admin-edit-cancel {{ background: #FFFFFF; color: #26323A; border-color: var(--border-strong); }}
     html[data-theme="light-v2"] .modal-cancel:hover,
     html[data-theme="light-v2"] .admin-edit-cancel:hover {{ background: var(--warning-soft); border-color: var(--warning-border); color: var(--warning-hover); }}
-    html[data-theme="light-v2"] .metric-card {{ border: 1px solid var(--border-strong); border-left: 3px solid #111820; background: #FFFFFF; box-shadow: var(--shadow-card); }}
+    html[data-theme="light-v2"] .metric-card {{ border: 1px solid var(--border-strong); border-left: 3px solid var(--accent); background: #FFFFFF; box-shadow: var(--shadow-card); }}
     html[data-theme="light-v2"] .metric-card.green .metric-icon,
     html[data-theme="light-v2"] .metric-card.orange .metric-icon,
-    html[data-theme="light-v2"] .metric-card.teal .metric-icon {{ background: #ECEFF1; border-color: var(--border-strong); color: #111820; box-shadow: none; }}
-    html[data-theme="light-v2"] .quick-link-card {{ border: 1px solid var(--border-strong); border-left: 3px solid #111820; border-radius: var(--radius-card); background: #FFFFFF; box-shadow: var(--shadow-card); }}
+    html[data-theme="light-v2"] .metric-card.teal .metric-icon {{ background: var(--accent-soft); border-color: var(--border-strong); color: var(--accent-strong); box-shadow: none; }}
+    html[data-theme="light-v2"] .quick-link-card {{ border: 1px solid var(--border-strong); border-left: 3px solid var(--accent); border-radius: var(--radius-card); background: #FFFFFF; box-shadow: var(--shadow-card); }}
     html[data-theme="light-v2"] .quick-link-card:hover,
-    html[data-theme="light-v2"] .quick-link-card:focus-visible {{ background: #F4F6F7; border-color: var(--border-ink); border-left-color: #000; color: var(--text-strong); box-shadow: var(--shadow-card-hover); transform: translateY(-1px); }}
-    html[data-theme="light-v2"] .quick-icon {{ background: #ECEFF1; border: 1px solid var(--border-strong); color: #111820; }}
+    html[data-theme="light-v2"] .quick-link-card:focus-visible {{ background: #F4F6F7; border-color: var(--border-ink); border-left-color: var(--accent-hover); color: var(--text-strong); box-shadow: var(--shadow-card-hover); transform: translateY(-1px); }}
+    html[data-theme="light-v2"] .quick-icon {{ background: var(--accent-soft); border: 1px solid var(--border-strong); color: var(--accent-strong); }}
 
 
     .connection-status {{ position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%); z-index: 10001; display: none; align-items: center; gap: 10px; max-width: min(560px, calc(100vw - 24px)); padding: 10px 12px; border: 1px solid var(--border-strong); border-radius: 12px; background: var(--surface); color: var(--text-strong); box-shadow: var(--shadow-card); font-weight: 720; }}
@@ -2471,21 +2474,25 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
       if (!form || form.dataset.modalEnhanced === "1") return;
       form.dataset.modalEnhanced = "1";
       const saveButton = form.querySelector('button[type="submit"], button:not([type]), input[type="submit"]');
-      const actions = document.createElement("div");
-      actions.className = "modal-actions";
-      const cancel = document.createElement("button");
-      cancel.type = "button";
-      cancel.className = "modal-cancel";
-      cancel.textContent = "Отмена";
-      if (saveButton) {{
-        saveButton.parentNode.insertBefore(actions, saveButton);
-        saveButton.classList.add("modal-save");
-        actions.appendChild(cancel);
-        actions.appendChild(saveButton);
-      }} else {{
-        form.appendChild(actions);
-        actions.appendChild(cancel);
+      let actions = form.querySelector(":scope > .modal-actions");
+      if (!actions) {{
+        actions = document.createElement("div");
+        actions.className = "modal-actions";
+        if (saveButton) saveButton.parentNode.insertBefore(actions, saveButton);
+        else form.appendChild(actions);
       }}
+      let cancel = actions.querySelector(":scope > .modal-cancel, :scope > [data-modal-close]");
+      if (!cancel) {{
+        cancel = document.createElement("button");
+        cancel.type = "button";
+        cancel.className = "modal-cancel";
+        cancel.textContent = "Отмена";
+      }}
+      if (saveButton) {{
+        saveButton.classList.add("modal-save");
+        actions.appendChild(saveButton);
+      }}
+      actions.appendChild(cancel);
       cancel.addEventListener("click", closeCallback);
     }}
     const modalDetails = Array.from(document.querySelectorAll("details.modal-form-card[data-modal-details]"));
@@ -5538,7 +5545,7 @@ def currency_rates_page(repo: Repository) -> bytes:
     create_html = f"""<form class="form-grid currency-rate-form" method="post" action="/admin/currency-rates/upsert">
 <label class="currency-rate-currency">Валюта провайдера <span class="required">*</span><select name="currency_id">{active_options(repo, 'currencies', 'code')}</select></label>
 <label class="currency-rate-value"><span>Курс к EUR</span><span class="currency-rate-inline"><span class="currency-rate-prefix">1 единица валюты провайдера =</span><input name="rate_to_eur" placeholder="0.92"><span class="currency-rate-suffix">EUR</span></span></label>
-<div class="modal-actions currency-rate-actions"><button type="button" class="modal-cancel" data-modal-close>Отмена</button><button type="submit" class="modal-save">Применить</button></div></form>"""
+<div class="modal-actions currency-rate-actions"><button type="submit" class="modal-save">Применить</button><button type="button" class="modal-cancel" data-modal-close>Отмена</button></div></form>"""
     table_html = f"<table><thead><tr><th>Валюта</th><th>Курс к EUR</th><th>Дата курса</th></tr></thead><tbody>{''.join(rows)}</tbody></table>"
     body = f"""<h1>Администрирование → Курсы валют</h1>
 {form_card('Обновить курс', create_html, open_by_default=True)}
