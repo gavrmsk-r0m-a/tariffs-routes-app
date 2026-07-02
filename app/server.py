@@ -2319,10 +2319,14 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     html[data-theme="light-v2"] .modal-cancel:hover,
     html[data-theme="light-v2"] .admin-edit-cancel:hover,
     html[data-theme="light-v2"] .reset-filters:hover {{ background: var(--accent-soft) !important; border-color: var(--accent-border) !important; color: var(--accent-strong) !important; }}
-    html[data-theme="light-v2"] .scope-cards {{ grid-column: 1 / -1; grid-template-columns: repeat(3, minmax(0, 1fr)); width: 100%; }}
-    html[data-theme="light-v2"] .scope-card {{ position: relative; align-items: flex-start; min-height: 62px; padding: 10px 12px 10px 14px; border: 1px solid var(--border-strong); border-left: 3px solid var(--border-strong); background: #fff; }}
-    html[data-theme="light-v2"] .scope-card-indicator {{ width: 10px; height: 10px; flex: 0 0 10px; margin-top: 3px; border-radius: 3px; border-color: var(--border-strong); background: var(--surface); }}
+    html[data-theme="light-v2"] .provider-changes-page .modal-form-card[open] {{ width: min(1100px, calc(100vw - 32px)); max-width: 100%; }}
+    html[data-theme="light-v2"] .provider-changes-page .modal-form-card[open] > form {{ box-sizing: border-box; width: 100%; min-height: 560px; }}
+    html[data-theme="light-v2"] .scope-cards {{ grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); width: 100%; gap: 10px; }}
+    html[data-theme="light-v2"] .scope-card {{ position: relative; display: flex; align-items: stretch; min-height: 58px; padding: 10px 12px 10px 14px; border: 1px solid var(--border-strong); border-left: 3px solid var(--border-strong); background: #fff; box-shadow: none; cursor: pointer; }}
+    html[data-theme="light-v2"] .scope-card input[type="radio"] {{ position: absolute; opacity: 0; pointer-events: none; }}
+    html[data-theme="light-v2"] .scope-card-indicator {{ display: none; }}
     html[data-theme="light-v2"] .scope-card-indicator::after {{ content: none; }}
+    html[data-theme="light-v2"] .scope-card-text {{ display: flex; align-items: center; min-width: 0; line-height: 1.25; }}
     html[data-theme="light-v2"] .scope-card:hover {{ background: var(--accent-soft); border-color: var(--accent-border); border-left-color: var(--accent); }}
     html[data-theme="light-v2"] .scope-card.selected,
     html[data-theme="light-v2"] .scope-card:has(input:checked),
@@ -2333,9 +2337,16 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     html[data-theme="light-v2"] #routing-event-form > fieldset:first-of-type {{ grid-column: 1 / -1; }}
     html[data-theme="light-v2"] #routing-event-form label,
     html[data-theme="light-v2"] #routing-event-form .scope-field {{ min-width: 0 !important; width: auto !important; }}
-    html[data-theme="light-v2"] #routing-event-form .route-select-field,
     html[data-theme="light-v2"] #routing-event-form .wide {{ grid-column: 1 / -1; width: auto; }}
+    html[data-theme="light-v2"] #routing-event-form .route-select-field {{ grid-column: auto; width: auto; min-width: 0; }}
     html[data-theme="light-v2"] #routing-event-form fieldset.scope-field[data-scopes="server_priority"] {{ grid-column: 3 / 5; grid-row: span 2; background: #F8FAFC; border-color: var(--border-strong); }}
+    html[data-theme="light-v2"] #routing-event-form .modal-actions {{ grid-column: 1 / -1; }}
+    html[data-theme="light-v2"] #routing-event-form .provider-change-service-note {{ grid-column: 1 / -1; margin-top: -4px; }}
+    html[data-theme="light-v2"] #routing-event-form[data-current-scope='server_priority'] .route-select-field {{ grid-column: 1 / 2; }}
+    html[data-theme="light-v2"] #routing-event-form[data-current-scope='server_priority'] #overflow-route-field {{ grid-column: 3 / 4; }}
+    html[data-theme="light-v2"] #routing-event-form[data-current-scope='server_priority'] .spillover-checkbox {{ grid-column: 2 / 3; }}
+    html[data-theme="light-v2"] #routing-event-form[data-current-scope='server_priority'] .provider-change-campaign-lower-grid {{ display: contents; }}
+    html[data-theme="light-v2"] #routing-event-form[data-current-scope='campaign_setting'] .conditional-field {{ min-width: 0; }}
     html[data-theme="light-v2"] #routing-event-form .server-checkbox-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(72px, 1fr)); gap: 6px; }}
     html[data-theme="light-v2"] #routing-event-form .server-checkbox-item {{ min-height: 30px; justify-content: center; padding: 5px 8px; border-radius: 999px; background: #fff; }}
     html[data-theme="light-v2"] #routing-event-form .server-checkbox-item:has(input:checked) {{ background: var(--accent-soft); border-color: var(--accent); color: var(--accent-strong); }}
@@ -4809,9 +4820,9 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
   <label class='scope-field conditional-field' data-scopes='campaign_setting' data-campaign-route-field='1'>Новый маршрут кампании <span class='required'>*</span><select name='new_company_route_id' id='company-route'>{company_route_opts}</select></label>
   <span class='scope-field route-empty-message muted' data-scopes='campaign_setting' id='company-route-empty' hidden>Нет маршрутов для выбранного провайдера и GEO кампании</span>
   <label class='wide'>Комментарий <span class='required comment-required'>*</span><textarea name='comment' id='routing-comment' rows='3' cols='60'>{esc(event['comment'] if event else '')}</textarea></label>
-  <p class='scope-field muted wide' data-scopes='campaign_setting'>Событие будет сохранено в журнале и применено к ‘Схеме маршрутизации кампаний’.</p>
-  <p class='scope-field muted wide' data-scopes='server_priority'>Старый маршрут подтягивается автоматически из текущего server_route_priorities при создании.</p>
   <button>{submit}</button>
+  <p class='scope-field muted wide provider-change-service-note' data-scopes='campaign_setting'>Событие будет сохранено в журнале и применено к ‘Схеме маршрутизации кампаний’.</p>
+  <p class='scope-field muted wide provider-change-service-note' data-scopes='server_priority'>Старый маршрут подтягивается автоматически из текущего server_route_priorities при создании.</p>
 </form>
 <script>
 (function() {{
