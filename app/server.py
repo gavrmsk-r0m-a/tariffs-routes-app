@@ -2320,7 +2320,7 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     html[data-theme="light-v2"] .admin-edit-cancel:hover,
     html[data-theme="light-v2"] .reset-filters:hover {{ background: var(--accent-soft) !important; border-color: var(--accent-border) !important; color: var(--accent-strong) !important; }}
     html[data-theme="light-v2"] .provider-changes-page .modal-form-card[open] {{ width: min(1100px, calc(100vw - 32px)); max-width: 100%; }}
-    html[data-theme="light-v2"] .provider-changes-page .modal-form-card[open] > form {{ box-sizing: border-box; width: 100%; min-height: 560px; }}
+    html[data-theme="light-v2"] .provider-changes-page .modal-form-card[open] > form {{ box-sizing: border-box; width: 100%; min-height: 560px; padding: 16px; }}
     html[data-theme="light-v2"] .scope-cards {{ grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); width: 100%; gap: 10px; }}
     html[data-theme="light-v2"] .scope-card {{ position: relative; display: flex; align-items: stretch; min-height: 58px; padding: 10px 12px 10px 14px; border: 1px solid var(--border-strong); border-left: 3px solid var(--border-strong); background: #fff; box-shadow: none; cursor: pointer; }}
     html[data-theme="light-v2"] .scope-card input[type="radio"] {{ position: absolute; opacity: 0; pointer-events: none; }}
@@ -2333,24 +2333,30 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     html[data-theme="light-v2"] .provider-changes-page .scope-card:has(input:checked) {{ background: var(--accent-soft) !important; border-color: var(--accent-border) !important; border-left-color: var(--accent) !important; box-shadow: inset 3px 0 0 var(--accent); color: var(--text-strong); }}
     html[data-theme="light-v2"] .scope-card.selected .scope-card-indicator,
     html[data-theme="light-v2"] .scope-card:has(input:checked) .scope-card-indicator {{ background: var(--accent); border-color: var(--accent); }}
-    html[data-theme="light-v2"] #routing-event-form {{ width: min(1100px, calc(100vw - 32px)); grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }}
-    html[data-theme="light-v2"] #routing-event-form > fieldset:first-of-type {{ grid-column: 1 / -1; }}
+    html[data-theme="light-v2"] #routing-event-form {{ width: min(1100px, calc(100vw - 32px)); grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 16px 12px; align-items: end; }}
+    html[data-theme="light-v2"] #routing-event-form > fieldset:first-of-type {{ grid-column: 1 / -1; width: 100%; box-sizing: border-box; margin: 0 0 4px; }}
     html[data-theme="light-v2"] #routing-event-form label,
     html[data-theme="light-v2"] #routing-event-form .scope-field {{ min-width: 0 !important; width: auto !important; }}
     html[data-theme="light-v2"] #routing-event-form .wide {{ grid-column: 1 / -1; width: auto; }}
+    html[data-theme="light-v2"] #routing-event-form .provider-change-comment-field textarea {{ width: 100%; min-width: 0; box-sizing: border-box; }}
     html[data-theme="light-v2"] #routing-event-form .route-select-field {{ grid-column: auto; width: auto; min-width: 0; }}
-    html[data-theme="light-v2"] #routing-event-form fieldset.scope-field[data-scopes="server_priority"] {{ grid-column: 3 / 5; grid-row: span 2; background: #F8FAFC; border-color: var(--border-strong); }}
-    html[data-theme="light-v2"] #routing-event-form .modal-actions {{ grid-column: 1 / -1; }}
-    html[data-theme="light-v2"] #routing-event-form .provider-change-service-note {{ grid-column: 1 / -1; margin-top: -4px; }}
-    html[data-theme="light-v2"] #routing-event-form[data-current-scope='server_priority'] .route-select-field {{ grid-column: 1 / 2; }}
-    html[data-theme="light-v2"] #routing-event-form[data-current-scope='server_priority'] #overflow-route-field {{ grid-column: 3 / 4; }}
-    html[data-theme="light-v2"] #routing-event-form[data-current-scope='server_priority'] .spillover-checkbox {{ grid-column: 2 / 3; }}
-    html[data-theme="light-v2"] #routing-event-form[data-current-scope='server_priority'] .provider-change-campaign-lower-grid {{ display: contents; }}
+    html[data-theme="light-v2"] #routing-event-form fieldset.scope-field[data-scopes="server_priority"] {{ grid-column: 4 / 6; grid-row: 2 / span 5; align-self: stretch; background: #F8FAFC; border-color: var(--border-strong); }}
+    html[data-theme="light-v2"] #routing-event-form .modal-actions {{ grid-column: 1 / -1; margin: 0 -16px -16px; padding: 14px 16px; border-top: 1px solid var(--border-strong); background: #F8FAFC; }}
+    html[data-theme="light-v2"] #routing-event-form .provider-change-service-note {{ grid-column: 1 / -1; margin: -2px 0 0; }}
+    html[data-theme="light-v2"] #routing-event-form[data-current-scope='server_priority'] .provider-change-campaign-grid {{ display: contents; }}
+    html[data-theme="light-v2"] #routing-event-form[data-current-scope='server_priority'] .provider-change-date-field {{ grid-column: 1 / 4; grid-row: 2; }}
+    html[data-theme="light-v2"] #routing-event-form[data-current-scope='server_priority'] .routing-geo-field {{ grid-column: 1 / 4; }}
+    html[data-theme="light-v2"] #routing-event-form[data-current-scope='server_priority'] .routing-provider-field {{ grid-column: 1 / 4; }}
+    html[data-theme="light-v2"] #routing-event-form[data-current-scope='server_priority'] .route-select-field {{ grid-column: 1 / 4; }}
+    html[data-theme="light-v2"] #routing-event-form[data-current-scope='server_priority'] #overflow-route-field {{ grid-column: 1 / 4; }}
+    html[data-theme="light-v2"] #routing-event-form[data-current-scope='server_priority'] .spillover-checkbox {{ grid-column: 1 / 4; }}
+    html[data-theme="light-v2"] #routing-event-form[data-current-scope='server_priority'] .provider-change-campaign-lower-grid {{ grid-column: 1 / 4; display: grid; grid-template-columns: 1fr; gap: 12px; }}
     html[data-theme="light-v2"] #routing-event-form[data-current-scope='campaign_setting'] .conditional-field {{ min-width: 0; }}
     html[data-theme="light-v2"] #routing-event-form .server-checkbox-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(72px, 1fr)); gap: 6px; }}
     html[data-theme="light-v2"] #routing-event-form .server-checkbox-item {{ min-height: 30px; justify-content: center; padding: 5px 8px; border-radius: 999px; background: #fff; }}
     html[data-theme="light-v2"] #routing-event-form .server-checkbox-item:has(input:checked) {{ background: var(--accent-soft); border-color: var(--accent); color: var(--accent-strong); }}
-    html[data-theme="light-v2"] #routing-event-form[data-current-scope='campaign_setting'] .provider-change-campaign-grid {{ grid-template-columns: minmax(150px, .8fr) minmax(150px, .8fr) minmax(210px, 1fr) minmax(240px, 1.15fr); }}
+    html[data-theme="light-v2"] #routing-event-form[data-current-scope='campaign_setting'] .provider-change-campaign-grid {{ grid-template-columns: minmax(145px, .85fr) minmax(145px, .85fr) minmax(205px, 1.05fr) minmax(260px, 1.35fr); gap: 12px; align-items: end; }}
+    html[data-theme="light-v2"] #routing-event-form[data-current-scope='campaign_setting'] .provider-change-campaign-lower-grid {{ grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 12px; }}
     html[data-theme="light-v2"] #routing-event-form .campaign-id-inline-action {{ grid-template-columns: minmax(0, 1fr) auto; align-items: end; }}
     html[data-theme="light-v2"] .important-checkbox {{ background: #fff !important; border-color: var(--border-strong) !important; }}
     html[data-theme="light-v2"] .important-checkbox:has(input:checked) {{ background: var(--accent-soft) !important; border-color: var(--accent-border) !important; }}
@@ -4783,7 +4789,7 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
   </fieldset>
   {inactive_note}
   <div class='provider-change-campaign-grid'>
-    <label>Дата события <span class='required'>*</span><input type='datetime-local' name='event_at' value='{esc(event_at)}' required></label>
+    <label class='provider-change-date-field'>Дата события <span class='required'>*</span><input type='datetime-local' name='event_at' value='{esc(event_at)}' required></label>
     <label class='scope-field campaign-helper-field campaign-server-field' data-scopes='campaign_setting'>Сервер <select name='server_id' id='campaign-server-filter'>{options(repo, 'servers', selected=event['server_id'] if event else None, empty='—')}</select></label>
     <label class='scope-field campaign-change-type-field' data-scopes='campaign_setting'>Тип изменения кампании <span class='required'>*</span><select name='company_change_type' id='company-change-type'>
       <option value=''>—</option>
@@ -4791,7 +4797,7 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
     </select></label>
     <div class='scope-field campaign-helper-field campaign-id-action-field' data-scopes='campaign_setting'><span class='field-label'>ID кампании</span><div class='campaign-id-inline-action'><input name='campaign_id_search' id='campaign-id-search' value='{esc(event['campaign_id_search'] if event and 'campaign_id_search' in event.keys() else '')}'><button type='button' id='campaign-id-search-button' class='small-button'>OK</button></div><span class='field-error' id='campaign-id-search-error' aria-live='polite'></span></div>
   </div>
-  <label class='scope-field' data-scopes='none server_priority'>GEO <span class='required'>*</span><select name='country_id' id='event-country'>{active_options(repo, 'countries', selected=event['country_id'] if event else None, empty='—')}</select></label>
+  <label class='scope-field routing-geo-field' data-scopes='none server_priority'>GEO <span class='required'>*</span><select name='country_id' id='event-country'>{active_options(repo, 'countries', selected=event['country_id'] if event else None, empty='—')}</select></label>
   <fieldset class='scope-field' data-scopes='server_priority'><legend>Серверы <span class='required'>*</span></legend>{server_priority_server_boxes}</fieldset>
   <label class='scope-field routing-provider-field' data-scopes='none server_priority'>Провайдер <span class='required provider-required'>*</span><select name='provider_id' id='event-provider'>{active_options(repo, 'providers', selected=provider_selected, empty='—')}</select></label>
   <label class='scope-field' data-scopes='none'>Маршрут/префикс <select name='affected_route_id' id='affected-route'>{route_opts}</select></label>
@@ -4819,10 +4825,10 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
   <label class='scope-field conditional-field' data-scopes='campaign_setting' data-campaign-route-field='1'>Новый провайдер кампании <span class='required'>*</span><select name='campaign_provider_id' id='campaign-provider'>{active_options(repo, 'providers', selected=provider_selected, empty='—')}</select></label>
   <label class='scope-field conditional-field' data-scopes='campaign_setting' data-campaign-route-field='1'>Новый маршрут кампании <span class='required'>*</span><select name='new_company_route_id' id='company-route'>{company_route_opts}</select></label>
   <span class='scope-field route-empty-message muted' data-scopes='campaign_setting' id='company-route-empty' hidden>Нет маршрутов для выбранного провайдера и GEO кампании</span>
-  <label class='wide'>Комментарий <span class='required comment-required'>*</span><textarea name='comment' id='routing-comment' rows='3' cols='60'>{esc(event['comment'] if event else '')}</textarea></label>
-  <button>{submit}</button>
+  <label class='wide provider-change-comment-field'>Комментарий <span class='required comment-required'>*</span><textarea name='comment' id='routing-comment' rows='3' cols='60'>{esc(event['comment'] if event else '')}</textarea></label>
   <p class='scope-field muted wide provider-change-service-note' data-scopes='campaign_setting'>Событие будет сохранено в журнале и применено к ‘Схеме маршрутизации кампаний’.</p>
   <p class='scope-field muted wide provider-change-service-note' data-scopes='server_priority'>Старый маршрут подтягивается автоматически из текущего server_route_priorities при создании.</p>
+  <button>{submit}</button>
 </form>
 <script>
 (function() {{
