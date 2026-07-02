@@ -827,13 +827,12 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .server-checkbox-grid {{ display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }}
     .server-checkbox-item {{ min-height: 30px; display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--border-strong); border-radius: var(--radius-control); padding: 5px 9px; background: var(--surface); margin: 0; font-weight: 700; line-height: 1; cursor: pointer; box-shadow: inset 0 1px 1px rgba(34, 48, 42, 0.03); transition: border-color 140ms ease, background 140ms ease, box-shadow 140ms ease, color 140ms ease; }}
     .server-checkbox-item:hover {{ border-color: var(--accent); background: var(--surface-muted); }}
-    .server-checkbox-item input[type="checkbox"] {{ position: absolute; opacity: 0; pointer-events: none; }}
+    .server-checkbox-item input[type="checkbox"] {{ flex: 0 0 14px; margin: 0; }}
     .server-checkbox-item:has(input:checked) {{ border-color: var(--accent); background: var(--accent-soft); color: var(--text-strong); box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 24%, transparent) inset; }}
-    .server-checkbox-item:has(input:checked)::before {{ content: "✓"; display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; border-radius: 4px; background: var(--accent); color: #fff; font-size: 10px; font-weight: 820; }}
     .server-checkbox-copy {{ min-width: 0; display: inline-flex; align-items: center; }}
     .server-checkbox-main {{ font-weight: 760; line-height: 1.15; color: inherit; }}
     .server-current-routes {{ display: grid; gap: 5px; max-height: 210px; overflow: auto; margin-top: 10px; padding: 9px 10px; border: 1px solid var(--border); border-radius: var(--radius-control); background: var(--surface); }}
-    .server-current-route-row {{ display: grid; grid-template-columns: 46px minmax(0, 1fr); gap: 8px; align-items: baseline; min-height: 22px; font-size: 13px; line-height: 1.3; }}
+    .server-current-route-row {{ display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 6px; align-items: baseline; min-height: 20px; font-size: 12px; line-height: 1.25; }}
     .server-current-route-name {{ color: var(--accent-strong); font-weight: 800; }}
     .server-current-route-text {{ min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
     .server-current-route-label {{ color: var(--muted); }}
@@ -2319,7 +2318,7 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     html[data-theme="light-v2"] .modal-cancel:hover,
     html[data-theme="light-v2"] .admin-edit-cancel:hover,
     html[data-theme="light-v2"] .reset-filters:hover {{ background: var(--accent-soft) !important; border-color: var(--accent-border) !important; color: var(--accent-strong) !important; }}
-    html[data-theme="light-v2"] .provider-changes-page .modal-form-card[open] {{ width: min(1100px, calc(100vw - 32px)); max-width: 100%; }}
+    html[data-theme="light-v2"] .provider-changes-page .modal-form-card[open] {{ width: min(980px, calc(100vw - 32px)); max-width: 100%; }}
     html[data-theme="light-v2"] .provider-changes-page .modal-form-card[open] > form {{ box-sizing: border-box; width: 100%; min-height: 560px; padding: 16px; }}
     html[data-theme="light-v2"] .scope-cards {{ grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); width: 100%; gap: 10px; }}
     html[data-theme="light-v2"] .scope-card {{ position: relative; display: flex; align-items: stretch; min-height: 58px; padding: 10px 12px 10px 14px; border: 1px solid var(--border-strong); border-left: 3px solid var(--border-strong); background: #fff; box-shadow: none; cursor: pointer; }}
@@ -2333,27 +2332,29 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     html[data-theme="light-v2"] .provider-changes-page .scope-card:has(input:checked) {{ background: var(--accent-soft) !important; border-color: var(--accent-border) !important; border-left-color: var(--accent) !important; box-shadow: inset 3px 0 0 var(--accent); color: var(--text-strong); }}
     html[data-theme="light-v2"] .scope-card.selected .scope-card-indicator,
     html[data-theme="light-v2"] .scope-card:has(input:checked) .scope-card-indicator {{ background: var(--accent); border-color: var(--accent); }}
-    html[data-theme="light-v2"] #routing-event-form {{ width: min(1100px, calc(100vw - 32px)); grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 16px 12px; align-items: end; }}
+    html[data-theme="light-v2"] #routing-event-form {{ width: 100%; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 16px; align-items: end; }}
     html[data-theme="light-v2"] #routing-event-form > fieldset:first-of-type {{ grid-column: 1 / -1; width: 100%; box-sizing: border-box; margin: 0 0 4px; }}
     html[data-theme="light-v2"] #routing-event-form label,
     html[data-theme="light-v2"] #routing-event-form .scope-field {{ min-width: 0 !important; width: auto !important; }}
     html[data-theme="light-v2"] #routing-event-form .wide {{ grid-column: 1 / -1; width: auto; }}
     html[data-theme="light-v2"] #routing-event-form .provider-change-comment-field textarea {{ width: 100%; min-width: 0; box-sizing: border-box; }}
     html[data-theme="light-v2"] #routing-event-form .route-select-field {{ grid-column: auto; width: auto; min-width: 0; }}
-    html[data-theme="light-v2"] #routing-event-form fieldset.scope-field[data-scopes="server_priority"] {{ grid-column: 4 / 6; grid-row: 2 / span 5; align-self: stretch; background: #F8FAFC; border-color: var(--border-strong); }}
-    html[data-theme="light-v2"] #routing-event-form .modal-actions {{ grid-column: 1 / -1; margin: 0 -16px -16px; padding: 14px 16px; border-top: 1px solid var(--border-strong); background: #F8FAFC; }}
+    html[data-theme="light-v2"] #routing-event-form fieldset.scope-field[data-scopes="server_priority"] {{ grid-column: 2; grid-row: 3 / span 6; align-self: stretch; background: #F8FAFC; border-color: var(--border-strong); }}
+    html[data-theme="light-v2"] #routing-event-form .modal-actions {{ grid-column: 1 / -1; display: flex; justify-content: flex-start; margin: 0 -16px -16px; padding: 14px 16px; border-top: 1px solid var(--border-strong); background: #F8FAFC; }}
     html[data-theme="light-v2"] #routing-event-form .provider-change-service-note {{ grid-column: 1 / -1; margin: -2px 0 0; }}
     html[data-theme="light-v2"] #routing-event-form[data-current-scope='server_priority'] .provider-change-campaign-grid {{ display: contents; }}
-    html[data-theme="light-v2"] #routing-event-form[data-current-scope='server_priority'] .provider-change-date-field {{ grid-column: 1 / 4; grid-row: 2; }}
-    html[data-theme="light-v2"] #routing-event-form[data-current-scope='server_priority'] .routing-geo-field {{ grid-column: 1 / 4; }}
-    html[data-theme="light-v2"] #routing-event-form[data-current-scope='server_priority'] .routing-provider-field {{ grid-column: 1 / 4; }}
-    html[data-theme="light-v2"] #routing-event-form[data-current-scope='server_priority'] .route-select-field {{ grid-column: 1 / 4; }}
-    html[data-theme="light-v2"] #routing-event-form[data-current-scope='server_priority'] #overflow-route-field {{ grid-column: 1 / 4; }}
-    html[data-theme="light-v2"] #routing-event-form[data-current-scope='server_priority'] .spillover-checkbox {{ grid-column: 1 / 4; }}
-    html[data-theme="light-v2"] #routing-event-form[data-current-scope='server_priority'] .provider-change-campaign-lower-grid {{ grid-column: 1 / 4; display: grid; grid-template-columns: 1fr; gap: 12px; }}
+    html[data-theme="light-v2"] #routing-event-form[data-current-scope='server_priority'] .provider-change-date-field {{ grid-column: 1; grid-row: 3; }}
+    html[data-theme="light-v2"] #routing-event-form[data-current-scope='server_priority'] .routing-geo-field {{ grid-column: 1; grid-row: 4; }}
+    html[data-theme="light-v2"] #routing-event-form[data-current-scope='server_priority'] .spillover-checkbox {{ grid-column: 1; grid-row: 5; align-self: center; }}
+    html[data-theme="light-v2"] #routing-event-form[data-current-scope='server_priority'] .routing-provider-field {{ grid-column: 1; grid-row: 6; }}
+    html[data-theme="light-v2"] #routing-event-form[data-current-scope='server_priority'] .route-select-field {{ grid-column: 1; grid-row: 7; }}
+    html[data-theme="light-v2"] #routing-event-form[data-current-scope='server_priority'] #overflow-route-field {{ grid-column: 1; grid-row: 8; }}
+    html[data-theme="light-v2"] #routing-event-form[data-current-scope='server_priority'] .provider-change-campaign-lower-grid {{ grid-column: 1; grid-row: 9; display: grid; grid-template-columns: 1fr; gap: 12px; }}
     html[data-theme="light-v2"] #routing-event-form[data-current-scope='campaign_setting'] .conditional-field {{ min-width: 0; }}
-    html[data-theme="light-v2"] #routing-event-form .server-checkbox-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(72px, 1fr)); gap: 6px; }}
-    html[data-theme="light-v2"] #routing-event-form .server-checkbox-item {{ min-height: 30px; justify-content: center; padding: 5px 8px; border-radius: 999px; background: #fff; }}
+    html[data-theme="light-v2"] #routing-event-form .server-checkbox-grid {{ display: grid; grid-template-columns: repeat(3, minmax(64px, 1fr)); gap: 6px 8px; }}
+    html[data-theme="light-v2"] #routing-event-form .server-checkbox-item {{ min-height: 26px; justify-content: flex-start; padding: 4px 6px; border-radius: var(--radius-control); background: #fff; font-size: 13px; }}
+    html[data-theme="light-v2"] #routing-event-form .server-route-hint {{ display: none; }}
+    html[data-theme="light-v2"] #routing-event-form .server-current-routes {{ max-height: 150px; margin-top: 8px; padding: 8px; }}
     html[data-theme="light-v2"] #routing-event-form .server-checkbox-item:has(input:checked) {{ background: var(--accent-soft); border-color: var(--accent); color: var(--accent-strong); }}
     html[data-theme="light-v2"] #routing-event-form[data-current-scope='campaign_setting'] .provider-change-campaign-grid {{ grid-template-columns: minmax(145px, .85fr) minmax(145px, .85fr) minmax(205px, 1.05fr) minmax(260px, 1.35fr); gap: 12px; align-items: end; }}
     html[data-theme="light-v2"] #routing-event-form[data-current-scope='campaign_setting'] .provider-change-campaign-lower-grid {{ grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 12px; }}
@@ -5001,13 +5002,13 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
   function renderCurrentRoutes() {{
     const panel = form.querySelector('[data-server-current-routes]');
     if (!panel) return;
-    const checkedBoxes = Array.from(form.querySelectorAll('input[name="server_ids"]:checked'));
-    if (!checkedBoxes.length) {{
-      panel.innerHTML = '<span class="server-current-routes-empty">Выберите серверы, чтобы увидеть текущие маршруты</span>';
+    const boxes = Array.from(form.querySelectorAll('input[name="server_ids"]'));
+    if (!boxes.length) {{
+      panel.innerHTML = '<span class="server-current-routes-empty">Нет активных серверов</span>';
       return;
     }}
     panel.innerHTML = '';
-    checkedBoxes.forEach((box) => {{
+    boxes.forEach((box) => {{
       const chip = box.closest('[data-server-chip]');
       const name = chip ? chip.dataset.serverName : box.value;
       const route = (chip && chip.dataset.currentRoute) || (chip && chip.dataset.initialRoute) || '—';
@@ -5015,7 +5016,7 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
       row.className = 'server-current-route-row';
       const server = document.createElement('span');
       server.className = 'server-current-route-name';
-      server.textContent = name;
+      server.textContent = `${{name}} —`;
       const text = document.createElement('span');
       text.className = 'server-current-route-text';
       text.title = `текущий: ${{route}}`;
