@@ -1059,7 +1059,7 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
       position: fixed;
       inset: 0;
       z-index: 999;
-      background: rgba(15, 23, 42, .16);
+      background: rgba(15, 23, 42, .40);
     }}
     td[data-col="actions"] details.edit-details[open] > summary {{ z-index: 1001; }}
     td[data-col="actions"] details.edit-details > form input,
@@ -1093,7 +1093,7 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .modal-form-card > summary {{ display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 36px; padding: 8px 14px; border: 1px solid var(--border-strong); border-radius: 10px; background: var(--accent-soft); color: var(--accent-strong); font-weight: 760; cursor: pointer; list-style: none; }}
     .modal-form-card > summary::-webkit-details-marker {{ display: none; }}
     .modal-form-card > summary::marker {{ content: ""; }}
-    .modal-form-card[open]::before, .modal-overlay {{ content: ""; position: fixed; inset: 0; z-index: 980; background: rgba(0, 0, 0, 0.55); }}
+    .modal-form-card[open]::before, .modal-overlay {{ content: ""; position: fixed; inset: 0; z-index: 980; background: rgba(15, 23, 42, 0.42); }}
     .modal-form-card[open] > form, .modal-form-card[open] > .modal-body, .modal-card {{ position: fixed; left: 50%; top: 50%; z-index: 990; width: min(1040px, calc(100vw - 32px)); max-height: calc(100vh - 48px); overflow: auto; scrollbar-gutter: stable; transform: translate(-50%, -50%); margin: 0; padding: 20px; border: 1px solid var(--border-strong); border-radius: 18px; background: var(--surface); color: var(--text); box-shadow: 0 24px 80px rgba(0,0,0,.28); box-sizing: border-box; }}
     .modal-card form, .modal-form-card[open] > form {{ display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }}
     .modal-card form label, .modal-card form fieldset, .modal-form-card[open] > form label, .modal-form-card[open] > form fieldset {{ min-width: 0; }}
@@ -1101,10 +1101,10 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .modal-card h2 {{ margin: 0 0 4px; color: var(--text-strong); }}
     .modal-description {{ margin: 0 0 16px; color: var(--muted); }}
     .modal-actions {{ grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; padding-top: 12px; border-top: 1px solid var(--border); }}
-    .modal-save, .admin-edit-save {{ background: var(--success); border-color: var(--success); color: #fff; font-weight: 780; }}
-    .modal-save:hover, .admin-edit-save:hover {{ background: color-mix(in srgb, var(--success) 88%, #000); border-color: var(--success); color: #fff; }}
-    .modal-cancel, .admin-edit-cancel {{ background: var(--danger-soft); color: var(--danger); border-color: color-mix(in srgb, var(--danger) 42%, var(--border-strong)); }}
-    .modal-cancel:hover, .admin-edit-cancel:hover {{ background: color-mix(in srgb, var(--danger-soft) 78%, var(--surface)); color: var(--danger); border-color: var(--danger); }}
+    .modal-save, .admin-edit-save {{ background: var(--accent-strong); border-color: var(--accent-strong); color: #fff; font-weight: 780; }}
+    .modal-save:hover, .admin-edit-save:hover {{ background: var(--accent); border-color: var(--accent); color: #fff; }}
+    .modal-cancel, .admin-edit-cancel {{ background: var(--surface); color: var(--text); border-color: var(--border-strong); }}
+    .modal-cancel:hover, .admin-edit-cancel:hover {{ background: var(--warning-soft); color: var(--accent-strong); border-color: var(--warning-border); }}
     .modal-card input, .modal-card select, .modal-card textarea, .modal-form-card[open] input, .modal-form-card[open] select, .modal-form-card[open] textarea {{ width: 100%; box-sizing: border-box; background: var(--input-bg, var(--surface)); color: var(--text); border-color: var(--border-strong); }}
     html[data-theme="dark"] .modal-card, html[data-theme="dark"] .modal-form-card[open] > form, html[data-theme="dark"] .modal-form-card[open] > .modal-body {{ background: var(--surface); border-color: var(--border-strong); color: var(--text); }}
     html[data-theme="dark"] .modal-overlay, html[data-theme="dark"] .modal-form-card[open]::before {{ background: rgba(0, 0, 0, 0.55); }}
@@ -1132,12 +1132,18 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
 
     /* Figma-inspired light operations admin */
     :root, html[data-theme="mvp"] {{
-      --bg: #eef3fb; --surface: #ffffff; --surface-muted: #f8fafe; --surface-strong: #f1f5ff;
-      --sidebar-bg: #ffffff; --text-strong: #0f172a; --text: #172554; --muted: #7180a4;
-      --border: #e3eaf7; --border-strong: #d9e3f5; --accent: #4661f2; --accent-strong: #2547e8;
-      --accent-soft: #eef1ff; --success: #22c55e; --success-soft: #eafaf1; --warning: #f59e0b;
-      --warning-soft: #fff7e8; --danger: #ef4444; --danger-soft: #fff0f0;
-      --shadow-soft: 0 3px 10px rgba(28, 42, 74, .05); --shadow-card: 0 10px 24px rgba(32, 50, 90, .08);
+      --bg: #f4f6f9; --surface: #ffffff; --surface-muted: #fbfcfe; --surface-soft: #f7f9fc; --surface-strong: #f2f5f9;
+      --table-header-bg: #fafbfe; --table-row-alt: #fcfdff; --table-row-hover: #f8fafc;
+      --sidebar-bg: #ffffff; --text-strong: #111827; --text: #243244; --muted: #667085; --text-soft: #7b8794;
+      --border: #e5eaf1; --border-strong: #d7dee8; --border-ink: #a8b2c1;
+      --accent: #394150; --accent-strong: #1f2937; --accent-hover: #fff6e6; --accent-soft: #f4f6f8; --accent-border: #cfd6df;
+      --cyber: #475569; --cyber-strong: #334155; --cyber-soft: #f4f6f8;
+      --success: #2f7d50; --success-soft: #eaf6ee; --success-border: #b9dec7;
+      --warning: #f59e0b; --warning-hover: #d97706; --warning-soft: #fff6e6; --warning-border: #f6c979;
+      --danger: #dc2626; --danger-strong: #b91c1c; --danger-soft: #fff1f1; --danger-border: #f3b5b5;
+      --input-bg: #ffffff; --focus: #f59e0b;
+      --shadow-soft: 0 2px 8px rgba(15, 23, 42, .045); --shadow-card: 0 10px 24px rgba(15, 23, 42, .07); --shadow-card-hover: 0 14px 30px rgba(15, 23, 42, .10);
+      --shadow-glow: 0 0 0 1px rgba(245, 158, 11, .16), 0 10px 22px rgba(15, 23, 42, .08);
       --radius-control: 8px; --radius-card: 14px;
     }}
     body {{ background: var(--bg); color: var(--text); font-size: 14px; }}
@@ -1145,7 +1151,7 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .workspace {{ padding: 0; min-width: 0; }}
     .content {{ padding: 18px 30px 42px; }}
     .content > h1:first-of-type {{ margin-bottom: 12px; padding-bottom: 8px; }}
-    .page-top {{ margin: -18px -30px 14px; padding: 10px 30px; min-height: 56px; border-bottom: 1px solid var(--border); background: #f3f6fc; }}
+    .page-top {{ margin: -18px -30px 14px; padding: 10px 30px; min-height: 56px; border-bottom: 1px solid var(--border); background: #fafbfe; }}
     .breadcrumbs {{ margin: 0; padding: 0; min-height: auto; display: flex; align-content: center; border-bottom: 0; background: transparent; }}
     .breadcrumbs::after {{ content: none; }}
     .breadcrumbs .separator {{ font-size: 0; }} .breadcrumbs .separator::before {{ content: '›'; font-size: 12px; }}
@@ -1153,7 +1159,7 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .sidebar-head {{ display: grid; grid-template-columns: minmax(0, 1fr) 42px; gap: 8px; align-items: start; padding-bottom: 14px; border-bottom: 1px solid var(--border); }}
     .brand-block {{ display: flex; align-items: center; gap: 12px; padding: 0 0 0 10px; border-bottom: 0; }}
     .brand-mark, .side-icon, .metric-icon, .quick-icon, .feed-icon {{ display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; }}
-    .brand-mark {{ width: 36px; height: 36px; border-radius: 11px; background: linear-gradient(135deg,#4f46e5,#3525c8); color: #fff; box-shadow: 0 8px 18px rgba(79,70,229,.25); font-weight: 900; }}
+    .brand-mark {{ width: 36px; height: 36px; border-radius: 11px; background: linear-gradient(135deg,#394150,#1f2937); color: #fff; box-shadow: 0 8px 18px rgba(31,41,55,.20); font-weight: 900; }}
     .brand-copy strong, .brand-copy span {{ display: block; }} .brand-copy strong {{ color: var(--text-strong); }} .brand-copy span {{ color: var(--muted); font-size: 12px; }}
     .app-title {{ display: none; }}
     .side-nav {{ --sidebar-item-height: 40px; --sidebar-item-padding-y: 7px; --sidebar-item-padding-x: 12px; --sidebar-item-gap: 10px; display: grid; grid-auto-rows: min-content; align-content: start; gap: 6px; flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; padding-right: 10px; scrollbar-gutter: stable; }}
@@ -1168,8 +1174,8 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .side-link.has-inline-icon::before, .side-link.has-inline-icon.active::before {{ content: none; display: none; }}
     .side-link::before {{ content: attr(data-icon); width: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center; color: #7786ad; font-size: 18px; position: static; flex: 0 0 22px; border-radius: 0; background: transparent; }}
     .side-link.active::before {{ content: attr(data-icon); color: var(--accent-strong); position: static; width: 22px; height: 22px; flex: 0 0 22px; background: transparent; }}
-    .side-link:hover {{ background: #f3f6ff; color: var(--accent-strong); }}
-    .side-link.active {{ background: #eef1ff; border-color: #d5ddff; color: var(--accent-strong); box-shadow: none; }}
+    .side-link:hover {{ background: var(--warning-soft); color: var(--accent-strong); border-color: var(--warning-border); }}
+    .side-link.active {{ background: var(--accent-soft); border-color: var(--accent-border); color: var(--accent-strong); box-shadow: none; }}
     .side-link.active .side-icon {{ color: var(--accent-strong); }}
     .side-link-disabled, .side-link-disabled:hover, .side-link-disabled:disabled {{ color: var(--muted); background: transparent; border-color: transparent; box-shadow: none; cursor: not-allowed; opacity: .58; }}
     .side-link-disabled .nav-icon, .side-link-disabled:hover .nav-icon {{ color: var(--muted); }}
@@ -1205,7 +1211,7 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .sidebar-collapse:hover {{ background: var(--accent-soft); border-color: var(--accent); color: var(--accent-strong); }}
     .sidebar-collapse-icon {{ width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; }}
     .sidebar-collapse-icon .material-symbols-rounded {{ font-size: 20px; }}
-    .current-user-selector {{ position: relative; background: #f4f6ff; border-color: #e2e8ff; padding: 0; min-height: 34px; }} .current-user-selector summary {{ display: flex; align-items: center; gap: 8px; cursor: pointer; list-style: none; min-height: 32px; padding: 3px 9px; }} .current-user-selector summary::-webkit-details-marker {{ display: none; }} .current-user-menu {{ position: absolute; left: 0; right: 0; top: calc(100% + 6px); display: grid; gap: 5px; padding: 7px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); box-shadow: var(--shadow-card); z-index: 50; }} .current-user-menu-info {{ display: grid; gap: 1px; padding: 6px 8px 8px; border-bottom: 1px solid var(--border); }} .current-user-menu-info small {{ color: var(--muted); font-size: 12px; }} .current-user-menu a {{ display: block; padding: 7px 8px; border-radius: 8px; color: var(--text); font-size: 12px; font-weight: 700; text-decoration: none; }} .current-user-menu a:hover {{ background: var(--accent-soft); color: var(--accent-strong); }} .current-user-menu .logout-link {{ margin-top: 1px; color: #b42318; background: #fff5f4; border: 1px solid #ffd8d3; }} .current-user-menu .logout-link:hover {{ background: #ffeceb; border-color: #fda29b; color: #9f1f17; }} .user-icon {{ background: #4f46e5; color: #fff; border-radius: 8px; width: 24px; height: 24px; }} .user-icon .material-symbols-rounded {{ font-size: 18px; }} .login-body {{ min-height: 100vh; display: grid; place-items: center; padding: 24px; }} .login-shell {{ width: min(560px, 100%); }} .login-card {{ padding: 28px; border: 1px solid var(--border); border-radius: 18px; background: var(--surface); box-shadow: var(--shadow-card); }} .login-card h1 {{ margin-bottom: 6px; }} .login-users {{ display: grid; gap: 10px; margin: 20px 0; }} .login-user-card {{ display: flex; align-items: center; gap: 12px; padding: 12px; border: 1px solid var(--border); border-radius: 12px; cursor: pointer; }} .login-user-card:hover {{ border-color: var(--accent); background: var(--accent-soft); }} .login-user-card span strong, .login-user-card span small {{ display: block; }} .login-user-card span small, .muted {{ color: var(--muted); }} .login-error {{ padding: 10px 12px; border-radius: 10px; background: var(--danger-soft); color: #b42318; font-weight: 700; }}
+    .current-user-selector {{ position: relative; background: var(--surface-soft); border-color: var(--border); padding: 0; min-height: 34px; }} .current-user-selector summary {{ display: flex; align-items: center; gap: 8px; cursor: pointer; list-style: none; min-height: 32px; padding: 3px 9px; }} .current-user-selector summary::-webkit-details-marker {{ display: none; }} .current-user-menu {{ position: absolute; left: 0; right: 0; top: calc(100% + 6px); display: grid; gap: 5px; padding: 7px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); box-shadow: var(--shadow-card); z-index: 50; }} .current-user-menu-info {{ display: grid; gap: 1px; padding: 6px 8px 8px; border-bottom: 1px solid var(--border); }} .current-user-menu-info small {{ color: var(--muted); font-size: 12px; }} .current-user-menu a {{ display: block; padding: 7px 8px; border-radius: 8px; color: var(--text); font-size: 12px; font-weight: 700; text-decoration: none; }} .current-user-menu a:hover {{ background: var(--accent-soft); color: var(--accent-strong); }} .current-user-menu .logout-link {{ margin-top: 1px; color: #b42318; background: #fff5f4; border: 1px solid #ffd8d3; }} .current-user-menu .logout-link:hover {{ background: #ffeceb; border-color: #fda29b; color: #9f1f17; }} .user-icon {{ background: var(--accent-strong); color: #fff; border-radius: 8px; width: 24px; height: 24px; }} .user-icon .material-symbols-rounded {{ font-size: 18px; }} .login-body {{ min-height: 100vh; display: grid; place-items: center; padding: 24px; }} .login-shell {{ width: min(560px, 100%); }} .login-card {{ padding: 28px; border: 1px solid var(--border); border-radius: 18px; background: var(--surface); box-shadow: var(--shadow-card); }} .login-card h1 {{ margin-bottom: 6px; }} .login-users {{ display: grid; gap: 10px; margin: 20px 0; }} .login-user-card {{ display: flex; align-items: center; gap: 12px; padding: 12px; border: 1px solid var(--border); border-radius: 12px; cursor: pointer; }} .login-user-card:hover {{ border-color: var(--accent); background: var(--accent-soft); }} .login-user-card span strong, .login-user-card span small {{ display: block; }} .login-user-card span small, .muted {{ color: var(--muted); }} .login-error {{ padding: 10px 12px; border-radius: 10px; background: var(--danger-soft); color: #b42318; font-weight: 700; }}
     .user-copy strong, .user-copy small {{ display: block; white-space: nowrap; }} .user-copy strong {{ line-height: 1.1; }} .user-copy small {{ color: var(--muted); }}
     .app-shell.sidebar-collapsed {{ grid-template-columns: 70px minmax(0, 1fr); }}
     .sidebar-collapsed .sidebar {{ padding-left: 8px; padding-right: 8px; }}
@@ -1220,15 +1226,20 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .sidebar-collapsed [data-tooltip] {{ position: relative; }}
     .sidebar-collapsed [data-tooltip]:hover::after {{ content: attr(data-tooltip); position: absolute; left: calc(100% + 10px); top: 50%; transform: translateY(-50%); z-index: 10000; pointer-events: none; white-space: nowrap; border-radius: 8px; padding: 7px 9px; background: #111827; color: #fff; font-size: 12px; box-shadow: var(--shadow-card); }}
     .metrics-grid {{ grid-template-columns: repeat(4, minmax(180px,1fr)); gap: 20px; margin: 8px 0 28px; }}
-    .metric-card {{ min-height: 156px; padding: 20px; border: 1px solid var(--border); border-left: 1px solid var(--border); border-radius: 14px; background: #fff; box-shadow: var(--shadow-card); }}
+    .metric-card {{ position: relative; overflow: hidden; min-height: 156px; padding: 20px; border: 1px solid var(--border); border-left: 1px solid var(--border); border-radius: 14px; background: #fff; box-shadow: var(--shadow-card); }}
+    .metric-card::before {{ content: ""; position: absolute; inset: 0 auto 0 0; width: 3px; background: var(--accent); opacity: .85; }}
+    .metric-card.green::before {{ background: var(--accent-border); }} .metric-card.violet::before {{ background: var(--cyber); }} .metric-card.orange::before {{ background: var(--warning); }}
     .metric-top {{ display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }}
-    .metric-icon {{ width: 38px; height: 38px; border-radius: 13px; background: #eef1ff; color: var(--accent-strong); }}
-    .metric-card.green .metric-icon {{ background: #eafaf1; color: #16a34a; }} .metric-card.violet .metric-icon {{ background: #f1edff; color: #7c3aed; }} .metric-card.orange .metric-icon {{ background: #fff7e8; color: #f97316; }}
+    .metric-icon {{ width: 38px; height: 38px; border-radius: 13px; background: var(--accent-soft); color: var(--accent-strong); box-shadow: inset 3px 0 0 var(--accent-border); }}
+    .metric-card.green .metric-icon {{ background: var(--accent-soft); color: var(--accent-strong); }} .metric-card.violet .metric-icon {{ background: var(--surface-strong); color: var(--cyber-strong); }} .metric-card.orange .metric-icon {{ background: var(--warning-soft); color: var(--warning-hover); }}
     .sparkline {{ width: 96px; height: 32px; }} .sparkline polyline {{ fill: none; stroke: currentColor; stroke-width: 2; }}
     .metric-label {{ min-height: 0; text-transform: none; letter-spacing: 0; font-size: 12px; color: var(--muted); }} .metric-value {{ font-size: 27px; margin: 4px 0 4px; }} .metric-hint {{ color: var(--muted); font-weight: 700; }} .metric-card.orange .metric-hint {{ color: var(--muted); }}
     .quick-links {{ grid-template-columns: repeat(3, minmax(240px, 1fr)); gap: 12px; }}
-    .quick-link-card {{ grid-template-columns: 44px 1fr 20px; align-items: center; gap: 14px; min-height: 78px; padding: 16px 20px; border: 1px solid var(--border); border-radius: 14px; box-shadow: var(--shadow-card); }}
-    .quick-icon {{ width: 40px; height: 40px; border-radius: 14px; background: #eef1ff; color: var(--accent-strong); }} .quick-copy strong {{ display:block; color: var(--text-strong); }} .quick-copy small {{ display:block; color: var(--muted); }} .quick-arrow {{ color: var(--muted); font-size: 22px; }}
+    .quick-link-card {{ position: relative; grid-template-columns: 44px 1fr 20px; align-items: center; gap: 14px; min-height: 78px; padding: 16px 20px; border: 1px solid var(--border); border-radius: 14px; box-shadow: var(--shadow-card); transition: transform 140ms ease, border-color 140ms ease, box-shadow 140ms ease, background 140ms ease; }}
+    .quick-link-card::before {{ content: ""; position: absolute; left: 0; top: 14px; bottom: 14px; width: 3px; border-radius: 999px; background: var(--accent-border); opacity: 0; transition: opacity 140ms ease, background 140ms ease; }}
+    .quick-link-card:hover {{ transform: translateY(-1px); border-color: var(--accent-border); background: #fffdf8; color: var(--text-strong); text-decoration: none; box-shadow: var(--shadow-card-hover); }}
+    .quick-link-card:hover::before {{ opacity: 1; background: var(--warning); }}
+    .quick-icon {{ width: 40px; height: 40px; border-radius: 14px; background: var(--accent-soft); color: var(--accent-strong); }} .quick-copy strong {{ display:block; color: var(--text-strong); }} .quick-copy small {{ display:block; color: var(--muted); }} .quick-arrow {{ color: var(--muted); font-size: 22px; }}
     .dashboard-panel-title {{ display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 0 0 10px; }}
     .dashboard-panel-title h2 {{ margin: 0; }}
     .event-feed {{ overflow: hidden; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; box-shadow: var(--shadow-card); }}
@@ -1249,9 +1260,9 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .table-footer {{ margin: 12px 0; padding: 10px 14px; border: 1px solid var(--border); border-radius: 14px; background: #fff; box-shadow: var(--shadow-card); }}
     .table-card {{ border: 1px solid var(--border); border-radius: 14px; background: #fff; box-shadow: var(--shadow-card); }}
     table {{ border-collapse: separate; border-spacing: 0; width: 100%; font-size: 13px; }}
-    th {{ height: 36px; background: #f6f8fc; color: #7985a8; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; border-bottom: 1px solid #d9e3f5; }}
+    th {{ height: 36px; background: var(--table-header-bg); color: #667085; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; border-bottom: 1px solid var(--border-strong); }}
     th, td {{ border-right: 1px solid #e8eef9; }} th:last-child, td:last-child {{ border-right: 0; }}
-    td {{ height: 44px; padding: 8px 12px; line-height: 1.25; vertical-align: middle; border-bottom: 1px solid #e8eef9; background: #fff; }} tbody tr:nth-child(even) td {{ background: #fbfcff; }} tbody tr:hover td {{ background: #f7f9ff; }}
+    td {{ height: 44px; padding: 8px 12px; line-height: 1.25; vertical-align: middle; border-bottom: 1px solid #e8eef9; background: #fff; }} tbody tr:nth-child(even) td {{ background: var(--table-row-alt); }} tbody tr:hover td {{ background: var(--table-row-hover); }}
     td[data-col='number'], td[data-col='routes'], td[data-col='route'] {{ font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }}
     .status-badge, .badge {{ border: 0; background: transparent; padding: 0; border-radius: 0; }}
     .dot-status {{ display: inline-flex; align-items: center; gap: 6px; min-height: 0; white-space: nowrap; color: inherit; font: inherit; font-weight: 400; }} .dot-status span {{ width: 6px; height: 6px; border-radius: 50%; background:#c5ccdc; font-size: 0; line-height: 0; }} .dot-status.ok span {{ background:#22c55e; }} .dot-status.warning span {{ background:#f59e0b; }} .dot-status.danger span {{ background:#ef4444; }} .dot-status.neutral span {{ background:#c5ccdc; }}
