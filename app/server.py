@@ -2363,11 +2363,15 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     html[data-theme="light-v2"] .provider-change-create-shell .server-priority-create-right {{ min-width: 0; align-self: start; }}
     html[data-theme="light-v2"] .provider-change-create-shell .server-priority-create-title {{ display: block; margin: 0 0 6px; text-align: center; color: #26323A; font-size: 12px; font-weight: 760; line-height: 1.25; }}
     html[data-theme="light-v2"] .provider-change-create-shell .server-priority-create-right .server-checkbox-toolbar {{ display: none; }}
-    html[data-theme="light-v2"] .provider-change-create-shell .server-priority-create-right .server-checkbox-grid {{ display: flex; flex-wrap: wrap; gap: 5px 6px; align-items: center; justify-content: center; margin: 0; }}
-    html[data-theme="light-v2"] .provider-change-create-shell .server-priority-create-right .server-checkbox-item {{ min-height: 24px; padding: 3px 7px; gap: 4px; border-radius: var(--radius-control); background: #fff; font-size: 12px; line-height: 1; }}
-    html[data-theme="light-v2"] .provider-change-create-shell .server-priority-create-right .server-checkbox-item input[type="checkbox"] {{ flex: 0 0 13px; width: 13px; height: 13px; min-height: 13px; }}
-    html[data-theme="light-v2"] .provider-change-create-shell .server-priority-create-right .server-current-routes {{ max-height: 170px; overflow-y: auto; overflow-x: hidden; margin-top: 10px; padding: 8px; }}
-    html[data-theme="light-v2"] .provider-change-create-shell .server-priority-create-right .server-current-route-row {{ grid-template-columns: 40px minmax(0, 1fr); }}
+    html[data-theme="light-v2"] .provider-change-create-shell .server-priority-create-right .server-checkbox-grid {{ display: flex; flex-wrap: wrap; gap: 5px; align-items: center; justify-content: flex-start; margin: 0; }}
+    html[data-theme="light-v2"] .provider-change-create-shell .server-priority-create-right .server-checkbox-item {{ min-width: 42px; min-height: 24px; justify-content: center; padding: 3px 8px; gap: 0; border-radius: var(--radius-control); background: #fff; font-size: 12px; line-height: 1; text-align: center; }}
+    html[data-theme="light-v2"] .provider-change-create-shell .server-priority-create-right .server-checkbox-item input[type="checkbox"] {{ position: absolute; width: 1px; height: 1px; min-height: 1px; margin: 0; padding: 0; opacity: 0; pointer-events: none; }}
+    html[data-theme="light-v2"] .provider-change-create-shell .server-priority-create-right .server-checkbox-copy {{ justify-content: center; }}
+    html[data-theme="light-v2"] .provider-change-create-shell .server-priority-create-right .server-current-routes {{ max-height: 145px; overflow-y: auto; overflow-x: hidden; margin-top: 8px; padding: 7px 8px; }}
+    html[data-theme="light-v2"] .provider-change-create-shell .server-priority-create-right .server-current-route-row {{ display: flex; min-width: 0; gap: 5px; align-items: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
+    html[data-theme="light-v2"] .provider-change-create-shell .server-priority-create-right .server-current-route-name {{ flex: 0 0 auto; }}
+    html[data-theme="light-v2"] .provider-change-create-shell .server-priority-create-right .server-current-route-text {{ color: var(--muted); }}
+    html[data-theme="light-v2"] .provider-change-create-shell .server-priority-create-right .server-current-route-text.has-route {{ color: #C2410C; }}
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-shell-hint {{ min-height: 24px; margin: 0; color: var(--muted); }}
     html[data-theme="light-v2"] .provider-change-create-shell #routing-event-form .modal-actions {{ margin: 0 -16px; padding: 14px 16px; }}
     html[data-theme="light-v2"] .scope-cards {{ grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); width: 100%; gap: 10px; }}
@@ -3537,7 +3541,7 @@ def active_server_priority_checkboxes(repo: Repository, selected: set[str] | Non
             f"<label class='server-checkbox-item' data-server-chip data-server-id='{row['id']}' data-server-name='{esc(row['name'])}' data-initial-route='{esc(hint)}'>"
             f"<input type='checkbox' name='server_ids' value='{row['id']}' {checked}>"
             f"<span class='server-checkbox-copy'><span class='server-checkbox-main'>{esc(row['name'])}</span>"
-            f"<span class='server-route-hint' data-current-route-hint data-server-id='{row['id']}' title='текущий: {esc(hint)}'>текущий: {esc(hint)}</span></span></label>"
+            f"<span class='server-route-hint' data-current-route-hint data-server-id='{row['id']}' title='{esc(hint)}'>{esc(hint)}</span></span></label>"
         )
     return (
         "<div class='server-checkbox-toolbar'>"
@@ -4974,7 +4978,15 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
       const route = (chip && chip.dataset.currentRoute) || (chip && chip.dataset.initialRoute) || '—';
       const row = document.createElement('div');
       row.className = 'server-current-route-row';
-      row.textContent = `${{name}} — текущий: ${{route}}`;
+      const server = document.createElement('span');
+      server.className = 'server-current-route-name';
+      server.textContent = `${{name}} —`;
+      const text = document.createElement('span');
+      text.className = 'server-current-route-text';
+      if (route && route !== '—') text.classList.add('has-route');
+      text.textContent = route || '—';
+      text.title = route || '—';
+      row.append(server, text);
       panel.appendChild(row);
     }});
   }}
@@ -5065,7 +5077,7 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
       const route = hintCountryId ? (priorities[`${{hintCountryId}}:${{chip.dataset.serverId}}`] || '—') : '—';
       chip.dataset.currentRoute = route;
       const hint = chip.querySelector('[data-current-route-hint]');
-      if (hint) {{ hint.textContent = `текущий: ${{route}}`; hint.title = hint.textContent; }}
+      if (hint) {{ hint.textContent = route; hint.title = route; }}
     }});
     rebuildAffectedRouteSelect();
     rebuildServerRouteSelect(document.getElementById('server-new-route'), serverCountry && serverCountry.value, serverProvider && serverProvider.value, document.getElementById('server-new-route-empty'), true);
@@ -5348,11 +5360,9 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
       server.textContent = `${{name}} —`;
       const text = document.createElement('span');
       text.className = 'server-current-route-text';
-      text.title = `текущий: ${{route}}`;
-      const label = document.createElement('span');
-      label.className = 'server-current-route-label';
-      label.textContent = 'текущий: ';
-      text.append(label, document.createTextNode(route));
+      if (route && route !== '—') text.classList.add('has-route');
+      text.textContent = route || '—';
+      text.title = route || '—';
       row.append(server, text);
       panel.appendChild(row);
     }});
