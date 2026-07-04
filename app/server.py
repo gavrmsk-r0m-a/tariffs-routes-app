@@ -2347,7 +2347,16 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .span-2 {{ grid-column: span 2; }}
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .wide {{ grid-column: 1 / -1; }}
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid textarea {{ width: 100%; resize: vertical; }}
-    html[data-theme="light-v2"] .provider-change-create-shell .provider-change-placeholder {{ flex: 1 1 auto; min-height: 180px; display: flex; align-items: center; justify-content: center; padding: 18px; border: 1px dashed var(--border-strong); border-radius: var(--radius-card); background: #F8FAFC; color: var(--muted); text-align: center; }}
+    html[data-theme="light-v2"] .provider-change-create-shell .provider-change-server-priority-create {{ flex: 1 1 auto; min-height: 180px; min-width: 0; }}
+    html[data-theme="light-v2"] .provider-change-create-shell .server-priority-create-columns {{ display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 14px; align-items: start; min-width: 0; }}
+    html[data-theme="light-v2"] .provider-change-create-shell .server-priority-create-left {{ display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; min-width: 0; }}
+    html[data-theme="light-v2"] .provider-change-create-shell .server-priority-create-row {{ display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, .85fr) auto; gap: 10px; align-items: end; min-width: 0; }}
+    html[data-theme="light-v2"] .provider-change-create-shell .server-priority-create-left label,
+    html[data-theme="light-v2"] .provider-change-create-shell .server-priority-create-comment {{ min-width: 0; }}
+    html[data-theme="light-v2"] .provider-change-create-shell .server-priority-create-comment {{ display: block; margin-top: 12px; }}
+    html[data-theme="light-v2"] .provider-change-create-shell .server-priority-create-comment textarea {{ width: 100%; min-width: 0; box-sizing: border-box; resize: vertical; }}
+    html[data-theme="light-v2"] .provider-change-create-shell .server-priority-create-right {{ min-width: 0; margin: 0; padding: 10px; align-self: stretch; background: #F8FAFC; border-color: var(--border-strong); }}
+    html[data-theme="light-v2"] .provider-change-create-shell .server-priority-create-right > legend {{ font-weight: 700; }}
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-shell-hint {{ min-height: 24px; margin: 0; color: var(--muted); }}
     html[data-theme="light-v2"] .provider-change-create-shell #routing-event-form .modal-actions {{ margin: 0 -16px; padding: 14px 16px; }}
     html[data-theme="light-v2"] .scope-cards {{ grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); width: 100%; gap: 10px; }}
@@ -4834,7 +4843,27 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
     <label class='span-2'>Причина <span class='required'>*</span><select name='reason' id='routing-reason' required>{routing_reason_options(event['reason'] if event else None, 'none')}</select></label>
     <label class='wide'>Комментарий <span class='required comment-required' hidden>*</span><textarea name='comment' id='routing-comment' rows='3' cols='60'>{esc(event['comment'] if event else '')}</textarea></label>
   </div>
-  <div class='provider-change-placeholder' data-placeholder-content data-scope-content='server_priority' aria-live='polite' hidden>Content placeholder: server priority</div>
+  <div class='provider-change-server-priority-create' data-scope-content='server_priority' data-scopes='server_priority' hidden>
+    <div class='server-priority-create-columns'>
+      <div class='server-priority-create-left'>
+        <div class='server-priority-create-row'>
+          <label>Дата события <span class='required'>*</span><input type='datetime-local' name='event_at' value='{esc(event_at)}' required disabled></label>
+          <label>GEO <span class='required'>*</span><select name='country_id' id='server-event-country' disabled>{active_options(repo, 'countries', selected=event['country_id'] if event else None, empty='—')}</select></label>
+          <label class='spillover-checkbox important-checkbox'><input type='checkbox' name='has_overflow' id='server-has-overflow' value='1' {has_overflow_checked} disabled> <span>Есть перелив</span></label>
+        </div>
+        <label>Провайдер <span class='required'>*</span><select name='provider_id' id='server-event-provider' disabled>{active_options(repo, 'providers', selected=provider_selected, empty='—')}</select></label>
+        <label>Новый маршрут <span class='required'>*</span><select name='new_route_id' id='server-new-route' class='route-select' disabled>{new_route_opts}</select></label>
+        <span class='route-empty-message muted' id='server-new-route-empty' hidden>Нет маршрутов для выбранного провайдера и GEO</span>
+        <label id='server-overflow-route-field'>Маршрут перелива <span class='required'>*</span><select name='overflow_route_id' id='server-overflow-route' disabled>{overflow_opts}</select></label>
+        <label>Причина <span class='required'>*</span><select name='reason' id='server-routing-reason' required disabled>{routing_reason_options(event['reason'] if event else None, 'server_priority')}</select><span class='field-helper' id='server-routing-reason-helper'></span></label>
+      </div>
+      <fieldset class='server-priority-create-right'>
+        <legend>Серверы <span class='required'>*</span></legend>
+        {server_priority_server_boxes}
+      </fieldset>
+    </div>
+    <label class='server-priority-create-comment'>Комментарий <span class='required comment-required' hidden>*</span><textarea name='comment' id='server-routing-comment' rows='3' cols='60' disabled>{esc(event['comment'] if event else '')}</textarea></label>
+  </div>
   <div class='provider-change-campaign-create-grid' data-scope-content='campaign_setting' data-scopes='campaign_setting' hidden>
     <label>Дата события <span class='required'>*</span><input type='datetime-local' name='event_at' value='{esc(event_at)}' required disabled></label>
     <label>Сервер <select name='server_id' id='campaign-server-filter' disabled>{options(repo, 'servers', selected=event['server_id'] if event else None, empty='—')}</select></label>
@@ -4860,6 +4889,7 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
     <label class='wide'>Комментарий <textarea name='comment' id='campaign-routing-comment' rows='3' cols='60' disabled>{esc(event['comment'] if event else '')}</textarea></label>
   </div>
   <p class='provider-change-shell-hint' data-scope-hint='none'>Событие без изменения настроек фиксирует внешний или ручной контекст без применения изменений в системе.</p>
+  <p class='provider-change-shell-hint' data-scope-hint='server_priority' hidden>Старый маршрут подтягивается автоматически из текущего server_route_priorities при создании.</p>
   <p class='provider-change-shell-hint' data-scope-hint='campaign_setting' hidden>Событие будет сохранено в журнале и применено к Схеме маршрутизации кампаний.</p>
   <button type='submit'>{submit}</button>
 </form>
@@ -4868,6 +4898,7 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
   const form = document.getElementById('routing-event-form');
   if (!form || !form.closest('.provider-change-create-shell')) return;
   const routes = {route_metadata_json(repo)};
+  const priorities = {current_priorities_json(repo)};
   const campaigns = {campaign_metadata_json(repo)};
   function selectedScope() {{ return (form.querySelector('input[name="apply_scope"]:checked') || {{value: 'none'}}).value; }}
   function updateSelectTitle(select) {{
@@ -4898,6 +4929,51 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
     }}
     updateSelectTitle(select);
   }}
+
+  function rebuildServerRouteSelect(select, countryId, providerId, emptyEl, requireProvider) {{
+    if (!select) return;
+    const current = select.value;
+    select.innerHTML = '<option value="">—</option>';
+    let count = 0;
+    if (!requireProvider || providerId) {{
+      routes.forEach((route) => {{
+        if ((!countryId || String(route.country_id) === String(countryId)) && (!providerId || String(route.provider_id) === String(providerId))) {{
+          const opt = document.createElement('option');
+          opt.value = route.id;
+          opt.textContent = route.label;
+          opt.title = route.label;
+          if (String(route.id) === String(current)) opt.selected = true;
+          select.appendChild(opt);
+          count += 1;
+        }}
+      }});
+    }}
+    if (emptyEl) emptyEl.hidden = !(countryId && providerId && count === 0);
+    updateSelectTitle(select);
+  }}
+  function renderCurrentRoutes() {{
+    const panel = form.querySelector('[data-server-current-routes]');
+    if (!panel) return;
+    panel.innerHTML = '';
+    const boxes = Array.from(form.querySelectorAll('.provider-change-server-priority-create input[name="server_ids"]'));
+    if (!boxes.length) {{ panel.innerHTML = '<span class="server-current-routes-empty">Нет активных серверов</span>'; return; }}
+    boxes.forEach((box) => {{
+      const chip = box.closest('[data-server-chip]');
+      const name = chip ? chip.dataset.serverName : box.value;
+      const route = (chip && chip.dataset.currentRoute) || (chip && chip.dataset.initialRoute) || '—';
+      const row = document.createElement('div');
+      row.className = 'server-current-route-row';
+      row.textContent = `${{name}} — текущий: ${{route}}`;
+      panel.appendChild(row);
+    }});
+  }}
+  function updateServerSelectionCount() {{
+    const boxes = Array.from(form.querySelectorAll('.provider-change-server-priority-create input[name="server_ids"]'));
+    const counter = form.querySelector('[data-server-selection-count]');
+    if (counter) counter.textContent = `${{boxes.filter((box) => box.checked).length}} из ${{boxes.length}} выбрано`;
+    renderCurrentRoutes();
+  }}
+
   function syncCommentRequirement() {{
     const reason = document.getElementById('routing-reason');
     const comment = document.getElementById('routing-comment');
@@ -4971,11 +5047,34 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
       content.querySelectorAll('input, select, textarea').forEach((field) => {{ field.disabled = !show; }});
     }});
     form.querySelectorAll('[data-scope-hint]').forEach((hint) => {{ hint.hidden = hint.dataset.scopeHint !== scope; }});
+    const serverCountry = document.getElementById('server-event-country');
+    const serverProvider = document.getElementById('server-event-provider');
+    const hintCountryId = (serverCountry && serverCountry.value) || '';
+    form.querySelectorAll('[data-server-chip]').forEach((chip) => {{
+      const route = hintCountryId ? (priorities[`${{hintCountryId}}:${{chip.dataset.serverId}}`] || '—') : '—';
+      chip.dataset.currentRoute = route;
+      const hint = chip.querySelector('[data-current-route-hint]');
+      if (hint) {{ hint.textContent = `текущий: ${{route}}`; hint.title = hint.textContent; }}
+    }});
     rebuildAffectedRouteSelect();
+    rebuildServerRouteSelect(document.getElementById('server-new-route'), serverCountry && serverCountry.value, serverProvider && serverProvider.value, document.getElementById('server-new-route-empty'), true);
+    rebuildServerRouteSelect(document.getElementById('server-overflow-route'), serverCountry && serverCountry.value, null, null, false);
+    const overflowEnabled = scope === 'server_priority' && document.getElementById('server-has-overflow') && document.getElementById('server-has-overflow').checked;
+    const overflowField = document.getElementById('server-overflow-route-field');
+    const overflowRoute = document.getElementById('server-overflow-route');
+    if (overflowField) overflowField.hidden = !overflowEnabled;
+    if (overflowRoute) {{ overflowRoute.disabled = !overflowEnabled; overflowRoute.required = !!overflowEnabled; if (!overflowEnabled) overflowRoute.value = ''; }}
+    updateServerSelectionCount();
     filterCompanyOptions(false);
     syncCommentRequirement();
   }}
-  form.querySelectorAll('input[name="apply_scope"], #event-country, #event-provider').forEach((el) => el.addEventListener('change', sync));
+  form.querySelectorAll('input[name="apply_scope"], #event-country, #event-provider, #server-event-country, #server-event-provider, #server-has-overflow').forEach((el) => el.addEventListener('change', sync));
+  form.querySelectorAll('.provider-change-server-priority-create [data-server-select]').forEach((button) => button.addEventListener('click', () => {{
+    const checked = button.dataset.serverSelect === 'all';
+    form.querySelectorAll('.provider-change-server-priority-create input[name="server_ids"]').forEach((box) => {{ box.checked = checked; }});
+    updateServerSelectionCount();
+  }}));
+  form.querySelectorAll('.provider-change-server-priority-create input[name="server_ids"]').forEach((box) => box.addEventListener('change', updateServerSelectionCount));
   const affectedRoute = document.getElementById('affected-route');
   if (affectedRoute) affectedRoute.addEventListener('change', () => updateSelectTitle(affectedRoute));
   const reason = document.getElementById('routing-reason');
