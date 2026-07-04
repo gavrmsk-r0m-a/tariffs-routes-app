@@ -1062,6 +1062,20 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .hlr-raw-chip {{ min-height: 0; max-width: 190px; padding: 4px 7px; border-color: var(--border); background: var(--surface-muted); color: var(--text); font-size: 12px; line-height: 1.2; box-shadow: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
     .hlr-raw-chip:hover {{ transform: none; border-color: var(--accent); }}
     .hlr-raw-chip.active {{ border-color: var(--accent); background: var(--accent-soft); color: var(--text-strong); }}
+    .hlr-severity-good {{ border-color: color-mix(in srgb, var(--success) 60%, var(--border)); background: color-mix(in srgb, var(--success) 12%, var(--surface)); color: var(--text-strong); }}
+    .hlr-severity-bad {{ border-color: color-mix(in srgb, var(--danger) 65%, var(--border)); background: color-mix(in srgb, var(--danger) 12%, var(--surface)); color: var(--text-strong); }}
+    .hlr-severity-warning, .hlr-severity-unknown {{ border-color: color-mix(in srgb, var(--warning) 70%, var(--border)); background: color-mix(in srgb, var(--warning) 16%, var(--surface)); color: var(--text-strong); }}
+    .hlr-severity-api_error {{ border-color: color-mix(in srgb, var(--danger) 35%, var(--border)); background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--danger) 9%, var(--surface)), color-mix(in srgb, var(--danger) 9%, var(--surface)) 6px, var(--surface-muted) 6px, var(--surface-muted) 12px); color: var(--text-strong); }}
+    #hlr-table tbody tr.hlr-row-severity-bad td {{ background: color-mix(in srgb, var(--danger) 5%, var(--surface)); }}
+    #hlr-table tbody tr.hlr-row-severity-warning td, #hlr-table tbody tr.hlr-row-severity-unknown td {{ background: color-mix(in srgb, var(--warning) 5%, var(--surface)); }}
+    #hlr-table tbody tr.hlr-row-severity-api_error td {{ background: color-mix(in srgb, var(--danger) 4%, var(--surface-muted)); }}
+    .hlr-status-badge {{ display: inline-block; max-width: 100%; padding: 2px 7px; border: 1px solid var(--border); border-radius: 999px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
+    .hlr-status-legend {{ margin-top: 8px; padding-top: 6px; border-top: 1px solid var(--border); }}
+    .hlr-status-legend summary {{ cursor: pointer; font-weight: 760; font-size: 12px; }}
+    .hlr-status-legend ul {{ margin: 6px 0 0; padding-left: 18px; color: var(--muted); font-size: 12px; }}
+    .hlr-copy-column-tools {{ display: grid; gap: 6px; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); }}
+    .hlr-copy-column-tools select {{ width: 100%; }}
+    .hlr-copy-feedback {{ min-height: 16px; font-size: 12px; }}
     .hlr-demo-note {{ margin-left: 8px; font-size: 12px; font-weight: 500; }}
     .hlr-table-toolbar {{ display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-top: 0; }}
     .hlr-column-settings .column-settings-panel {{ min-width: 360px; }}
@@ -4723,6 +4737,7 @@ def hlr_make_result(original: str, normalized: str, *, format_status: str = "val
         "lead_quality_signal": lead_quality_signal,
         "lead_quality_label": hlr_lead_quality_label(lead_quality_signal),
         "lead_quality_reason": str(extra.pop("lead_quality_reason", "") or hlr_lead_quality_reason(live_status_raw or hlr_status_raw, number_type, final_category, final_result)),
+        "status_severity": str(extra.pop("status_severity", "") or hlr_status_severity({"final_category": final_category, "final_result": final_result, "live_status_raw": live_status_raw, "hlr_status_raw": hlr_status_raw, "number_type": number_type})),
         "comment": comment,
         "is_demo_result": is_demo_result,
     }
@@ -5122,6 +5137,45 @@ def hlr_display_value(value: object) -> str:
     return str(value)
 
 
+def hlr_status_severity(row: dict[str, object]) -> str:
+    category = str(row.get("final_category") or "").lower()
+    result = str(row.get("final_result") or "").upper()
+    live = str(row.get("live_status_raw") or row.get("hlr_status_raw") or "").upper()
+    number_type = str(row.get("number_type") or "").lower()
+    if category == "error" or result == "ERROR":
+        return "api_error"
+    if result in {"DEAD", "BAD_FORMAT", "INVALID_FORMAT"} or live in {"DEAD", "BAD_FORMAT", "INVALID_FORMAT"}:
+        return "bad"
+    if number_type in {"bad_format", "landline", "toll_free", "premium", "shared_cost", "stage_and_screen", "pager", "voicemail_only", "machine_to_machine"}:
+        return "bad"
+    if result == "OK" and live == "LIVE":
+        return "good"
+    if live == "LIVE" or category == "ok":
+        return "good"
+    if live in {"ABSENT_SUBSCRIBER", "NO_TELESERVICE_PROVISIONED", "INCONCLUSIVE", "NOT_AVAILABLE_NETWORK_ONLY", "NO_COVERAGE", "NOT_APPLICABLE", "UNKNOWN", "NETWORK_INFO_ONLY"} or number_type in {"mobile_or_landline", "voip", "unknown"}:
+        return "warning" if live != "UNKNOWN" else "unknown"
+    if category == "warning":
+        return "warning"
+    if category == "unknown" or result == "UNKNOWN":
+        return "unknown"
+    return "neutral"
+
+
+def hlr_token_severity(value: object, group: str = "status") -> str:
+    token = str(value or "").strip().upper()
+    if group == "main":
+        return {"OK": "good", "WARNING": "warning", "BAD FORMAT": "bad", "DEAD": "bad", "UNKNOWN": "unknown", "API ERRORS": "api_error"}.get(token, "neutral")
+    if token in {"LIVE", "OK", "MOBILE"}:
+        return "good" if token in {"LIVE", "OK"} else "neutral"
+    if token in {"DEAD", "BAD_FORMAT", "INVALID_FORMAT", "LANDLINE", "FIXED_LINE", "MACHINE_TO_MACHINE", "PAGER", "VOICEMAIL_ONLY", "STAGE_AND_SCREEN", "PREMIUM", "SHARED_COST", "TOLL_FREE"}:
+        return "bad"
+    if token in {"ABSENT_SUBSCRIBER", "NO_TELESERVICE_PROVISIONED", "INCONCLUSIVE", "NOT_AVAILABLE_NETWORK_ONLY", "NO_COVERAGE", "NOT_APPLICABLE", "UNKNOWN", "NETWORK_INFO_ONLY", "MOBILE_OR_LANDLINE", "VOIP", "WARNING"}:
+        return "warning" if token != "UNKNOWN" else "unknown"
+    if token in {"ERROR", "INSUFFICIENT_CREDIT", "INTERNAL_ERROR", "TIMEOUT", "HTTP_ERROR", "CONNECTION_ERROR", "PARSER_ERROR"}:
+        return "api_error"
+    return "neutral"
+
+
 def hlr_display_row(row: dict[str, object]) -> dict[str, str]:
     current_operator = row.get("current_operator")
     original_operator = row.get("original_operator")
@@ -5266,7 +5320,8 @@ def hlr_column_settings_markup() -> str:
             f"<label><input type='checkbox' data-hlr-column-toggle='{esc(key)}' {'checked' if visible else ''} {'disabled' if locked else ''}> {esc(label)}</label>"
             f"<span class='column-order-controls'><button type='button' class='column-order-button' data-hlr-column-move='up' title='Выше' aria-label='Переместить выше'>↑</button><button type='button' class='column-order-button' data-hlr-column-move='down' title='Ниже' aria-label='Переместить ниже'>↓</button><input type='number' min='70' max='520' step='10' value='{width}' data-hlr-column-width='{esc(key)}' aria-label='Ширина {esc(label)}'></span></div>"
         )
-    return f"<details class='column-settings hlr-column-settings'><summary>Колонки</summary><div class='column-settings-panel'><div class='column-settings-list' data-hlr-column-settings-list>{''.join(settings_rows)}</div><button type='button' class='column-reset' data-hlr-column-reset title='Сбросить колонки'>Сбросить вид таблицы</button></div></details>"
+    copy_options = "".join(f"<option value='{esc(key)}'>{esc(label)}</option>" for key, label, _width, _visible in HLR_TABLE_COLUMNS if key != "details")
+    return f"<details class='column-settings hlr-column-settings'><summary>Колонки</summary><div class='column-settings-panel'><div class='column-settings-list' data-hlr-column-settings-list>{''.join(settings_rows)}</div><button type='button' class='column-reset' data-hlr-column-reset title='Сбросить колонки'>Сбросить вид таблицы</button><div class='hlr-copy-column-tools'><strong>Копировать колонку</strong><select data-hlr-copy-column-select>{copy_options}</select><button type='button' data-hlr-copy-column>Копировать текущую выборку</button><span class='muted hlr-copy-feedback' data-hlr-copy-feedback></span></div></div></details>"
 
 
 def hlr_table(results: list[dict[str, object]]) -> str:
@@ -5287,8 +5342,15 @@ def hlr_table(results: list[dict[str, object]]) -> str:
                 title = display.get("lead_quality_reason", value)
             copy = hlr_copy_button(value) if key in copyable else ""
             long_class = " hlr-long-text" if key in {"comment", "raw_error", "raw_message", "request_shape_sanitized"} else ""
-            cells.append(f"<td data-col='{esc(key)}' title='{esc(title)}'{hidden_attr}><span class='hlr-cell-content'><span class='hlr-cell-text{long_class}'>{esc(value)}</span>{copy}</span></td>")
-        attrs = " data-hlr-status='" + esc(str(row.get("hlr_status_raw", "")).upper()) + "' data-live-status='" + esc(str(row.get("live_status_raw", "")).upper()) + "' data-final-result='" + esc(str(row.get("final_result", "")).upper()) + "' data-final-category='" + esc(str(row.get("final_category", "")).lower()) + "' data-hlr-type='" + esc(str(row.get("number_type", "")).lower()) + "' data-hlr-type-raw='" + esc(str(row.get("number_type_raw", "")).upper()) + "'"
+            status_keys = {"hlr_status_raw", "live_status_raw", "final_result", "lead_quality_signal", "format_status", "number_type"}
+            if key in status_keys:
+                severity = hlr_status_severity(row) if key in {"hlr_status_raw", "live_status_raw", "final_result", "lead_quality_signal", "format_status"} else hlr_token_severity(row.get("number_type_raw") or row.get("number_type"), "type")
+                inner = f"<span class='hlr-status-badge hlr-severity-{esc(severity)}'>{esc(value)}</span>"
+            else:
+                inner = esc(value)
+            cells.append(f"<td data-col='{esc(key)}' title='{esc(title)}'{hidden_attr}><span class='hlr-cell-content'><span class='hlr-cell-text{long_class}'>{inner}</span>{copy}</span></td>")
+        severity = hlr_status_severity(row)
+        attrs = " class='hlr-row-severity-" + esc(severity) + "' data-status-severity='" + esc(severity) + "' data-hlr-status='" + esc(str(row.get("hlr_status_raw", "")).upper()) + "' data-live-status='" + esc(str(row.get("live_status_raw", "")).upper()) + "' data-final-result='" + esc(str(row.get("final_result", "")).upper()) + "' data-final-category='" + esc(str(row.get("final_category", "")).lower()) + "' data-hlr-type='" + esc(str(row.get("number_type", "")).lower()) + "' data-hlr-type-raw='" + esc(str(row.get("number_type_raw", "")).upper()) + "'"
         rows.append("<tr" + attrs + ">" + "".join(cells) + "</tr>")
         rows.append(f"<tr class='hlr-details-row' id='hlr-details-{index}' hidden><td colspan='{len(HLR_TABLE_COLUMNS)}'>{hlr_details_html(row)}</td></tr>")
     thead = "<thead><tr>" + "".join(f"<th class='resizable-header' data-col='{esc(key)}'{' hidden' if not visible else ''}>{esc(label)}<span class='column-resize-handle' data-hlr-resize='{esc(key)}' aria-hidden='true'></span></th>" for key, label, _width, visible in HLR_TABLE_COLUMNS) + "</tr></thead>"
@@ -5300,17 +5362,17 @@ def hlr_table(results: list[dict[str, object]]) -> str:
 
 def hlr_summary_html(summary: dict[str, int], raw_counts: dict[str, int], type_counts: dict[str, int]) -> str:
     main = "<section class='hlr-status-panel' aria-label='Фильтры результатов HLR'>" + "".join(
-        f"<button type='button' class='hlr-status-filter' data-hlr-filter='{esc(key)}' title='{esc(help_text)}'><span class='hlr-status-name'>{esc(label)}</span><strong class='hlr-status-count'>{summary.get(key, 0)}</strong><small>{esc(help_text)}</small></button>"
+        f"<button type='button' class='hlr-status-filter hlr-severity-{esc(hlr_token_severity(label, 'main'))}' data-hlr-filter='{esc(key)}' title='{esc(help_text)}'><span class='hlr-status-name'>{esc(label)}</span><strong class='hlr-status-count'>{summary.get(key, 0)}</strong><small>{esc(help_text)}</small></button>"
         for key, label, help_text in HLR_FILTERS
     ) + "</section>"
     blocks = [main]
     def chip_label(value: str) -> str:
         return value if len(value) <= 18 else value[:13] + "..."
     if type_counts:
-        type_chips = "".join(f"<button type='button' class='hlr-raw-chip hlr-type-chip' data-number-type='{esc(status)}' title='{esc(status)}'>{esc(chip_label(status))}: {count}</button>" for status, count in type_counts.items())
+        type_chips = "".join(f"<button type='button' class='hlr-raw-chip hlr-type-chip hlr-severity-{esc(hlr_token_severity(status, 'type'))}' data-number-type='{esc(status)}' title='{esc(status)}'>{esc(chip_label(status))}: {count}</button>" for status, count in type_counts.items())
         blocks.append(f"<div class='hlr-raw-statuses'><h3>Типы номеров</h3><div class='hlr-raw-chip-list'>{type_chips}</div></div>")
     if raw_counts:
-        chips = "".join(f"<button type='button' class='hlr-raw-chip' data-raw-status='{esc(status)}' title='{esc(status)}'>{esc(chip_label(status))}: {count}</button>" for status, count in raw_counts.items())
+        chips = "".join(f"<button type='button' class='hlr-raw-chip hlr-severity-{esc(hlr_token_severity(status))}' data-raw-status='{esc(status)}' title='{esc(status)}'>{esc(chip_label(status))}: {count}</button>" for status, count in raw_counts.items())
         blocks.append(f"<div class='hlr-raw-statuses'><h3>Найденные HLR статусы</h3><div class='hlr-raw-chip-list'>{chips}</div></div>")
     return "".join(blocks)
 
@@ -5386,6 +5448,7 @@ def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = Non
     <section class='card hlr-summary-panel'>
       <h2>Фильтры статусов</h2>
       {hlr_summary_html(summary, hlr_raw_status_counts(results), hlr_number_type_counts(results))}
+      <details class='hlr-status-legend'><summary>Подсказка по статусам</summary><ul><li><strong>Красный:</strong> проблема с номером: DEAD, BAD_FORMAT, некорректный формат, неподходящий тип номера.</li><li><strong>Оранжевый:</strong> нужна проверка/внимание: ABSENT_SUBSCRIBER, NO_COVERAGE, INCONCLUSIVE, UNKNOWN. Это не всегда плохой номер.</li><li><strong>Зелёный:</strong> хороший сигнал: LIVE / OK.</li><li><strong>Серый:</strong> информационные данные: оператор, страна, MNP, MCCMNC, credits.</li><li><strong>API error:</strong> ошибка проверки/API, а не статус номера.</li></ul></details>
     </section>
   </div>
   <p class='muted hlr-input-hint'>HLR показывает сетевой статус на момент проверки и/или состояние, доступное у оператора. UNKNOWN, NO_COVERAGE и NOT_AVAILABLE_NETWORK_ONLY не равны плохому номеру; это ограничения проверки. Для оценки веба смотрите доли статусов по пачке номеров, а не один номер отдельно.</p>
@@ -5413,6 +5476,9 @@ def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = Non
   const columnToggles = Array.from(document.querySelectorAll('[data-hlr-column-toggle]'));
   const columnWidths = Array.from(document.querySelectorAll('[data-hlr-column-width]'));
   const copyButtons = Array.from(document.querySelectorAll('[data-copy]'));
+  const copyColumnButton = document.querySelector('[data-hlr-copy-column]');
+  const copyColumnSelect = document.querySelector('[data-hlr-copy-column-select]');
+  const copyFeedback = document.querySelector('[data-hlr-copy-feedback]');
   const columnStorageKey = 'hlr-table-columns-v1';
   const widthStorageKey = 'hlr-table-widths-v1';
   const orderStorageKey = 'hlr-table-order-v1';
@@ -5495,6 +5561,10 @@ def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = Non
   }}
   function writeJsonStorage(key, value) {{
     try {{ window.localStorage.setItem(key, JSON.stringify(value)); }} catch (_) {{}}
+  }}
+  async function copyText(text) {{
+    try {{ await navigator.clipboard.writeText(text); }}
+    catch (_) {{ const area = document.createElement('textarea'); area.value = text; document.body.appendChild(area); area.select(); document.execCommand('copy'); area.remove(); }}
   }}
   function setColumnVisible(key, visible) {{
     document.querySelectorAll('#hlr-table [data-col="' + CSS.escape(key) + '"], #hlr-table col[data-col="' + CSS.escape(key) + '"]').forEach((item) => {{ item.hidden = !visible; }});
@@ -5582,11 +5652,16 @@ def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = Non
   copyButtons.forEach((button) => button.addEventListener('click', async (event) => {{
     event.preventDefault(); event.stopPropagation();
     const text = button.dataset.copy || '';
-    try {{ await navigator.clipboard.writeText(text); button.textContent = '✓'; setTimeout(() => {{ button.textContent = '⧉'; }}, 900); }}
-    catch (_) {{
-      const area = document.createElement('textarea'); area.value = text; document.body.appendChild(area); area.select(); document.execCommand('copy'); area.remove();
-    }}
+    try {{ await copyText(text); button.textContent = '✓'; setTimeout(() => {{ button.textContent = '⧉'; }}, 900); }}
+    catch (_) {{}}
   }}));
+  copyColumnButton?.addEventListener('click', async () => {{
+    const key = copyColumnSelect?.value || 'normalized_number';
+    const values = [];
+    rows.forEach((row, index) => {{ if (!row.hidden && results[index]) values.push((results[index][key] ?? '').toString()); }});
+    await copyText(values.join('\n'));
+    if (copyFeedback) copyFeedback.textContent = 'Скопировано: ' + values.length + ' значений';
+  }});
   applyColumnSettings();
   if (input) {{ input.addEventListener('input', updateCounter); updateCounter(); }}
   if (clear && input) clear.addEventListener('click', () => {{ input.value = ''; updateCounter(); input.focus(); }});
