@@ -2348,15 +2348,14 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .wide {{ grid-column: 1 / -1; }}
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid textarea {{ width: 100%; resize: vertical; }}
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-server-priority-create {{ flex: 1 1 auto; min-height: 180px; min-width: 0; }}
-    html[data-theme="light-v2"] .provider-change-create-shell .server-priority-create-columns {{ display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 14px; align-items: start; min-width: 0; }}
+    html[data-theme="light-v2"] .provider-change-create-shell .server-priority-create-columns {{ display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: 14px; align-items: start; min-width: 0; }}
     html[data-theme="light-v2"] .provider-change-create-shell .server-priority-create-left {{ display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; min-width: 0; }}
-    html[data-theme="light-v2"] .provider-change-create-shell .server-priority-create-row {{ display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, .85fr) auto; gap: 10px; align-items: end; min-width: 0; }}
+    html[data-theme="light-v2"] .provider-change-create-shell .server-priority-create-row {{ display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; align-items: end; min-width: 0; }}
     html[data-theme="light-v2"] .provider-change-create-shell .server-priority-create-left label,
     html[data-theme="light-v2"] .provider-change-create-shell .server-priority-create-comment {{ min-width: 0; }}
     html[data-theme="light-v2"] .provider-change-create-shell .server-priority-create-comment {{ display: block; margin-top: 12px; }}
     html[data-theme="light-v2"] .provider-change-create-shell .server-priority-create-comment textarea {{ width: 100%; min-width: 0; box-sizing: border-box; resize: vertical; }}
-    html[data-theme="light-v2"] .provider-change-create-shell .server-priority-create-right {{ min-width: 0; margin: 0; padding: 10px; align-self: stretch; background: #F8FAFC; border-color: var(--border-strong); }}
-    html[data-theme="light-v2"] .provider-change-create-shell .server-priority-create-right > legend {{ font-weight: 700; }}
+    html[data-theme="light-v2"] .provider-change-create-shell .server-priority-create-right {{ min-width: 0; align-self: stretch; }}
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-shell-hint {{ min-height: 24px; margin: 0; color: var(--muted); }}
     html[data-theme="light-v2"] .provider-change-create-shell #routing-event-form .modal-actions {{ margin: 0 -16px; padding: 14px 16px; }}
     html[data-theme="light-v2"] .scope-cards {{ grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); width: 100%; gap: 10px; }}
@@ -4849,18 +4848,14 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
         <div class='server-priority-create-row'>
           <label>Дата события <span class='required'>*</span><input type='datetime-local' name='event_at' value='{esc(event_at)}' required disabled></label>
           <label>GEO <span class='required'>*</span><select name='country_id' id='server-event-country' disabled>{active_options(repo, 'countries', selected=event['country_id'] if event else None, empty='—')}</select></label>
-          <label class='spillover-checkbox important-checkbox'><input type='checkbox' name='has_overflow' id='server-has-overflow' value='1' {has_overflow_checked} disabled> <span>Есть перелив</span></label>
         </div>
+        <label class='spillover-checkbox important-checkbox'><input type='checkbox' name='has_overflow' id='server-has-overflow' value='1' {has_overflow_checked} disabled> <span>Есть перелив</span></label>
         <label>Провайдер <span class='required'>*</span><select name='provider_id' id='server-event-provider' disabled>{active_options(repo, 'providers', selected=provider_selected, empty='—')}</select></label>
         <label>Новый маршрут <span class='required'>*</span><select name='new_route_id' id='server-new-route' class='route-select' disabled>{new_route_opts}</select></label>
         <span class='route-empty-message muted' id='server-new-route-empty' hidden>Нет маршрутов для выбранного провайдера и GEO</span>
-        <label id='server-overflow-route-field'>Маршрут перелива <span class='required'>*</span><select name='overflow_route_id' id='server-overflow-route' disabled>{overflow_opts}</select></label>
         <label>Причина <span class='required'>*</span><select name='reason' id='server-routing-reason' required disabled>{routing_reason_options(event['reason'] if event else None, 'server_priority')}</select><span class='field-helper' id='server-routing-reason-helper'></span></label>
       </div>
-      <fieldset class='server-priority-create-right'>
-        <legend>Серверы <span class='required'>*</span></legend>
-        {server_priority_server_boxes}
-      </fieldset>
+      <div class='server-priority-create-right' aria-hidden='true'></div>
     </div>
     <label class='server-priority-create-comment'>Комментарий <span class='required comment-required' hidden>*</span><textarea name='comment' id='server-routing-comment' rows='3' cols='60' disabled>{esc(event['comment'] if event else '')}</textarea></label>
   </div>
@@ -5058,12 +5053,6 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
     }});
     rebuildAffectedRouteSelect();
     rebuildServerRouteSelect(document.getElementById('server-new-route'), serverCountry && serverCountry.value, serverProvider && serverProvider.value, document.getElementById('server-new-route-empty'), true);
-    rebuildServerRouteSelect(document.getElementById('server-overflow-route'), serverCountry && serverCountry.value, null, null, false);
-    const overflowEnabled = scope === 'server_priority' && document.getElementById('server-has-overflow') && document.getElementById('server-has-overflow').checked;
-    const overflowField = document.getElementById('server-overflow-route-field');
-    const overflowRoute = document.getElementById('server-overflow-route');
-    if (overflowField) overflowField.hidden = !overflowEnabled;
-    if (overflowRoute) {{ overflowRoute.disabled = !overflowEnabled; overflowRoute.required = !!overflowEnabled; if (!overflowEnabled) overflowRoute.value = ''; }}
     updateServerSelectionCount();
     filterCompanyOptions(false);
     syncCommentRequirement();
