@@ -1359,37 +1359,25 @@ class ServerSmokeTest(unittest.TestCase):
         captured, _content = self.request("/provider-changes/create", method="POST", body=changed)
         self.assertEqual(captured["status"], "303 See Other")
 
-    def test_provider_change_server_priority_uses_active_server_checkboxes(self):
+    def test_provider_change_server_priority_create_hides_server_block_temporarily(self):
         self.request("/routes")
         captured, content = self.request("/provider-changes")
         self.assertEqual(captured["status"], "200 OK")
         create_form = content.split("<form method='post' action='/provider-changes/create'", 1)[1].split("</form>", 1)[0]
-        self.assertIn("<legend>Серверы <span class='required'>*</span></legend>", create_form)
-        self.assertIn("name='server_ids' value='1'", create_form)
-        self.assertIn("name='server_ids' value='2'", create_form)
-        self.assertIn("EU1", create_form)
-        self.assertIn("EU2", create_form)
-        self.assertNotIn("<select name='server_id' id='event-server'", create_form)
-
-    def test_provider_change_server_priority_checkbox_controls_are_non_submit_buttons(self):
-        self.request("/routes")
-        captured, content = self.request("/provider-changes")
-        self.assertEqual(captured["status"], "200 OK")
-        create_form = content.split("<form method='post' action='/provider-changes/create'", 1)[1].split("</form>", 1)[0]
-        self.assertIn("data-server-select='all'>Выбрать все", create_form)
-        self.assertIn("data-server-select='none'>Снять все", create_form)
-        self.assertIn("<button type='button' data-server-select='all'>Выбрать все</button>", create_form)
-        self.assertIn("<button type='button' data-server-select='none'>Снять все</button>", create_form)
-
-    def test_provider_change_server_priority_shows_current_route_hints(self):
-        self.request("/routes")
-        captured, content = self.request("/provider-changes")
-        self.assertEqual(captured["status"], "200 OK")
-        create_form = content.split("<form method='post' action='/provider-changes/create'", 1)[1].split("</form>", 1)[0]
-        eu1_item = create_form.split("<span class='server-checkbox-main'>EU1</span>", 1)[1].split("</label>", 1)[0]
-        eu3_item = create_form.split("<span class='server-checkbox-main'>EU3</span>", 1)[1].split("</label>", 1)[0]
-        self.assertIn("текущий: Мексика / Miatel / Мексика/Miatel/Demo_A@", eu1_item)
-        self.assertIn("текущий: —", eu3_item)
+        server_priority_content = create_form.split("data-scope-content='server_priority'", 1)[1].split("data-scope-content='campaign_setting'", 1)[0]
+        self.assertNotIn("<legend>Серверы", server_priority_content)
+        self.assertNotIn("name='server_ids'", server_priority_content)
+        self.assertNotIn("data-server-select='all'", server_priority_content)
+        self.assertNotIn("data-server-select='none'", server_priority_content)
+        self.assertNotIn("server-current-routes", server_priority_content)
+        self.assertIn("Дата события", server_priority_content)
+        self.assertIn("GEO", server_priority_content)
+        self.assertIn("Есть перелив", server_priority_content)
+        self.assertIn("Провайдер", server_priority_content)
+        self.assertIn("Новый маршрут", server_priority_content)
+        self.assertIn("Причина", server_priority_content)
+        self.assertIn("Комментарий", server_priority_content)
+        self.assertIn("server-priority-create-right", server_priority_content)
 
     def test_provider_changes_navigation_is_top_level_only(self):
         captured, content = self.request("/provider-changes")
