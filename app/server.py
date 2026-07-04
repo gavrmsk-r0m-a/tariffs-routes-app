@@ -2355,7 +2355,14 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     html[data-theme="light-v2"] .provider-change-create-shell .server-priority-create-comment {{ min-width: 0; }}
     html[data-theme="light-v2"] .provider-change-create-shell .server-priority-create-comment {{ display: block; margin-top: 12px; }}
     html[data-theme="light-v2"] .provider-change-create-shell .server-priority-create-comment textarea {{ width: 100%; min-width: 0; box-sizing: border-box; resize: vertical; }}
-    html[data-theme="light-v2"] .provider-change-create-shell .server-priority-create-right {{ min-width: 0; align-self: stretch; }}
+    html[data-theme="light-v2"] .provider-change-create-shell .server-priority-create-right {{ min-width: 0; align-self: start; }}
+    html[data-theme="light-v2"] .provider-change-create-shell .server-priority-create-title {{ display: block; margin: 0 0 6px; text-align: center; color: #26323A; font-size: 12px; font-weight: 760; line-height: 1.25; }}
+    html[data-theme="light-v2"] .provider-change-create-shell .server-priority-create-right .server-checkbox-toolbar {{ display: none; }}
+    html[data-theme="light-v2"] .provider-change-create-shell .server-priority-create-right .server-checkbox-grid {{ display: flex; flex-wrap: wrap; gap: 5px 6px; align-items: center; justify-content: center; margin: 0; }}
+    html[data-theme="light-v2"] .provider-change-create-shell .server-priority-create-right .server-checkbox-item {{ min-height: 24px; padding: 3px 7px; gap: 4px; border-radius: var(--radius-control); background: #fff; font-size: 12px; line-height: 1; }}
+    html[data-theme="light-v2"] .provider-change-create-shell .server-priority-create-right .server-checkbox-item input[type="checkbox"] {{ flex: 0 0 13px; width: 13px; height: 13px; min-height: 13px; }}
+    html[data-theme="light-v2"] .provider-change-create-shell .server-priority-create-right .server-current-routes {{ max-height: 170px; overflow-y: auto; overflow-x: hidden; margin-top: 10px; padding: 8px; }}
+    html[data-theme="light-v2"] .provider-change-create-shell .server-priority-create-right .server-current-route-row {{ grid-template-columns: 40px minmax(0, 1fr); }}
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-shell-hint {{ min-height: 24px; margin: 0; color: var(--muted); }}
     html[data-theme="light-v2"] .provider-change-create-shell #routing-event-form .modal-actions {{ margin: 0 -16px; padding: 14px 16px; }}
     html[data-theme="light-v2"] .scope-cards {{ grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); width: 100%; gap: 10px; }}
@@ -4855,7 +4862,10 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
         <span class='route-empty-message muted' id='server-new-route-empty' hidden>Нет маршрутов для выбранного провайдера и GEO</span>
         <label>Причина <span class='required'>*</span><select name='reason' id='server-routing-reason' required disabled>{routing_reason_options(event['reason'] if event else None, 'server_priority')}</select><span class='field-helper' id='server-routing-reason-helper'></span></label>
       </div>
-      <div class='server-priority-create-right' aria-hidden='true'></div>
+      <div class='server-priority-create-right'>
+        <span class='server-priority-create-title'>Серверы</span>
+        {server_priority_server_boxes}
+      </div>
     </div>
     <label class='server-priority-create-comment'>Комментарий <span class='required comment-required' hidden>*</span><textarea name='comment' id='server-routing-comment' rows='3' cols='60' disabled>{esc(event['comment'] if event else '')}</textarea></label>
   </div>
