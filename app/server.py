@@ -4824,7 +4824,36 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
 (function() {{
   const form = document.getElementById('routing-event-form');
   if (!form || !form.closest('.provider-change-create-shell')) return;
+  const routes = {route_metadata_json(repo)};
   function selectedScope() {{ return (form.querySelector('input[name="apply_scope"]:checked') || {{value: 'none'}}).value; }}
+  function updateSelectTitle(select) {{
+    if (!select) return;
+    const selected = select.options[select.selectedIndex];
+    select.title = selected ? selected.textContent : '';
+  }}
+  function rebuildAffectedRouteSelect() {{
+    const select = document.getElementById('affected-route');
+    const country = document.getElementById('event-country');
+    const provider = document.getElementById('event-provider');
+    if (!select) return;
+    const current = select.value;
+    const countryId = country ? country.value : '';
+    const providerId = provider ? provider.value : '';
+    select.innerHTML = '<option value="">—</option>';
+    if (providerId) {{
+      routes.forEach((route) => {{
+        if ((!countryId || String(route.country_id) === String(countryId)) && String(route.provider_id) === String(providerId)) {{
+          const opt = document.createElement('option');
+          opt.value = route.id;
+          opt.textContent = route.label;
+          opt.title = route.label;
+          if (String(route.id) === String(current)) opt.selected = true;
+          select.appendChild(opt);
+        }}
+      }});
+    }}
+    updateSelectTitle(select);
+  }}
   function syncCommentRequirement() {{
     const reason = document.getElementById('routing-reason');
     const comment = document.getElementById('routing-comment');
@@ -4842,9 +4871,12 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
       content.hidden = !show;
       content.querySelectorAll('input, select, textarea').forEach((field) => {{ field.disabled = !show; }});
     }});
+    rebuildAffectedRouteSelect();
     syncCommentRequirement();
   }}
-  form.querySelectorAll('input[name="apply_scope"]').forEach((el) => el.addEventListener('change', sync));
+  form.querySelectorAll('input[name="apply_scope"], #event-country, #event-provider').forEach((el) => el.addEventListener('change', sync));
+  const affectedRoute = document.getElementById('affected-route');
+  if (affectedRoute) affectedRoute.addEventListener('change', () => updateSelectTitle(affectedRoute));
   const reason = document.getElementById('routing-reason');
   if (reason) reason.addEventListener('change', syncCommentRequirement);
   sync();
@@ -4942,22 +4974,24 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
     if (marker) marker.hidden = !requireComment;
     if (helper) helper.textContent = requireComment ? 'Требуется понятный комментарий' : (scope === 'server_priority' && reason && reason.value === 'Обратная смена провайдера' ? 'например тех. проблемы' : '');
   }}
-  function rebuildRouteSelect(select, countryId, providerId, emptyEl) {{
+  function rebuildRouteSelect(select, countryId, providerId, emptyEl, requireProvider) {{
     if (!select) return;
     const current = select.value;
     select.innerHTML = '<option value="">—</option>';
     let count = 0;
-    routes.forEach((route) => {{
-      if ((!countryId || String(route.country_id) === String(countryId)) && (!providerId || String(route.provider_id) === String(providerId))) {{
-        const opt = document.createElement('option');
-        opt.value = route.id;
-        opt.textContent = route.label;
-        opt.title = route.label;
-        if (String(route.id) === String(current)) opt.selected = true;
-        select.appendChild(opt);
-        count += 1;
-      }}
-    }});
+    if (!requireProvider || providerId) {{
+      routes.forEach((route) => {{
+        if ((!countryId || String(route.country_id) === String(countryId)) && (!providerId || String(route.provider_id) === String(providerId))) {{
+          const opt = document.createElement('option');
+          opt.value = route.id;
+          opt.textContent = route.label;
+          opt.title = route.label;
+          if (String(route.id) === String(current)) opt.selected = true;
+          select.appendChild(opt);
+          count += 1;
+        }}
+      }});
+    }}
     updateSelectTitle(select);
     if (emptyEl) emptyEl.hidden = !(countryId && providerId && count === 0);
   }}
@@ -5049,7 +5083,7 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
       }}
     }});
     renderCurrentRoutes();
-    rebuildRouteSelect(document.getElementById('affected-route'), country && country.value, provider && provider.value, null);
+    rebuildRouteSelect(document.getElementById('affected-route'), country && country.value, provider && provider.value, null, true);
     rebuildRouteSelect(document.getElementById('new-route'), country && country.value, provider && provider.value, document.getElementById('new-route-empty'));
     rebuildRouteSelect(document.getElementById('overflow-route'), country && country.value, null, null);
     filterCompanyOptions(false);

@@ -1141,6 +1141,18 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertIn(".form-grid .route-select-field option { font-size: 13px; }", content)
         self.assertIn("@media (max-width: 720px)", content)
 
+    def test_provider_change_none_scope_route_select_filters_by_geo_and_provider(self):
+        self.request("/routes")
+        captured, content = self.request("/provider-changes")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("const routes = [", content)
+        self.assertIn("function rebuildAffectedRouteSelect()", content)
+        self.assertIn("select.innerHTML = '<option value=\"\">—</option>';", content)
+        self.assertIn("if (providerId)", content)
+        self.assertIn("String(route.provider_id) === String(providerId)", content)
+        self.assertIn("String(route.country_id) === String(countryId)", content)
+        self.assertIn("input[name=\"apply_scope\"], #event-country, #event-provider", content)
+
     def _create_overflow_route(self, name="Резервный ШЛЮЗ GSM", is_actual=1, country_id=1, provider_id=1):
         conn = server.connect(server.DB_PATH)
         try:
