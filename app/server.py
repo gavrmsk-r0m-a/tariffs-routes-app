@@ -4418,6 +4418,7 @@ HLR_STATUS_MAP = {
 HLR_BAD_FORMAT_COMMENT = "Номер не удалось распознать как корректный международный телефонный номер. Часто это ошибка склейки номера источником трафика: код страны, лишний 0, пропущенная цифра, лишние символы или неверная длина."
 HLR_ERROR_COMMENT = "Проверка не выполнена из-за ошибки API, таймаута, недостатка кредитов или ошибки провайдера. Это не статус номера, а статус самой проверки."
 HLR_UNEXPECTED_COMMENT = "Неожиданный формат ответа HLR API."
+HLR_MISSING_LIVE_STATUS_COMMENT = "HLR вернул данные о номере и сети, но не вернул live-status. Номер не подтверждён как LIVE и не подтверждён как DEAD. Формат и сеть определены, но live/dead статус отсутствует. Это не плохой номер, но активность не подтверждена."
 
 
 def hlr_int_env(name: str, default: int) -> int:
@@ -4699,12 +4700,26 @@ def hlr_status_result(live_status: object, hlr_status: object = "") -> tuple[str
         return "bad", "BAD_FORMAT", HLR_BAD_FORMAT_COMMENT, raw
     if raw == "ERROR":
         return "error", "ERROR", HLR_ERROR_COMMENT, raw
-    if not raw:
-        return "unknown", "UNKNOWN", "HLR не вернул понятный live-status.", ""
+    if not raw or raw == "NONE":
+        return "unknown", "UNKNOWN", HLR_MISSING_LIVE_STATUS_COMMENT, raw
     mapped = HLR_STATUS_MAP.get(raw)
     if mapped:
         return mapped[0], mapped[1], mapped[2], raw
     return "unknown", "UNKNOWN", f"HLR вернул неизвестный статус: {raw}.", raw
+
+
+def hlr_api_error_comment(error_value: object) -> str:
+    error = str(error_value or "").strip().upper()
+    if error == "INSUFFICIENT_CREDIT":
+        return "Недостаточно кредитов HLR API."
+    if error == "INTERNAL_ERROR":
+        return "HLR API вернул внутреннюю ошибку."
+    return f"HLR API вернул ошибку: {error}"
+
+
+def hlr_is_api_error(error_value: object) -> bool:
+    error = str(error_value or "").strip().upper()
+    return bool(error and error != "NONE")
 
 
 def hlr_prepare_numbers(input_text: str) -> tuple[list[dict[str, str]], list[dict[str, object]]]:
@@ -4859,10 +4874,12 @@ def hlr_result_from_api_item(item: dict[str, str], raw_result: object) -> dict[s
     country = current_country or original_country or "—"
     operator = current_operator or original_operator or current_network or original_network or "—"
     number_type_raw = raw_result.get("telephone_number_type") or raw_result.get("number_type") or ""
-    if error_value:
-        return hlr_make_result(item["original"], item["normalized"], country=country, number_type_raw=number_type_raw, operator=operator, hlr_status_raw=error_value or status_value or "ERROR", live_status_raw="ERROR", final_category="error", final_result="ERROR", comment=HLR_ERROR_COMMENT, **extras)
+    if hlr_number_type(number_type_raw) == "bad_format":
+        return hlr_make_result(item["original"], item["normalized"], country=country, number_type_raw=number_type_raw, operator=operator, hlr_status_raw="BAD_FORMAT", live_status_raw="BAD_FORMAT", final_category="bad", final_result="BAD_FORMAT", comment=HLR_BAD_FORMAT_COMMENT, **extras)
+    if hlr_is_api_error(error_value):
+        return hlr_make_result(item["original"], item["normalized"], country=country, number_type_raw=number_type_raw, operator=operator, hlr_status_raw=status_value or "ERROR", live_status_raw="ERROR", final_category="error", final_result="ERROR", comment=hlr_api_error_comment(error_value), **extras)
     live_status = raw_result.get("live_status")
-    hlr_status = raw_result.get("hlr_status") or raw_result.get("status") or raw_result.get("message") or live_status
+    hlr_status = raw_result.get("hlr_status") or live_status
     category, final, comment, raw_status = hlr_status_result(live_status, hlr_status)
     return hlr_make_result(item["original"], item["normalized"], country=country, number_type_raw=number_type_raw, operator=operator, hlr_status_raw=hlr_status or raw_status, live_status_raw=live_status or "", final_category=category, final_result=final, comment=comment, **extras)
 

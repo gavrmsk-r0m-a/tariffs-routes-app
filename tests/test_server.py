@@ -10,6 +10,80 @@ from urllib.parse import urlencode
 import app.server as server
 
 
+class HlrApiMappingTest(unittest.TestCase):
+    def _row(self, raw):
+        return server.hlr_result_from_api_item({"original": "48789662838", "normalized": "+48789662838"}, raw)
+
+    def test_error_none_with_network_only_data_is_unknown_not_error(self):
+        row = self._row({
+            "error": "NONE",
+            "uuid": "test",
+            "credits_spent": 0,
+            "detected_telephone_number": "48789662838",
+            "formatted_telephone_number": "48789662838",
+            "live_status": "NONE",
+            "original_network": "AVAILABLE",
+            "original_network_details": {
+                "name": "Orange Polska S.A.",
+                "mccmnc": "26003",
+                "country_name": "Poland",
+                "country_iso3": "POL",
+                "area": "Poland",
+                "country_prefix": "48",
+            },
+            "current_network": "AVAILABLE",
+            "current_network_details": {
+                "name": "Orange Polska S.A.",
+                "mccmnc": "26003",
+                "country_name": "Poland",
+                "country_iso3": "POL",
+                "country_prefix": "48",
+            },
+            "is_ported": "NO",
+            "timestamp": "2026-07-01T15:01:14Z",
+            "telephone_number_type": "MOBILE",
+        })
+        self.assertEqual(row["format_status"], "valid")
+        self.assertEqual(row["number_type"], "mobile")
+        self.assertEqual(row["country"], "Poland")
+        self.assertEqual(row["operator"], "Orange Polska S.A.")
+        self.assertEqual(row["raw_error"], "NONE")
+        self.assertEqual(row["credits_spent"], 0)
+        self.assertEqual(row["hlr_status_raw"], "NONE")
+        self.assertEqual(row["live_status_raw"], "NONE")
+        self.assertEqual(row["final_category"], "unknown")
+        self.assertEqual(row["final_result"], "UNKNOWN")
+        self.assertEqual(row["lead_quality_signal"], "unknown")
+        self.assertIn("не вернул live-status", row["comment"])
+        summary = server.hlr_summary([row])
+        self.assertEqual(summary["errors"], 0)
+        self.assertEqual(summary["unknown"], 1)
+
+    def test_hlr_api_errors_are_mapped_from_non_none_error_values(self):
+        insufficient = self._row({"error": "INSUFFICIENT_CREDIT", "telephone_number_type": "MOBILE"})
+        self.assertEqual(insufficient["final_category"], "error")
+        self.assertEqual(insufficient["final_result"], "ERROR")
+        self.assertEqual(insufficient["comment"], "Недостаточно кредитов HLR API.")
+
+        internal = self._row({"error": "INTERNAL_ERROR", "telephone_number_type": "MOBILE"})
+        self.assertEqual(internal["final_category"], "error")
+        self.assertEqual(internal["final_result"], "ERROR")
+        self.assertEqual(internal["comment"], "HLR API вернул внутреннюю ошибку.")
+
+    def test_live_dead_and_bad_format_mapping_still_work(self):
+        live = self._row({"error": "NONE", "live_status": "LIVE", "telephone_number_type": "MOBILE"})
+        self.assertEqual(live["final_category"], "ok")
+        self.assertEqual(live["final_result"], "OK")
+
+        dead = self._row({"error": "NONE", "live_status": "DEAD", "telephone_number_type": "MOBILE"})
+        self.assertEqual(dead["final_category"], "bad")
+        self.assertEqual(dead["final_result"], "DEAD")
+
+        bad_format = self._row({"error": "NONE", "live_status": "NONE", "telephone_number_type": "BAD_FORMAT"})
+        self.assertEqual(bad_format["final_category"], "bad")
+        self.assertEqual(bad_format["final_result"], "BAD_FORMAT")
+
+
 class ServerSmokeTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.NamedTemporaryFile(delete=False)
