@@ -1064,16 +1064,14 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .hlr-raw-chip.active {{ border-color: var(--accent); background: var(--accent-soft); color: var(--text-strong); }}
     .hlr-demo-note {{ margin-left: 8px; font-size: 12px; font-weight: 500; }}
     .hlr-table-toolbar {{ display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-top: 0; }}
-    .hlr-column-settings {{ padding: 8px 10px; }}
-    .hlr-column-settings summary {{ cursor: pointer; font-weight: 760; }}
-    .hlr-column-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 6px 12px; margin-top: 8px; font-size: 12px; }}
-    .hlr-column-grid label {{ display: flex; justify-content: space-between; align-items: center; gap: 8px; min-width: 0; }}
-    .hlr-column-grid input[type='number'] {{ width: 76px; padding: 3px 5px; }}
+    .hlr-column-settings .column-settings-panel {{ min-width: 360px; }}
+    .hlr-column-settings .column-settings-row label {{ white-space: normal; }}
     .hlr-results-area, .hlr-results-area .table-card {{ min-width: 0; overflow: hidden; }}
     .hlr-results-area .table-card {{ margin-top: 0; min-height: 320px; }}
     .hlr-results-area .table-scroll {{ min-height: 300px; max-height: calc(100vh - 380px); overflow: auto; }}
     #hlr-table {{ table-layout: fixed; width: max-content; min-width: 100%; }}
     #hlr-table th {{ position: sticky; top: 0; z-index: 2; }}
+    #hlr-table th.is-drag-resizing {{ border-right-color: var(--accent); }}
     #hlr-table tbody tr[hidden] {{ display: none !important; }}
     #hlr-table th, #hlr-table td {{ max-width: none; overflow: hidden; }}
     .hlr-cell-content {{ display: flex; align-items: center; gap: 6px; min-width: 0; }}
@@ -5250,15 +5248,29 @@ def hlr_details_html(row: dict[str, object]) -> str:
 
 
 HLR_TABLE_COLUMNS = [
-    ("original_number", "Исходный номер", 130, True), ("normalized_number", "Нормализованный номер", 150, True), ("format_status", "Формат", 110, True), ("country", "Страна", 100, True), ("number_type", "Тип номера", 120, True), ("operator", "Оператор / сеть", 220, True), ("hlr_status_raw", "HLR статус", 110, True), ("live_status_raw", "Live status", 110, True), ("final_result", "Итог", 100, True), ("lead_quality_signal", "Оценка лида", 150, True), ("comment", "Комментарий", 320, True),
+    ("original_number", "Исходный номер", 130, True), ("normalized_number", "Нормализованный номер", 150, True), ("format_status", "Формат", 110, True), ("country", "Страна", 100, True), ("number_type", "Тип номера", 130, True), ("operator", "Оператор / сеть", 220, True), ("hlr_status_raw", "HLR статус", 110, True), ("live_status_raw", "Live status", 110, True), ("final_result", "Итог", 100, True), ("lead_quality_signal", "Оценка лида", 150, True), ("comment", "Комментарий", 340, True),
     ("detected_telephone_number", "Detected number", 150, False), ("formatted_telephone_number", "Formatted number", 170, False), ("number_type_raw", "Raw telephone_number_type", 180, False), ("current_network", "Current network", 220, False), ("current_operator", "Current operator", 220, False), ("current_mccmnc", "Current MCCMNC", 130, False), ("current_country", "Current country", 140, False), ("current_country_iso3", "Current ISO3", 110, False), ("current_country_prefix", "Current country prefix", 160, False), ("original_network", "Original network", 220, False), ("original_operator", "Original operator", 220, False), ("original_mccmnc", "Original MCCMNC", 140, False), ("original_country", "Original country", 140, False), ("original_country_iso3", "Original ISO3", 110, False), ("original_area", "Original area", 150, False), ("original_country_prefix", "Original country prefix", 170, False), ("is_ported", "Is ported", 100, False), ("uuid", "UUID", 280, False), ("timestamp", "Timestamp", 180, False), ("credits_spent", "Credits spent", 120, False), ("raw_error", "Raw error", 220, False), ("raw_message", "Raw message", 260, False), ("request_shape_sanitized", "Request parameters", 300, False), ("details", "Детали", 90, True),
 ]
 
 
+
+
+def hlr_column_settings_markup() -> str:
+    settings_rows = []
+    for key, label, width, visible in HLR_TABLE_COLUMNS:
+        locked = key == "details"
+        locked_class = " is-locked" if locked else ""
+        locked_attr = " data-locked='true'" if locked else ""
+        settings_rows.append(
+            f"<div class='column-settings-row{locked_class}' data-hlr-column-row='{esc(key)}'{locked_attr}>"
+            f"<label><input type='checkbox' data-hlr-column-toggle='{esc(key)}' {'checked' if visible else ''} {'disabled' if locked else ''}> {esc(label)}</label>"
+            f"<span class='column-order-controls'><button type='button' class='column-order-button' data-hlr-column-move='up' title='Выше' aria-label='Переместить выше'>↑</button><button type='button' class='column-order-button' data-hlr-column-move='down' title='Ниже' aria-label='Переместить ниже'>↓</button><input type='number' min='70' max='520' step='10' value='{width}' data-hlr-column-width='{esc(key)}' aria-label='Ширина {esc(label)}'></span></div>"
+        )
+    return f"<details class='column-settings hlr-column-settings'><summary>Колонки</summary><div class='column-settings-panel'><div class='column-settings-list' data-hlr-column-settings-list>{''.join(settings_rows)}</div><button type='button' class='column-reset' data-hlr-column-reset title='Сбросить колонки'>Сбросить вид таблицы</button></div></details>"
+
+
 def hlr_table(results: list[dict[str, object]]) -> str:
-    headers = [(key, label) for key, label, _width, _visible in HLR_TABLE_COLUMNS]
     colgroup = "".join(f"<col data-col='{esc(key)}' style='width:{width}px'{' hidden' if not visible else ''}>" for key, _label, width, visible in HLR_TABLE_COLUMNS)
-    settings = "".join(f"<label><span><input type='checkbox' data-hlr-column-toggle='{esc(key)}' {'checked' if visible else ''} {'disabled' if key == 'details' else ''}> {esc(label)}</span><input type='number' min='70' max='520' step='10' value='{width}' data-hlr-column-width='{esc(key)}' aria-label='Ширина {esc(label)}'></label>" for key, label, width, visible in HLR_TABLE_COLUMNS)
     rows = []
     copyable = {"original_number", "normalized_number", "comment", "uuid", "raw_error", "raw_message"}
     for index, row in enumerate(results):
@@ -5276,16 +5288,15 @@ def hlr_table(results: list[dict[str, object]]) -> str:
             copy = hlr_copy_button(value) if key in copyable else ""
             long_class = " hlr-long-text" if key in {"comment", "raw_error", "raw_message", "request_shape_sanitized"} else ""
             cells.append(f"<td data-col='{esc(key)}' title='{esc(title)}'{hidden_attr}><span class='hlr-cell-content'><span class='hlr-cell-text{long_class}'>{esc(value)}</span>{copy}</span></td>")
-        attrs = " data-hlr-status='" + esc(str(row.get("hlr_status_raw", ""))) + "' data-live-status='" + esc(str(row.get("live_status_raw", ""))) + "' data-final-result='" + esc(str(row.get("final_result", ""))) + "' data-final-category='" + esc(str(row.get("final_category", ""))) + "' data-hlr-type='" + esc(str(row.get("number_type", ""))) + "'"
+        attrs = " data-hlr-status='" + esc(str(row.get("hlr_status_raw", "")).upper()) + "' data-live-status='" + esc(str(row.get("live_status_raw", "")).upper()) + "' data-final-result='" + esc(str(row.get("final_result", "")).upper()) + "' data-final-category='" + esc(str(row.get("final_category", "")).lower()) + "' data-hlr-type='" + esc(str(row.get("number_type", "")).lower()) + "' data-hlr-type-raw='" + esc(str(row.get("number_type_raw", "")).upper()) + "'"
         rows.append("<tr" + attrs + ">" + "".join(cells) + "</tr>")
         rows.append(f"<tr class='hlr-details-row' id='hlr-details-{index}' hidden><td colspan='{len(HLR_TABLE_COLUMNS)}'>{hlr_details_html(row)}</td></tr>")
-    thead = "<thead><tr>" + "".join(f"<th data-col='{esc(key)}'{' hidden' if not visible else ''}>{esc(label)}</th>" for key, label, _width, visible in HLR_TABLE_COLUMNS) + "</tr></thead>"
+    thead = "<thead><tr>" + "".join(f"<th class='resizable-header' data-col='{esc(key)}'{' hidden' if not visible else ''}>{esc(label)}<span class='column-resize-handle' data-hlr-resize='{esc(key)}' aria-hidden='true'></span></th>" for key, label, _width, visible in HLR_TABLE_COLUMNS) + "</tr></thead>"
     body = "".join(rows)
     table = f"<div class='table-scroll'><table id='hlr-table'><colgroup>{colgroup}</colgroup>{thead}<tbody>{body}</tbody></table></div>"
     empty = "" if results else "<div class='empty-state' id='hlr-empty-all'>Результаты появятся после проверки номеров.</div>"
     filtered_empty = "<div class='empty-state' id='hlr-empty-filter' hidden>По выбранному фильтру результатов нет.</div>"
-    column_settings = f"<details class='card hlr-column-settings'><summary>Колонки таблицы</summary><div class='hlr-column-grid'>{settings}</div></details>"
-    return "<section class='hlr-results-area'>" + column_settings + table_card(table + empty + filtered_empty) + "</section>"
+    return "<section class='hlr-results-area'>" + table_card(table + empty + filtered_empty) + "</section>"
 
 def hlr_summary_html(summary: dict[str, int], raw_counts: dict[str, int], type_counts: dict[str, int]) -> str:
     main = "<section class='hlr-status-panel' aria-label='Фильтры результатов HLR'>" + "".join(
@@ -5293,11 +5304,13 @@ def hlr_summary_html(summary: dict[str, int], raw_counts: dict[str, int], type_c
         for key, label, help_text in HLR_FILTERS
     ) + "</section>"
     blocks = [main]
+    def chip_label(value: str) -> str:
+        return value if len(value) <= 18 else value[:13] + "..."
     if type_counts:
-        type_chips = "".join(f"<button type='button' class='hlr-raw-chip hlr-type-chip' data-number-type='{esc(status)}' title='Показать строки с типом {esc(status)}'>{esc(status)}: {count}</button>" for status, count in type_counts.items())
+        type_chips = "".join(f"<button type='button' class='hlr-raw-chip hlr-type-chip' data-number-type='{esc(status)}' title='{esc(status)}'>{esc(chip_label(status))}: {count}</button>" for status, count in type_counts.items())
         blocks.append(f"<div class='hlr-raw-statuses'><h3>Типы номеров</h3><div class='hlr-raw-chip-list'>{type_chips}</div></div>")
     if raw_counts:
-        chips = "".join(f"<button type='button' class='hlr-raw-chip' data-raw-status='{esc(status)}' title='Показать строки со статусом {esc(status)}'>{esc(status)}: {count}</button>" for status, count in raw_counts.items())
+        chips = "".join(f"<button type='button' class='hlr-raw-chip' data-raw-status='{esc(status)}' title='{esc(status)}'>{esc(chip_label(status))}: {count}</button>" for status, count in raw_counts.items())
         blocks.append(f"<div class='hlr-raw-statuses'><h3>Найденные HLR статусы</h3><div class='hlr-raw-chip-list'>{chips}</div></div>")
     return "".join(blocks)
 
@@ -5376,7 +5389,7 @@ def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = Non
     </section>
   </div>
   <p class='muted hlr-input-hint'>HLR показывает сетевой статус на момент проверки и/или состояние, доступное у оператора. UNKNOWN, NO_COVERAGE и NOT_AVAILABLE_NETWORK_ONLY не равны плохому номеру; это ограничения проверки. Для оценки веба смотрите доли статусов по пачке номеров, а не один номер отдельно.</p>
-  <div class='hlr-table-toolbar'><span class='muted' id='hlr-filter-caption'>Показаны все результаты</span><div class='table-footer-tools'>{export_form}<span class='muted'>Экспортирует текущую выборку.</span></div></div>
+  <div class='hlr-table-toolbar'><span class='muted' id='hlr-filter-caption'>Показаны все результаты</span><div class='table-footer-tools'>{export_form}{hlr_column_settings_markup()}<span class='muted'>Экспортирует текущую выборку.</span></div></div>
   {hlr_config_diagnostics_html()}
   {hlr_api_fields_html(results, is_demo_mode)}
   {hlr_table(results)}
@@ -5402,6 +5415,7 @@ def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = Non
   const copyButtons = Array.from(document.querySelectorAll('[data-copy]'));
   const columnStorageKey = 'hlr-table-columns-v1';
   const widthStorageKey = 'hlr-table-widths-v1';
+  const orderStorageKey = 'hlr-table-order-v1';
   let results = [];
   try {{ results = JSON.parse(document.getElementById('hlr-results-data')?.textContent || '[]'); }} catch (_) {{ results = []; }}
   function normalizeCandidate(value) {{
@@ -5419,35 +5433,62 @@ def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = Non
     counter.textContent = count + ' / 500';
     counter.style.color = count > 500 ? 'var(--danger)' : '';
   }}
+  const activeFilters = {{ main: new Set(), raw: new Set(), type: new Set() }};
   function matchesMain(row, filter) {{
     if (filter === 'all') return true;
     if (filter === 'ok') return row.dataset.finalCategory === 'ok';
     if (filter === 'warning') return row.dataset.finalCategory === 'warning';
     if (filter === 'bad_format') return row.dataset.finalResult === 'BAD_FORMAT';
     if (filter === 'dead') return row.dataset.finalResult === 'DEAD';
-    if (filter === 'mobile') return row.dataset.hlrType === 'mobile';
-    if (filter === 'fixed') return row.dataset.hlrType === 'landline';
-    if (filter === 'unknown') return row.dataset.finalCategory === 'unknown';
-    if (filter === 'errors') return row.dataset.finalCategory === 'error';
+    if (filter === 'mobile') return row.dataset.hlrType === 'mobile' || row.dataset.hlrTypeRaw === 'MOBILE';
+    if (filter === 'fixed') return row.dataset.hlrType === 'landline' || row.dataset.hlrTypeRaw === 'LANDLINE';
+    if (filter === 'unknown') return row.dataset.finalCategory === 'unknown' || row.dataset.finalResult === 'UNKNOWN';
+    if (filter === 'errors') return row.dataset.finalCategory === 'error' || row.dataset.finalResult === 'ERROR';
     return false;
   }}
   function matchesRaw(row, status) {{
     return row.dataset.hlrStatus === status || row.dataset.liveStatus === status || (status === 'BAD_FORMAT' && row.dataset.finalResult === 'BAD_FORMAT') || (status === 'ERROR' && row.dataset.finalCategory === 'error');
   }}
-  function applyFilter(filter, rawStatus, typeStatus) {{
+  function matchesType(row, status) {{
+    return row.dataset.hlrTypeRaw === status || row.dataset.hlrType.toUpperCase() === status;
+  }}
+  function rowMatchesActive(row) {{
+    const mainOk = activeFilters.main.size === 0 || Array.from(activeFilters.main).some((filter) => matchesMain(row, filter));
+    const rawOk = activeFilters.raw.size === 0 || Array.from(activeFilters.raw).some((status) => matchesRaw(row, status));
+    const typeOk = activeFilters.type.size === 0 || Array.from(activeFilters.type).some((status) => matchesType(row, status));
+    return mainOk && rawOk && typeOk;
+  }}
+  function activeCaption(visible) {{
+    const parts = [];
+    if (activeFilters.main.size) parts.push('статус: ' + Array.from(activeFilters.main).join(', '));
+    if (activeFilters.type.size) parts.push('тип: ' + Array.from(activeFilters.type).join(', '));
+    if (activeFilters.raw.size) parts.push('HLR: ' + Array.from(activeFilters.raw).join(', '));
+    return parts.length ? 'Показаны ' + visible + ' результаты; фильтр — ' + parts.join('; ') : 'Показаны все результаты';
+  }}
+  function applyFilters() {{
     let visible = 0;
-    rows.forEach((row) => {{ const show = typeStatus ? ((results[rows.indexOf(row)]?.number_type_raw || '').toUpperCase() === typeStatus || (results[rows.indexOf(row)]?.number_type || '').toUpperCase() === typeStatus) : (rawStatus ? matchesRaw(row, rawStatus) : matchesMain(row, filter || 'all')); row.hidden = !show; const details = row.nextElementSibling; if (details && details.classList.contains('hlr-details-row') && !show) details.hidden = true; if (show) visible += 1; }});
-    filters.forEach((button) => button.classList.toggle('active', !rawStatus && button.dataset.hlrFilter === (filter || 'all')));
-    rawChips.forEach((button) => button.classList.toggle('active', rawStatus && button.dataset.rawStatus === rawStatus));
-    typeChips.forEach((button) => button.classList.toggle('active', typeStatus && button.dataset.numberType === typeStatus));
+    const filtered = [];
+    rows.forEach((row, index) => {{
+      const show = rowMatchesActive(row);
+      row.hidden = !show;
+      const details = row.nextElementSibling;
+      if (details && details.classList.contains('hlr-details-row') && !show) details.hidden = true;
+      if (show) {{ visible += 1; if (results[index]) filtered.push(results[index]); }}
+    }});
+    filters.forEach((button) => {{
+      const key = button.dataset.hlrFilter || 'all';
+      button.classList.toggle('active', key === 'all' ? (activeFilters.main.size === 0 && activeFilters.raw.size === 0 && activeFilters.type.size === 0) : activeFilters.main.has(key));
+    }});
+    rawChips.forEach((button) => button.classList.toggle('active', activeFilters.raw.has(button.dataset.rawStatus || '')));
+    typeChips.forEach((button) => button.classList.toggle('active', activeFilters.type.has(button.dataset.numberType || '')));
     if (allEmpty) allEmpty.hidden = results.length > 0;
     if (filterEmpty) filterEmpty.hidden = results.length === 0 || visible > 0;
-    const button = filters.find((item) => item.dataset.hlrFilter === (filter || 'all'));
-    if (caption) caption.textContent = typeStatus ? 'Фильтр типа номера: ' + typeStatus : (rawStatus ? 'Фильтр HLR статус: ' + rawStatus : ((filter || 'all') === 'all' ? 'Показаны все результаты' : 'Фильтр: ' + (button?.querySelector('.hlr-status-name')?.textContent || filter)));
-    if (exportInput) {{
-      const filtered = (!rawStatus && !typeStatus && (filter || 'all') === 'all') ? results : results.filter((item, index) => typeStatus ? ((item.number_type_raw || '').toUpperCase() === typeStatus || (item.number_type || '').toUpperCase() === typeStatus) : (rawStatus ? matchesRaw(rows[index], rawStatus) : matchesMain(rows[index], filter || 'all')));
-      exportInput.value = JSON.stringify(filtered);
-    }}
+    if (caption) caption.textContent = activeCaption(visible);
+    if (exportInput) exportInput.value = JSON.stringify(filtered);
+  }}
+  function toggleSet(set, value) {{
+    if (!value) return;
+    if (set.has(value)) set.delete(value); else set.add(value);
   }}
   function readJsonStorage(key, fallback) {{
     try {{ return JSON.parse(window.localStorage.getItem(key) || '') || fallback; }} catch (_) {{ return fallback; }}
@@ -5458,7 +5499,21 @@ def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = Non
   function setColumnVisible(key, visible) {{
     document.querySelectorAll('#hlr-table [data-col="' + CSS.escape(key) + '"], #hlr-table col[data-col="' + CSS.escape(key) + '"]').forEach((item) => {{ item.hidden = !visible; }});
   }}
+  function defaultColumnOrder() {{ return Array.from(document.querySelectorAll('#hlr-table thead th[data-col]')).map((cell) => cell.dataset.col || '').filter(Boolean); }}
+  function moveElement(parent, selector, key) {{ const item = parent.querySelector(selector + '[data-col="' + CSS.escape(key) + '"]'); if (item) parent.appendChild(item); }}
+  function applyColumnOrder(order) {{
+    if (!order || !order.length) return;
+    const table = document.getElementById('hlr-table');
+    const colgroup = table?.querySelector('colgroup');
+    const headRow = table?.querySelector('thead tr');
+    if (!table || !colgroup || !headRow) return;
+    order.forEach((key) => {{ moveElement(colgroup, 'col', key); moveElement(headRow, 'th', key); }});
+    Array.from(table.querySelectorAll('tbody tr:not(.hlr-details-row)')).forEach((row) => {{ order.forEach((key) => moveElement(row, 'td', key)); }});
+    const list = document.querySelector('[data-hlr-column-settings-list]');
+    if (list) order.forEach((key) => {{ const item = list.querySelector('[data-hlr-column-row="' + CSS.escape(key) + '"]'); if (item) list.appendChild(item); }});
+  }}
   function applyColumnSettings() {{
+    applyColumnOrder(readJsonStorage(orderStorageKey, []));
     const visible = readJsonStorage(columnStorageKey, {{}});
     columnToggles.forEach((input) => {{
       const key = input.dataset.hlrColumnToggle || '';
@@ -5488,6 +5543,42 @@ def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = Non
     writeJsonStorage(widthStorageKey, state);
     document.querySelectorAll('#hlr-table col[data-col="' + CSS.escape(input.dataset.hlrColumnWidth || '') + '"]').forEach((col) => {{ col.style.width = value + 'px'; }});
   }}));
+  document.querySelectorAll('[data-hlr-column-move]').forEach((button) => button.addEventListener('click', () => {{
+    const row = button.closest('[data-hlr-column-row]');
+    const key = row?.dataset.hlrColumnRow || '';
+    const order = defaultColumnOrder();
+    const index = order.indexOf(key);
+    const delta = button.dataset.hlrColumnMove === 'up' ? -1 : 1;
+    const next = index + delta;
+    if (index < 0 || next < 0 || next >= order.length) return;
+    [order[index], order[next]] = [order[next], order[index]];
+    writeJsonStorage(orderStorageKey, order);
+    applyColumnOrder(order);
+  }}));
+  document.querySelector('[data-hlr-column-reset]')?.addEventListener('click', () => {{ window.localStorage.removeItem(columnStorageKey); window.localStorage.removeItem(widthStorageKey); window.localStorage.removeItem(orderStorageKey); window.location.reload(); }});
+  document.querySelectorAll('[data-hlr-resize]').forEach((handle) => handle.addEventListener('pointerdown', (event) => {{
+    event.preventDefault();
+    const key = handle.dataset.hlrResize || '';
+    const th = handle.closest('th');
+    const col = document.querySelector('#hlr-table col[data-col="' + CSS.escape(key) + '"]');
+    const startX = event.clientX;
+    const startWidth = Number.parseFloat(col?.style.width || '') || th?.offsetWidth || 120;
+    th?.classList.add('is-drag-resizing'); document.body.classList.add('is-resizing-column');
+    const move = (moveEvent) => {{
+      const width = Math.max(70, Math.min(700, Math.round(startWidth + moveEvent.clientX - startX)));
+      if (col) col.style.width = width + 'px';
+      const widthInput = document.querySelector('[data-hlr-column-width="' + CSS.escape(key) + '"]');
+      if (widthInput) widthInput.value = width;
+    }};
+    const up = () => {{
+      document.removeEventListener('pointermove', move); document.removeEventListener('pointerup', up);
+      th?.classList.remove('is-drag-resizing'); document.body.classList.remove('is-resizing-column');
+      const state = readJsonStorage(widthStorageKey, {{}});
+      state[key] = Number.parseFloat(col?.style.width || '') || startWidth;
+      writeJsonStorage(widthStorageKey, state);
+    }};
+    document.addEventListener('pointermove', move); document.addEventListener('pointerup', up);
+  }}));
   copyButtons.forEach((button) => button.addEventListener('click', async (event) => {{
     event.preventDefault(); event.stopPropagation();
     const text = button.dataset.copy || '';
@@ -5499,11 +5590,11 @@ def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = Non
   applyColumnSettings();
   if (input) {{ input.addEventListener('input', updateCounter); updateCounter(); }}
   if (clear && input) clear.addEventListener('click', () => {{ input.value = ''; updateCounter(); input.focus(); }});
-  filters.forEach((button) => button.addEventListener('click', () => applyFilter(button.dataset.hlrFilter || 'all', '', '')));
-  rawChips.forEach((button) => button.addEventListener('click', () => applyFilter('all', button.dataset.rawStatus || '', '')));
-  typeChips.forEach((button) => button.addEventListener('click', () => applyFilter('all', '', button.dataset.numberType || '')));
+  filters.forEach((button) => button.addEventListener('click', () => {{ const value = button.dataset.hlrFilter || 'all'; if (value === 'all') {{ activeFilters.main.clear(); activeFilters.raw.clear(); activeFilters.type.clear(); }} else {{ toggleSet(activeFilters.main, value); }} applyFilters(); }}));
+  rawChips.forEach((button) => button.addEventListener('click', () => {{ toggleSet(activeFilters.raw, button.dataset.rawStatus || ''); applyFilters(); }}));
+  typeChips.forEach((button) => button.addEventListener('click', () => {{ toggleSet(activeFilters.type, button.dataset.numberType || ''); applyFilters(); }}));
   detailButtons.forEach((button) => button.addEventListener('click', () => {{ const target = document.getElementById(button.dataset.detailsTarget || ''); if (!target) return; const open = target.hidden; detailRows.forEach((row) => {{ row.hidden = true; }}); target.hidden = !open; button.textContent = open ? 'Скрыть' : 'Детали'; }}));
-  applyFilter('all', '', '');
+  applyFilters();
 }})();
 </script>
 """
