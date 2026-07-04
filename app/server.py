@@ -2318,10 +2318,8 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     html[data-theme="light-v2"] .modal-cancel:hover,
     html[data-theme="light-v2"] .admin-edit-cancel:hover,
     html[data-theme="light-v2"] .reset-filters:hover {{ background: var(--accent-soft) !important; border-color: var(--accent-border) !important; color: var(--accent-strong) !important; }}
-    html[data-theme="light-v2"] .provider-changes-page .modal-form-card[open] {{ width: min(980px, calc(100vw - 32px)); max-width: 100%; }}
-    html[data-theme="light-v2"] .provider-changes-page .modal-form-card[open] > form {{ box-sizing: border-box; width: 100%; min-height: 560px; padding: 16px; }}
-    html[data-theme="light-v2"] .provider-changes-page .modal-form-card.provider-change-create-shell[open] > form {{ width: min(720px, calc(100vw - 32px)); max-width: 100%; }}
-    html[data-theme="light-v2"] .provider-change-create-shell #routing-event-form {{ display: flex; flex-direction: column; align-items: stretch; gap: 14px; min-height: 480px; padding: 16px 16px 0; }}
+    html[data-theme="light-v2"] .provider-changes-page .modal-form-card[open] > form {{ box-sizing: border-box; width: min(940px, calc(100vw - 32px)); max-width: calc(100vw - 32px); min-height: 560px; padding: 16px; }}
+    html[data-theme="light-v2"] .provider-change-create-shell #routing-event-form {{ display: flex; flex-direction: column; align-items: stretch; gap: 14px; width: min(940px, calc(100vw - 32px)); max-width: calc(100vw - 32px); min-width: 0; min-height: 480px; padding: 16px 16px 0; }}
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-shell-scope {{ margin: 0; padding: 0; border: 0; min-inline-size: 0; }}
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-shell-scope > legend {{ margin: 0 0 10px; padding: 0; font-weight: 700; color: var(--text-strong); }}
     html[data-theme="light-v2"] .provider-change-create-shell .scope-cards {{ display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; width: 100%; }}
@@ -2368,6 +2366,11 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     html[data-theme="light-v2"] #routing-event-form[data-current-scope='campaign_setting'] .provider-change-campaign-grid {{ grid-template-columns: minmax(145px, .85fr) minmax(145px, .85fr) minmax(205px, 1.05fr) minmax(260px, 1.35fr); gap: 12px; align-items: end; }}
     html[data-theme="light-v2"] #routing-event-form[data-current-scope='campaign_setting'] .provider-change-campaign-lower-grid {{ grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 12px; }}
     html[data-theme="light-v2"] #routing-event-form .campaign-id-inline-action {{ grid-template-columns: minmax(0, 1fr) auto; align-items: end; }}
+    html[data-theme="light-v2"] .provider-change-create-shell #routing-event-form,
+    html[data-theme="light-v2"] .provider-change-create-shell #routing-event-form > *,
+    html[data-theme="light-v2"] .provider-change-create-shell .scope-cards,
+    html[data-theme="light-v2"] .provider-change-create-shell .provider-change-placeholder,
+    html[data-theme="light-v2"] .provider-change-create-shell .provider-change-shell-hint {{ box-sizing: border-box; max-width: 100%; min-width: 0; }}
     html[data-theme="light-v2"] .important-checkbox {{ background: #fff !important; border-color: var(--border-strong) !important; }}
     html[data-theme="light-v2"] .important-checkbox:has(input:checked) {{ background: var(--accent-soft) !important; border-color: var(--accent-border) !important; }}
     html[data-theme="light-v2"] .safe-rename-block {{ display: grid; gap: 8px; }}
