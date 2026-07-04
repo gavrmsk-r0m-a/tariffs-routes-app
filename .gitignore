@@ -1,4 +1,11 @@
+# Local secrets / environment
 .env
+.env.*
+!.env.example
+
+# Database
 *.sqlite3
+
+# Python cache
 __pycache__/
 *.pyc
