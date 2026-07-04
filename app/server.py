@@ -1039,35 +1039,49 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .metric-label {{ display: block; min-height: 36px; color: var(--muted); font-size: 12px; font-weight: 760; text-transform: uppercase; letter-spacing: .04em; }}
     .metric-value {{ display: block; margin: 6px 0 3px; color: var(--text-strong); font-size: 30px; line-height: 1; letter-spacing: -0.03em; }}
     .metric-hint {{ color: var(--muted); font-size: 12px; }}
-    .hlr-workspace {{ display: grid; gap: 12px; }}
-    .hlr-top-area {{ display: grid; grid-template-columns: minmax(240px, 3fr) minmax(0, 7fr); gap: 12px; align-items: stretch; }}
-    .hlr-input-panel, .hlr-summary-panel {{ margin: 0; }}
-    .hlr-input-form {{ display: grid; gap: 8px; align-items: start; padding: 14px; }}
-    .hlr-input-form label {{ display: grid; gap: 6px; min-width: 0; width: 100%; }}
-    .hlr-input-form textarea {{ min-width: 0; width: 100%; min-height: 220px; resize: vertical; box-sizing: border-box; }}
+    .hlr-workspace {{ display: grid; gap: 10px; min-width: 0; overflow-x: clip; }}
+    .hlr-top-area {{ display: grid; grid-template-columns: minmax(220px, 24%) minmax(0, 1fr); gap: 12px; align-items: stretch; position: sticky; top: 0; z-index: 12; background: var(--bg); padding-bottom: 4px; }}
+    .hlr-input-panel, .hlr-summary-panel {{ margin: 0; min-width: 0; }}
+    .hlr-input-form {{ display: grid; gap: 7px; align-items: start; padding: 12px; }}
+    .hlr-input-form label {{ display: grid; gap: 5px; min-width: 0; width: 100%; }}
+    .hlr-input-form textarea {{ min-width: 0; width: 100%; min-height: 150px; max-height: 28vh; resize: vertical; box-sizing: border-box; }}
     .hlr-counter-line, .hlr-input-hint {{ margin: 0; }}
     .hlr-input-actions {{ display: flex; gap: 8px; flex-wrap: wrap; }}
-    .hlr-summary-panel h2 {{ margin: 0 0 10px; font-size: 18px; }}
-    .hlr-status-panel {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }}
-    .hlr-status-filter {{ min-height: 66px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 8px; align-items: start; justify-content: stretch; padding: 8px 10px; text-align: left; border-color: var(--border); background: var(--surface); box-shadow: none; }}
+    .hlr-summary-panel {{ padding: 10px 12px; overflow: hidden; }}
+    .hlr-summary-panel h2 {{ margin: 0 0 8px; font-size: 16px; }}
+    .hlr-status-panel {{ display: flex; flex-wrap: wrap; gap: 6px; align-items: flex-start; min-width: 0; }}
+    .hlr-status-filter {{ min-height: 0; display: inline-flex; align-items: center; gap: 6px; max-width: 175px; padding: 5px 8px; text-align: left; border-color: var(--border); background: var(--surface); box-shadow: none; font-size: 12px; line-height: 1.15; }}
     .hlr-status-filter:hover {{ transform: none; border-color: var(--accent); background: var(--surface-muted); }}
     .hlr-status-filter.active {{ border-color: var(--accent); background: var(--accent-soft); color: var(--text-strong); box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 22%, transparent) inset; }}
-    .hlr-status-name {{ min-width: 0; font-weight: 760; line-height: 1.15; }}
-    .hlr-status-count {{ color: var(--accent-strong); font-size: 19px; line-height: 1; }}
-    .hlr-status-filter small {{ grid-column: 1 / -1; color: var(--muted); font-size: 11px; line-height: 1.2; font-weight: 500; }}
-    .hlr-raw-statuses {{ margin-top: 12px; display: grid; gap: 8px; }}
-    .hlr-raw-statuses h3 {{ margin: 0; font-size: 14px; }}
-    .hlr-raw-chip-list {{ display: flex; flex-wrap: wrap; gap: 6px; }}
-    .hlr-raw-chip {{ min-height: 0; padding: 4px 8px; border-color: var(--border); background: var(--surface-muted); color: var(--text); font-size: 12px; line-height: 1.2; box-shadow: none; }}
+    .hlr-status-name {{ min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 760; }}
+    .hlr-status-count {{ color: var(--accent-strong); font-size: 13px; line-height: 1; }}
+    .hlr-status-filter small {{ display: none; }}
+    .hlr-raw-statuses {{ margin-top: 8px; display: grid; gap: 5px; min-width: 0; }}
+    .hlr-raw-statuses h3 {{ margin: 0; font-size: 12px; color: var(--muted); }}
+    .hlr-raw-chip-list {{ display: flex; flex-wrap: wrap; gap: 5px; min-width: 0; }}
+    .hlr-raw-chip {{ min-height: 0; max-width: 190px; padding: 4px 7px; border-color: var(--border); background: var(--surface-muted); color: var(--text); font-size: 12px; line-height: 1.2; box-shadow: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
     .hlr-raw-chip:hover {{ transform: none; border-color: var(--accent); }}
     .hlr-raw-chip.active {{ border-color: var(--accent); background: var(--accent-soft); color: var(--text-strong); }}
     .hlr-demo-note {{ margin-left: 8px; font-size: 12px; font-weight: 500; }}
-    .hlr-table-toolbar {{ display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-top: 2px; }}
-    .hlr-results-area .table-card {{ margin-top: 0; min-height: 360px; }}
-    .hlr-results-area .table-scroll {{ min-height: 330px; max-height: calc(100vh - 360px); }}
+    .hlr-table-toolbar {{ display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-top: 0; }}
+    .hlr-column-settings {{ padding: 8px 10px; }}
+    .hlr-column-settings summary {{ cursor: pointer; font-weight: 760; }}
+    .hlr-column-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 6px 12px; margin-top: 8px; font-size: 12px; }}
+    .hlr-column-grid label {{ display: flex; justify-content: space-between; align-items: center; gap: 8px; min-width: 0; }}
+    .hlr-column-grid input[type='number'] {{ width: 76px; padding: 3px 5px; }}
+    .hlr-results-area, .hlr-results-area .table-card {{ min-width: 0; overflow: hidden; }}
+    .hlr-results-area .table-card {{ margin-top: 0; min-height: 320px; }}
+    .hlr-results-area .table-scroll {{ min-height: 300px; max-height: calc(100vh - 380px); overflow: auto; }}
+    #hlr-table {{ table-layout: fixed; width: max-content; min-width: 100%; }}
+    #hlr-table th {{ position: sticky; top: 0; z-index: 2; }}
     #hlr-table tbody tr[hidden] {{ display: none !important; }}
+    #hlr-table th, #hlr-table td {{ max-width: none; overflow: hidden; }}
+    .hlr-cell-content {{ display: flex; align-items: center; gap: 6px; min-width: 0; }}
+    .hlr-cell-text {{ min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
+    .hlr-cell-text.hlr-long-text {{ display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; white-space: normal; }}
+    .hlr-copy-button {{ min-height: 22px; padding: 2px 5px; font-size: 11px; box-shadow: none; flex: 0 0 auto; }}
     .hlr-details-toggle {{ min-height: 28px; padding: 4px 8px; font-size: 12px; box-shadow: none; }}
-    .hlr-details-row td {{ background: var(--surface-muted); }}
+    .hlr-details-row td {{ background: var(--surface-muted); overflow: visible; }}
     .hlr-details-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; align-items: start; }}
     .hlr-details-grid h4 {{ margin: 0 0 6px; }}
     .hlr-detail-list {{ display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 8px; margin: 0; font-size: 12px; }}
@@ -1078,7 +1092,7 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .hlr-api-fields summary {{ cursor: pointer; font-weight: 760; }}
     .hlr-api-field-list {{ display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }}
     .hlr-api-field-list code {{ padding: 2px 6px; border-radius: 999px; background: var(--surface-muted); border: 1px solid var(--border); font-size: 12px; }}
-    @media (max-width: 900px) {{ .hlr-top-area {{ grid-template-columns: 1fr; }} .hlr-input-form textarea {{ min-height: 180px; }} .hlr-results-area .table-scroll {{ max-height: calc(100vh - 300px); }} }}
+    @media (max-width: 900px) {{ .hlr-top-area {{ position: static; grid-template-columns: 1fr; }} .hlr-input-form textarea {{ min-height: 150px; }} .hlr-results-area .table-scroll {{ max-height: calc(100vh - 300px); }} }}
     .dashboard-section {{ margin: 16px 0; }}
     .dashboard-section h2 {{ margin-bottom: 10px; }}
     .quick-links {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px; }}
@@ -4402,7 +4416,7 @@ def dashboard_events(repo: Repository) -> str:
 
 HLR_MAX_NUMBERS = 500
 HLR_BATCH_SIZE = 80
-HLR_RESULT_HEADERS = ["Исходный номер", "Нормализованный номер", "Detected number", "Formatted number", "Формат", "Страна", "Тип номера", "Raw telephone_number_type", "Оператор / сеть", "HLR статус", "Live status", "Итог", "Оценка лида", "Комментарий"]
+HLR_RESULT_HEADERS = ["Исходный номер", "Нормализованный номер", "Detected number", "Formatted number", "Формат", "Страна", "Тип номера", "Raw telephone_number_type", "Оператор / сеть", "HLR статус", "Live status", "Итог", "Оценка лида", "Почему такая оценка", "Комментарий"]
 HLR_EXTRA_CSV_FIELDS = [("current_network", "Current network"), ("current_operator", "Current operator"), ("current_mccmnc", "Current MCCMNC"), ("current_country", "Current country"), ("current_country_iso3", "Current ISO3"), ("current_country_prefix", "Current country prefix"), ("original_network", "Original network"), ("original_operator", "Original operator"), ("original_mccmnc", "Original MCCMNC"), ("original_country", "Original country"), ("original_country_iso3", "Original ISO3"), ("original_area", "Original area"), ("original_country_prefix", "Original country prefix"), ("is_ported", "Is ported"), ("ported_date", "Ported date"), ("uuid", "UUID"), ("timestamp", "Timestamp"), ("credits_spent", "Credits spent"), ("raw_error", "Raw error"), ("raw_message", "Raw message")]
 HLR_SENSITIVE_KEY_PARTS = ("secret", "key", "token", "auth", "authorization", "password", "credential")
 HLR_STATUS_MAP = {
@@ -4605,6 +4619,32 @@ def hlr_lead_quality_label(signal: object) -> str:
     return HLR_LEAD_QUALITY_LABELS.get(str(signal or "unknown"), "Неизвестно")
 
 
+def hlr_lead_quality_reason(live_status: object, number_type: str, final_category: str, final_result: object = "") -> str:
+    live = str(live_status or "").strip().upper()
+    result = str(final_result or "").strip().upper()
+    if final_category == "error" or result == "ERROR":
+        return "Это ошибка проверки/API, а не статус номера."
+    if number_type == "bad_format" or live == "BAD_FORMAT" or result == "BAD_FORMAT":
+        return "Номер не распознан как корректный международный номер."
+    if live == "LIVE":
+        if number_type == "landline":
+            return "HLR подтвердил LIVE, но номер определён как городской/стационарный, а для лидов ожидается мобильный."
+        return "HLR подтвердил, что номер назначен абоненту и live status = LIVE."
+    if live == "DEAD" or result == "DEAD":
+        return "HLR подтвердил, что номер не назначен абоненту / DEAD."
+    if number_type == "landline":
+        return "Номер определён как городской/стационарный, а для лидов ожидается мобильный."
+    if live == "ABSENT_SUBSCRIBER":
+        return "Номер назначен, но абонент сейчас недоступен или не зарегистрирован в сети."
+    if live == "NO_TELESERVICE_PROVISIONED":
+        return "Номер существует, но часть сервисов недоступна. Для звонков нужно трактовать осторожно."
+    if live in {"NO_COVERAGE", "NOT_AVAILABLE_NETWORK_ONLY", "INCONCLUSIVE", "NOT_APPLICABLE"}:
+        return "HLR не смог подтвердить live/dead статус из-за ограничений сети или покрытия проверки."
+    if result == "NETWORK_INFO_ONLY" or final_category == "unknown":
+        return "Получены тип номера и сеть, но live/dead статус не получен."
+    return "Оценка построена по HLR live status, типу номера и итоговой категории проверки."
+
+
 def hlr_format_label(format_status: str) -> str:
     return "Корректный" if format_status == "valid" else "Некорректный"
 
@@ -4683,6 +4723,8 @@ def hlr_make_result(original: str, normalized: str, *, format_status: str = "val
         "final_category": final_category,
         "final_result": final_result,
         "lead_quality_signal": lead_quality_signal,
+        "lead_quality_label": hlr_lead_quality_label(lead_quality_signal),
+        "lead_quality_reason": str(extra.pop("lead_quality_reason", "") or hlr_lead_quality_reason(live_status_raw or hlr_status_raw, number_type, final_category, final_result)),
         "comment": comment,
         "is_demo_result": is_demo_result,
     }
@@ -5101,6 +5143,7 @@ def hlr_display_row(row: dict[str, object]) -> dict[str, str]:
         "live_status_raw": str(row.get("live_status_raw") or row.get("live_status") or "—"),
         "final_result": str(row.get("final_result") or row.get("outcome") or "UNKNOWN"),
         "lead_quality_signal": hlr_lead_quality_label(row.get("lead_quality_signal")),
+        "lead_quality_reason": hlr_display_value(row.get("lead_quality_reason") or hlr_lead_quality_reason(row.get("live_status_raw") or row.get("hlr_status_raw"), str(row.get("number_type") or "unknown"), str(row.get("final_category") or "unknown"), row.get("final_result"))),
         "comment": str(row.get("comment") or ""),
         "current_network": hlr_display_value(row.get("current_network")),
         "original_network": hlr_display_value(row.get("original_network")),
@@ -5142,7 +5185,7 @@ def hlr_has_value(results: list[dict[str, object]], *keys: str) -> bool:
 
 
 def hlr_csv_headers_and_keys(results: list[dict[str, object]]) -> tuple[list[str], list[str]]:
-    keys = ["original_number", "normalized_number", "detected_telephone_number", "formatted_telephone_number", "format_status", "country", "number_type", "number_type_raw", "operator", "hlr_status_raw", "live_status_raw", "final_result", "lead_quality_signal", "comment"]
+    keys = ["original_number", "normalized_number", "detected_telephone_number", "formatted_telephone_number", "format_status", "country", "number_type", "number_type_raw", "operator", "hlr_status_raw", "live_status_raw", "final_result", "lead_quality_signal", "lead_quality_reason", "comment"]
     headers = list(HLR_RESULT_HEADERS)
     for key, label in HLR_EXTRA_CSV_FIELDS:
         aliases = (key,)
@@ -5170,64 +5213,79 @@ HLR_FILTERS = [
 ]
 
 
+def hlr_copy_button(value: object, label: str = "Копировать") -> str:
+    text = str(value or "")
+    if not text or text == "—":
+        return ""
+    return f"<button type='button' class='hlr-copy-button' data-copy='{esc(text)}' title='{esc(label)}'>⧉</button>"
+
+
 def hlr_details_html(row: dict[str, object]) -> str:
     display = hlr_display_row(row)
-    main_keys = ["original_number", "normalized_number", "detected_telephone_number", "formatted_telephone_number", "live_status_raw", "number_type", "final_result", "lead_quality_signal", "comment"]
+    main_keys = ["original_number", "normalized_number", "detected_telephone_number", "formatted_telephone_number", "format_status", "country", "number_type", "number_type_raw", "operator", "hlr_status_raw", "live_status_raw", "final_result", "lead_quality_signal", "lead_quality_reason", "comment"]
     network_keys = ["current_network", "current_operator", "current_mccmnc", "current_country", "current_country_iso3", "current_country_prefix"]
     original_keys = ["original_network", "original_operator", "original_mccmnc", "original_country", "original_country_iso3", "original_area", "original_country_prefix"]
     porting_keys = ["is_ported", "ported_date", "landline_status"]
     meta_keys = ["uuid", "timestamp", "credits_spent", "raw_error", "raw_message"]
     error_keys = ["http_method", "api_url", "request_shape_sanitized", "http_status", "response_content_type", "response_preview_sanitized", "api_message_sanitized", "error_type", "parsed_container_detected", "api_url_present", "api_key_present", "api_secret_present"]
     labels = {
-        "original_number": "Исходный номер", "normalized_number": "Нормализованный номер", "detected_telephone_number": "Detected number", "formatted_telephone_number": "Formatted number", "live_status_raw": "Live status", "number_type": "Telephone number type", "final_result": "Итог", "lead_quality_signal": "Оценка лида", "comment": "Комментарий", "current_network": "Current network", "current_operator": "Current operator", "current_mccmnc": "Current MCCMNC", "current_country": "Current country", "current_country_iso3": "Current ISO3", "current_country_prefix": "Current country prefix", "original_network": "Original network", "original_operator": "Original operator", "original_mccmnc": "Original MCCMNC", "original_country": "Original country", "original_country_iso3": "Original ISO3", "original_area": "Original area", "original_country_prefix": "Original country prefix", "is_ported": "Is ported", "ported_date": "Ported date", "landline_status": "Landline status", "uuid": "UUID", "timestamp": "Timestamp", "credits_spent": "Credits spent", "raw_error": "Raw error", "raw_message": "Raw message", "error_type": "Error type", "http_status": "HTTP status", "response_content_type": "Response content type", "response_preview_sanitized": "Response preview (sanitized)", "api_message_sanitized": "API message (sanitized)", "http_method": "HTTP method", "api_url": "API URL", "request_shape_sanitized": "Request shape (sanitized)", "parsed_container_detected": "Parsed container detected", "api_url_present": "API URL present", "api_key_present": "API key present", "api_secret_present": "API secret present"
+        "original_number": "Исходный номер", "normalized_number": "Нормализованный номер", "detected_telephone_number": "Detected number", "formatted_telephone_number": "Formatted number", "format_status": "Формат", "country": "Страна", "operator": "Оператор / сеть", "hlr_status_raw": "HLR статус", "live_status_raw": "Live status", "number_type": "Telephone number type", "number_type_raw": "Raw telephone_number_type", "final_result": "Итог", "lead_quality_signal": "Оценка лида", "lead_quality_reason": "Почему такая оценка", "comment": "Комментарий", "current_network": "Current network", "current_operator": "Current operator", "current_mccmnc": "Current MCCMNC", "current_country": "Current country", "current_country_iso3": "Current ISO3", "current_country_prefix": "Current country prefix", "original_network": "Original network", "original_operator": "Original operator", "original_mccmnc": "Original MCCMNC", "original_country": "Original country", "original_country_iso3": "Original ISO3", "original_area": "Original area", "original_country_prefix": "Original country prefix", "is_ported": "Is ported", "ported_date": "Ported date", "landline_status": "Landline status", "uuid": "UUID", "timestamp": "Timestamp", "credits_spent": "Credits spent", "raw_error": "Raw error", "raw_message": "Raw message", "error_type": "Error type", "http_status": "HTTP status", "response_content_type": "Response content type", "response_preview_sanitized": "Response preview (sanitized)", "api_message_sanitized": "API message (sanitized)", "http_method": "HTTP method", "api_url": "API URL", "request_shape_sanitized": "Request shape (sanitized)", "parsed_container_detected": "Parsed container detected", "api_url_present": "API URL present", "api_key_present": "API key present", "api_secret_present": "API secret present"
     }
+    copy_keys = {"original_number", "normalized_number", "comment", "uuid", "raw_error", "raw_message", "response_preview_sanitized", "api_message_sanitized"}
     def dl(keys: list[str], skip_empty: bool = False) -> str:
         parts = []
         for key in keys:
             value = display.get(key, "—")
             if skip_empty and value == "—":
                 continue
-            title = " title='Оценка лида — аналитическая подсказка по HLR-статусу и типу номера. Это не абсолютный приговор по каждому номеру.'" if key == "lead_quality_signal" else ""
-            parts.append(f"<dt{title}>{esc(labels.get(key, key))}</dt><dd>{esc(value)}</dd>")
+            title = f" title='{esc(value)}'" if key in {"lead_quality_signal", "lead_quality_reason", "comment"} else ""
+            copy = hlr_copy_button(value) if key in copy_keys else ""
+            parts.append(f"<dt{title}>{esc(labels.get(key, key))}</dt><dd{title}>{esc(value)} {copy}</dd>")
         return "<dl class='hlr-detail-list'>" + "".join(parts) + "</dl>"
     raw_json = json.dumps(row.get("raw_api_item_sanitized") or {}, ensure_ascii=False, indent=2, sort_keys=True)
-    raw_block = f"<pre class='hlr-raw-json'>{esc(raw_json)}</pre>" if raw_json != "{}" else "<p class='muted'>Raw API item недоступен для этой строки.</p>"
+    raw_copy = hlr_copy_button(raw_json, "Копировать raw") if raw_json != "{}" else ""
+    raw_block = f"<div>{raw_copy}<pre class='hlr-raw-json'>{esc(raw_json)}</pre></div>" if raw_json != "{}" else "<p class='muted'>Raw API item недоступен для этой строки.</p>"
     error_section = f"<section><h4>Safe error diagnostics</h4>{dl(error_keys, True)}</section>" if any(display.get(key, "—") != "—" for key in error_keys) else ""
     return f"<div class='hlr-details-grid'><section><h4>Main</h4>{dl(main_keys)}</section><section><h4>Network</h4>{dl(network_keys, True)}</section><section><h4>Original network</h4>{dl(original_keys, True)}</section><section><h4>Porting</h4>{dl(porting_keys, True)}</section><section><h4>Meta</h4>{dl(meta_keys, True)}</section>{error_section}<section><h4>Sanitized raw API item</h4>{raw_block}</section></div>"
 
+
+HLR_TABLE_COLUMNS = [
+    ("original_number", "Исходный номер", 130, True), ("normalized_number", "Нормализованный номер", 150, True), ("format_status", "Формат", 110, True), ("country", "Страна", 100, True), ("number_type", "Тип номера", 120, True), ("operator", "Оператор / сеть", 220, True), ("hlr_status_raw", "HLR статус", 110, True), ("live_status_raw", "Live status", 110, True), ("final_result", "Итог", 100, True), ("lead_quality_signal", "Оценка лида", 150, True), ("comment", "Комментарий", 320, True),
+    ("detected_telephone_number", "Detected number", 150, False), ("formatted_telephone_number", "Formatted number", 170, False), ("number_type_raw", "Raw telephone_number_type", 180, False), ("current_network", "Current network", 220, False), ("current_operator", "Current operator", 220, False), ("current_mccmnc", "Current MCCMNC", 130, False), ("current_country", "Current country", 140, False), ("current_country_iso3", "Current ISO3", 110, False), ("current_country_prefix", "Current country prefix", 160, False), ("original_network", "Original network", 220, False), ("original_operator", "Original operator", 220, False), ("original_mccmnc", "Original MCCMNC", 140, False), ("original_country", "Original country", 140, False), ("original_country_iso3", "Original ISO3", 110, False), ("original_area", "Original area", 150, False), ("original_country_prefix", "Original country prefix", 170, False), ("is_ported", "Is ported", 100, False), ("uuid", "UUID", 280, False), ("timestamp", "Timestamp", 180, False), ("credits_spent", "Credits spent", 120, False), ("raw_error", "Raw error", 220, False), ("raw_message", "Raw message", 260, False), ("request_shape_sanitized", "Request parameters", 300, False), ("details", "Детали", 90, True),
+]
+
+
 def hlr_table(results: list[dict[str, object]]) -> str:
-    headers = [("original_number", "Исходный номер"), ("normalized_number", "Нормализованный номер"), ("format_status", "Формат"), ("country", "Страна"), ("number_type", "Тип номера"), ("operator", "Оператор / сеть"), ("hlr_status_raw", "HLR статус"), ("live_status_raw", "Live status"), ("final_result", "Итог"), ("lead_quality_signal", "Оценка лида"), ("comment", "Комментарий")]
-    if hlr_has_value(results, "current_operator") and hlr_has_value(results, "original_operator"):
-        headers.extend([("current_operator", "Текущий оператор"), ("original_operator", "Оригинальный оператор")])
-    if hlr_has_value(results, "current_mccmnc", "original_mccmnc", "current_mcc", "original_mcc"):
-        headers.append(("current_mccmnc", "MCCMNC"))
-    if hlr_has_value(results, "is_ported"):
-        headers.append(("is_ported", "MNP/ported"))
-    if hlr_has_value(results, "roaming"):
-        headers.append(("roaming", "Roaming"))
-    if hlr_has_value(results, "request_id", "lookup_id"):
-        headers.append(("request_id", "Request ID / Lookup ID"))
-    headers.append(("details", "Детали"))
-    keys = [key for key, _ in headers]
+    headers = [(key, label) for key, label, _width, _visible in HLR_TABLE_COLUMNS]
+    colgroup = "".join(f"<col data-col='{esc(key)}' style='width:{width}px'{' hidden' if not visible else ''}>" for key, _label, width, visible in HLR_TABLE_COLUMNS)
+    settings = "".join(f"<label><span><input type='checkbox' data-hlr-column-toggle='{esc(key)}' {'checked' if visible else ''} {'disabled' if key == 'details' else ''}> {esc(label)}</span><input type='number' min='70' max='520' step='10' value='{width}' data-hlr-column-width='{esc(key)}' aria-label='Ширина {esc(label)}'></label>" for key, label, width, visible in HLR_TABLE_COLUMNS)
     rows = []
+    copyable = {"original_number", "normalized_number", "comment", "uuid", "raw_error", "raw_message"}
     for index, row in enumerate(results):
         cells = []
         display = hlr_display_row(row)
-        for key in keys:
+        for key, _label, _width, visible in HLR_TABLE_COLUMNS:
+            hidden_attr = " hidden" if not visible else ""
             if key == "details":
-                cells.append(f"<td data-col='details'><button type='button' class='hlr-details-toggle' data-details-target='hlr-details-{index}'>Детали</button></td>")
-            elif key == "request_id":
-                cells.append(f"<td data-col='{esc(key)}'>{esc(display.get('request_id') if display.get('request_id') != '—' else display.get('lookup_id', '—'))}</td>")
-            else:
-                cells.append(f"<td data-col='{esc(key)}'>{esc(display.get(key, ''))}</td>")
+                cells.append(f"<td data-col='details'{hidden_attr}><button type='button' class='hlr-details-toggle' data-details-target='hlr-details-{index}'>Детали</button></td>")
+                continue
+            value = display.get(key, "")
+            title = value if key in {"comment", "lead_quality_signal", "lead_quality_reason", "raw_error", "raw_message", "request_shape_sanitized"} else ""
+            if key == "lead_quality_signal":
+                title = display.get("lead_quality_reason", value)
+            copy = hlr_copy_button(value) if key in copyable else ""
+            long_class = " hlr-long-text" if key in {"comment", "raw_error", "raw_message", "request_shape_sanitized"} else ""
+            cells.append(f"<td data-col='{esc(key)}' title='{esc(title)}'{hidden_attr}><span class='hlr-cell-content'><span class='hlr-cell-text{long_class}'>{esc(value)}</span>{copy}</span></td>")
         attrs = " data-hlr-status='" + esc(str(row.get("hlr_status_raw", ""))) + "' data-live-status='" + esc(str(row.get("live_status_raw", ""))) + "' data-final-result='" + esc(str(row.get("final_result", ""))) + "' data-final-category='" + esc(str(row.get("final_category", ""))) + "' data-hlr-type='" + esc(str(row.get("number_type", ""))) + "'"
         rows.append("<tr" + attrs + ">" + "".join(cells) + "</tr>")
-        rows.append(f"<tr class='hlr-details-row' id='hlr-details-{index}' hidden><td colspan='{len(headers)}'>{hlr_details_html(row)}</td></tr>")
+        rows.append(f"<tr class='hlr-details-row' id='hlr-details-{index}' hidden><td colspan='{len(HLR_TABLE_COLUMNS)}'>{hlr_details_html(row)}</td></tr>")
+    thead = "<thead><tr>" + "".join(f"<th data-col='{esc(key)}'{' hidden' if not visible else ''}>{esc(label)}</th>" for key, label, _width, visible in HLR_TABLE_COLUMNS) + "</tr></thead>"
     body = "".join(rows)
+    table = f"<div class='table-scroll'><table id='hlr-table'><colgroup>{colgroup}</colgroup>{thead}<tbody>{body}</tbody></table></div>"
     empty = "" if results else "<div class='empty-state' id='hlr-empty-all'>Результаты появятся после проверки номеров.</div>"
     filtered_empty = "<div class='empty-state' id='hlr-empty-filter' hidden>По выбранному фильтру результатов нет.</div>"
-    return "<section class='hlr-results-area'>" + table_card(data_table("hlr", headers, body) + empty + filtered_empty) + "</section>"
-
+    column_settings = f"<details class='card hlr-column-settings'><summary>Колонки таблицы</summary><div class='hlr-column-grid'>{settings}</div></details>"
+    return "<section class='hlr-results-area'>" + column_settings + table_card(table + empty + filtered_empty) + "</section>"
 
 def hlr_summary_html(summary: dict[str, int], raw_counts: dict[str, int], type_counts: dict[str, int]) -> str:
     main = "<section class='hlr-status-panel' aria-label='Фильтры результатов HLR'>" + "".join(
@@ -5339,6 +5397,11 @@ def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = Non
   const allEmpty = document.getElementById('hlr-empty-all');
   const filterEmpty = document.getElementById('hlr-empty-filter');
   const caption = document.getElementById('hlr-filter-caption');
+  const columnToggles = Array.from(document.querySelectorAll('[data-hlr-column-toggle]'));
+  const columnWidths = Array.from(document.querySelectorAll('[data-hlr-column-width]'));
+  const copyButtons = Array.from(document.querySelectorAll('[data-copy]'));
+  const columnStorageKey = 'hlr-table-columns-v1';
+  const widthStorageKey = 'hlr-table-widths-v1';
   let results = [];
   try {{ results = JSON.parse(document.getElementById('hlr-results-data')?.textContent || '[]'); }} catch (_) {{ results = []; }}
   function normalizeCandidate(value) {{
@@ -5386,6 +5449,54 @@ def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = Non
       exportInput.value = JSON.stringify(filtered);
     }}
   }}
+  function readJsonStorage(key, fallback) {{
+    try {{ return JSON.parse(window.localStorage.getItem(key) || '') || fallback; }} catch (_) {{ return fallback; }}
+  }}
+  function writeJsonStorage(key, value) {{
+    try {{ window.localStorage.setItem(key, JSON.stringify(value)); }} catch (_) {{}}
+  }}
+  function setColumnVisible(key, visible) {{
+    document.querySelectorAll('#hlr-table [data-col="' + CSS.escape(key) + '"], #hlr-table col[data-col="' + CSS.escape(key) + '"]').forEach((item) => {{ item.hidden = !visible; }});
+  }}
+  function applyColumnSettings() {{
+    const visible = readJsonStorage(columnStorageKey, {{}});
+    columnToggles.forEach((input) => {{
+      const key = input.dataset.hlrColumnToggle || '';
+      const isVisible = Object.prototype.hasOwnProperty.call(visible, key) ? Boolean(visible[key]) : input.checked;
+      input.checked = isVisible;
+      setColumnVisible(key, isVisible);
+    }});
+    const widths = readJsonStorage(widthStorageKey, {{}});
+    columnWidths.forEach((input) => {{
+      const key = input.dataset.hlrColumnWidth || '';
+      const value = widths[key] || input.value;
+      input.value = value;
+      document.querySelectorAll('#hlr-table col[data-col="' + CSS.escape(key) + '"]').forEach((col) => {{ col.style.width = value + 'px'; }});
+    }});
+  }}
+  columnToggles.forEach((input) => input.addEventListener('change', () => {{
+    const state = readJsonStorage(columnStorageKey, {{}});
+    state[input.dataset.hlrColumnToggle || ''] = input.checked;
+    writeJsonStorage(columnStorageKey, state);
+    setColumnVisible(input.dataset.hlrColumnToggle || '', input.checked);
+  }}));
+  columnWidths.forEach((input) => input.addEventListener('change', () => {{
+    const state = readJsonStorage(widthStorageKey, {{}});
+    const value = Math.max(70, Math.min(520, Number(input.value) || 120));
+    input.value = value;
+    state[input.dataset.hlrColumnWidth || ''] = value;
+    writeJsonStorage(widthStorageKey, state);
+    document.querySelectorAll('#hlr-table col[data-col="' + CSS.escape(input.dataset.hlrColumnWidth || '') + '"]').forEach((col) => {{ col.style.width = value + 'px'; }});
+  }}));
+  copyButtons.forEach((button) => button.addEventListener('click', async (event) => {{
+    event.preventDefault(); event.stopPropagation();
+    const text = button.dataset.copy || '';
+    try {{ await navigator.clipboard.writeText(text); button.textContent = '✓'; setTimeout(() => {{ button.textContent = '⧉'; }}, 900); }}
+    catch (_) {{
+      const area = document.createElement('textarea'); area.value = text; document.body.appendChild(area); area.select(); document.execCommand('copy'); area.remove();
+    }}
+  }}));
+  applyColumnSettings();
   if (input) {{ input.addEventListener('input', updateCounter); updateCounter(); }}
   if (clear && input) clear.addEventListener('click', () => {{ input.value = ''; updateCounter(); input.focus(); }});
   filters.forEach((button) => button.addEventListener('click', () => applyFilter(button.dataset.hlrFilter || 'all', '', '')));
