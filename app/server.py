@@ -13,7 +13,7 @@ import sqlite3
 from datetime import datetime
 from http.cookies import SimpleCookie
 from pathlib import Path
-from urllib.parse import parse_qs, quote, unquote, urlencode
+from urllib.parse import parse_qs, quote, unquote, urlencode, urlsplit
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
 from wsgiref.simple_server import make_server
@@ -25,13 +25,44 @@ from app.telegram import notify_provider_change_created
 
 logger = logging.getLogger(__name__)
 
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+DOTENV_LOADED = False
+DOTENV_SOURCE_KEYS: set[str] = set()
+HLR_STARTUP_LOGGED = False
 
-def load_dotenv_if_present(path: str | Path = ".env") -> None:
-    """Load simple KEY=VALUE pairs from a local .env file without overriding env."""
-    env_path = Path(path)
+
+def _parse_dotenv_keys(path: Path) -> set[str]:
+    keys: set[str] = set()
+    if not path.exists():
+        return keys
+    try:
+        for raw_line in path.read_text(encoding="utf-8").splitlines():
+            line = raw_line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key = line.split("=", 1)[0].strip()
+            if key:
+                keys.add(key)
+    except OSError as exc:
+        logger.warning("Could not inspect .env file %s: %s", path, exc)
+    return keys
+
+
+def load_dotenv_if_present(path: str | Path | None = None) -> None:
+    """Load project-root .env without overriding OS/hosting environment variables."""
+    global DOTENV_LOADED, DOTENV_SOURCE_KEYS
+    env_path = Path(path) if path is not None else PROJECT_ROOT / ".env"
+    DOTENV_SOURCE_KEYS = _parse_dotenv_keys(env_path)
     if not env_path.exists():
         return
+    import importlib.util
+    if importlib.util.find_spec("dotenv") is not None:
+        import importlib
+        dotenv = importlib.import_module("dotenv")
+        DOTENV_LOADED = bool(dotenv.load_dotenv(env_path, override=False))
+        return
     try:
+        before = set(os.environ)
         for raw_line in env_path.read_text(encoding="utf-8").splitlines():
             line = raw_line.strip()
             if not line or line.startswith("#") or "=" not in line:
@@ -44,6 +75,7 @@ def load_dotenv_if_present(path: str | Path = ".env") -> None:
             if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
                 value = value[1:-1]
             os.environ[key] = value
+        DOTENV_LOADED = bool(set(os.environ) - before)
     except OSError as exc:
         logger.warning("Could not load .env file %s: %s", env_path, exc)
 
@@ -4388,16 +4420,85 @@ HLR_ERROR_COMMENT = "Проверка не выполнена из-за ошиб
 HLR_UNEXPECTED_COMMENT = "Неожиданный формат ответа HLR API."
 
 
+def hlr_int_env(name: str, default: int) -> int:
+    try:
+        return int(os.environ.get(name) or str(default))
+    except ValueError:
+        return default
+
+
 def hlr_config() -> dict[str, object]:
     return {
         "mode": (os.environ.get("HLR_MODE") or "demo").strip().lower(),
         "api_url": os.environ.get("HLR_API_URL") or "",
         "api_key": os.environ.get("HLR_API_KEY") or "",
         "api_secret": os.environ.get("HLR_API_SECRET") or "",
-        "timeout_ms": int(os.environ.get("HLR_TIMEOUT_MS") or "10000"),
-        "concurrency": int(os.environ.get("HLR_CONCURRENCY") or "4"),
-        "daily_limit": int(os.environ.get("HLR_DAILY_CHECK_LIMIT") or "0"),
+        "timeout_ms": hlr_int_env("HLR_TIMEOUT_MS", 30000),
+        "concurrency": hlr_int_env("HLR_CONCURRENCY", 1),
+        "daily_limit": hlr_int_env("HLR_DAILY_CHECK_LIMIT", 500),
     }
+
+
+def hlr_config_source(name: str) -> str:
+    if name in DOTENV_SOURCE_KEYS and os.environ.get(name):
+        return ".env"
+    if os.environ.get(name):
+        return "os.environ"
+    return "unknown"
+
+
+def hlr_safe_api_url(api_url: object) -> str:
+    value = str(api_url or "").strip()
+    if not value:
+        return ""
+    parts = urlsplit(value)
+    if not parts.scheme or not parts.netloc:
+        return value.split("@")[-1]
+    host = parts.hostname or ""
+    netloc = host
+    if parts.port:
+        netloc = f"{netloc}:{parts.port}"
+    return parts._replace(netloc=netloc).geturl()
+
+
+def hlr_safe_config_summary() -> dict[str, object]:
+    config = hlr_config()
+    return {
+        "mode": config["mode"],
+        "api_url_present": bool(config["api_url"]),
+        "api_url": hlr_safe_api_url(config["api_url"]),
+        "api_key_present": bool(config["api_key"]),
+        "api_secret_present": bool(config["api_secret"]),
+        "timeout_ms": config["timeout_ms"],
+        "concurrency": config["concurrency"],
+        "daily_limit": config["daily_limit"],
+        "dotenv_loaded": "yes" if DOTENV_LOADED else ("no" if DOTENV_SOURCE_KEYS else "unknown"),
+        "config_source": hlr_config_source("HLR_MODE"),
+    }
+
+
+def hlr_config_incomplete(config: dict[str, object]) -> bool:
+    return not (config.get("api_url") and config.get("api_key") and config.get("api_secret"))
+
+
+def hlr_log_startup_config() -> None:
+    global HLR_STARTUP_LOGGED
+    if HLR_STARTUP_LOGGED:
+        return
+    HLR_STARTUP_LOGGED = True
+    summary = hlr_safe_config_summary()
+    print(
+        "HLR config:\n"
+        f"- mode: {summary['mode']}\n"
+        f"- api_url_present: {str(summary['api_url_present']).lower()}\n"
+        f"- api_key_present: {str(summary['api_key_present']).lower()}\n"
+        f"- api_secret_present: {str(summary['api_secret_present']).lower()}\n"
+        f"- timeout_ms: {summary['timeout_ms']}\n"
+        f"- concurrency: {summary['concurrency']}"
+    )
+
+
+hlr_log_startup_config()
 
 
 def hlr_normalize(raw: str) -> tuple[str, bool]:
@@ -4765,9 +4866,62 @@ def hlr_result_from_api_item(item: dict[str, str], raw_result: object) -> dict[s
     category, final, comment, raw_status = hlr_status_result(live_status, hlr_status)
     return hlr_make_result(item["original"], item["normalized"], country=country, number_type_raw=number_type_raw, operator=operator, hlr_status_raw=hlr_status or raw_status, live_status_raw=live_status or "", final_category=category, final_result=final, comment=comment, **extras)
 
+
+
+def hlr_user_error_comment(error_type: str, http_status: object = "") -> str:
+    if str(http_status) in {"401", "403"}:
+        return "HLR API authorization failed. Check API key/secret."
+    if str(http_status) == "400":
+        return "HLR API rejected request format."
+    if str(http_status) == "429":
+        return "HLR API rate limit."
+    if error_type == "timeout":
+        return "HLR API timeout."
+    if error_type == "connection_error":
+        return "HLR API connection error."
+    if error_type == "missing_config":
+        return "HLR API config is incomplete."
+    return "HLR API returned unexpected response format."
+
+
+def hlr_sanitize_text(value: str, config: dict[str, object]) -> str:
+    sanitized = value or ""
+    for secret in (config.get("api_key"), config.get("api_secret")):
+        secret_text = str(secret or "")
+        if secret_text:
+            sanitized = sanitized.replace(secret_text, "***")
+    return sanitized[:1000]
+
+
+def hlr_error_details(config: dict[str, object], error_type: str, *, http_status: object = "", response_content_type: object = "", response_preview: str = "", parsed_container_detected: object = "") -> dict[str, object]:
+    return {
+        "error_type": error_type,
+        "http_status": str(http_status or ""),
+        "response_content_type": str(response_content_type or ""),
+        "response_preview_sanitized": hlr_sanitize_text(response_preview, config),
+        "parsed_container_detected": str(parsed_container_detected or ""),
+        "api_url_present": "yes" if config.get("api_url") else "no",
+        "api_key_present": "yes" if config.get("api_key") else "no",
+        "api_secret_present": "yes" if config.get("api_secret") else "no",
+    }
+
+
+def hlr_error_result(item: dict[str, str], config: dict[str, object], error_type: str, **details: object) -> dict[str, object]:
+    http_status = details.get("http_status", "")
+    return hlr_make_result(
+        item["original"],
+        item["normalized"],
+        hlr_status_raw="ERROR",
+        live_status_raw="ERROR",
+        final_category="error",
+        final_result="ERROR",
+        comment=hlr_user_error_comment(error_type, http_status),
+        **hlr_error_details(config, error_type, **details),
+    )
+
 def hlr_real_api_check(numbers: list[dict[str, str]], config: dict[str, object]) -> list[dict[str, object]]:
-    if not config["api_url"] or not config["api_key"] or not config["api_secret"]:
-        raise BusinessRuleError("HLR production/testing mode не настроен: проверьте HLR_API_URL, HLR_API_KEY и HLR_API_SECRET")
+    if hlr_config_incomplete(config):
+        return [hlr_error_result(item, config, "missing_config") for item in numbers]
     timeout = max(1, int(config["timeout_ms"]) / 1000)
     results = []
     for start in range(0, len(numbers), HLR_BATCH_SIZE):
@@ -4776,19 +4930,30 @@ def hlr_real_api_check(numbers: list[dict[str, str]], config: dict[str, object])
         req = Request(str(config["api_url"]), data=payload, headers={"Content-Type": "application/json", "X-API-Key": str(config["api_key"]), "X-API-Secret": str(config["api_secret"])}, method="POST")
         try:
             with urlopen(req, timeout=timeout) as resp:
-                body = json.loads(resp.read().decode("utf-8"))
+                response_bytes = resp.read()
+                response_text = response_bytes.decode("utf-8", errors="replace")
+                content_type = resp.headers.get("Content-Type", "")
+            body = json.loads(response_text)
             api_rows = hlr_extract_api_rows(body)
             if api_rows is None:
-                results.extend([hlr_make_result(item["original"], item["normalized"], hlr_status_raw="ERROR", live_status_raw="ERROR", final_category="error", final_result="ERROR", comment=HLR_UNEXPECTED_COMMENT) for item in batch])
+                results.extend([hlr_error_result(item, config, "unexpected_response", response_content_type=content_type, response_preview=response_text, parsed_container_detected="no") for item in batch])
                 continue
             by_number = {str(r.get("detected_telephone_number") or r.get("telephone_number") or r.get("formatted_telephone_number") or r.get("number") or r.get("normalized") or r.get("msisdn") or ""): r for r in api_rows if isinstance(r, dict)}
             for item, fallback in zip(batch, api_rows):
                 raw_result = by_number.get(item["normalized"]) or by_number.get(item["normalized"].lstrip("+")) or fallback
                 results.append(hlr_result_from_api_item(item, raw_result))
-        except HTTPError:
-            results.extend([hlr_make_result(item["original"], item["normalized"], hlr_status_raw="ERROR", live_status_raw="ERROR", final_category="error", final_result="ERROR", comment=HLR_ERROR_COMMENT) for item in batch])
-        except (URLError, TimeoutError, ValueError, json.JSONDecodeError):
-            results.extend([hlr_make_result(item["original"], item["normalized"], hlr_status_raw="ERROR", live_status_raw="ERROR", final_category="error", final_result="ERROR", comment=HLR_ERROR_COMMENT) for item in batch])
+        except HTTPError as exc:
+            response_text = exc.read().decode("utf-8", errors="replace") if exc.fp else ""
+            content_type = exc.headers.get("Content-Type", "") if exc.headers else ""
+            results.extend([hlr_error_result(item, config, "http_error", http_status=exc.code, response_content_type=content_type, response_preview=response_text, parsed_container_detected="unknown") for item in batch])
+        except TimeoutError:
+            results.extend([hlr_error_result(item, config, "timeout") for item in batch])
+        except URLError as exc:
+            reason = getattr(exc, "reason", "")
+            error_type = "timeout" if "timed out" in str(reason).lower() else "connection_error"
+            results.extend([hlr_error_result(item, config, error_type, response_preview=str(reason)) for item in batch])
+        except (ValueError, json.JSONDecodeError) as exc:
+            results.extend([hlr_error_result(item, config, "unexpected_response", response_preview=str(exc), parsed_container_detected="no") for item in batch])
     return results
 
 
@@ -4886,6 +5051,14 @@ def hlr_display_row(row: dict[str, object]) -> dict[str, str]:
         "credits_spent": hlr_display_value(row.get("credits_spent")),
         "raw_error": hlr_display_value(row.get("raw_error")),
         "raw_message": hlr_display_value(row.get("raw_message")),
+        "error_type": hlr_display_value(row.get("error_type")),
+        "http_status": hlr_display_value(row.get("http_status")),
+        "response_content_type": hlr_display_value(row.get("response_content_type")),
+        "response_preview_sanitized": hlr_display_value(row.get("response_preview_sanitized")),
+        "parsed_container_detected": hlr_display_value(row.get("parsed_container_detected")),
+        "api_url_present": hlr_display_value(row.get("api_url_present")),
+        "api_key_present": hlr_display_value(row.get("api_key_present")),
+        "api_secret_present": hlr_display_value(row.get("api_secret_present")),
     }
 
 def hlr_has_value(results: list[dict[str, object]], *keys: str) -> bool:
@@ -4928,8 +5101,9 @@ def hlr_details_html(row: dict[str, object]) -> str:
     original_keys = ["original_network", "original_operator", "original_mccmnc", "original_country", "original_country_iso3", "original_area", "original_country_prefix"]
     porting_keys = ["is_ported", "ported_date", "landline_status"]
     meta_keys = ["uuid", "timestamp", "credits_spent", "raw_error", "raw_message"]
+    error_keys = ["error_type", "http_status", "response_content_type", "response_preview_sanitized", "parsed_container_detected", "api_url_present", "api_key_present", "api_secret_present"]
     labels = {
-        "original_number": "Исходный номер", "normalized_number": "Нормализованный номер", "detected_telephone_number": "Detected number", "formatted_telephone_number": "Formatted number", "live_status_raw": "Live status", "number_type": "Telephone number type", "final_result": "Итог", "lead_quality_signal": "Оценка лида", "comment": "Комментарий", "current_network": "Current network", "current_operator": "Current operator", "current_mccmnc": "Current MCCMNC", "current_country": "Current country", "current_country_iso3": "Current ISO3", "current_country_prefix": "Current country prefix", "original_network": "Original network", "original_operator": "Original operator", "original_mccmnc": "Original MCCMNC", "original_country": "Original country", "original_country_iso3": "Original ISO3", "original_area": "Original area", "original_country_prefix": "Original country prefix", "is_ported": "Is ported", "ported_date": "Ported date", "landline_status": "Landline status", "uuid": "UUID", "timestamp": "Timestamp", "credits_spent": "Credits spent", "raw_error": "Raw error", "raw_message": "Raw message"
+        "original_number": "Исходный номер", "normalized_number": "Нормализованный номер", "detected_telephone_number": "Detected number", "formatted_telephone_number": "Formatted number", "live_status_raw": "Live status", "number_type": "Telephone number type", "final_result": "Итог", "lead_quality_signal": "Оценка лида", "comment": "Комментарий", "current_network": "Current network", "current_operator": "Current operator", "current_mccmnc": "Current MCCMNC", "current_country": "Current country", "current_country_iso3": "Current ISO3", "current_country_prefix": "Current country prefix", "original_network": "Original network", "original_operator": "Original operator", "original_mccmnc": "Original MCCMNC", "original_country": "Original country", "original_country_iso3": "Original ISO3", "original_area": "Original area", "original_country_prefix": "Original country prefix", "is_ported": "Is ported", "ported_date": "Ported date", "landline_status": "Landline status", "uuid": "UUID", "timestamp": "Timestamp", "credits_spent": "Credits spent", "raw_error": "Raw error", "raw_message": "Raw message", "error_type": "Error type", "http_status": "HTTP status", "response_content_type": "Response content type", "response_preview_sanitized": "Response preview (sanitized)", "parsed_container_detected": "Parsed container detected", "api_url_present": "API URL present", "api_key_present": "API key present", "api_secret_present": "API secret present"
     }
     def dl(keys: list[str], skip_empty: bool = False) -> str:
         parts = []
@@ -4942,7 +5116,8 @@ def hlr_details_html(row: dict[str, object]) -> str:
         return "<dl class='hlr-detail-list'>" + "".join(parts) + "</dl>"
     raw_json = json.dumps(row.get("raw_api_item_sanitized") or {}, ensure_ascii=False, indent=2, sort_keys=True)
     raw_block = f"<pre class='hlr-raw-json'>{esc(raw_json)}</pre>" if raw_json != "{}" else "<p class='muted'>Raw API item недоступен для этой строки.</p>"
-    return f"<div class='hlr-details-grid'><section><h4>Main</h4>{dl(main_keys)}</section><section><h4>Network</h4>{dl(network_keys, True)}</section><section><h4>Original network</h4>{dl(original_keys, True)}</section><section><h4>Porting</h4>{dl(porting_keys, True)}</section><section><h4>Meta</h4>{dl(meta_keys, True)}</section><section><h4>Sanitized raw API item</h4>{raw_block}</section></div>"
+    error_section = f"<section><h4>Safe error diagnostics</h4>{dl(error_keys, True)}</section>" if any(display.get(key, "—") != "—" for key in error_keys) else ""
+    return f"<div class='hlr-details-grid'><section><h4>Main</h4>{dl(main_keys)}</section><section><h4>Network</h4>{dl(network_keys, True)}</section><section><h4>Original network</h4>{dl(original_keys, True)}</section><section><h4>Porting</h4>{dl(porting_keys, True)}</section><section><h4>Meta</h4>{dl(meta_keys, True)}</section>{error_section}<section><h4>Sanitized raw API item</h4>{raw_block}</section></div>"
 
 def hlr_table(results: list[dict[str, object]]) -> str:
     headers = [("original_number", "Исходный номер"), ("normalized_number", "Нормализованный номер"), ("format_status", "Формат"), ("country", "Страна"), ("number_type", "Тип номера"), ("operator", "Оператор / сеть"), ("hlr_status_raw", "HLR статус"), ("live_status_raw", "Live status"), ("final_result", "Итог"), ("lead_quality_signal", "Оценка лида"), ("comment", "Комментарий")]
@@ -4995,6 +5170,29 @@ def hlr_summary_html(summary: dict[str, int], raw_counts: dict[str, int], type_c
 
 
 
+def hlr_config_diagnostics_html() -> str:
+    if current_role_key() != "admin":
+        return ""
+    summary = hlr_safe_config_summary()
+    warning = ""
+    if summary["mode"] == "production" and not (summary["api_url_present"] and summary["api_key_present"] and summary["api_secret_present"]):
+        warning = "<p class='flash error'>HLR production mode is enabled, but API configuration is incomplete.</p>"
+    rows = [
+        ("mode", summary["mode"]),
+        ("api_url_present", "yes" if summary["api_url_present"] else "no"),
+        ("api_url", summary["api_url"] or "—"),
+        ("api_key_present", "yes" if summary["api_key_present"] else "no"),
+        ("api_secret_present", "yes" if summary["api_secret_present"] else "no"),
+        ("timeout_ms", summary["timeout_ms"]),
+        ("concurrency", summary["concurrency"]),
+        ("daily_limit", summary["daily_limit"]),
+        ("dotenv_loaded", summary["dotenv_loaded"]),
+        ("config_source", summary["config_source"]),
+    ]
+    body = "".join(f"<dt>{esc(label)}</dt><dd>{esc(str(value))}</dd>" for label, value in rows)
+    return f"<details class='card hlr-api-fields'><summary>HLR config</summary>{warning}<dl class='hlr-detail-list'>{body}</dl></details>"
+
+
 def hlr_api_fields_html(results: list[dict[str, object]], is_demo_mode: bool) -> str:
     if not results:
         return ""
@@ -5045,6 +5243,7 @@ def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = Non
   </div>
   <p class='muted hlr-input-hint'>HLR показывает сетевой статус на момент проверки и/или состояние, доступное у оператора. UNKNOWN, NO_COVERAGE и NOT_AVAILABLE_NETWORK_ONLY не равны плохому номеру; это ограничения проверки. Для оценки веба смотрите доли статусов по пачке номеров, а не один номер отдельно.</p>
   <div class='hlr-table-toolbar'><span class='muted' id='hlr-filter-caption'>Показаны все результаты</span><div class='table-footer-tools'>{export_form}<span class='muted'>Экспортирует текущую выборку.</span></div></div>
+  {hlr_config_diagnostics_html()}
   {hlr_api_fields_html(results, is_demo_mode)}
   {hlr_table(results)}
 </section>
@@ -7935,6 +8134,7 @@ def app(environ, start_response):
 
 
 if __name__ == "__main__":
+    hlr_log_startup_config()
     port = int(os.environ.get("PORT", "8000"))
     with make_server("0.0.0.0", port, app) as httpd:
         print(f"Serving on http://127.0.0.1:{port}")
