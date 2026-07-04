@@ -4370,21 +4370,21 @@ def dashboard_events(repo: Repository) -> str:
 
 HLR_MAX_NUMBERS = 500
 HLR_BATCH_SIZE = 80
-HLR_RESULT_HEADERS = ["Исходный номер", "Нормализованный номер", "Формат", "Страна", "Тип номера", "Оператор / сеть", "HLR статус", "Live status", "Итог", "Комментарий"]
-HLR_EXTRA_CSV_FIELDS = [("current_operator", "Текущий оператор"), ("original_operator", "Оригинальный оператор"), ("current_country", "Текущая страна"), ("original_country", "Оригинальная страна"), ("current_mcc", "MCC"), ("current_mnc", "MNC"), ("original_mcc", "Original MCC"), ("original_mnc", "Original MNC"), ("ported", "MNP/ported"), ("roaming", "Roaming"), ("reachable", "Reachable"), ("valid", "Valid"), ("request_id", "Request ID"), ("lookup_id", "Lookup ID"), ("raw_error", "Raw error"), ("raw_message", "Raw message")]
+HLR_RESULT_HEADERS = ["Исходный номер", "Нормализованный номер", "Detected number", "Formatted number", "Формат", "Страна", "Тип номера", "Raw telephone_number_type", "Оператор / сеть", "HLR статус", "Live status", "Итог", "Оценка лида", "Комментарий"]
+HLR_EXTRA_CSV_FIELDS = [("current_network", "Current network"), ("current_operator", "Current operator"), ("current_mccmnc", "Current MCCMNC"), ("current_country", "Current country"), ("current_country_iso3", "Current ISO3"), ("current_country_prefix", "Current country prefix"), ("original_network", "Original network"), ("original_operator", "Original operator"), ("original_mccmnc", "Original MCCMNC"), ("original_country", "Original country"), ("original_country_iso3", "Original ISO3"), ("original_area", "Original area"), ("original_country_prefix", "Original country prefix"), ("is_ported", "Is ported"), ("ported_date", "Ported date"), ("uuid", "UUID"), ("timestamp", "Timestamp"), ("credits_spent", "Credits spent"), ("raw_error", "Raw error"), ("raw_message", "Raw message")]
 HLR_SENSITIVE_KEY_PARTS = ("secret", "key", "token", "auth", "authorization", "password", "credential")
 HLR_STATUS_MAP = {
-    "LIVE": ("ok", "OK", "Номер активен."),
-    "DEAD": ("bad", "DEAD", "Номер не назначен абоненту."),
-    "ABSENT_SUBSCRIBER": ("warning", "WARNING", "Номер назначен абоненту, но временно недоступен."),
-    "NO_TELESERVICE_PROVISIONED": ("warning", "WARNING", "Номер активен, но нужный телесервис недоступен."),
-    "NOT_AVAILABLE_NETWORK_ONLY": ("unknown", "UNKNOWN", "Оператор не предоставляет live-status. Нельзя уверенно определить, в сети номер или нет."),
-    "NO_COVERAGE": ("unknown", "UNKNOWN", "Для этого оператора/направления нет HLR-покрытия."),
-    "NOT_APPLICABLE": ("unknown", "UNKNOWN", "Live-status неприменим к этому типу номера. Например, это может быть городской или служебный номер."),
-    "INCONCLUSIVE": ("unknown", "UNKNOWN", "HLR не смог однозначно определить статус номера."),
+    "LIVE": ("ok", "OK", "Номер назначен абоненту и HLR подтверждает активный статус. Это хороший сигнал, но не гарантия, что клиент ответит на звонок именно сейчас."),
+    "DEAD": ("bad", "DEAD", "Номер подтверждён сетью как не назначенный абоненту/SIM. Такой номер, как правило, не сможет принимать звонки или SMS. Сильный плохой сигнал качества лида."),
+    "ABSENT_SUBSCRIBER": ("warning", "WARNING", "Номер назначен мобильной SIM, но сеть считает абонента недоступным: телефон может быть выключен, вне зоны сети, давно не регистрировался в сети, либо SIM ещё не активирована пользователем. HLR Lookup не раскрывает точный срок ‘долгой неактивности’. Один такой статус не доказывает мусорный лид, но массовая доля ABSENT_SUBSCRIBER может объяснять высокий недозвон."),
+    "NO_TELESERVICE_PROVISIONED": ("warning", "WARNING", "Номер есть в HLR и выглядит активным, но у подписки не подключён нужный телесервис, например SMS. Для голосового прозвона трактовать осторожно: это warning, а не прямое доказательство плохого номера."),
+    "NOT_AVAILABLE_NETWORK_ONLY": ("unknown", "UNKNOWN", "Сеть не отдаёт live/dead статус для этого номера. Номер может быть реальным, но HLR не может подтвердить активность. Можно использовать network/porting данные, если они есть, но нельзя считать такой номер DEAD."),
+    "NO_COVERAGE": ("unknown", "UNKNOWN", "У HLR Lookup нет покрытия для определения live-status по этой сети. Это ограничение проверки, а не доказательство плохого номера."),
+    "NOT_APPLICABLE": ("unknown", "UNKNOWN", "Live-status неприменим: например, HLR не смог определить номер или тип номера не подходит для такой проверки. Смотреть вместе с форматом и типом номера."),
+    "INCONCLUSIVE": ("unknown", "UNKNOWN", "HLR не смог однозначно определить статус. Номер не подтверждён как плохой, но и не подтверждён как активный."),
 }
-HLR_BAD_FORMAT_COMMENT = "Некорректный международный формат. Проверьте код страны, длину номера и склейку номера источником трафика."
-HLR_ERROR_COMMENT = "Ошибка проверки: API timeout / provider error / connection error."
+HLR_BAD_FORMAT_COMMENT = "Номер не удалось распознать как корректный международный телефонный номер. Часто это ошибка склейки номера источником трафика: код страны, лишний 0, пропущенная цифра, лишние символы или неверная длина."
+HLR_ERROR_COMMENT = "Проверка не выполнена из-за ошибки API, таймаута, недостатка кредитов или ошибки провайдера. Это не статус номера, а статус самой проверки."
 HLR_UNEXPECTED_COMMENT = "Неожиданный формат ответа HLR API."
 
 
@@ -4421,27 +4421,86 @@ def hlr_normalize(raw: str) -> tuple[str, bool]:
     return "+" + digits, True
 
 
+HLR_NUMBER_TYPE_LABELS = {
+    "bad_format": "Некорректный формат",
+    "mobile": "Мобильный",
+    "landline": "Городской",
+    "mobile_or_landline": "Мобильный или городской",
+    "toll_free": "Toll-free",
+    "premium": "Premium",
+    "shared_cost": "Shared cost",
+    "voip": "VoIP",
+    "stage_and_screen": "Stage/screen",
+    "pager": "Pager",
+    "universal_access_number": "Universal access",
+    "personal_number": "Personal number",
+    "voicemail_only": "Voicemail only",
+    "machine_to_machine": "Machine-to-machine",
+    "unknown": "Неизвестно",
+    "other": "Другое",
+}
+HLR_LEAD_QUALITY_LABELS = {
+    "strong_good": "Хороший сигнал",
+    "weak_good": "Скорее норм",
+    "warning": "Warning",
+    "strong_bad": "Плохой сигнал",
+    "technical_bad": "Ошибка формата",
+    "unknown": "Неизвестно",
+    "check_error": "Ошибка проверки",
+}
+
+
 def hlr_number_type(raw_type: object, bad_format: bool = False) -> str:
     if bad_format:
         return "bad_format"
-    normalized = str(raw_type or "").strip().lower().replace("_", "-")
-    if normalized in {"mobile"}:
-        return "mobile"
-    if normalized in {"fixed-line", "fixed line", "landline"}:
-        return "fixed_line"
-    if normalized in {"toll-free", "toll free"}:
-        return "toll_free"
-    if normalized == "voip":
-        return "voip"
-    if normalized in {"", "unknown"}:
-        return "unknown"
-    if normalized == "bad-format":
-        return "bad_format"
-    return "other"
+    normalized = str(raw_type or "").strip().upper().replace("-", "_").replace(" ", "_")
+    mapping = {
+        "BAD_FORMAT": "bad_format",
+        "MOBILE": "mobile",
+        "LANDLINE": "landline",
+        "FIXED_LINE": "landline",
+        "MOBILE_OR_LANDLINE": "mobile_or_landline",
+        "TOLL_FREE": "toll_free",
+        "PREMIUM": "premium",
+        "SHARED_COST": "shared_cost",
+        "VOIP": "voip",
+        "STAGE_AND_SCREEN": "stage_and_screen",
+        "PAGER": "pager",
+        "UNIVERSAL_ACCESS_NUMBER": "universal_access_number",
+        "PERSONAL_NUMBER": "personal_number",
+        "VOICEMAIL_ONLY": "voicemail_only",
+        "MACHINE_TO_MACHINE": "machine_to_machine",
+        "UNKNOWN": "unknown",
+        "": "unknown",
+    }
+    return mapping.get(normalized, "other")
 
 
 def hlr_type_label(number_type: str) -> str:
-    return {"mobile": "Мобильный", "fixed_line": "Городской", "toll_free": "Toll-free", "voip": "VoIP", "unknown": "Неизвестно", "bad_format": "Некорректный формат", "other": "Другое"}.get(number_type, "Неизвестно")
+    return HLR_NUMBER_TYPE_LABELS.get(number_type, "Другое")
+
+
+def hlr_lead_quality_signal(live_status: object, number_type: str, final_category: str) -> str:
+    live = str(live_status or "").strip().upper()
+    if final_category == "error" or live == "ERROR":
+        return "check_error"
+    if live == "BAD_FORMAT" or number_type == "bad_format":
+        return "technical_bad"
+    if live == "DEAD":
+        return "strong_bad"
+    if number_type in {"stage_and_screen", "machine_to_machine", "voicemail_only", "premium", "shared_cost", "pager"}:
+        return "strong_bad" if live != "LIVE" else "warning"
+    if live == "LIVE":
+        return "strong_good" if number_type == "mobile" else ("weak_good" if number_type in {"landline", "mobile_or_landline", "voip", "toll_free", "personal_number", "universal_access_number"} else "warning")
+    if live in {"ABSENT_SUBSCRIBER", "NO_TELESERVICE_PROVISIONED"}:
+        return "warning"
+    if live in {"NOT_AVAILABLE_NETWORK_ONLY", "NO_COVERAGE", "NOT_APPLICABLE", "INCONCLUSIVE"}:
+        return "unknown"
+    return "unknown"
+
+
+def hlr_lead_quality_label(signal: object) -> str:
+    return HLR_LEAD_QUALITY_LABELS.get(str(signal or "unknown"), "Неизвестно")
 
 
 def hlr_format_label(format_status: str) -> str:
@@ -4508,6 +4567,7 @@ def hlr_first_present(raw: dict[str, object], *keys: str) -> object:
 
 def hlr_make_result(original: str, normalized: str, *, format_status: str = "valid", country: object = "—", number_type_raw: object = "", operator: object = "—", hlr_status_raw: object = "", live_status_raw: object = "", final_category: str = "unknown", final_result: str = "UNKNOWN", comment: str = "HLR не вернул понятный live-status.", is_demo_result: bool = False, **extra: object) -> dict[str, object]:
     number_type = hlr_number_type(number_type_raw, format_status == "bad_format")
+    lead_quality_signal = str(extra.pop("lead_quality_signal", "") or hlr_lead_quality_signal(live_status_raw or hlr_status_raw, number_type, final_category))
     result = {
         "original_number": original,
         "normalized_number": normalized,
@@ -4520,6 +4580,7 @@ def hlr_make_result(original: str, normalized: str, *, format_status: str = "val
         "live_status_raw": str(live_status_raw or ""),
         "final_category": final_category,
         "final_result": final_result,
+        "lead_quality_signal": lead_quality_signal,
         "comment": comment,
         "is_demo_result": is_demo_result,
     }
@@ -4573,23 +4634,51 @@ def hlr_demo_check(numbers: list[dict[str, str]]) -> list[dict[str, object]]:
     rows = []
     for item in numbers:
         normalized = item["normalized"]
+        demo_extra = {
+            "uuid": f"demo-{normalized[-6:]}",
+            "credits_spent": "0",
+            "detected_telephone_number": normalized,
+            "formatted_telephone_number": normalized,
+            "timestamp": "2026-07-04T00:00:00Z",
+            "current_network": "Demo current network",
+            "original_network": "Demo original network",
+            "current_operator": "DemoNet",
+            "original_operator": "DemoOriginal",
+            "current_mccmnc": "250001",
+            "original_mccmnc": "250099",
+            "current_country": "Demo",
+            "original_country": "Demo",
+            "current_country_iso3": "DEM",
+            "original_country_iso3": "DEM",
+            "original_area": "Demo area",
+            "current_country_prefix": "+0",
+            "original_country_prefix": "+0",
+            "is_ported": "YES" if normalized.endswith("77") else "NO",
+            "ported_date": "2026-01-15" if normalized.endswith("77") else "",
+            "raw_api_item_sanitized": {"uuid": f"demo-{normalized[-6:]}", "live_status": "DEMO", "current_network_details": {"name": "DemoNet", "mccmnc": "250001"}},
+            "extra_fields": ["uuid", "credits_spent", "detected_telephone_number", "formatted_telephone_number", "live_status", "telephone_number_type", "current_network_details.name", "current_network_details.mccmnc", "original_network_details.mccmnc", "is_ported", "ported_date"],
+        }
         if normalized.endswith("00"):
-            rows.append(hlr_make_result(item["original"], normalized, country="Demo", number_type_raw="MOBILE", operator="DemoNet", hlr_status_raw="ERROR", live_status_raw="ERROR", final_category="error", final_result="ERROR", comment=HLR_ERROR_COMMENT, is_demo_result=True))
+            rows.append(hlr_make_result(item["original"], normalized, country="Demo", number_type_raw="MOBILE", operator="DemoNet", hlr_status_raw="ERROR", live_status_raw="ERROR", final_category="error", final_result="ERROR", comment=HLR_ERROR_COMMENT, is_demo_result=True, **demo_extra))
             continue
         if normalized.endswith("11"):
             status, ntype = "DEAD", "MOBILE"
         elif normalized.endswith("22"):
             status, ntype = "INCONCLUSIVE", "MOBILE"
         elif normalized.endswith("33"):
-            status, ntype = "NOT_APPLICABLE", "FIXED_LINE"
+            status, ntype = "NOT_APPLICABLE", "LANDLINE"
         elif normalized.endswith("44"):
             status, ntype = "ABSENT_SUBSCRIBER", "MOBILE"
         elif normalized.endswith("55"):
             status, ntype = "NO_TELESERVICE_PROVISIONED", "MOBILE"
+        elif normalized.endswith("66"):
+            status, ntype = "LIVE", "MACHINE_TO_MACHINE"
+        elif normalized.endswith("77"):
+            status, ntype = "LIVE", "STAGE_AND_SCREEN"
         else:
             status, ntype = "LIVE", "MOBILE"
         category, final, comment, raw = hlr_status_result(status, status)
-        rows.append(hlr_make_result(item["original"], normalized, country="Demo", number_type_raw=ntype, operator="DemoNet", hlr_status_raw=raw, live_status_raw=raw, final_category=category, final_result=final, comment=comment, is_demo_result=True))
+        rows.append(hlr_make_result(item["original"], normalized, country="Demo", number_type_raw=ntype, operator="DemoNet", hlr_status_raw=raw, live_status_raw=raw, final_category=category, final_result=final, comment=comment, is_demo_result=True, **demo_extra))
     return rows
 
 
@@ -4623,36 +4712,42 @@ def hlr_result_from_api_item(item: dict[str, str], raw_result: object) -> dict[s
     if not isinstance(raw_result, dict):
         return hlr_make_result(item["original"], item["normalized"], hlr_status_raw="ERROR", live_status_raw="ERROR", final_category="error", final_result="ERROR", comment=HLR_UNEXPECTED_COMMENT)
     sanitized = hlr_sanitize_api_item(raw_result)
-    current_operator = hlr_first_present(raw_result, "current_network_details.name")
-    original_operator = hlr_first_present(raw_result, "original_network_details.name")
-    current_country = hlr_first_present(raw_result, "current_network_details.country_name")
-    original_country = hlr_first_present(raw_result, "original_network_details.country_name")
+    current_operator = hlr_first_present(raw_result, "current_network_details.name", "current_operator")
+    original_operator = hlr_first_present(raw_result, "original_network_details.name", "original_operator")
+    current_country = hlr_first_present(raw_result, "current_network_details.country_name", "current_country")
+    original_country = hlr_first_present(raw_result, "original_network_details.country_name", "original_country")
+    current_network = hlr_first_present(raw_result, "current_network")
+    original_network = hlr_first_present(raw_result, "original_network")
     extras = {
+        "uuid": hlr_first_present(raw_result, "uuid", "request_id", "lookup_id"),
+        "credits_spent": hlr_first_present(raw_result, "credits_spent", "cost", "price"),
+        "detected_telephone_number": hlr_first_present(raw_result, "detected_telephone_number", "telephone_number", "number", "msisdn"),
+        "formatted_telephone_number": hlr_first_present(raw_result, "formatted_telephone_number"),
+        "timestamp": hlr_first_present(raw_result, "timestamp"),
         "telephone_number": hlr_first_present(raw_result, "telephone_number"),
+        "current_network": current_network,
+        "original_network": original_network,
         "current_operator": current_operator or "—",
         "original_operator": original_operator or "—",
+        "current_mccmnc": hlr_first_present(raw_result, "current_network_details.mccmnc", "current_mccmnc"),
+        "original_mccmnc": hlr_first_present(raw_result, "original_network_details.mccmnc", "original_mccmnc"),
         "current_country": current_country or "—",
         "original_country": original_country or "—",
+        "current_country_iso3": hlr_first_present(raw_result, "current_network_details.country_iso3", "current_country_iso3"),
+        "original_country_iso3": hlr_first_present(raw_result, "original_network_details.country_iso3", "original_country_iso3"),
+        "original_area": hlr_first_present(raw_result, "original_network_details.area", "original_area"),
+        "current_country_prefix": hlr_first_present(raw_result, "current_network_details.country_prefix", "current_country_prefix"),
+        "original_country_prefix": hlr_first_present(raw_result, "original_network_details.country_prefix", "original_country_prefix"),
         "current_mcc": hlr_first_present(raw_result, "current_network_details.mcc"),
         "current_mnc": hlr_first_present(raw_result, "current_network_details.mnc"),
-        "current_network_code": hlr_first_present(raw_result, "current_network_details.network_code"),
-        "current_country_code": hlr_first_present(raw_result, "current_network_details.country_code"),
         "original_mcc": hlr_first_present(raw_result, "original_network_details.mcc"),
         "original_mnc": hlr_first_present(raw_result, "original_network_details.mnc"),
-        "original_network_code": hlr_first_present(raw_result, "original_network_details.network_code"),
-        "original_country_code": hlr_first_present(raw_result, "original_network_details.country_code"),
-        "mcc": hlr_first_present(raw_result, "mcc"),
-        "mnc": hlr_first_present(raw_result, "mnc"),
-        "imsi": hlr_first_present(raw_result, "imsi"),
-        "ported": hlr_first_present(raw_result, "is_ported", "ported", "mnp"),
-        "roaming": hlr_first_present(raw_result, "roaming", "is_roaming"),
-        "reachable": hlr_first_present(raw_result, "reachable"),
-        "valid": hlr_first_present(raw_result, "valid"),
-        "request_id": hlr_first_present(raw_result, "request_id"),
-        "lookup_id": hlr_first_present(raw_result, "lookup_id"),
-        "cost": hlr_first_present(raw_result, "cost"),
-        "price": hlr_first_present(raw_result, "price"),
-        "currency": hlr_first_present(raw_result, "currency"),
+        "is_ported": hlr_first_present(raw_result, "is_ported", "ported", "mnp"),
+        "ported_date": hlr_first_present(raw_result, "ported_date"),
+        "landline_status": hlr_first_present(raw_result, "landline_status"),
+        "usa_status": hlr_first_present(raw_result, "usa_status"),
+        "line_status": hlr_first_present(raw_result, "line_status"),
+        "request_parameters": hlr_first_present(raw_result, "request_parameters"),
         "raw_error": hlr_first_present(raw_result, "error", "error_message"),
         "raw_message": hlr_first_present(raw_result, "message"),
         "extra_fields": sorted(set(hlr_field_paths(sanitized))),
@@ -4661,7 +4756,7 @@ def hlr_result_from_api_item(item: dict[str, str], raw_result: object) -> dict[s
     error_value = raw_result.get("error") or raw_result.get("error_message")
     status_value = raw_result.get("status") or raw_result.get("message")
     country = current_country or original_country or "—"
-    operator = current_operator or original_operator or "—"
+    operator = current_operator or original_operator or current_network or original_network or "—"
     number_type_raw = raw_result.get("telephone_number_type") or raw_result.get("number_type") or ""
     if error_value:
         return hlr_make_result(item["original"], item["normalized"], country=country, number_type_raw=number_type_raw, operator=operator, hlr_status_raw=error_value or status_value or "ERROR", live_status_raw="ERROR", final_category="error", final_result="ERROR", comment=HLR_ERROR_COMMENT, **extras)
@@ -4677,7 +4772,7 @@ def hlr_real_api_check(numbers: list[dict[str, str]], config: dict[str, object])
     results = []
     for start in range(0, len(numbers), HLR_BATCH_SIZE):
         batch = numbers[start:start + HLR_BATCH_SIZE]
-        payload = json.dumps({"numbers": [item["normalized"] for item in batch]}, ensure_ascii=False).encode("utf-8")
+        payload = json.dumps({"numbers": [{"telephone_number": item["normalized"], "output_format": "PLUS_E164"} for item in batch]}, ensure_ascii=False).encode("utf-8")
         req = Request(str(config["api_url"]), data=payload, headers={"Content-Type": "application/json", "X-API-Key": str(config["api_key"]), "X-API-Secret": str(config["api_secret"])}, method="POST")
         try:
             with urlopen(req, timeout=timeout) as resp:
@@ -4686,7 +4781,7 @@ def hlr_real_api_check(numbers: list[dict[str, str]], config: dict[str, object])
             if api_rows is None:
                 results.extend([hlr_make_result(item["original"], item["normalized"], hlr_status_raw="ERROR", live_status_raw="ERROR", final_category="error", final_result="ERROR", comment=HLR_UNEXPECTED_COMMENT) for item in batch])
                 continue
-            by_number = {str(r.get("telephone_number") or r.get("number") or r.get("normalized") or r.get("msisdn") or ""): r for r in api_rows if isinstance(r, dict)}
+            by_number = {str(r.get("detected_telephone_number") or r.get("telephone_number") or r.get("formatted_telephone_number") or r.get("number") or r.get("normalized") or r.get("msisdn") or ""): r for r in api_rows if isinstance(r, dict)}
             for item, fallback in zip(batch, api_rows):
                 raw_result = by_number.get(item["normalized"]) or by_number.get(item["normalized"].lstrip("+")) or fallback
                 results.append(hlr_result_from_api_item(item, raw_result))
@@ -4716,7 +4811,7 @@ def hlr_summary(results: list[dict[str, object]]) -> dict[str, int]:
         "bad_format": sum(1 for r in results if r.get("final_result") == "BAD_FORMAT"),
         "dead": sum(1 for r in results if r.get("final_result") == "DEAD"),
         "mobile": sum(1 for r in results if r.get("number_type") == "mobile"),
-        "fixed": sum(1 for r in results if r.get("number_type") == "fixed_line"),
+        "fixed": sum(1 for r in results if r.get("number_type") == "landline"),
         "unknown": sum(1 for r in results if r.get("final_category") == "unknown"),
         "errors": sum(1 for r in results if r.get("final_category") == "error"),
     }
@@ -4731,6 +4826,16 @@ def hlr_raw_status_counts(results: list[dict[str, object]]) -> dict[str, int]:
                 counts[status] = counts.get(status, 0) + 1
     return dict(sorted(counts.items(), key=lambda item: (-item[1], item[0])))
 
+
+
+def hlr_number_type_counts(results: list[dict[str, object]]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for row in results:
+        raw = str(row.get("number_type_raw") or row.get("number_type") or "").strip()
+        key = raw.upper() if raw else str(row.get("number_type") or "UNKNOWN").upper()
+        if key:
+            counts[key] = counts.get(key, 0) + 1
+    return dict(sorted(counts.items(), key=lambda item: (-item[1], item[0])))
 
 def hlr_display_value(value: object) -> str:
     if hlr_is_blank(value):
@@ -4748,42 +4853,50 @@ def hlr_display_row(row: dict[str, object]) -> dict[str, str]:
     return {
         "original_number": str(row.get("original_number") or row.get("original") or ""),
         "normalized_number": str(row.get("normalized_number") or row.get("normalized") or ""),
+        "detected_telephone_number": hlr_display_value(row.get("detected_telephone_number")),
+        "formatted_telephone_number": hlr_display_value(row.get("formatted_telephone_number")),
         "format_status": hlr_format_label(str(row.get("format_status") or row.get("format") or "valid")),
-        "country": hlr_display_value(row.get("country") or current_country or original_country),
+        "country": hlr_display_value(current_country or original_country or row.get("country")),
         "number_type": hlr_type_label(str(row.get("number_type") or "unknown")),
-        "operator": hlr_display_value(row.get("operator") or current_operator or original_operator or row.get("network")),
+        "number_type_raw": hlr_display_value(row.get("number_type_raw")),
+        "operator": hlr_display_value(current_operator or original_operator or row.get("operator") or row.get("network")),
         "hlr_status_raw": str(row.get("hlr_status_raw") or row.get("hlr_status") or "—"),
         "live_status_raw": str(row.get("live_status_raw") or row.get("live_status") or "—"),
         "final_result": str(row.get("final_result") or row.get("outcome") or "UNKNOWN"),
+        "lead_quality_signal": hlr_lead_quality_label(row.get("lead_quality_signal")),
         "comment": str(row.get("comment") or ""),
+        "current_network": hlr_display_value(row.get("current_network")),
+        "original_network": hlr_display_value(row.get("original_network")),
         "current_operator": hlr_display_value(current_operator),
         "original_operator": hlr_display_value(original_operator),
+        "current_mccmnc": hlr_display_value(row.get("current_mccmnc") or row.get("current_mcc")),
+        "original_mccmnc": hlr_display_value(row.get("original_mccmnc") or row.get("original_mcc")),
         "current_country": hlr_display_value(current_country),
         "original_country": hlr_display_value(original_country),
-        "current_mcc": hlr_display_value(row.get("current_mcc") or row.get("mcc")),
-        "current_mnc": hlr_display_value(row.get("current_mnc") or row.get("mnc")),
-        "original_mcc": hlr_display_value(row.get("original_mcc")),
-        "original_mnc": hlr_display_value(row.get("original_mnc")),
-        "ported": hlr_display_value(row.get("ported")),
-        "roaming": hlr_display_value(row.get("roaming")),
-        "reachable": hlr_display_value(row.get("reachable")),
-        "valid": hlr_display_value(row.get("valid")),
-        "request_id": hlr_display_value(row.get("request_id")),
-        "lookup_id": hlr_display_value(row.get("lookup_id")),
+        "current_country_iso3": hlr_display_value(row.get("current_country_iso3")),
+        "original_country_iso3": hlr_display_value(row.get("original_country_iso3")),
+        "original_area": hlr_display_value(row.get("original_area")),
+        "current_country_prefix": hlr_display_value(row.get("current_country_prefix")),
+        "original_country_prefix": hlr_display_value(row.get("original_country_prefix")),
+        "is_ported": hlr_display_value(row.get("is_ported") or row.get("ported")),
+        "ported_date": hlr_display_value(row.get("ported_date")),
+        "landline_status": hlr_display_value(row.get("landline_status")),
+        "uuid": hlr_display_value(row.get("uuid") or row.get("request_id") or row.get("lookup_id")),
+        "timestamp": hlr_display_value(row.get("timestamp")),
+        "credits_spent": hlr_display_value(row.get("credits_spent")),
         "raw_error": hlr_display_value(row.get("raw_error")),
         "raw_message": hlr_display_value(row.get("raw_message")),
     }
-
 
 def hlr_has_value(results: list[dict[str, object]], *keys: str) -> bool:
     return any(any(not hlr_is_blank(row.get(key)) for key in keys) for row in results)
 
 
 def hlr_csv_headers_and_keys(results: list[dict[str, object]]) -> tuple[list[str], list[str]]:
-    keys = ["original_number", "normalized_number", "format_status", "country", "number_type", "operator", "hlr_status_raw", "live_status_raw", "final_result", "comment"]
+    keys = ["original_number", "normalized_number", "detected_telephone_number", "formatted_telephone_number", "format_status", "country", "number_type", "number_type_raw", "operator", "hlr_status_raw", "live_status_raw", "final_result", "lead_quality_signal", "comment"]
     headers = list(HLR_RESULT_HEADERS)
     for key, label in HLR_EXTRA_CSV_FIELDS:
-        aliases = {"current_mcc": ("current_mcc", "mcc"), "current_mnc": ("current_mnc", "mnc")}.get(key, (key,))
+        aliases = (key,)
         if hlr_has_value(results, *aliases):
             keys.append(key)
             headers.append(label)
@@ -4810,32 +4923,35 @@ HLR_FILTERS = [
 
 def hlr_details_html(row: dict[str, object]) -> str:
     display = hlr_display_row(row)
-    normalized_keys = ["original_number", "normalized_number", "format_status", "number_type", "live_status_raw", "hlr_status_raw", "final_result", "comment"]
-    extracted_keys = ["current_operator", "original_operator", "current_country", "original_country", "current_mcc", "current_mnc", "original_mcc", "original_mnc", "ported", "roaming", "reachable", "valid", "request_id", "lookup_id", "raw_error", "raw_message"]
-    labels = {"original_number": "original_number", "normalized_number": "normalized_number", "format_status": "format_status", "number_type": "number_type", "live_status_raw": "live_status_raw", "hlr_status_raw": "hlr_status_raw", "final_result": "final_result", "comment": "comment", "current_operator": "current_operator", "original_operator": "original_operator", "current_country": "current_country", "original_country": "original_country", "current_mcc": "current_mcc", "current_mnc": "current_mnc", "original_mcc": "original_mcc", "original_mnc": "original_mnc", "ported": "MNP/ported", "roaming": "roaming", "reachable": "reachable", "valid": "valid", "request_id": "request_id", "lookup_id": "lookup_id", "raw_error": "raw_error", "raw_message": "raw_message"}
+    main_keys = ["original_number", "normalized_number", "detected_telephone_number", "formatted_telephone_number", "live_status_raw", "number_type", "final_result", "lead_quality_signal", "comment"]
+    network_keys = ["current_network", "current_operator", "current_mccmnc", "current_country", "current_country_iso3", "current_country_prefix"]
+    original_keys = ["original_network", "original_operator", "original_mccmnc", "original_country", "original_country_iso3", "original_area", "original_country_prefix"]
+    porting_keys = ["is_ported", "ported_date", "landline_status"]
+    meta_keys = ["uuid", "timestamp", "credits_spent", "raw_error", "raw_message"]
+    labels = {
+        "original_number": "Исходный номер", "normalized_number": "Нормализованный номер", "detected_telephone_number": "Detected number", "formatted_telephone_number": "Formatted number", "live_status_raw": "Live status", "number_type": "Telephone number type", "final_result": "Итог", "lead_quality_signal": "Оценка лида", "comment": "Комментарий", "current_network": "Current network", "current_operator": "Current operator", "current_mccmnc": "Current MCCMNC", "current_country": "Current country", "current_country_iso3": "Current ISO3", "current_country_prefix": "Current country prefix", "original_network": "Original network", "original_operator": "Original operator", "original_mccmnc": "Original MCCMNC", "original_country": "Original country", "original_country_iso3": "Original ISO3", "original_area": "Original area", "original_country_prefix": "Original country prefix", "is_ported": "Is ported", "ported_date": "Ported date", "landline_status": "Landline status", "uuid": "UUID", "timestamp": "Timestamp", "credits_spent": "Credits spent", "raw_error": "Raw error", "raw_message": "Raw message"
+    }
     def dl(keys: list[str], skip_empty: bool = False) -> str:
         parts = []
         for key in keys:
             value = display.get(key, "—")
             if skip_empty and value == "—":
                 continue
-            parts.append(f"<dt>{esc(labels.get(key, key))}</dt><dd>{esc(value)}</dd>")
+            title = " title='Оценка лида — аналитическая подсказка по HLR-статусу и типу номера. Это не абсолютный приговор по каждому номеру.'" if key == "lead_quality_signal" else ""
+            parts.append(f"<dt{title}>{esc(labels.get(key, key))}</dt><dd>{esc(value)}</dd>")
         return "<dl class='hlr-detail-list'>" + "".join(parts) + "</dl>"
     raw_json = json.dumps(row.get("raw_api_item_sanitized") or {}, ensure_ascii=False, indent=2, sort_keys=True)
     raw_block = f"<pre class='hlr-raw-json'>{esc(raw_json)}</pre>" if raw_json != "{}" else "<p class='muted'>Raw API item недоступен для этой строки.</p>"
-    return f"<div class='hlr-details-grid'><section><h4>Normalized result</h4>{dl(normalized_keys)}</section><section><h4>Extracted fields</h4>{dl(extracted_keys, True)}</section><section><h4>Sanitized raw API item</h4>{raw_block}</section></div>"
-
+    return f"<div class='hlr-details-grid'><section><h4>Main</h4>{dl(main_keys)}</section><section><h4>Network</h4>{dl(network_keys, True)}</section><section><h4>Original network</h4>{dl(original_keys, True)}</section><section><h4>Porting</h4>{dl(porting_keys, True)}</section><section><h4>Meta</h4>{dl(meta_keys, True)}</section><section><h4>Sanitized raw API item</h4>{raw_block}</section></div>"
 
 def hlr_table(results: list[dict[str, object]]) -> str:
-    headers = [("original_number", "Исходный номер"), ("normalized_number", "Нормализованный номер"), ("format_status", "Формат"), ("country", "Страна"), ("number_type", "Тип номера"), ("operator", "Оператор / сеть"), ("hlr_status_raw", "HLR статус"), ("live_status_raw", "Live status"), ("final_result", "Итог"), ("comment", "Комментарий")]
+    headers = [("original_number", "Исходный номер"), ("normalized_number", "Нормализованный номер"), ("format_status", "Формат"), ("country", "Страна"), ("number_type", "Тип номера"), ("operator", "Оператор / сеть"), ("hlr_status_raw", "HLR статус"), ("live_status_raw", "Live status"), ("final_result", "Итог"), ("lead_quality_signal", "Оценка лида"), ("comment", "Комментарий")]
     if hlr_has_value(results, "current_operator") and hlr_has_value(results, "original_operator"):
         headers.extend([("current_operator", "Текущий оператор"), ("original_operator", "Оригинальный оператор")])
-    if hlr_has_value(results, "current_mcc", "mcc", "original_mcc"):
-        headers.append(("current_mcc", "MCC"))
-    if hlr_has_value(results, "current_mnc", "mnc", "original_mnc"):
-        headers.append(("current_mnc", "MNC"))
-    if hlr_has_value(results, "ported"):
-        headers.append(("ported", "MNP/ported"))
+    if hlr_has_value(results, "current_mccmnc", "original_mccmnc", "current_mcc", "original_mcc"):
+        headers.append(("current_mccmnc", "MCCMNC"))
+    if hlr_has_value(results, "is_ported"):
+        headers.append(("is_ported", "MNP/ported"))
     if hlr_has_value(results, "roaming"):
         headers.append(("roaming", "Roaming"))
     if hlr_has_value(results, "request_id", "lookup_id"):
@@ -4862,15 +4978,19 @@ def hlr_table(results: list[dict[str, object]]) -> str:
     return "<section class='hlr-results-area'>" + table_card(data_table("hlr", headers, body) + empty + filtered_empty) + "</section>"
 
 
-def hlr_summary_html(summary: dict[str, int], raw_counts: dict[str, int]) -> str:
+def hlr_summary_html(summary: dict[str, int], raw_counts: dict[str, int], type_counts: dict[str, int]) -> str:
     main = "<section class='hlr-status-panel' aria-label='Фильтры результатов HLR'>" + "".join(
         f"<button type='button' class='hlr-status-filter' data-hlr-filter='{esc(key)}' title='{esc(help_text)}'><span class='hlr-status-name'>{esc(label)}</span><strong class='hlr-status-count'>{summary.get(key, 0)}</strong><small>{esc(help_text)}</small></button>"
         for key, label, help_text in HLR_FILTERS
     ) + "</section>"
-    if not raw_counts:
-        return main
-    chips = "".join(f"<button type='button' class='hlr-raw-chip' data-raw-status='{esc(status)}' title='Показать строки со статусом {esc(status)}'>{esc(status)}: {count}</button>" for status, count in raw_counts.items())
-    return main + f"<div class='hlr-raw-statuses'><h3>Найденные HLR статусы</h3><div class='hlr-raw-chip-list'>{chips}</div></div>"
+    blocks = [main]
+    if type_counts:
+        type_chips = "".join(f"<button type='button' class='hlr-raw-chip hlr-type-chip' data-number-type='{esc(status)}' title='Показать строки с типом {esc(status)}'>{esc(status)}: {count}</button>" for status, count in type_counts.items())
+        blocks.append(f"<div class='hlr-raw-statuses'><h3>Типы номеров</h3><div class='hlr-raw-chip-list'>{type_chips}</div></div>")
+    if raw_counts:
+        chips = "".join(f"<button type='button' class='hlr-raw-chip' data-raw-status='{esc(status)}' title='Показать строки со статусом {esc(status)}'>{esc(status)}: {count}</button>" for status, count in raw_counts.items())
+        blocks.append(f"<div class='hlr-raw-statuses'><h3>Найденные HLR статусы</h3><div class='hlr-raw-chip-list'>{chips}</div></div>")
+    return "".join(blocks)
 
 
 
@@ -4920,9 +5040,10 @@ def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = Non
     </section>
     <section class='card hlr-summary-panel'>
       <h2>Фильтры статусов</h2>
-      {hlr_summary_html(summary, hlr_raw_status_counts(results))}
+      {hlr_summary_html(summary, hlr_raw_status_counts(results), hlr_number_type_counts(results))}
     </section>
   </div>
+  <p class='muted hlr-input-hint'>HLR показывает сетевой статус на момент проверки и/или состояние, доступное у оператора. UNKNOWN, NO_COVERAGE и NOT_AVAILABLE_NETWORK_ONLY не равны плохому номеру; это ограничения проверки. Для оценки веба смотрите доли статусов по пачке номеров, а не один номер отдельно.</p>
   <div class='hlr-table-toolbar'><span class='muted' id='hlr-filter-caption'>Показаны все результаты</span><div class='table-footer-tools'>{export_form}<span class='muted'>Экспортирует текущую выборку.</span></div></div>
   {hlr_api_fields_html(results, is_demo_mode)}
   {hlr_table(results)}
@@ -4934,7 +5055,8 @@ def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = Non
   const counter = document.getElementById('hlr-counter');
   const clear = document.getElementById('hlr-clear');
   const filters = Array.from(document.querySelectorAll('.hlr-status-filter'));
-  const rawChips = Array.from(document.querySelectorAll('.hlr-raw-chip'));
+  const rawChips = Array.from(document.querySelectorAll('.hlr-raw-chip[data-raw-status]'));
+  const typeChips = Array.from(document.querySelectorAll('.hlr-type-chip'));
   const rows = Array.from(document.querySelectorAll('#hlr-table tbody tr:not(.hlr-details-row)'));
   const detailRows = Array.from(document.querySelectorAll('#hlr-table tbody tr.hlr-details-row'));
   const detailButtons = Array.from(document.querySelectorAll('.hlr-details-toggle'));
@@ -4949,7 +5071,7 @@ def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = Non
     if (!raw) return '';
     let compact = raw.replace(/[^0-9+]/g, '');
     if (compact.startsWith('00')) compact = '+' + compact.slice(2);
-    const digits = compact.replace(/\D/g, '');
+    const digits = compact.replace(/\\D/g, '');
     return digits.length ? '+' + digits : '';
   }}
   function updateCounter() {{
@@ -4966,7 +5088,7 @@ def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = Non
     if (filter === 'bad_format') return row.dataset.finalResult === 'BAD_FORMAT';
     if (filter === 'dead') return row.dataset.finalResult === 'DEAD';
     if (filter === 'mobile') return row.dataset.hlrType === 'mobile';
-    if (filter === 'fixed') return row.dataset.hlrType === 'fixed_line';
+    if (filter === 'fixed') return row.dataset.hlrType === 'landline';
     if (filter === 'unknown') return row.dataset.finalCategory === 'unknown';
     if (filter === 'errors') return row.dataset.finalCategory === 'error';
     return false;
@@ -4974,26 +5096,28 @@ def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = Non
   function matchesRaw(row, status) {{
     return row.dataset.hlrStatus === status || row.dataset.liveStatus === status || (status === 'BAD_FORMAT' && row.dataset.finalResult === 'BAD_FORMAT') || (status === 'ERROR' && row.dataset.finalCategory === 'error');
   }}
-  function applyFilter(filter, rawStatus) {{
+  function applyFilter(filter, rawStatus, typeStatus) {{
     let visible = 0;
-    rows.forEach((row) => {{ const show = rawStatus ? matchesRaw(row, rawStatus) : matchesMain(row, filter || 'all'); row.hidden = !show; const details = row.nextElementSibling; if (details && details.classList.contains('hlr-details-row') && !show) details.hidden = true; if (show) visible += 1; }});
+    rows.forEach((row) => {{ const show = typeStatus ? ((results[rows.indexOf(row)]?.number_type_raw || '').toUpperCase() === typeStatus || (results[rows.indexOf(row)]?.number_type || '').toUpperCase() === typeStatus) : (rawStatus ? matchesRaw(row, rawStatus) : matchesMain(row, filter || 'all')); row.hidden = !show; const details = row.nextElementSibling; if (details && details.classList.contains('hlr-details-row') && !show) details.hidden = true; if (show) visible += 1; }});
     filters.forEach((button) => button.classList.toggle('active', !rawStatus && button.dataset.hlrFilter === (filter || 'all')));
     rawChips.forEach((button) => button.classList.toggle('active', rawStatus && button.dataset.rawStatus === rawStatus));
+    typeChips.forEach((button) => button.classList.toggle('active', typeStatus && button.dataset.numberType === typeStatus));
     if (allEmpty) allEmpty.hidden = results.length > 0;
     if (filterEmpty) filterEmpty.hidden = results.length === 0 || visible > 0;
     const button = filters.find((item) => item.dataset.hlrFilter === (filter || 'all'));
-    if (caption) caption.textContent = rawStatus ? 'Фильтр HLR статус: ' + rawStatus : ((filter || 'all') === 'all' ? 'Показаны все результаты' : 'Фильтр: ' + (button?.querySelector('.hlr-status-name')?.textContent || filter));
+    if (caption) caption.textContent = typeStatus ? 'Фильтр типа номера: ' + typeStatus : (rawStatus ? 'Фильтр HLR статус: ' + rawStatus : ((filter || 'all') === 'all' ? 'Показаны все результаты' : 'Фильтр: ' + (button?.querySelector('.hlr-status-name')?.textContent || filter)));
     if (exportInput) {{
-      const filtered = (!rawStatus && (filter || 'all') === 'all') ? results : results.filter((_, index) => rawStatus ? matchesRaw(rows[index], rawStatus) : matchesMain(rows[index], filter || 'all'));
+      const filtered = (!rawStatus && !typeStatus && (filter || 'all') === 'all') ? results : results.filter((item, index) => typeStatus ? ((item.number_type_raw || '').toUpperCase() === typeStatus || (item.number_type || '').toUpperCase() === typeStatus) : (rawStatus ? matchesRaw(rows[index], rawStatus) : matchesMain(rows[index], filter || 'all')));
       exportInput.value = JSON.stringify(filtered);
     }}
   }}
   if (input) {{ input.addEventListener('input', updateCounter); updateCounter(); }}
   if (clear && input) clear.addEventListener('click', () => {{ input.value = ''; updateCounter(); input.focus(); }});
-  filters.forEach((button) => button.addEventListener('click', () => applyFilter(button.dataset.hlrFilter || 'all', '')));
-  rawChips.forEach((button) => button.addEventListener('click', () => applyFilter('all', button.dataset.rawStatus || '')));
+  filters.forEach((button) => button.addEventListener('click', () => applyFilter(button.dataset.hlrFilter || 'all', '', '')));
+  rawChips.forEach((button) => button.addEventListener('click', () => applyFilter('all', button.dataset.rawStatus || '', '')));
+  typeChips.forEach((button) => button.addEventListener('click', () => applyFilter('all', '', button.dataset.numberType || '')));
   detailButtons.forEach((button) => button.addEventListener('click', () => {{ const target = document.getElementById(button.dataset.detailsTarget || ''); if (!target) return; const open = target.hidden; detailRows.forEach((row) => {{ row.hidden = true; }}); target.hidden = !open; button.textContent = open ? 'Скрыть' : 'Детали'; }}));
-  applyFilter('all', '');
+  applyFilter('all', '', '');
 }})();
 </script>
 """
