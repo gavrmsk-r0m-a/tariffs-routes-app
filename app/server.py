@@ -2329,7 +2329,7 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-content-grid .span-2 {{ grid-column: span 2; }}
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-content-grid .wide {{ grid-column: 1 / -1; }}
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-content-grid textarea {{ width: 100%; resize: vertical; }}
-    html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid {{ flex: 1 1 auto; display: grid; grid-template-columns: minmax(135px, .8fr) minmax(135px, .8fr) minmax(205px, 1.1fr) minmax(210px, 1.25fr); gap: 12px; align-content: start; align-items: start; min-height: 180px; padding: 0; }}
+    html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid {{ flex: 1 1 auto; display: grid; grid-template-columns: minmax(125px, .85fr) minmax(125px, .85fr) minmax(205px, 1.2fr) minmax(150px, 1fr) 48px; gap: 12px; align-content: start; align-items: start; min-height: 180px; padding: 0; }}
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid label,
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .campaign-id-action-field,
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .campaign-company-field {{ min-width: 0; width: auto; }}
@@ -2339,11 +2339,16 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid label > textarea {{ display: block; margin-top: 4px; }}
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .field-label {{ display: inline-flex; align-items: baseline; gap: 4px; margin-bottom: 4px; color: #26323A; font-size: 12px; font-weight: 760; line-height: inherit; white-space: nowrap; }}
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .campaign-id-action-field {{ display: block; }}
-    html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .campaign-id-inline-action {{ display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: start; }}
-    html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .campaign-id-inline-action input,
-    html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .campaign-id-inline-action .small-button,
+    html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .campaign-id-action-button {{ align-self: start; margin-top: calc(1.25em + 4px); width: 48px; min-width: 0; }}
+    html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .campaign-id-action-field input,
+    html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .campaign-id-action-button,
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .multi-select > summary {{ box-sizing: border-box; min-height: 31px; height: 31px; }}
-    html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .campaign-id-inline-action .small-button {{ width: 48px; padding: 5px 8px; font-size: 13px; line-height: 1.2; box-shadow: none; }}
+    html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .campaign-id-action-button {{ padding: 5px 8px; font-size: 13px; line-height: 1.2; box-shadow: none; }}
+    html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .campaign-reason-field {{ grid-column: 1 / span 2; }}
+    html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .campaign-company-field {{ grid-column: 3 / -1; }}
+    html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .campaign-company-field .multi-select {{ margin: 4px 0 0; border: 1px solid var(--border-strong); border-radius: var(--radius-control); background: #fff; box-shadow: none; }}
+    html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .campaign-company-field .multi-select > summary {{ display: block; padding: 6px 10px; border: 0; border-radius: var(--radius-control); background: #fff; color: var(--text-strong); font-size: 14px; font-weight: 560; line-height: 1.25; }}
+    html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .campaign-company-field .multi-select[open] > summary {{ border-bottom: 1px solid var(--border-strong); border-radius: var(--radius-control) var(--radius-control) 0 0; background: #fff; }}
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .span-2 {{ grid-column: span 2; }}
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .wide {{ grid-column: 1 / -1; }}
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid textarea {{ width: 100%; resize: vertical; }}
@@ -4876,9 +4881,10 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
       <option value=''>—</option>
       {''.join(f"<option value='{v}' {'selected' if event and event['company_change_type'] == v else ''}>{label}</option>" for v, label in [('enable_autorotation','Включили авторотацию'),('disable_autorotation','Выключили авторотацию'),('set_campaign_route','Прописали ручной маршрут'),('remove_campaign_route','Убрали ручной маршрут')])}
     </select></label>
-    <div class='campaign-id-action-field'><span class='field-label'>ID кампании</span><div class='campaign-id-inline-action'><input name='campaign_id_search' id='campaign-id-search' value='{esc(event['campaign_id_search'] if event and 'campaign_id_search' in event.keys() else '')}' disabled><button type='button' id='campaign-id-search-button' class='small-button'>OK</button></div><span class='field-error' id='campaign-id-search-error' aria-live='polite'></span></div>
-    <label class='span-2'>Причина <span class='required'>*</span><select name='reason' id='campaign-routing-reason' required disabled>{routing_reason_options(event['reason'] if event else None, 'campaign_setting')}</select></label>
-    <div class='campaign-company-field span-2'>
+    <div class='campaign-id-action-field'><span class='field-label'>ID кампании</span><input name='campaign_id_search' id='campaign-id-search' value='{esc(event['campaign_id_search'] if event and 'campaign_id_search' in event.keys() else '')}' disabled><span class='field-error' id='campaign-id-search-error' aria-live='polite'></span></div>
+    <button type='button' id='campaign-id-search-button' class='small-button campaign-id-action-button' disabled>OK</button>
+    <label class='campaign-reason-field'>Причина <span class='required'>*</span><select name='reason' id='campaign-routing-reason' required disabled>{routing_reason_options(event['reason'] if event else None, 'campaign_setting')}</select></label>
+    <div class='campaign-company-field'>
       <span class='field-label'>Кампания <span class='required'>*</span></span>
       <details class='multi-select' id='event-company' data-placeholder='—'>
         <summary id='event-company-summary'>—</summary>
@@ -5049,7 +5055,7 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
     form.querySelectorAll('[data-scope-content]').forEach((content) => {{
       const show = content.dataset.scopeContent === scope;
       content.hidden = !show;
-      content.querySelectorAll('input, select, textarea').forEach((field) => {{ field.disabled = !show; }});
+      content.querySelectorAll('input, select, textarea, button').forEach((field) => {{ field.disabled = !show; }});
     }});
     form.querySelectorAll('[data-scope-hint]').forEach((hint) => {{ hint.hidden = hint.dataset.scopeHint !== scope; }});
     const serverCountry = document.getElementById('server-event-country');
