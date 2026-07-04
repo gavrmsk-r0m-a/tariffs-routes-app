@@ -14,6 +14,8 @@ from datetime import datetime
 from http.cookies import SimpleCookie
 from pathlib import Path
 from urllib.parse import parse_qs, quote, unquote, urlencode
+from urllib.request import Request, urlopen
+from urllib.error import HTTPError, URLError
 from wsgiref.simple_server import make_server
 
 from app.db import DEFAULT_DB_PATH, DEFAULT_PHONE_ASSIGNMENTS, DEFAULT_PROJECTS, connect, ensure_db_initialized, init_db
@@ -239,6 +241,7 @@ SECTION_REGISTRY = [
     {"section_key": "tariffs", "display_name": "Тарифы", "supports_export": True},
     {"section_key": "phone_numbers", "display_name": "Купленные номера", "supports_export": True},
     {"section_key": "call_campaigns", "display_name": "Кампании прозвона", "supports_export": False},
+    {"section_key": "hlr", "display_name": "HLR", "supports_export": True},
     {"section_key": "provider_changes", "display_name": "Смена провайдеров", "supports_export": True},
     {"section_key": "admin", "display_name": "Администрирование", "supports_export": False},
     {"section_key": "change_log", "display_name": "Change log", "supports_export": False},
@@ -251,14 +254,14 @@ def normalize_section_key(section: str) -> str:
 ROLE_PERMISSIONS = {
     "admin": {"read": {"*"}, "write": {"*"}, "export": {"*"}},
     "operator": {
-        "read": {"dashboard", "routes", "tariffs", "phone_numbers", "call_campaigns", "provider_changes"},
-        "write": {"phone_numbers", "call_campaigns", "provider_changes"},
-        "export": {"phone_numbers", "provider_changes"},
+        "read": {"dashboard", "routes", "tariffs", "phone_numbers", "call_campaigns", "provider_changes", "hlr"},
+        "write": {"phone_numbers", "call_campaigns", "provider_changes", "hlr"},
+        "export": {"phone_numbers", "provider_changes", "hlr"},
     },
     "duty": {
-        "read": {"dashboard", "routes", "tariffs", "phone_numbers", "call_campaigns", "provider_changes"},
-        "write": {"phone_numbers", "call_campaigns", "provider_changes"},
-        "export": {"phone_numbers", "provider_changes"},
+        "read": {"dashboard", "routes", "tariffs", "phone_numbers", "call_campaigns", "provider_changes", "hlr"},
+        "write": {"phone_numbers", "call_campaigns", "provider_changes", "hlr"},
+        "export": {"phone_numbers", "provider_changes", "hlr"},
     },
     "boss": {"read": {"dashboard", "tariffs"}, "write": set(), "export": {"tariffs"}},
     "guest": {"read": {"dashboard"}, "write": set(), "export": set()},
@@ -368,6 +371,7 @@ SEMANTIC_ICONS = {
     "phones": material_icon("sim_card"),
     "companies": material_icon("campaign"),
     "provider_changes": material_icon("sync_alt"),
+    "hlr": material_icon("fact_check"),
     "admin_hlr": material_icon("fact_check"),
     "admin_spam_checker": material_icon("report"),
     "admin": material_icon("admin_panel_settings"),
@@ -428,6 +432,7 @@ NAV_ITEMS = [
     ("tariffs", "/tariffs", "Тарифы", ("Тарифы",)),
     ("phones", "/phones", "Купленные номера", ("Купленные номера", "Редактировать номер")),
     ("companies", "/companies", "Кампании прозвона", ("Кампании прозвона", "Редактировать кампанию")),
+    ("hlr", "/hlr", "HLR", ("HLR",)),
     ("admin_server_priorities", "/admin/server-priorities", "Приоритет по серверам", ("Приоритет по серверам",)),
     ("admin_company_routing_settings", "/admin/company-routing-settings", "Схема маршрутизации кампаний", ("Схема маршрутизации кампаний",)),
 ]
@@ -478,7 +483,6 @@ def sidebar(title: str) -> str:
 
     main_links = "".join(nav_link(key, href, label) for key, href, label, _ in NAV_ITEMS if can_read(key))
     if current_role_key() == "admin":
-        main_links += disabled_nav_item("admin_hlr", "HLR")
         main_links += disabled_nav_item("admin_spam_checker", "Spam Checker")
     admin_links = "".join(
         f"<a class='admin-link {'active' if active_admin_href == href else ''}' href='{href}'>{nav_icon_span(key)}<span>{esc(label)}</span></a>"
@@ -563,6 +567,7 @@ def breadcrumbs(title: str) -> str:
         "Тарифы": [("Главная", "/dashboard"), ("Тарифы", None)],
         "Купленные номера": [("Главная", "/dashboard"), ("Купленные номера", None)],
         "Кампании прозвона": [("Главная", "/dashboard"), ("Кампании прозвона", None)],
+        "HLR": [("Главная", "/dashboard"), ("HLR", None)],
         "Смена провайдеров": [("Главная", "/dashboard"), ("Смена провайдеров", None)],
         "Приоритет по серверам": [("Главная", "/dashboard"), ("Администрирование", "/admin"), ("Приоритет по серверам", None)],
         "Пользователи": [("Главная", "/dashboard"), ("Администрирование", "/admin"), ("Пользователи", None)],
@@ -3321,6 +3326,8 @@ def section_for_get_path(path: str) -> str | None:
         return "tariffs"
     if path == "/phones" or (path.startswith("/phones/") and path.endswith("/history")):
         return "phones"
+    if path == "/hlr":
+        return "hlr"
     if path == "/companies" or path == "/calling-companies/history" or (path.startswith("/calling-companies/") and path.endswith("/history")) or (path.startswith("/companies/") and path.endswith("/history")):
         return "companies"
     if path == "/provider-changes":
@@ -3362,6 +3369,8 @@ def section_for_write_path(path: str) -> str | None:
         return "phones"
     if path.startswith("/companies/") or path == "/companies/create":
         return "companies"
+    if path in {"/hlr/check", "/hlr/export.csv"}:
+        return "hlr"
     if path.startswith("/admin/server-priorities/"):
         return "admin_server_priorities"
     if path.startswith("/admin/company-routing-settings/") or path == "/admin/company-routing-settings/create":
@@ -4317,6 +4326,212 @@ def dashboard_events(repo: Repository) -> str:
             f"<time>{esc(row['changed_at'] or '—')}</time></article>"
         )
     return "".join(items)
+
+
+HLR_MAX_NUMBERS = 500
+HLR_BATCH_SIZE = 80
+HLR_RESULT_HEADERS = ["Исходный номер", "Нормализованный номер", "Формат", "Страна", "Тип номера", "Оператор / сеть", "HLR статус", "Live status", "Итог", "Комментарий"]
+HLR_STATUS_MAP = {
+    "LIVE": ("OK", "Номер активен"),
+    "ABSENT_SUBSCRIBER": ("WARNING", "Номер назначен, но временно недоступен"),
+    "NO_TELESERVICE_PROVISIONED": ("WARNING", "Номер активен, но сервис недоступен"),
+    "DEAD": ("BAD", "Номер не назначен абоненту"),
+    "BAD_FORMAT": ("BAD", "Некорректный международный формат"),
+    "NOT_AVAILABLE_NETWORK_ONLY": ("UNKNOWN", "Оператор не предоставляет статус активности"),
+    "NO_COVERAGE": ("UNKNOWN", "Нет покрытия HLR"),
+    "NOT_APPLICABLE": ("UNKNOWN", "Статус неприменим"),
+    "INCONCLUSIVE": ("UNKNOWN", "Не удалось определить статус"),
+    "ERROR": ("ERROR", "ошибка API / timeout / provider error"),
+}
+
+
+def hlr_config() -> dict[str, object]:
+    return {
+        "mode": (os.environ.get("HLR_MODE") or "demo").strip().lower(),
+        "api_url": os.environ.get("HLR_API_URL") or "",
+        "api_key": os.environ.get("HLR_API_KEY") or "",
+        "api_secret": os.environ.get("HLR_API_SECRET") or "",
+        "timeout_ms": int(os.environ.get("HLR_TIMEOUT_MS") or "10000"),
+        "concurrency": int(os.environ.get("HLR_CONCURRENCY") or "4"),
+        "daily_limit": int(os.environ.get("HLR_DAILY_CHECK_LIMIT") or "0"),
+    }
+
+
+def hlr_map_status(status: str) -> tuple[str, str]:
+    return HLR_STATUS_MAP.get((status or "INCONCLUSIVE").upper(), ("UNKNOWN", "Не удалось определить статус"))
+
+
+def hlr_normalize(raw: str) -> tuple[str, bool]:
+    value = (raw or "").strip()
+    if not value:
+        return "", False
+    cleaned = re.sub(r"[\s\-()./\\]+", "", value)
+    if cleaned.startswith("00"):
+        cleaned = "+" + cleaned[2:]
+    if cleaned.count("+") > 1 or ("+" in cleaned and not cleaned.startswith("+")):
+        return cleaned, False
+    if cleaned.startswith("+"):
+        digits = cleaned[1:]
+    elif re.fullmatch(r"\d+", cleaned or ""):
+        digits = cleaned
+        cleaned = "+" + cleaned
+    else:
+        return cleaned, False
+    if not re.fullmatch(r"\d{10,15}", digits):
+        return cleaned, False
+    return "+" + digits, True
+
+
+def hlr_bad_result(raw: str, normalized: str) -> dict[str, str]:
+    outcome, comment = hlr_map_status("BAD_FORMAT")
+    return {"original": raw, "normalized": normalized, "format": "invalid", "country": "—", "number_type": "unknown", "network": "—", "hlr_status": "BAD_FORMAT", "live_status": "invalid", "outcome": outcome, "comment": comment}
+
+
+def hlr_prepare_numbers(input_text: str) -> tuple[list[dict[str, str]], list[dict[str, str]]]:
+    seen: set[str] = set()
+    prepared: list[dict[str, str]] = []
+    invalid: list[dict[str, str]] = []
+    for raw_line in (input_text or "").splitlines():
+        raw = raw_line.strip()
+        if not raw:
+            continue
+        normalized, valid = hlr_normalize(raw)
+        dedupe_key = normalized if valid else f"bad:{raw}"
+        if dedupe_key in seen:
+            continue
+        seen.add(dedupe_key)
+        if valid:
+            prepared.append({"original": raw, "normalized": normalized})
+        else:
+            invalid.append(hlr_bad_result(raw, normalized))
+    if len(prepared) + len(invalid) > HLR_MAX_NUMBERS:
+        raise BusinessRuleError("За одну проверку можно отправить максимум 500 уникальных номеров")
+    if not prepared:
+        raise BusinessRuleError("Нет валидных номеров для HLR-проверки")
+    return prepared, invalid
+
+
+def hlr_demo_check(numbers: list[dict[str, str]]) -> list[dict[str, str]]:
+    statuses = ["LIVE", "DEAD", "NOT_AVAILABLE_NETWORK_ONLY", "INCONCLUSIVE", "ERROR", "ABSENT_SUBSCRIBER"]
+    rows = []
+    for item in numbers:
+        digits = re.sub(r"\D", "", item["normalized"])
+        idx = int(digits[-1]) % len(statuses)
+        status = statuses[idx]
+        outcome, comment = hlr_map_status(status)
+        is_mobile = int(digits[-2:]) % 2 == 0 if len(digits) > 1 else True
+        rows.append({"original": item["original"], "normalized": item["normalized"], "format": "valid", "country": "Demo", "number_type": "mobile" if is_mobile else "fixed line", "network": f"DemoNet {idx + 1}", "hlr_status": status, "live_status": "live" if status == "LIVE" else status.lower(), "outcome": outcome, "comment": comment})
+    return rows
+
+
+def hlr_real_api_check(numbers: list[dict[str, str]], config: dict[str, object]) -> list[dict[str, str]]:
+    if not config["api_url"] or not config["api_key"] or not config["api_secret"]:
+        raise BusinessRuleError("HLR production mode не настроен: проверьте HLR_API_URL, HLR_API_KEY и HLR_API_SECRET")
+    timeout = max(1, int(config["timeout_ms"]) / 1000)
+    results = []
+    for start in range(0, len(numbers), HLR_BATCH_SIZE):
+        batch = numbers[start:start + HLR_BATCH_SIZE]
+        payload = json.dumps({"numbers": [item["normalized"] for item in batch]}, ensure_ascii=False).encode("utf-8")
+        req = Request(str(config["api_url"]), data=payload, headers={"Content-Type": "application/json", "X-API-Key": str(config["api_key"]), "X-API-Secret": str(config["api_secret"])}, method="POST")
+        for attempt in range(3):
+            try:
+                with urlopen(req, timeout=timeout) as resp:
+                    body = json.loads(resp.read().decode("utf-8"))
+                api_rows = body.get("results", body if isinstance(body, list) else [])
+                by_number = {str(r.get("number") or r.get("normalized") or r.get("msisdn") or ""): r for r in api_rows if isinstance(r, dict)}
+                for item in batch:
+                    raw_result = by_number.get(item["normalized"], {})
+                    status = str(raw_result.get("hlr_status") or raw_result.get("status") or raw_result.get("live_status") or "INCONCLUSIVE").upper()
+                    outcome, comment = hlr_map_status(status)
+                    results.append({"original": item["original"], "normalized": item["normalized"], "format": "valid", "country": raw_result.get("country") or "—", "number_type": raw_result.get("telephone_number_type") or raw_result.get("number_type") or "unknown", "network": raw_result.get("operator") or raw_result.get("current_network") or raw_result.get("network") or "—", "hlr_status": status, "live_status": raw_result.get("live_status") or status.lower(), "outcome": outcome, "comment": comment})
+                break
+            except HTTPError as exc:
+                if exc.code == 429 and attempt < 2:
+                    continue
+                outcome, comment = hlr_map_status("ERROR")
+                results.extend([{**item, "format": "valid", "country": "—", "number_type": "unknown", "network": "—", "hlr_status": "ERROR", "live_status": "api_error", "outcome": outcome, "comment": comment} for item in batch])
+                break
+            except (URLError, TimeoutError, ValueError, json.JSONDecodeError):
+                outcome, comment = hlr_map_status("ERROR")
+                results.extend([{**item, "format": "valid", "country": "—", "number_type": "unknown", "network": "—", "hlr_status": "ERROR", "live_status": "timeout", "outcome": outcome, "comment": comment} for item in batch])
+                break
+    return results
+
+
+def hlr_run_check(input_text: str) -> tuple[list[dict[str, str]], dict[str, int]]:
+    prepared, invalid = hlr_prepare_numbers(input_text)
+    config = hlr_config()
+    daily_limit = int(config["daily_limit"])
+    if daily_limit and len(prepared) > daily_limit:
+        raise BusinessRuleError(f"HLR daily limit exceeded: лимит {daily_limit} номеров в день")
+    checked = hlr_demo_check(prepared) if config["mode"] in {"demo", "testing", ""} else hlr_real_api_check(prepared, config)
+    results = invalid + checked
+    summary = {
+        "total": len(results),
+        "ok": sum(1 for r in results if r["outcome"] == "OK"),
+        "bad_format": sum(1 for r in results if r["hlr_status"] == "BAD_FORMAT"),
+        "dead": sum(1 for r in results if r["hlr_status"] == "DEAD"),
+        "mobile": sum(1 for r in results if r["number_type"] == "mobile"),
+        "fixed": sum(1 for r in results if r["number_type"] == "fixed line"),
+        "unknown": sum(1 for r in results if r["outcome"] == "UNKNOWN" or r["number_type"] == "unknown"),
+        "errors": sum(1 for r in results if r["outcome"] == "ERROR"),
+    }
+    return results, summary
+
+
+def hlr_results_rows(results: list[dict[str, str]]) -> list[list[str]]:
+    keys = ["original", "normalized", "format", "country", "number_type", "network", "hlr_status", "live_status", "outcome", "comment"]
+    return [[row.get(key, "") for key in keys] for row in results]
+
+
+def hlr_table(results: list[dict[str, str]]) -> str:
+    if not results:
+        return ""
+    body = "".join("<tr>" + "".join(f"<td data-col='{esc(key)}'>{esc(row.get(key, ''))}</td>" for key in ["original", "normalized", "format", "country", "number_type", "network", "hlr_status", "live_status", "outcome", "comment"]) + "</tr>" for row in results)
+    headers = [("original", "Исходный номер"), ("normalized", "Нормализованный номер"), ("format", "Формат"), ("country", "Страна"), ("number_type", "Тип номера"), ("network", "Оператор / сеть"), ("hlr_status", "HLR статус"), ("live_status", "Live status"), ("outcome", "Итог"), ("comment", "Комментарий")]
+    return table_card(data_table("hlr", headers, body))
+
+
+def hlr_summary_html(summary: dict[str, int]) -> str:
+    labels = [("total", "Всего"), ("ok", "OK"), ("bad_format", "Некорректный формат"), ("dead", "Не назначен абоненту"), ("mobile", "Мобильные"), ("fixed", "Городские"), ("unknown", "Unknown"), ("errors", "API errors")]
+    return "<section class='metrics-grid'>" + "".join(f"<div class='metric-card'><span class='metric-label'>{esc(label)}</span><strong class='metric-value'>{summary.get(key, 0)}</strong></div>" for key, label in labels) + "</section>"
+
+
+def hlr_page(input_text: str = "", results: list[dict[str, str]] | None = None, summary: dict[str, int] | None = None, error: str | None = None) -> bytes:
+    results = results or []
+    summary = summary or {}
+    write_allowed = can_write("hlr")
+    export_allowed = can_export("hlr") and bool(results)
+    results_json = esc(json.dumps(results, ensure_ascii=False))
+    notice = f"<div class='flash error'>{esc(error)}</div>" if error else ""
+    export_form = f"<form method='post' action='/hlr/export.csv'><input type='hidden' name='results_json' value='{results_json}'><button type='submit' {'disabled' if not export_allowed else ''}>Экспорт CSV</button></form>"
+    body = f"""
+<h1>HLR</h1>
+{notice}
+<section class='form-card'>
+  <form class='form-grid' method='post' action='/hlr/check' id='hlr-form'>
+    <label class='wide'>Номера для проверки <textarea name='numbers' id='hlr-numbers' rows='10' cols='80' {'disabled' if not write_allowed else ''}>{esc(input_text)}</textarea></label>
+    <p class='muted wide'>Один номер на строке. Можно вставлять номера с пробелами, +, скобками и дефисами.</p>
+    <p class='muted wide'><span id='hlr-counter'>0 / 500</span></p>
+    <button type='submit' {'disabled' if not write_allowed else ''}>Запустить проверку</button>
+    <button type='button' id='hlr-clear'>Очистить</button>
+  </form>
+</section>
+{hlr_summary_html(summary) if results else ''}
+<div class='table-footer-tools'>{export_form}<button type='button' disabled title='XLSX будет добавлен на втором этапе'>Экспорт XLSX</button></div>
+{hlr_table(results)}
+<script>
+(function() {{
+  const input = document.getElementById('hlr-numbers');
+  const counter = document.getElementById('hlr-counter');
+  const clear = document.getElementById('hlr-clear');
+  function update() {{ if (!input || !counter) return; const count = input.value.split(/\r?\n/).map(v => v.trim()).filter(Boolean).length; counter.textContent = count + ' / 500'; counter.style.color = count > 500 ? 'var(--danger)' : ''; }}
+  if (input) {{ input.addEventListener('input', update); update(); }}
+  if (clear && input) clear.addEventListener('click', () => {{ input.value = ''; update(); input.focus(); }});
+}})();
+</script>
+"""
+    return page("HLR", body)
 
 
 def dashboard_page(repo: Repository) -> bytes:
@@ -6975,6 +7190,25 @@ def app(environ, start_response):
             parsed = {key: values[-1] for key, values in parse_qs(raw_body, keep_blank_values=True).items()}
             parsed["_raw"] = raw_body
             require_permission("write", section_for_write_path(path))
+            if path == "/hlr/check":
+                try:
+                    results, summary = hlr_run_check(parsed.get("numbers", ""))
+                    start_response("200 OK", html_headers())
+                    return [hlr_page(parsed.get("numbers", ""), results, summary)]
+                except BusinessRuleError as exc:
+                    start_response("400 Bad Request", html_headers())
+                    return [hlr_page(parsed.get("numbers", ""), error=user_error(exc))]
+            if path == "/hlr/export.csv":
+                require_permission("export", "hlr")
+                try:
+                    results = json.loads(parsed.get("results_json", "[]"))
+                except (TypeError, ValueError, json.JSONDecodeError):
+                    results = []
+                if not isinstance(results, list):
+                    results = []
+                start_response("200 OK", csv_headers("hlr_results.csv"))
+                safe_results = [row for row in results if isinstance(row, dict)]
+                return [csv_response("hlr_results.csv", HLR_RESULT_HEADERS, hlr_results_rows(safe_results))]
             if path == "/admin/import/preview":
                 if parsed.get("mode") == "replace_section":
                     raise BusinessRuleError("Режим замены раздела временно отключён. Используйте Дополнить / обновить.")
@@ -7035,6 +7269,7 @@ def app(environ, start_response):
         elif path == "/companies": response = companies_page(repo, q)
         elif path == "/calling-companies/history": response = company_events_page(repo, q)
         elif path == "/provider-changes": response = provider_changes_page(repo, q)
+        elif path == "/hlr": response = hlr_page()
         elif path == "/admin": response = admin_page(repo)
         elif path == "/admin/server-priorities": response = server_priorities_page(repo, q)
         elif path == "/admin/company-routing-settings": response = company_routing_settings_page(repo, q)
