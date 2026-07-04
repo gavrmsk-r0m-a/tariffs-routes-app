@@ -1007,6 +1007,27 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .metric-label {{ display: block; min-height: 36px; color: var(--muted); font-size: 12px; font-weight: 760; text-transform: uppercase; letter-spacing: .04em; }}
     .metric-value {{ display: block; margin: 6px 0 3px; color: var(--text-strong); font-size: 30px; line-height: 1; letter-spacing: -0.03em; }}
     .metric-hint {{ color: var(--muted); font-size: 12px; }}
+    .hlr-workspace {{ display: grid; gap: 12px; }}
+    .hlr-top-area {{ display: grid; grid-template-columns: minmax(240px, 3fr) minmax(0, 7fr); gap: 12px; align-items: stretch; }}
+    .hlr-input-panel, .hlr-summary-panel {{ margin: 0; }}
+    .hlr-input-form {{ display: grid; gap: 8px; align-items: start; padding: 14px; }}
+    .hlr-input-form label {{ display: grid; gap: 6px; min-width: 0; width: 100%; }}
+    .hlr-input-form textarea {{ min-width: 0; width: 100%; min-height: 220px; resize: vertical; box-sizing: border-box; }}
+    .hlr-counter-line, .hlr-input-hint {{ margin: 0; }}
+    .hlr-input-actions {{ display: flex; gap: 8px; flex-wrap: wrap; }}
+    .hlr-summary-panel h2 {{ margin: 0 0 10px; font-size: 18px; }}
+    .hlr-status-panel {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }}
+    .hlr-status-filter {{ min-height: 66px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 8px; align-items: start; justify-content: stretch; padding: 8px 10px; text-align: left; border-color: var(--border); background: var(--surface); box-shadow: none; }}
+    .hlr-status-filter:hover {{ transform: none; border-color: var(--accent); background: var(--surface-muted); }}
+    .hlr-status-filter.active {{ border-color: var(--accent); background: var(--accent-soft); color: var(--text-strong); box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 22%, transparent) inset; }}
+    .hlr-status-name {{ min-width: 0; font-weight: 760; line-height: 1.15; }}
+    .hlr-status-count {{ color: var(--accent-strong); font-size: 19px; line-height: 1; }}
+    .hlr-status-filter small {{ grid-column: 1 / -1; color: var(--muted); font-size: 11px; line-height: 1.2; font-weight: 500; }}
+    .hlr-table-toolbar {{ display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-top: 2px; }}
+    .hlr-results-area .table-card {{ margin-top: 0; min-height: 360px; }}
+    .hlr-results-area .table-scroll {{ min-height: 330px; max-height: calc(100vh - 360px); }}
+    #hlr-table tbody tr[hidden] {{ display: none !important; }}
+    @media (max-width: 900px) {{ .hlr-top-area {{ grid-template-columns: 1fr; }} .hlr-input-form textarea {{ min-height: 180px; }} .hlr-results-area .table-scroll {{ max-height: calc(100vh - 300px); }} }}
     .dashboard-section {{ margin: 16px 0; }}
     .dashboard-section h2 {{ margin-bottom: 10px; }}
     .quick-links {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px; }}
@@ -4484,55 +4505,132 @@ def hlr_results_rows(results: list[dict[str, str]]) -> list[list[str]]:
     return [[row.get(key, "") for key in keys] for row in results]
 
 
+HLR_FILTERS = [
+    ("all", "Все", "show all results"),
+    ("ok", "OK", "numbers that look active/valid"),
+    ("bad_format", "Некорректный формат", "numbers that cannot be checked because the international format is invalid"),
+    ("dead", "Не назначен абоненту", "numbers that HLR reports as DEAD / not assigned"),
+    ("mobile", "Мобильные", "numbers identified as mobile"),
+    ("fixed", "Городские", "numbers identified as fixed line"),
+    ("unknown", "Unknown", "provider could not determine final status"),
+    ("errors", "API errors", "request/provider/timeout errors"),
+]
+
+
 def hlr_table(results: list[dict[str, str]]) -> str:
-    if not results:
-        return ""
-    body = "".join("<tr>" + "".join(f"<td data-col='{esc(key)}'>{esc(row.get(key, ''))}</td>" for key in ["original", "normalized", "format", "country", "number_type", "network", "hlr_status", "live_status", "outcome", "comment"]) + "</tr>" for row in results)
     headers = [("original", "Исходный номер"), ("normalized", "Нормализованный номер"), ("format", "Формат"), ("country", "Страна"), ("number_type", "Тип номера"), ("network", "Оператор / сеть"), ("hlr_status", "HLR статус"), ("live_status", "Live status"), ("outcome", "Итог"), ("comment", "Комментарий")]
-    return table_card(data_table("hlr", headers, body))
+    keys = [key for key, _ in headers]
+    body = "".join(
+        "<tr data-hlr-status='" + esc(row.get("hlr_status", "")) + "' data-hlr-outcome='" + esc(row.get("outcome", "")) + "' data-hlr-type='" + esc(row.get("number_type", "")) + "'>" + "".join(f"<td data-col='{esc(key)}'>{esc(row.get(key, ''))}</td>" for key in keys) + "</tr>"
+        for row in results
+    )
+    empty = "" if results else "<div class='empty-state' id='hlr-empty-all'>Результаты появятся после проверки номеров.</div>"
+    filtered_empty = "<div class='empty-state' id='hlr-empty-filter' hidden>По выбранному фильтру результатов нет.</div>"
+    return "<section class='hlr-results-area'>" + table_card(data_table("hlr", headers, body) + empty + filtered_empty) + "</section>"
 
 
 def hlr_summary_html(summary: dict[str, int]) -> str:
-    labels = [("total", "Всего"), ("ok", "OK"), ("bad_format", "Некорректный формат"), ("dead", "Не назначен абоненту"), ("mobile", "Мобильные"), ("fixed", "Городские"), ("unknown", "Unknown"), ("errors", "API errors")]
-    return "<section class='metrics-grid'>" + "".join(f"<div class='metric-card'><span class='metric-label'>{esc(label)}</span><strong class='metric-value'>{summary.get(key, 0)}</strong></div>" for key, label in labels) + "</section>"
+    return "<section class='hlr-status-panel' aria-label='Фильтры результатов HLR'>" + "".join(
+        f"<button type='button' class='hlr-status-filter' data-hlr-filter='{esc(key)}' title='{esc(help_text)}'><span class='hlr-status-name'>{esc(label)}</span><strong class='hlr-status-count'>{summary.get(key, 0)}</strong><small>{esc(help_text)}</small></button>"
+        for key, label, help_text in HLR_FILTERS
+    ) + "</section>"
 
 
 def hlr_page(input_text: str = "", results: list[dict[str, str]] | None = None, summary: dict[str, int] | None = None, error: str | None = None) -> bytes:
     results = results or []
-    summary = summary or {}
+    summary = summary or {"all": len(results)}
+    summary["all"] = len(results)
     write_allowed = can_write("hlr")
     export_allowed = can_export("hlr") and bool(results)
     results_json = esc(json.dumps(results, ensure_ascii=False))
     notice = f"<div class='flash error'>{esc(error)}</div>" if error else ""
-    export_form = f"<form method='post' action='/hlr/export.csv'><input type='hidden' name='results_json' value='{results_json}'><button type='submit' {'disabled' if not export_allowed else ''}>Экспорт CSV</button></form>"
+    export_form = f"<form method='post' action='/hlr/export.csv' id='hlr-export-form'><input type='hidden' name='results_json' id='hlr-export-results' value='{results_json}'><button type='submit' {'disabled' if not export_allowed else ''}>Экспорт CSV</button></form>"
     body = f"""
 <h1>HLR</h1>
 {notice}
-<section class='form-card'>
-  <form class='form-grid' method='post' action='/hlr/check' id='hlr-form'>
-    <label class='wide'>Номера для проверки <textarea name='numbers' id='hlr-numbers' rows='10' cols='80' {'disabled' if not write_allowed else ''}>{esc(input_text)}</textarea></label>
-    <p class='muted wide'>Один номер на строке. Можно вставлять номера с пробелами, +, скобками и дефисами.</p>
-    <p class='muted wide'><span id='hlr-counter'>0 / 500</span></p>
-    <button type='submit' {'disabled' if not write_allowed else ''}>Запустить проверку</button>
-    <button type='button' id='hlr-clear'>Очистить</button>
-  </form>
+<section class='hlr-workspace'>
+  <div class='hlr-top-area'>
+    <section class='form-card hlr-input-panel'>
+      <form class='hlr-input-form' method='post' action='/hlr/check' id='hlr-form'>
+        <label>Номера для проверки <textarea name='numbers' id='hlr-numbers' rows='12' {'disabled' if not write_allowed else ''}>{esc(input_text)}</textarea></label>
+        <p class='muted hlr-counter-line'><span id='hlr-counter'>0 / 500</span></p>
+        <p class='muted hlr-input-hint'>Один номер на строке. Можно вставлять номера с пробелами, +, скобками и дефисами.</p>
+        <div class='hlr-input-actions'>
+          <button type='submit' {'disabled' if not write_allowed else ''}>Запустить проверку</button>
+          <button type='button' id='hlr-clear'>Очистить</button>
+        </div>
+      </form>
+    </section>
+    <section class='card hlr-summary-panel'>
+      <h2>Фильтры статусов</h2>
+      {hlr_summary_html(summary)}
+    </section>
+  </div>
+  <div class='hlr-table-toolbar'><span class='muted' id='hlr-filter-caption'>Показаны все результаты</span><div class='table-footer-tools'>{export_form}<span class='muted'>Экспортирует текущую выборку</span></div></div>
+  {hlr_table(results)}
 </section>
-{hlr_summary_html(summary) if results else ''}
-<div class='table-footer-tools'>{export_form}<button type='button' disabled title='XLSX будет добавлен на втором этапе'>Экспорт XLSX</button></div>
-{hlr_table(results)}
+<script type='application/json' id='hlr-results-data'>{esc(json.dumps(results, ensure_ascii=False))}</script>
 <script>
 (function() {{
   const input = document.getElementById('hlr-numbers');
   const counter = document.getElementById('hlr-counter');
   const clear = document.getElementById('hlr-clear');
-  function update() {{ if (!input || !counter) return; const count = input.value.split(/\r?\n/).map(v => v.trim()).filter(Boolean).length; counter.textContent = count + ' / 500'; counter.style.color = count > 500 ? 'var(--danger)' : ''; }}
-  if (input) {{ input.addEventListener('input', update); update(); }}
-  if (clear && input) clear.addEventListener('click', () => {{ input.value = ''; update(); input.focus(); }});
+  const filters = Array.from(document.querySelectorAll('.hlr-status-filter'));
+  const rows = Array.from(document.querySelectorAll('#hlr-table tbody tr'));
+  const exportInput = document.getElementById('hlr-export-results');
+  const allEmpty = document.getElementById('hlr-empty-all');
+  const filterEmpty = document.getElementById('hlr-empty-filter');
+  const caption = document.getElementById('hlr-filter-caption');
+  let results = [];
+  try {{ results = JSON.parse(document.getElementById('hlr-results-data')?.textContent || '[]'); }} catch (_) {{ results = []; }}
+  function normalizeCandidate(value) {{
+    const raw = (value || '').trim();
+    if (!raw) return '';
+    let compact = raw.replace(/[^0-9+]/g, '');
+    if (compact.startsWith('00')) compact = '+' + compact.slice(2);
+    const digits = compact.replace(/\\D/g, '');
+    return digits.length ? '+' + digits : '';
+  }}
+  function updateCounter() {{
+    if (!input || !counter) return;
+    const unique = new Set(input.value.split(/\\r?\\n/).map(normalizeCandidate).filter(Boolean));
+    const count = unique.size;
+    counter.textContent = count + ' / 500';
+    counter.style.color = count > 500 ? 'var(--danger)' : '';
+  }}
+  function matches(row, filter) {{
+    if (filter === 'all') return true;
+    if (filter === 'ok') return row.dataset.hlrOutcome === 'OK';
+    if (filter === 'bad_format') return row.dataset.hlrStatus === 'BAD_FORMAT';
+    if (filter === 'dead') return row.dataset.hlrStatus === 'DEAD';
+    if (filter === 'mobile') return row.dataset.hlrType === 'mobile';
+    if (filter === 'fixed') return row.dataset.hlrType === 'fixed line';
+    if (filter === 'unknown') return row.dataset.hlrOutcome === 'UNKNOWN' || row.dataset.hlrType === 'unknown';
+    if (filter === 'errors') return row.dataset.hlrOutcome === 'ERROR';
+    return false;
+  }}
+  function applyFilter(filter) {{
+    const selected = filter || 'all';
+    let visible = 0;
+    rows.forEach((row) => {{ const show = matches(row, selected); row.hidden = !show; if (show) visible += 1; }});
+    filters.forEach((button) => button.classList.toggle('active', button.dataset.hlrFilter === selected));
+    if (allEmpty) allEmpty.hidden = results.length > 0;
+    if (filterEmpty) filterEmpty.hidden = results.length === 0 || visible > 0;
+    const button = filters.find((item) => item.dataset.hlrFilter === selected);
+    if (caption) caption.textContent = selected === 'all' ? 'Показаны все результаты' : 'Фильтр: ' + (button?.querySelector('.hlr-status-name')?.textContent || selected);
+    if (exportInput) {{
+      const filtered = selected === 'all' ? results : results.filter((_, index) => matches(rows[index], selected));
+      exportInput.value = JSON.stringify(filtered);
+    }}
+  }}
+  if (input) {{ input.addEventListener('input', updateCounter); updateCounter(); }}
+  if (clear && input) clear.addEventListener('click', () => {{ input.value = ''; updateCounter(); input.focus(); }});
+  filters.forEach((button) => button.addEventListener('click', () => applyFilter(button.dataset.hlrFilter || 'all')));
+  applyFilter('all');
 }})();
 </script>
 """
     return page("HLR", body)
-
 
 def dashboard_page(repo: Repository) -> bytes:
     metrics = "".join([
