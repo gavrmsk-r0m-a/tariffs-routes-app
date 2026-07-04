@@ -544,12 +544,11 @@ def current_user_selector() -> str:
 
 def theme_selector() -> str:
     return f"""
-        <div class="theme-selector-wrap" data-theme-selector data-tooltip="Тема: MVP">
-          <button class="theme-selector" type="button" data-theme-menu-toggle aria-haspopup="menu" aria-expanded="false"><span class="side-icon" aria-hidden="true">{nav_icon("theme")}</span><span class="side-label" data-theme-current>Тема: MVP ▾</span></button>
+        <div class="theme-selector-wrap" data-theme-selector data-tooltip="Тема: Светлая 2.0">
+          <button class="theme-selector" type="button" data-theme-menu-toggle aria-haspopup="menu" aria-expanded="false"><span class="side-icon" aria-hidden="true">{nav_icon("theme")}</span><span class="side-label" data-theme-current>Тема: Светлая 2.0 ▾</span></button>
           <div class="theme-menu" data-theme-menu role="menu" aria-label="Выбор темы">
-            <button type="button" role="menuitemradio" data-theme-option="mvp" aria-checked="true"><span class="theme-check" aria-hidden="true">{nav_icon("check")}</span><span>MVP</span></button>
+            <button type="button" role="menuitemradio" data-theme-option="light-v2" aria-checked="true"><span class="theme-check" aria-hidden="true">{nav_icon("check")}</span><span>Светлая 2.0</span></button>
             <button type="button" role="menuitemradio" data-theme-option="dark" aria-checked="false"><span class="theme-check" aria-hidden="true">{nav_icon("check")}</span><span>Тёмная</span></button>
-            <button type="button" role="menuitemradio" data-theme-option="light-v2" aria-checked="false"><span class="theme-check" aria-hidden="true">{nav_icon("check")}</span><span>Светлая 2.0</span></button>
           </div>
         </div>
     """
@@ -2221,8 +2220,8 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
       min-height: var(--sidebar-item-height);
       max-height: var(--sidebar-item-height);
       padding: var(--sidebar-item-padding-y) var(--sidebar-item-padding-x);
-      border: 1px solid var(--border-strong);
-      border-left: 3px solid var(--border-strong);
+      border: 1px solid transparent;
+      border-left: 3px solid transparent;
       border-radius: 5px;
       background: transparent;
       color: #1B2630;
@@ -2268,8 +2267,8 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     html[data-theme="light-v2"] .sidebar .side-link[href="/provider-changes"].active {{ border-left-width: 3px; }}
     html[data-theme="light-v2"] .sidebar .side-link[href="/provider-changes"]:not(.active) {{
       background: transparent;
-      border-color: var(--border-strong);
-      border-left-color: var(--border-strong);
+      border-color: transparent;
+      border-left-color: transparent;
       color: #1B2630;
       box-shadow: none;
     }}
@@ -2285,8 +2284,8 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     html[data-theme="light-v2"] .sidebar .side-link-disabled:hover,
     html[data-theme="light-v2"] .sidebar .side-link-disabled:disabled {{
       background: transparent;
-      border-color: var(--border-strong);
-      border-left-color: var(--border-strong);
+      border-color: transparent;
+      border-left-color: transparent;
       color: #8A96A1;
       opacity: .72;
       box-shadow: none;
@@ -2295,6 +2294,8 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     html[data-theme="light-v2"] .sidebar .side-link-disabled:hover {{ background: #F6F7F8; }}
     html[data-theme="light-v2"] .sidebar .side-link-disabled .nav-icon,
     html[data-theme="light-v2"] .sidebar .side-link-disabled:hover .nav-icon {{ color: #9AA4AD !important; }}
+    html[data-theme="light-v2"] .user-icon,
+    html[data-theme="light-v2"] .user-icon .material-symbols-rounded {{ color: #FFFFFF !important; }}
     html[data-theme="light-v2"] .sidebar .admin-tree {{
       display: none;
       margin: 4px 0 0 0;
@@ -2391,7 +2392,6 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     html[data-theme="light-v2"] .provider-changes-page h1 {{ border-left: 4px solid var(--accent) !important; padding-left: 12px; }}
     html[data-theme="light-v2"] .provider-changes-page .form-summary {{ color: var(--accent-strong); }}
     html[data-theme="light-v2"] .provider-changes-page .journal-card {{ box-shadow: inset 3px 0 0 var(--accent), var(--shadow-card); }}
-    html[data-theme="light-v2"] .side-link[href="/provider-changes"],
     html[data-theme="light-v2"] .quick-link-card[href="/provider-changes"] {{ border-color: var(--border-strong); }}
     html[data-theme="light-v2"] .side-link[href="/provider-changes"] .side-icon,
     html[data-theme="light-v2"] .side-link[href="/provider-changes"] .nav-icon {{ color: #667085 !important; }}
@@ -2633,14 +2633,14 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
       }});
       document.querySelectorAll("form").forEach(showFormSubmitError);
     }});
-    const themeLabels = {{ "mvp": "MVP", "dark": "Тёмная", "light-v2": "Светлая 2.0" }};
-    const themeAliases = {{ "calm-blue": "mvp", "cyber-sketch": "dark", "terminal-paper": "mvp" }};
-    const normalizeTheme = (theme) => themeAliases[theme] || (themeLabels[theme] ? theme : "mvp");
-    let savedTheme = normalizeTheme(localStorage.getItem("mvp-theme") || "mvp");
+    const themeLabels = {{ "dark": "Тёмная", "light-v2": "Светлая 2.0" }};
+    const themeAliases = {{ "mvp": "light-v2", "calm-blue": "light-v2", "cyber-sketch": "dark", "terminal-paper": "light-v2" }};
+    const normalizeTheme = (theme) => themeAliases[theme] || (themeLabels[theme] ? theme : "light-v2");
+    let savedTheme = normalizeTheme(localStorage.getItem("mvp-theme") || "light-v2");
     document.documentElement.dataset.theme = savedTheme;
     localStorage.setItem("mvp-theme", savedTheme);
     const updateThemeSelector = (theme) => {{
-      const labelText = `Тема: ${{themeLabels[theme] || themeLabels.mvp}} ▾`;
+      const labelText = `Тема: ${{themeLabels[theme] || themeLabels["light-v2"]}} ▾`;
       document.querySelectorAll("[data-theme-selector]").forEach((selector) => {{
         selector.dataset.tooltip = labelText.replace(" ▾", "");
         const current = selector.querySelector("[data-theme-current]");
