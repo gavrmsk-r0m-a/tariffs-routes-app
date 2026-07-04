@@ -4904,6 +4904,10 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
     company_route_opts = route_options_for_dynamic_form(repo, selected=event["new_company_route_id"] if event else None, empty="—")
     overflow_route_selected = event.get("overflow_route_id") if isinstance(event, dict) else (event["overflow_route_id"] if event else None)
     has_overflow_value = event.get("has_overflow") if isinstance(event, dict) else (event["has_overflow"] if event else 0)
+    overflow_provider_selected = event.get("overflow_provider_id") if isinstance(event, dict) else None
+    if not overflow_provider_selected and overflow_route_selected:
+        overflow_provider_row = repo.conn.execute("SELECT provider_id FROM routes WHERE id = ?", (overflow_route_selected,)).fetchone()
+        overflow_provider_selected = overflow_provider_row["provider_id"] if overflow_provider_row else None
     overflow_opts = overflow_route_options(repo, selected=overflow_route_selected, empty="—")
     has_overflow_checked = "checked" if has_overflow_value else ""
     selected_company_ids = set()
@@ -4968,6 +4972,11 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
         <label>Провайдер <span class='required'>*</span><select name='provider_id' id='server-event-provider' disabled>{active_options(repo, 'providers', selected=provider_selected, empty='—')}</select></label>
         <label>Новый маршрут <span class='required'>*</span><select name='new_route_id' id='server-new-route' class='route-select' disabled>{new_route_opts}</select></label>
         <span class='route-empty-message muted' id='server-new-route-empty' hidden>Нет маршрутов для выбранного провайдера и GEO</span>
+        <div class='server-priority-overflow-block' id='server-overflow-block' hidden>
+          <strong>Перелив</strong>
+          <label>Провайдер перелива <span class='required'>*</span><select name='overflow_provider_id' id='server-overflow-provider' disabled>{active_options(repo, 'providers', selected=overflow_provider_selected, empty='—')}</select></label>
+          <label>Маршрут перелива <span class='required'>*</span><select name='overflow_route_id' id='server-overflow-route' disabled>{overflow_opts}</select></label>
+        </div>
         <label>Причина <span class='required'>*</span><select name='reason' id='server-routing-reason' required disabled>{routing_reason_options(event['reason'] if event else None, 'server_priority')}</select><span class='field-helper' id='server-routing-reason-helper'></span></label>
       </div>
       <div class='server-priority-create-right'>
@@ -5180,11 +5189,19 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
     }});
     rebuildAffectedRouteSelect();
     rebuildServerRouteSelect(document.getElementById('server-new-route'), serverCountry && serverCountry.value, serverProvider && serverProvider.value, document.getElementById('server-new-route-empty'), true);
+    const serverOverflowEnabled = scope === 'server_priority' && document.getElementById('server-has-overflow') && document.getElementById('server-has-overflow').checked;
+    const serverOverflowBlock = document.getElementById('server-overflow-block');
+    const serverOverflowProvider = document.getElementById('server-overflow-provider');
+    const serverOverflowRoute = document.getElementById('server-overflow-route');
+    if (serverOverflowBlock) serverOverflowBlock.hidden = !serverOverflowEnabled;
+    if (serverOverflowProvider) {{ serverOverflowProvider.disabled = !serverOverflowEnabled; serverOverflowProvider.required = !!serverOverflowEnabled; if (!serverOverflowEnabled) serverOverflowProvider.value = ''; }}
+    rebuildServerRouteSelect(serverOverflowRoute, serverCountry && serverCountry.value, serverOverflowProvider && serverOverflowProvider.value, null, true);
+    if (serverOverflowRoute) {{ serverOverflowRoute.disabled = !serverOverflowEnabled || !(serverCountry && serverCountry.value) || !(serverOverflowProvider && serverOverflowProvider.value); serverOverflowRoute.required = !!serverOverflowEnabled; if (!serverOverflowEnabled) serverOverflowRoute.value = ''; }}
     updateServerSelectionCount();
     filterCompanyOptions(false);
     syncCommentRequirement();
   }}
-  form.querySelectorAll('input[name="apply_scope"], #event-country, #event-provider, #server-event-country, #server-event-provider, #server-has-overflow').forEach((el) => el.addEventListener('change', sync));
+  form.querySelectorAll('input[name="apply_scope"], #event-country, #event-provider, #server-event-country, #server-event-provider, #server-has-overflow, #server-overflow-provider').forEach((el) => el.addEventListener('change', sync));
   form.querySelectorAll('.provider-change-server-priority-create [data-server-select]').forEach((button) => button.addEventListener('click', () => {{
     const checked = button.dataset.serverSelect === 'all';
     form.querySelectorAll('.provider-change-server-priority-create input[name="server_ids"]').forEach((box) => {{ box.checked = checked; }});
@@ -5244,7 +5261,11 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
   <label class='scope-field route-select-field' data-scopes='server_priority'>Новый маршрут <span class='required'>*</span><select name='new_route_id' id='new-route' class='route-select'>{new_route_opts}</select></label>
   <span class='scope-field route-empty-message muted' data-scopes='server_priority' id='new-route-empty' hidden>Нет маршрутов для выбранного провайдера и GEO</span>
   <label class='scope-field spillover-checkbox important-checkbox' data-scopes='server_priority'><input type='checkbox' name='has_overflow' id='has-overflow' value='1' {has_overflow_checked}> <span>Есть перелив</span></label>
-  <label class='scope-field' data-scopes='server_priority' id='overflow-route-field'>Маршрут перелива <span class='required'>*</span><select name='overflow_route_id' id='overflow-route'>{overflow_opts}</select></label>
+  <div class='scope-field server-priority-overflow-block' data-scopes='server_priority' id='overflow-block' hidden>
+    <strong>Перелив</strong>
+    <label>Провайдер перелива <span class='required'>*</span><select name='overflow_provider_id' id='overflow-provider'>{active_options(repo, 'providers', selected=overflow_provider_selected, empty='—')}</select></label>
+    <label id='overflow-route-field'>Маршрут перелива <span class='required'>*</span><select name='overflow_route_id' id='overflow-route'>{overflow_opts}</select></label>
+  </div>
   <div class='provider-change-campaign-lower-grid'>
     <label class='routing-reason-field'>Причина <span class='required'>*</span><select name='reason' id='routing-reason' required>{routing_reason_options(event['reason'] if event else None, scope)}</select><span class='field-helper' id='routing-reason-helper'></span></label>
     <div class='scope-field campaign-company-field' data-scopes='campaign_setting'>
@@ -5416,7 +5437,8 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
     renderCurrentRoutes();
     rebuildRouteSelect(document.getElementById('affected-route'), country && country.value, provider && provider.value, null, true);
     rebuildRouteSelect(document.getElementById('new-route'), country && country.value, provider && provider.value, document.getElementById('new-route-empty'));
-    rebuildRouteSelect(document.getElementById('overflow-route'), country && country.value, null, null);
+    const overflowProvider = document.getElementById('overflow-provider');
+    rebuildRouteSelect(document.getElementById('overflow-route'), country && country.value, overflowProvider && overflowProvider.value, null, true);
     filterCompanyOptions(false);
     const checkedCampaign = selectedCampaignBoxes()[0];
     const campaignProvider = document.getElementById('campaign-provider');
@@ -5431,11 +5453,12 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
     updateSelectTitle(document.getElementById('company-route'));
     setRequired(document.getElementById('new-route'), scope === 'server_priority');
     const hasOverflow = document.getElementById('has-overflow');
-    const overflowField = document.getElementById('overflow-route-field');
+    const overflowBlock = document.getElementById('overflow-block');
     const overflowRoute = document.getElementById('overflow-route');
     const overflowEnabled = scope === 'server_priority' && hasOverflow && hasOverflow.checked;
-    if (overflowField) overflowField.hidden = !overflowEnabled;
-    if (overflowRoute) {{ overflowRoute.disabled = !overflowEnabled; overflowRoute.required = !!overflowEnabled; if (!overflowEnabled) overflowRoute.value = ''; }}
+    if (overflowBlock) overflowBlock.hidden = !overflowEnabled;
+    if (overflowProvider) {{ overflowProvider.disabled = !overflowEnabled; overflowProvider.required = !!overflowEnabled; if (!overflowEnabled) overflowProvider.value = ''; }}
+    if (overflowRoute) {{ overflowRoute.disabled = !overflowEnabled || !(country && country.value) || !(overflowProvider && overflowProvider.value); overflowRoute.required = !!overflowEnabled; if (!overflowEnabled) overflowRoute.value = ''; }}
     setRequired(ctype, scope === 'campaign_setting');
     syncCommentRequirement(scope);
   }}
@@ -5481,7 +5504,7 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
   }}));
   form.querySelectorAll('input[name="server_ids"]').forEach((box) => box.addEventListener('change', updateServerSelectionCount));
   updateServerSelectionCount();
-  form.querySelectorAll('input[name="apply_scope"], #event-country, #event-provider, #campaign-provider, #company-change-type, #has-overflow').forEach((el) => el.addEventListener('change', sync));
+  form.querySelectorAll('input[name="apply_scope"], #event-country, #event-provider, #campaign-provider, #company-change-type, #has-overflow, #overflow-provider').forEach((el) => el.addEventListener('change', sync));
   const reasonSelect = document.getElementById('routing-reason');
   if (reasonSelect) reasonSelect.addEventListener('change', () => syncCommentRequirement(selectedScope()));
   form.querySelectorAll('input[name="calling_company_ids"]').forEach((el) => el.addEventListener('change', sync));
@@ -5567,11 +5590,21 @@ def provider_event_details(ev) -> tuple[str, str, str]:
             if items:
                 unique_names = list(dict.fromkeys(server_names))
                 server_text = ", ".join(unique_names) if unique_names else "—"
-                overflow = ev["overflow_route_name"] if ev["has_overflow"] else "—"
-                return server_text, "—", "Серверы:<ul class='event-server-list'>" + "".join(items) + f"</ul>; Перелив: {esc(overflow)}"
+                if ev["has_overflow"]:
+                    overflow_provider = snapshot.get("overflow_provider_name") or "—"
+                    overflow_route = ev["overflow_route_name"] or "—"
+                    overflow_text = f"Перелив: да; Провайдер перелива: {esc(overflow_provider)}; Маршрут перелива: {esc(overflow_route)}"
+                else:
+                    overflow_text = "Перелив: нет"
+                return server_text, "—", "Серверы:<ul class='event-server-list'>" + "".join(items) + f"</ul>; {overflow_text}"
         route_text = f"{esc(ev['old_route_name'] or '—')} → {esc(ev['new_route_name'] or '—')}"
-        overflow = ev["overflow_route_name"] if ev["has_overflow"] else "—"
-        return ev["server_name"] or "—", "—", route_text + f"; Перелив: {esc(overflow)}"
+        if ev["has_overflow"]:
+            overflow_provider = snapshot.get("overflow_provider_name") or "—"
+            overflow_route = ev["overflow_route_name"] or "—"
+            overflow_text = f"Перелив: да; Провайдер перелива: {esc(overflow_provider)}; Маршрут перелива: {esc(overflow_route)}"
+        else:
+            overflow_text = "Перелив: нет"
+        return ev["server_name"] or "—", "—", route_text + f"; {overflow_text}"
     campaign = "—"
     if ev["company_id_external"] or ev["company_name"]:
         campaign = f"{ev['company_id_external'] or '—'} / {ev['company_name'] or '—'}"
@@ -6651,7 +6684,7 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
             calling_company_id=legacy_calling_company_id, company_change_type=data.get("company_change_type") or None,
             new_company_routing_mode=data.get("new_company_routing_mode") or None, new_company_route_id=parse_int(data.get("new_company_route_id")),
             new_company_has_autorotation=parse_int(data.get("new_company_has_autorotation")),
-            has_overflow=(data.get("has_overflow") == "1"), overflow_route_id=parse_int(data.get("overflow_route_id")), created_by=actor_id,
+            has_overflow=(data.get("has_overflow") == "1"), overflow_route_id=parse_int(data.get("overflow_route_id")), overflow_provider_id=parse_int(data.get("overflow_provider_id")), created_by=actor_id,
         )
         send_provider_change_notification(repo, event_id)
         return "/provider-changes"

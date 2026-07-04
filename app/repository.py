@@ -2096,6 +2096,10 @@ class Repository:
             snapshot["affected_servers"] = values.get("affected_servers", [])
             snapshot["has_overflow"] = values.get("has_overflow", 0)
             snapshot["overflow_route_name"] = self._name_by_id('routes', values.get("overflow_route_id")) if values.get("overflow_route_id") else None
+            snapshot["overflow_provider_name"] = None
+            if values.get("overflow_route_id"):
+                row = self.conn.execute("SELECT p.name FROM routes r JOIN providers p ON p.id = r.provider_id WHERE r.id = ?", (values.get("overflow_route_id"),)).fetchone()
+                snapshot["overflow_provider_name"] = row["name"] if row else None
         return snapshot
 
     def _routing_event_summary(self, values: dict) -> str:
@@ -2115,7 +2119,14 @@ class Repository:
             if values.get("server_id"):
                 parts.append(f"Сервер: {self._name_by_id('servers', values.get('server_id'))}")
             parts.append(f"Маршрут: {self._route_label(values.get('old_route_id')) or '—'} → {self._route_label(values.get('new_route_id')) or '—'}")
-            parts.append(f"Перелив: {self._route_label(values.get('overflow_route_id')) if values.get('has_overflow') else '—'}")
+            if values.get('has_overflow'):
+                overflow_provider = None
+                if values.get('overflow_route_id'):
+                    row = self.conn.execute("SELECT p.name FROM routes r JOIN providers p ON p.id = r.provider_id WHERE r.id = ?", (values.get('overflow_route_id'),)).fetchone()
+                    overflow_provider = row["name"] if row else None
+                parts.append(f"Перелив: да; Провайдер перелива: {overflow_provider or '—'}; Маршрут перелива: {self._route_label(values.get('overflow_route_id')) or '—'}")
+            else:
+                parts.append("Перелив: нет")
         elif scope == "campaign_setting":
             if values.get("calling_company_id"):
                 company = self.conn.execute("SELECT company_id_external, company_name FROM calling_companies WHERE id = ?", (values.get("calling_company_id"),)).fetchone()
@@ -2315,9 +2326,13 @@ class Repository:
             if values["has_overflow"]:
                 if not values["overflow_route_id"]:
                     raise BusinessRuleError("Маршрут перелива обязателен")
-                overflow = self.conn.execute("SELECT country_id, is_actual FROM routes WHERE id = ?", (values["overflow_route_id"],)).fetchone()
+                if not kwargs.get("overflow_provider_id"):
+                    raise BusinessRuleError("Провайдер перелива обязателен")
+                overflow = self.conn.execute("SELECT country_id, provider_id, is_actual FROM routes WHERE id = ?", (values["overflow_route_id"],)).fetchone()
                 if not overflow or not int(overflow["is_actual"]) or int(overflow["country_id"]) != int(values["country_id"]):
                     raise BusinessRuleError("Маршрут перелива должен быть активным и относиться к выбранному GEO")
+                if int(overflow["provider_id"]) != int(kwargs.get("overflow_provider_id")):
+                    raise BusinessRuleError("Маршрут перелива должен относиться к выбранному провайдеру перелива")
             else:
                 values["has_overflow"] = 0
                 values["overflow_route_id"] = None
