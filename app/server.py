@@ -2320,6 +2320,15 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     html[data-theme="light-v2"] .reset-filters:hover {{ background: var(--accent-soft) !important; border-color: var(--accent-border) !important; color: var(--accent-strong) !important; }}
     html[data-theme="light-v2"] .provider-changes-page .modal-form-card[open] {{ width: min(980px, calc(100vw - 32px)); max-width: 100%; }}
     html[data-theme="light-v2"] .provider-changes-page .modal-form-card[open] > form {{ box-sizing: border-box; width: 100%; min-height: 560px; padding: 16px; }}
+    html[data-theme="light-v2"] .provider-changes-page .modal-form-card.provider-change-create-shell[open] {{ width: min(720px, calc(100vw - 32px)); max-width: 100%; }}
+    html[data-theme="light-v2"] .provider-change-create-shell #routing-event-form {{ display: flex; flex-direction: column; align-items: stretch; gap: 14px; min-height: 480px; padding: 16px 16px 0; }}
+    html[data-theme="light-v2"] .provider-change-create-shell .provider-change-shell-scope {{ margin: 0; padding: 0; border: 0; min-inline-size: 0; }}
+    html[data-theme="light-v2"] .provider-change-create-shell .provider-change-shell-scope > legend {{ margin: 0 0 10px; padding: 0; font-weight: 700; color: var(--text-strong); }}
+    html[data-theme="light-v2"] .provider-change-create-shell .scope-cards {{ display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; width: 100%; }}
+    html[data-theme="light-v2"] .provider-change-create-shell .scope-card {{ min-width: 0; }}
+    html[data-theme="light-v2"] .provider-change-create-shell .provider-change-placeholder {{ flex: 1 1 auto; min-height: 180px; display: flex; align-items: center; justify-content: center; padding: 18px; border: 1px dashed var(--border-strong); border-radius: var(--radius-card); background: #F8FAFC; color: var(--muted); text-align: center; }}
+    html[data-theme="light-v2"] .provider-change-create-shell .provider-change-shell-hint {{ min-height: 24px; margin: 0; color: var(--muted); }}
+    html[data-theme="light-v2"] .provider-change-create-shell #routing-event-form .modal-actions {{ margin: 0 -16px; padding: 14px 16px; }}
     html[data-theme="light-v2"] .scope-cards {{ grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); width: 100%; gap: 10px; }}
     html[data-theme="light-v2"] .scope-card {{ position: relative; display: flex; align-items: stretch; min-height: 58px; padding: 10px 12px 10px 14px; border: 1px solid var(--border-strong); border-left: 3px solid var(--border-strong); background: #fff; box-shadow: none; cursor: pointer; }}
     html[data-theme="light-v2"] .scope-card input[type="radio"] {{ position: absolute; opacity: 0; pointer-events: none; }}
@@ -4777,6 +4786,45 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
     old_route_field = f"<label class='scope-field' data-scopes='server_priority'>Старый маршрут (только описание при редактировании) <select name='old_route_id'>{route_options_for_dynamic_form(repo, selected=event['old_route_id'] if event else None, empty='—')}</select></label>" if is_existing_event else ""
     provider_selected = event["provider_id"] if event else None
     error_html = f"<div class='error wide'>{esc(error_message)}</div>" if error_message else ""
+    if not is_existing_event:
+        return f"""
+<details class='form-card modal-form-card provider-change-create-shell' {'open' if error_message else ''} data-modal-details><summary class='form-summary'>+ Добавить событие</summary>
+<form method='post' action='{action}' class='form-grid' id='routing-event-form' data-current-scope='{esc(scope)}'>
+  {error_html}
+  <fieldset class='provider-change-shell-scope'><legend>Область применения</legend>
+    <div class='scope-cards'>
+      <label class='card scope-card'><input type='radio' name='apply_scope' value='none' {'checked' if scope == 'none' else ''}><span class='scope-card-indicator' aria-hidden='true'></span><span class='scope-card-text'>Не меняли настройки в нашей системе</span></label>
+      <label class='card scope-card'><input type='radio' name='apply_scope' value='server_priority' {'checked' if scope == 'server_priority' else ''}><span class='scope-card-indicator' aria-hidden='true'></span><span class='scope-card-text'>Серверный приоритет</span></label>
+      <label class='card scope-card'><input type='radio' name='apply_scope' value='campaign_setting' {'checked' if scope == 'campaign_setting' else ''}><span class='scope-card-indicator' aria-hidden='true'></span><span class='scope-card-text'>Настройка кампании</span></label>
+    </div>
+  </fieldset>
+  <div class='provider-change-placeholder' data-placeholder-content aria-live='polite'>Content placeholder: system settings</div>
+  <p class='provider-change-shell-hint'>Сервисная подсказка для выбранной области будет добавлена на следующем шаге.</p>
+  <button type='submit'>{submit}</button>
+</form>
+<script>
+(function() {{
+  const form = document.getElementById('routing-event-form');
+  if (!form || !form.closest('.provider-change-create-shell')) return;
+  const placeholder = form.querySelector('[data-placeholder-content]');
+  const labels = {{
+    none: 'Content placeholder: system settings',
+    server_priority: 'Content placeholder: server priority',
+    campaign_setting: 'Content placeholder: campaign settings'
+  }};
+  function selectedScope() {{ return (form.querySelector('input[name="apply_scope"]:checked') || {{value: 'none'}}).value; }}
+  function sync() {{
+    const scope = selectedScope();
+    form.dataset.currentScope = scope;
+    form.querySelectorAll('.scope-card').forEach((card) => card.classList.toggle('selected', card.querySelector('input').checked));
+    if (placeholder) placeholder.textContent = labels[scope] || labels.none;
+  }}
+  form.querySelectorAll('input[name="apply_scope"]').forEach((el) => el.addEventListener('change', sync));
+  sync();
+}})();
+</script>
+</details>
+"""
     return f"""
 <details class='form-card modal-form-card' {'open' if is_existing_event or error_message else ''} data-modal-details><summary class='form-summary'>{'Редактировать событие' if is_existing_event else '+ Добавить событие'}</summary>
 <form method='post' action='{action}' class='form-grid' id='routing-event-form' data-current-scope='{esc(scope)}' data-default-country-id='{esc(active_country_id_if_single(repo) or '')}'>
