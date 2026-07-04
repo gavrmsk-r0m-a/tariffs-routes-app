@@ -4868,11 +4868,12 @@ def hlr_result_from_api_item(item: dict[str, str], raw_result: object) -> dict[s
 
 
 
-def hlr_user_error_comment(error_type: str, http_status: object = "") -> str:
+def hlr_user_error_comment(error_type: str, http_status: object = "", api_message: object = "") -> str:
     if str(http_status) in {"401", "403"}:
         return "HLR API authorization failed. Check API key/secret."
     if str(http_status) == "400":
-        return "HLR API rejected request format."
+        message = str(api_message or "").strip()
+        return f"HLR API rejected request format: {message}" if message else "HLR API rejected request format."
     if str(http_status) == "429":
         return "HLR API rate limit."
     if error_type == "timeout":
@@ -4893,12 +4894,59 @@ def hlr_sanitize_text(value: str, config: dict[str, object]) -> str:
     return sanitized[:1000]
 
 
-def hlr_error_details(config: dict[str, object], error_type: str, *, http_status: object = "", response_content_type: object = "", response_preview: str = "", parsed_container_detected: object = "") -> dict[str, object]:
+def hlr_request_payload(numbers: list[dict[str, str]], config: dict[str, object]) -> dict[str, object]:
+    return {
+        "api_key": str(config.get("api_key") or ""),
+        "api_secret": str(config.get("api_secret") or ""),
+        "requests": [{"telephone_number": item["normalized"], "output_format": "PLUS_E164"} for item in numbers],
+    }
+
+
+def hlr_sanitize_request_shape_item(value: object) -> object:
+    if isinstance(value, dict):
+        sanitized = {}
+        for key, item in value.items():
+            key_text = str(key)
+            if any(part in key_text.lower() for part in HLR_SENSITIVE_KEY_PARTS):
+                sanitized[key_text] = "***"
+            elif key_text == "telephone_number":
+                sanitized[key_text] = "+..." if item else ""
+            else:
+                sanitized[key_text] = hlr_sanitize_request_shape_item(item)
+        return sanitized
+    if isinstance(value, list):
+        return [hlr_sanitize_request_shape_item(item) for item in value]
+    return value
+
+
+def hlr_sanitized_request_shape(payload: dict[str, object]) -> str:
+    return json.dumps(hlr_sanitize_request_shape_item(payload), ensure_ascii=False, sort_keys=True)
+
+
+def hlr_sanitized_api_message(response_text: str, config: dict[str, object]) -> str:
+    sanitized_text = hlr_sanitize_text(response_text, config)
+    try:
+        payload = json.loads(sanitized_text)
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return sanitized_text[:300]
+    if isinstance(payload, dict):
+        for key in ("message", "error", "error_message", "detail", "description"):
+            value = payload.get(key)
+            if value:
+                return hlr_sanitize_text(str(value), config)[:300]
+    return sanitized_text[:300]
+
+
+def hlr_error_details(config: dict[str, object], error_type: str, *, http_method: object = "", api_url: object = "", request_shape_sanitized: object = "", http_status: object = "", response_content_type: object = "", response_preview: str = "", parsed_container_detected: object = "", api_message: object = "") -> dict[str, object]:
     return {
         "error_type": error_type,
+        "http_method": str(http_method or ""),
+        "api_url": hlr_safe_api_url(api_url or config.get("api_url") or ""),
+        "request_shape_sanitized": str(request_shape_sanitized or ""),
         "http_status": str(http_status or ""),
         "response_content_type": str(response_content_type or ""),
         "response_preview_sanitized": hlr_sanitize_text(response_preview, config),
+        "api_message_sanitized": hlr_sanitize_text(str(api_message or ""), config),
         "parsed_container_detected": str(parsed_container_detected or ""),
         "api_url_present": "yes" if config.get("api_url") else "no",
         "api_key_present": "yes" if config.get("api_key") else "no",
@@ -4908,6 +4956,7 @@ def hlr_error_details(config: dict[str, object], error_type: str, *, http_status
 
 def hlr_error_result(item: dict[str, str], config: dict[str, object], error_type: str, **details: object) -> dict[str, object]:
     http_status = details.get("http_status", "")
+    api_message = details.get("api_message", "")
     return hlr_make_result(
         item["original"],
         item["normalized"],
@@ -4915,7 +4964,7 @@ def hlr_error_result(item: dict[str, str], config: dict[str, object], error_type
         live_status_raw="ERROR",
         final_category="error",
         final_result="ERROR",
-        comment=hlr_user_error_comment(error_type, http_status),
+        comment=hlr_user_error_comment(error_type, http_status, api_message),
         **hlr_error_details(config, error_type, **details),
     )
 
@@ -4926,17 +4975,22 @@ def hlr_real_api_check(numbers: list[dict[str, str]], config: dict[str, object])
     results = []
     for start in range(0, len(numbers), HLR_BATCH_SIZE):
         batch = numbers[start:start + HLR_BATCH_SIZE]
-        payload = json.dumps({"numbers": [{"telephone_number": item["normalized"], "output_format": "PLUS_E164"} for item in batch]}, ensure_ascii=False).encode("utf-8")
-        req = Request(str(config["api_url"]), data=payload, headers={"Content-Type": "application/json", "X-API-Key": str(config["api_key"]), "X-API-Secret": str(config["api_secret"])}, method="POST")
+        request_body = hlr_request_payload(batch, config)
+        request_shape = hlr_sanitized_request_shape(request_body)
+        payload = json.dumps(request_body, ensure_ascii=False).encode("utf-8")
+        diagnostics = {"http_method": "POST", "api_url": config["api_url"], "request_shape_sanitized": request_shape}
+        req = Request(str(config["api_url"]), data=payload, headers={"Content-Type": "application/json"}, method="POST")
         try:
             with urlopen(req, timeout=timeout) as resp:
                 response_bytes = resp.read()
                 response_text = response_bytes.decode("utf-8", errors="replace")
                 content_type = resp.headers.get("Content-Type", "")
+                diagnostics["http_status"] = str(getattr(resp, "status", "") or getattr(resp, "code", "") or "200")
+                diagnostics["response_content_type"] = content_type
             body = json.loads(response_text)
             api_rows = hlr_extract_api_rows(body)
             if api_rows is None:
-                results.extend([hlr_error_result(item, config, "unexpected_response", response_content_type=content_type, response_preview=response_text, parsed_container_detected="no") for item in batch])
+                results.extend([hlr_error_result(item, config, "unexpected_response", response_preview=response_text, parsed_container_detected="no", **diagnostics) for item in batch])
                 continue
             by_number = {str(r.get("detected_telephone_number") or r.get("telephone_number") or r.get("formatted_telephone_number") or r.get("number") or r.get("normalized") or r.get("msisdn") or ""): r for r in api_rows if isinstance(r, dict)}
             for item, fallback in zip(batch, api_rows):
@@ -4945,15 +4999,16 @@ def hlr_real_api_check(numbers: list[dict[str, str]], config: dict[str, object])
         except HTTPError as exc:
             response_text = exc.read().decode("utf-8", errors="replace") if exc.fp else ""
             content_type = exc.headers.get("Content-Type", "") if exc.headers else ""
-            results.extend([hlr_error_result(item, config, "http_error", http_status=exc.code, response_content_type=content_type, response_preview=response_text, parsed_container_detected="unknown") for item in batch])
+            api_message = hlr_sanitized_api_message(response_text, config)
+            results.extend([hlr_error_result(item, config, "http_error", http_status=exc.code, response_content_type=content_type, response_preview=response_text, parsed_container_detected="unknown", api_message=api_message, **diagnostics) for item in batch])
         except TimeoutError:
-            results.extend([hlr_error_result(item, config, "timeout") for item in batch])
+            results.extend([hlr_error_result(item, config, "timeout", **diagnostics) for item in batch])
         except URLError as exc:
             reason = getattr(exc, "reason", "")
             error_type = "timeout" if "timed out" in str(reason).lower() else "connection_error"
-            results.extend([hlr_error_result(item, config, error_type, response_preview=str(reason)) for item in batch])
+            results.extend([hlr_error_result(item, config, error_type, response_preview=str(reason), **diagnostics) for item in batch])
         except (ValueError, json.JSONDecodeError) as exc:
-            results.extend([hlr_error_result(item, config, "unexpected_response", response_preview=str(exc), parsed_container_detected="no") for item in batch])
+            results.extend([hlr_error_result(item, config, "unexpected_response", response_preview=str(exc), parsed_container_detected="no", **diagnostics) for item in batch])
     return results
 
 
@@ -5055,6 +5110,10 @@ def hlr_display_row(row: dict[str, object]) -> dict[str, str]:
         "http_status": hlr_display_value(row.get("http_status")),
         "response_content_type": hlr_display_value(row.get("response_content_type")),
         "response_preview_sanitized": hlr_display_value(row.get("response_preview_sanitized")),
+        "api_message_sanitized": hlr_display_value(row.get("api_message_sanitized")),
+        "http_method": hlr_display_value(row.get("http_method")),
+        "api_url": hlr_display_value(row.get("api_url")),
+        "request_shape_sanitized": hlr_display_value(row.get("request_shape_sanitized")),
         "parsed_container_detected": hlr_display_value(row.get("parsed_container_detected")),
         "api_url_present": hlr_display_value(row.get("api_url_present")),
         "api_key_present": hlr_display_value(row.get("api_key_present")),
@@ -5101,9 +5160,9 @@ def hlr_details_html(row: dict[str, object]) -> str:
     original_keys = ["original_network", "original_operator", "original_mccmnc", "original_country", "original_country_iso3", "original_area", "original_country_prefix"]
     porting_keys = ["is_ported", "ported_date", "landline_status"]
     meta_keys = ["uuid", "timestamp", "credits_spent", "raw_error", "raw_message"]
-    error_keys = ["error_type", "http_status", "response_content_type", "response_preview_sanitized", "parsed_container_detected", "api_url_present", "api_key_present", "api_secret_present"]
+    error_keys = ["http_method", "api_url", "request_shape_sanitized", "http_status", "response_content_type", "response_preview_sanitized", "api_message_sanitized", "error_type", "parsed_container_detected", "api_url_present", "api_key_present", "api_secret_present"]
     labels = {
-        "original_number": "Исходный номер", "normalized_number": "Нормализованный номер", "detected_telephone_number": "Detected number", "formatted_telephone_number": "Formatted number", "live_status_raw": "Live status", "number_type": "Telephone number type", "final_result": "Итог", "lead_quality_signal": "Оценка лида", "comment": "Комментарий", "current_network": "Current network", "current_operator": "Current operator", "current_mccmnc": "Current MCCMNC", "current_country": "Current country", "current_country_iso3": "Current ISO3", "current_country_prefix": "Current country prefix", "original_network": "Original network", "original_operator": "Original operator", "original_mccmnc": "Original MCCMNC", "original_country": "Original country", "original_country_iso3": "Original ISO3", "original_area": "Original area", "original_country_prefix": "Original country prefix", "is_ported": "Is ported", "ported_date": "Ported date", "landline_status": "Landline status", "uuid": "UUID", "timestamp": "Timestamp", "credits_spent": "Credits spent", "raw_error": "Raw error", "raw_message": "Raw message", "error_type": "Error type", "http_status": "HTTP status", "response_content_type": "Response content type", "response_preview_sanitized": "Response preview (sanitized)", "parsed_container_detected": "Parsed container detected", "api_url_present": "API URL present", "api_key_present": "API key present", "api_secret_present": "API secret present"
+        "original_number": "Исходный номер", "normalized_number": "Нормализованный номер", "detected_telephone_number": "Detected number", "formatted_telephone_number": "Formatted number", "live_status_raw": "Live status", "number_type": "Telephone number type", "final_result": "Итог", "lead_quality_signal": "Оценка лида", "comment": "Комментарий", "current_network": "Current network", "current_operator": "Current operator", "current_mccmnc": "Current MCCMNC", "current_country": "Current country", "current_country_iso3": "Current ISO3", "current_country_prefix": "Current country prefix", "original_network": "Original network", "original_operator": "Original operator", "original_mccmnc": "Original MCCMNC", "original_country": "Original country", "original_country_iso3": "Original ISO3", "original_area": "Original area", "original_country_prefix": "Original country prefix", "is_ported": "Is ported", "ported_date": "Ported date", "landline_status": "Landline status", "uuid": "UUID", "timestamp": "Timestamp", "credits_spent": "Credits spent", "raw_error": "Raw error", "raw_message": "Raw message", "error_type": "Error type", "http_status": "HTTP status", "response_content_type": "Response content type", "response_preview_sanitized": "Response preview (sanitized)", "api_message_sanitized": "API message (sanitized)", "http_method": "HTTP method", "api_url": "API URL", "request_shape_sanitized": "Request shape (sanitized)", "parsed_container_detected": "Parsed container detected", "api_url_present": "API URL present", "api_key_present": "API key present", "api_secret_present": "API secret present"
     }
     def dl(keys: list[str], skip_empty: bool = False) -> str:
         parts = []
