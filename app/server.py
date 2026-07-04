@@ -2211,6 +2211,100 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     html[data-theme="light-v2"] .admin-tree {{ background: transparent; border-left-color: var(--border-strong); }}
     html[data-theme="light-v2"] .admin-link {{ color: #26323A; }}
     html[data-theme="light-v2"] .admin-link.active {{ background: var(--accent-soft); border-color: var(--accent-border); color: var(--accent-hover); box-shadow: inset 2px 0 0 var(--accent); }}
+    html[data-theme="light-v2"] .sidebar .side-link,
+    html[data-theme="light-v2"] .sidebar .admin-link {{
+      display: flex;
+      align-items: center;
+      justify-content: flex-start;
+      gap: var(--sidebar-item-gap);
+      height: var(--sidebar-item-height);
+      min-height: var(--sidebar-item-height);
+      max-height: var(--sidebar-item-height);
+      padding: var(--sidebar-item-padding-y) var(--sidebar-item-padding-x);
+      border: 1px solid var(--border-strong);
+      border-left: 3px solid var(--border-strong);
+      border-radius: 5px;
+      background: transparent;
+      color: #1B2630;
+      font-size: 13px;
+      font-weight: 740;
+      line-height: 1.2;
+      letter-spacing: -0.002em;
+      box-shadow: none;
+      box-sizing: border-box;
+    }}
+    html[data-theme="light-v2"] .sidebar .admin-link {{
+      width: 100%;
+      font-size: 12px;
+      font-weight: 680;
+    }}
+    html[data-theme="light-v2"] .sidebar .side-link .nav-icon,
+    html[data-theme="light-v2"] .sidebar .admin-link .nav-icon {{ color: #5C6A76 !important; }}
+    html[data-theme="light-v2"] .sidebar .side-link:hover:not(.side-link-disabled):not(:disabled),
+    html[data-theme="light-v2"] .sidebar .admin-link:hover {{
+      background: var(--accent-soft);
+      border-color: var(--accent-border);
+      border-left-color: var(--accent-border);
+      color: var(--accent-strong);
+      box-shadow: none;
+    }}
+    html[data-theme="light-v2"] .sidebar .side-link:hover:not(.side-link-disabled):not(:disabled) .nav-icon,
+    html[data-theme="light-v2"] .sidebar .admin-link:hover .nav-icon {{ color: var(--accent-strong) !important; }}
+    html[data-theme="light-v2"] .sidebar .side-link.active,
+    html[data-theme="light-v2"] .sidebar .admin-link.active,
+    html[data-theme="light-v2"] .sidebar-collapsed .side-link.active {{
+      background: linear-gradient(90deg, #DBEAFE 0%, #EFF6FF 100%) !important;
+      border-color: var(--accent-border) !important;
+      border-left-color: var(--accent) !important;
+      color: var(--accent-hover) !important;
+      box-shadow: inset 3px 0 0 var(--accent) !important;
+    }}
+    html[data-theme="light-v2"] .sidebar .side-link.active .nav-icon,
+    html[data-theme="light-v2"] .sidebar .admin-link.active .nav-icon,
+    html[data-theme="light-v2"] .sidebar .side-link.active .side-icon,
+    html[data-theme="light-v2"] .sidebar .side-link.active::before {{ color: var(--accent) !important; }}
+    html[data-theme="light-v2"] .sidebar .side-link[href="/provider-changes"],
+    html[data-theme="light-v2"] .sidebar .side-link[href="/provider-changes"]:hover,
+    html[data-theme="light-v2"] .sidebar .side-link[href="/provider-changes"].active {{ border-left-width: 3px; }}
+    html[data-theme="light-v2"] .sidebar .side-link[href="/provider-changes"]:not(.active) {{
+      background: transparent;
+      border-color: var(--border-strong);
+      border-left-color: var(--border-strong);
+      color: #1B2630;
+      box-shadow: none;
+    }}
+    html[data-theme="light-v2"] .sidebar .side-link[href="/provider-changes"]:not(.active) .nav-icon {{ color: #5C6A76 !important; }}
+    html[data-theme="light-v2"] .sidebar .side-link[href="/provider-changes"]:hover:not(.active) {{
+      background: var(--accent-soft);
+      border-color: var(--accent-border);
+      border-left-color: var(--accent-border);
+      color: var(--accent-strong);
+    }}
+    html[data-theme="light-v2"] .sidebar .side-link[href="/provider-changes"]:hover:not(.active) .nav-icon {{ color: var(--accent-strong) !important; }}
+    html[data-theme="light-v2"] .sidebar .side-link-disabled,
+    html[data-theme="light-v2"] .sidebar .side-link-disabled:hover,
+    html[data-theme="light-v2"] .sidebar .side-link-disabled:disabled {{
+      background: transparent;
+      border-color: var(--border-strong);
+      border-left-color: var(--border-strong);
+      color: #8A96A1;
+      opacity: .72;
+      box-shadow: none;
+      cursor: not-allowed;
+    }}
+    html[data-theme="light-v2"] .sidebar .side-link-disabled:hover {{ background: #F6F7F8; }}
+    html[data-theme="light-v2"] .sidebar .side-link-disabled .nav-icon,
+    html[data-theme="light-v2"] .sidebar .side-link-disabled:hover .nav-icon {{ color: #9AA4AD !important; }}
+    html[data-theme="light-v2"] .sidebar .admin-tree {{
+      display: none;
+      margin: 4px 0 0 0;
+      padding: 0 0 0 14px;
+      border: 0;
+      border-left: 1px solid var(--border-strong);
+      background: transparent;
+      gap: 4px;
+    }}
+    html[data-theme="light-v2"] .sidebar .admin-tree.open {{ display: grid; }}
     html[data-theme="light-v2"] .filter-card,
     html[data-theme="light-v2"] .table-page-container > .form-card,
     html[data-theme="light-v2"] .dictionary-add {{ border: 1px solid var(--border-strong); border-radius: var(--radius-card); background: #FFFFFF; box-shadow: 0 1px 2px rgba(11,17,23,.06); margin: 8px 0 10px; overflow: hidden; }}
