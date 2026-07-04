@@ -2342,18 +2342,18 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .campaign-id-action-field input {{ display: block; margin-top: 0; }}
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .campaign-id-action-button {{ align-self: start; margin-top: calc(1.25em + 4px); width: 48px; min-width: 0; }}
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .campaign-id-action-field input,
-    html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .campaign-id-action-button,
-    html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .multi-select > summary {{ box-sizing: border-box; min-height: 31px; height: 31px; }}
+    html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .campaign-id-action-button {{ box-sizing: border-box; min-height: 31px; height: 31px; }}
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .campaign-id-action-button {{ padding: 5px 8px; font-size: 13px; line-height: 1.2; box-shadow: none; }}
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .campaign-reason-field {{ grid-column: 1 / span 2; }}
-    html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .campaign-company-field {{ grid-column: 3 / -1; }}
-    html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .campaign-company-field .multi-select {{ margin: 4px 0 0; border: 1px solid var(--border-strong); border-radius: var(--radius-control); background: #fff; box-shadow: inset 0 1px 0 rgba(17, 24, 39, .025); transition: border-color 120ms ease, box-shadow 120ms ease; }}
-    html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .campaign-company-field .multi-select:hover {{ border-color: var(--border-ink); }}
-    html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .campaign-company-field .multi-select:focus-within {{ border-color: var(--accent); outline: 2px solid rgba(15, 118, 110, .18); outline-offset: 1px; box-shadow: none; }}
-    html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .campaign-company-field .multi-select > summary {{ position: relative; display: block; padding: 6px 28px 6px 8px; border: 0; border-radius: var(--radius-control); background: #fff; color: var(--text-strong); font: inherit; font-weight: 560; line-height: normal; list-style: none; }}
-    html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .campaign-company-field .multi-select > summary::-webkit-details-marker {{ display: none; }}
-    html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .campaign-company-field .multi-select > summary::after {{ content: "▾"; position: absolute; right: 9px; top: 50%; transform: translateY(-50%); color: var(--muted); font-size: 12px; pointer-events: none; }}
-    html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .campaign-company-field .multi-select[open] > summary {{ border-bottom: 1px solid var(--border-strong); border-radius: var(--radius-control) var(--radius-control) 0 0; background: #fff; }}
+    html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .campaign-company-field {{ grid-column: 3 / span 2; }}
+    html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .campaign-company-field .company-select-control {{ position: relative; box-sizing: border-box; width: 100%; min-width: 0; margin: 4px 0 0; border: 0; border-radius: 0; background: transparent; }}
+    html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .campaign-company-field .company-select-control > summary {{ position: relative; display: block; box-sizing: border-box; width: 100%; min-height: 32px; padding: 6px 28px 6px 8px; overflow: hidden; border: 1px solid var(--border-strong); border-radius: var(--radius-control); background: var(--input-bg); color: var(--text); font: inherit; line-height: normal; list-style: none; text-overflow: ellipsis; white-space: nowrap; box-shadow: inset 0 1px 1px rgba(34, 48, 42, 0.03); cursor: pointer; }}
+    html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .campaign-company-field .company-select-control > summary::-webkit-details-marker {{ display: none; }}
+    html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .campaign-company-field .company-select-control > summary::after {{ content: "▾"; position: absolute; right: 9px; top: 50%; transform: translateY(-50%); color: var(--muted); font-size: 12px; pointer-events: none; }}
+    html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .campaign-company-field .company-select-control:hover > summary {{ border-color: var(--border-ink); }}
+    html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .campaign-company-field .company-select-control:focus-within > summary {{ border-color: var(--accent); box-shadow: 0 0 0 3px rgba(37, 99, 235, .16); outline: 0; }}
+    html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .campaign-company-field .company-select-control[open] > summary {{ border-bottom-color: var(--border-strong); border-radius: var(--radius-control); background: var(--input-bg); }}
+    html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .campaign-company-field .company-select-panel {{ position: absolute; z-index: 20; inset-inline: 0; top: calc(100% + 4px); max-height: 280px; overflow: auto; padding: 8px; border: 1px solid var(--border-strong); border-radius: var(--radius-control); background: #fff; box-shadow: var(--shadow-soft); }}
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .span-2 {{ grid-column: span 2; }}
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .wide {{ grid-column: 1 / -1; }}
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid textarea {{ width: 100%; resize: vertical; }}
@@ -4895,9 +4895,9 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
     <label class='campaign-reason-field'>Причина <span class='required'>*</span><select name='reason' id='campaign-routing-reason' required disabled>{routing_reason_options(event['reason'] if event else None, 'campaign_setting')}</select></label>
     <div class='campaign-company-field'>
       <span class='field-label'>Кампания <span class='required'>*</span></span>
-      <details class='multi-select' id='event-company' data-placeholder='—'>
+      <details class='company-select-control' id='event-company' data-placeholder='—'>
         <summary id='event-company-summary'>—</summary>
-        <div class='multi-select-panel'>
+        <div class='company-select-panel'>
           <div class='multi-select-actions'>
             <button type='button' class='small-button' id='campaign-select-visible'>Выбрать все найденные</button>
             <button type='button' class='small-button' id='campaign-clear-selected'>Отменить выбранные</button>
