@@ -2324,6 +2324,11 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-shell-scope > legend {{ margin: 0 0 10px; padding: 0; font-weight: 700; color: var(--text-strong); }}
     html[data-theme="light-v2"] .provider-change-create-shell .scope-cards {{ display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; width: 100%; }}
     html[data-theme="light-v2"] .provider-change-create-shell .scope-card {{ min-width: 0; }}
+    html[data-theme="light-v2"] .provider-change-create-shell .provider-change-content-grid {{ flex: 1 1 auto; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; align-content: start; min-height: 180px; padding: 0; }}
+    html[data-theme="light-v2"] .provider-change-create-shell .provider-change-content-grid label {{ min-width: 0; }}
+    html[data-theme="light-v2"] .provider-change-create-shell .provider-change-content-grid .span-2 {{ grid-column: span 2; }}
+    html[data-theme="light-v2"] .provider-change-create-shell .provider-change-content-grid .wide {{ grid-column: 1 / -1; }}
+    html[data-theme="light-v2"] .provider-change-create-shell .provider-change-content-grid textarea {{ width: 100%; resize: vertical; }}
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-placeholder {{ flex: 1 1 auto; min-height: 180px; display: flex; align-items: center; justify-content: center; padding: 18px; border: 1px dashed var(--border-strong); border-radius: var(--radius-card); background: #F8FAFC; color: var(--muted); text-align: center; }}
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-shell-hint {{ min-height: 24px; margin: 0; color: var(--muted); }}
     html[data-theme="light-v2"] .provider-change-create-shell #routing-event-form .modal-actions {{ margin: 0 -16px; padding: 14px 16px; }}
@@ -2370,6 +2375,7 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     html[data-theme="light-v2"] .provider-change-create-shell #routing-event-form > *,
     html[data-theme="light-v2"] .provider-change-create-shell .scope-cards,
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-placeholder,
+    html[data-theme="light-v2"] .provider-change-create-shell .provider-change-content-grid,
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-shell-hint {{ box-sizing: border-box; max-width: 100%; min-width: 0; }}
     html[data-theme="light-v2"] .important-checkbox {{ background: #fff !important; border-color: var(--border-strong) !important; }}
     html[data-theme="light-v2"] .important-checkbox:has(input:checked) {{ background: var(--accent-soft) !important; border-color: var(--accent-border) !important; }}
@@ -4801,28 +4807,46 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
       <label class='card scope-card'><input type='radio' name='apply_scope' value='campaign_setting' {'checked' if scope == 'campaign_setting' else ''}><span class='scope-card-indicator' aria-hidden='true'></span><span class='scope-card-text'>Настройка кампании</span></label>
     </div>
   </fieldset>
-  <div class='provider-change-placeholder' data-placeholder-content aria-live='polite'>Content placeholder: system settings</div>
-  <p class='provider-change-shell-hint'>Сервисная подсказка для выбранной области будет добавлена на следующем шаге.</p>
+  <div class='provider-change-content-grid' data-scope-content='none'>
+    <label>Дата события <span class='required'>*</span><input type='datetime-local' name='event_at' value='{esc(event_at)}' required></label>
+    <label>GEO <span class='required'>*</span><select name='country_id' id='event-country'>{active_options(repo, 'countries', selected=event['country_id'] if event else None, empty='—')}</select></label>
+    <label>Провайдер <span class='required'>*</span><select name='provider_id' id='event-provider'>{active_options(repo, 'providers', selected=provider_selected, empty='—')}</select></label>
+    <label>Маршрут/префикс <select name='affected_route_id' id='affected-route'>{route_opts}</select></label>
+    <label class='span-2'>Причина <span class='required'>*</span><select name='reason' id='routing-reason' required>{routing_reason_options(event['reason'] if event else None, 'none')}</select></label>
+    <label class='wide'>Комментарий <span class='required comment-required' hidden>*</span><textarea name='comment' id='routing-comment' rows='3' cols='60'>{esc(event['comment'] if event else '')}</textarea></label>
+  </div>
+  <div class='provider-change-placeholder' data-placeholder-content data-scope-content='server_priority' aria-live='polite' hidden>Content placeholder: server priority</div>
+  <div class='provider-change-placeholder' data-placeholder-content data-scope-content='campaign_setting' aria-live='polite' hidden>Content placeholder: campaign settings</div>
+  <p class='provider-change-shell-hint'>Событие без изменения настроек фиксирует внешний или ручной контекст без применения изменений в системе.</p>
   <button type='submit'>{submit}</button>
 </form>
 <script>
 (function() {{
   const form = document.getElementById('routing-event-form');
   if (!form || !form.closest('.provider-change-create-shell')) return;
-  const placeholder = form.querySelector('[data-placeholder-content]');
-  const labels = {{
-    none: 'Content placeholder: system settings',
-    server_priority: 'Content placeholder: server priority',
-    campaign_setting: 'Content placeholder: campaign settings'
-  }};
   function selectedScope() {{ return (form.querySelector('input[name="apply_scope"]:checked') || {{value: 'none'}}).value; }}
+  function syncCommentRequirement() {{
+    const reason = document.getElementById('routing-reason');
+    const comment = document.getElementById('routing-comment');
+    const marker = form.querySelector('.comment-required');
+    const required = reason && reason.value === 'Другое';
+    if (comment) comment.required = !!required;
+    if (marker) marker.hidden = !required;
+  }}
   function sync() {{
     const scope = selectedScope();
     form.dataset.currentScope = scope;
     form.querySelectorAll('.scope-card').forEach((card) => card.classList.toggle('selected', card.querySelector('input').checked));
-    if (placeholder) placeholder.textContent = labels[scope] || labels.none;
+    form.querySelectorAll('[data-scope-content]').forEach((content) => {{
+      const show = content.dataset.scopeContent === scope;
+      content.hidden = !show;
+      content.querySelectorAll('input, select, textarea').forEach((field) => {{ field.disabled = !show; }});
+    }});
+    syncCommentRequirement();
   }}
   form.querySelectorAll('input[name="apply_scope"]').forEach((el) => el.addEventListener('change', sync));
+  const reason = document.getElementById('routing-reason');
+  if (reason) reason.addEventListener('change', syncCommentRequirement);
   sync();
 }})();
 </script>
