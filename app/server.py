@@ -2329,6 +2329,13 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-content-grid .span-2 {{ grid-column: span 2; }}
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-content-grid .wide {{ grid-column: 1 / -1; }}
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-content-grid textarea {{ width: 100%; resize: vertical; }}
+    html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid {{ flex: 1 1 auto; display: grid; grid-template-columns: minmax(135px, .8fr) minmax(135px, .8fr) minmax(205px, 1.1fr) minmax(210px, 1.25fr); gap: 12px; align-content: start; align-items: end; min-height: 180px; padding: 0; }}
+    html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid label,
+    html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .campaign-id-action-field,
+    html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .campaign-company-field {{ min-width: 0; width: auto; }}
+    html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .span-2 {{ grid-column: span 2; }}
+    html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .wide {{ grid-column: 1 / -1; }}
+    html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid textarea {{ width: 100%; resize: vertical; }}
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-placeholder {{ flex: 1 1 auto; min-height: 180px; display: flex; align-items: center; justify-content: center; padding: 18px; border: 1px dashed var(--border-strong); border-radius: var(--radius-card); background: #F8FAFC; color: var(--muted); text-align: center; }}
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-shell-hint {{ min-height: 24px; margin: 0; color: var(--muted); }}
     html[data-theme="light-v2"] .provider-change-create-shell #routing-event-form .modal-actions {{ margin: 0 -16px; padding: 14px 16px; }}
@@ -2376,6 +2383,7 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     html[data-theme="light-v2"] .provider-change-create-shell .scope-cards,
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-placeholder,
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-content-grid,
+    html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid,
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-shell-hint {{ box-sizing: border-box; max-width: 100%; min-width: 0; }}
     html[data-theme="light-v2"] .important-checkbox {{ background: #fff !important; border-color: var(--border-strong) !important; }}
     html[data-theme="light-v2"] .important-checkbox:has(input:checked) {{ background: var(--accent-soft) !important; border-color: var(--accent-border) !important; }}
@@ -4807,7 +4815,7 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
       <label class='card scope-card'><input type='radio' name='apply_scope' value='campaign_setting' {'checked' if scope == 'campaign_setting' else ''}><span class='scope-card-indicator' aria-hidden='true'></span><span class='scope-card-text'>Настройка кампании</span></label>
     </div>
   </fieldset>
-  <div class='provider-change-content-grid' data-scope-content='none'>
+  <div class='provider-change-content-grid' data-scope-content='none' data-scopes='none'>
     <label>Дата события <span class='required'>*</span><input type='datetime-local' name='event_at' value='{esc(event_at)}' required></label>
     <label>GEO <span class='required'>*</span><select name='country_id' id='event-country'>{active_options(repo, 'countries', selected=event['country_id'] if event else None, empty='—')}</select></label>
     <label>Провайдер <span class='required'>*</span><select name='provider_id' id='event-provider'>{active_options(repo, 'providers', selected=provider_selected, empty='—')}</select></label>
@@ -4816,8 +4824,32 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
     <label class='wide'>Комментарий <span class='required comment-required' hidden>*</span><textarea name='comment' id='routing-comment' rows='3' cols='60'>{esc(event['comment'] if event else '')}</textarea></label>
   </div>
   <div class='provider-change-placeholder' data-placeholder-content data-scope-content='server_priority' aria-live='polite' hidden>Content placeholder: server priority</div>
-  <div class='provider-change-placeholder' data-placeholder-content data-scope-content='campaign_setting' aria-live='polite' hidden>Content placeholder: campaign settings</div>
-  <p class='provider-change-shell-hint'>Событие без изменения настроек фиксирует внешний или ручной контекст без применения изменений в системе.</p>
+  <div class='provider-change-campaign-create-grid' data-scope-content='campaign_setting' data-scopes='campaign_setting' hidden>
+    <label>Дата события <span class='required'>*</span><input type='datetime-local' name='event_at' value='{esc(event_at)}' required disabled></label>
+    <label>Сервер <select name='server_id' id='campaign-server-filter' disabled>{options(repo, 'servers', selected=event['server_id'] if event else None, empty='—')}</select></label>
+    <label>Тип изменения кампании <span class='required'>*</span><select name='company_change_type' id='company-change-type' required disabled>
+      <option value=''>—</option>
+      {''.join(f"<option value='{v}' {'selected' if event and event['company_change_type'] == v else ''}>{label}</option>" for v, label in [('enable_autorotation','Включили авторотацию'),('disable_autorotation','Выключили авторотацию'),('set_campaign_route','Прописали ручной маршрут'),('remove_campaign_route','Убрали ручной маршрут')])}
+    </select></label>
+    <div class='campaign-id-action-field'><span class='field-label'>ID кампании</span><div class='campaign-id-inline-action'><input name='campaign_id_search' id='campaign-id-search' value='{esc(event['campaign_id_search'] if event and 'campaign_id_search' in event.keys() else '')}' disabled><button type='button' id='campaign-id-search-button' class='small-button'>OK</button></div><span class='field-error' id='campaign-id-search-error' aria-live='polite'></span></div>
+    <label class='span-2'>Причина <span class='required'>*</span><select name='reason' id='campaign-routing-reason' required disabled>{routing_reason_options(event['reason'] if event else None, 'campaign_setting')}</select></label>
+    <div class='campaign-company-field span-2'>
+      <span class='field-label'>Кампания <span class='required'>*</span></span>
+      <details class='multi-select' id='event-company' data-placeholder='—'>
+        <summary id='event-company-summary'>—</summary>
+        <div class='multi-select-panel'>
+          <div class='multi-select-actions'>
+            <button type='button' class='small-button' id='campaign-select-visible'>Выбрать все найденные</button>
+            <button type='button' class='small-button' id='campaign-clear-selected'>Отменить выбранные</button>
+          </div>
+          {company_opts}
+        </div>
+      </details>
+    </div>
+    <label class='wide'>Комментарий <textarea name='comment' id='campaign-routing-comment' rows='3' cols='60' disabled>{esc(event['comment'] if event else '')}</textarea></label>
+  </div>
+  <p class='provider-change-shell-hint' data-scope-hint='none'>Событие без изменения настроек фиксирует внешний или ручной контекст без применения изменений в системе.</p>
+  <p class='provider-change-shell-hint' data-scope-hint='campaign_setting' hidden>Событие будет сохранено в журнале и применено к Схеме маршрутизации кампаний.</p>
   <button type='submit'>{submit}</button>
 </form>
 <script>
@@ -4825,6 +4857,7 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
   const form = document.getElementById('routing-event-form');
   if (!form || !form.closest('.provider-change-create-shell')) return;
   const routes = {route_metadata_json(repo)};
+  const campaigns = {campaign_metadata_json(repo)};
   function selectedScope() {{ return (form.querySelector('input[name="apply_scope"]:checked') || {{value: 'none'}}).value; }}
   function updateSelectTitle(select) {{
     if (!select) return;
@@ -4858,9 +4891,64 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
     const reason = document.getElementById('routing-reason');
     const comment = document.getElementById('routing-comment');
     const marker = form.querySelector('.comment-required');
-    const required = reason && reason.value === 'Другое';
+    const required = selectedScope() === 'none' && reason && reason.value === 'Другое';
     if (comment) comment.required = !!required;
     if (marker) marker.hidden = !required;
+  }}
+  function setCampaignSearchError(message) {{
+    const error = document.getElementById('campaign-id-search-error');
+    if (error) error.textContent = message || '';
+  }}
+  function selectedCampaignBoxes() {{ return Array.from(form.querySelectorAll('input[name="calling_company_ids"]:checked')); }}
+  function updateCompanySummary() {{
+    const summary = document.getElementById('event-company-summary');
+    if (!summary) return;
+    const checked = selectedCampaignBoxes();
+    if (checked.length === 0) {{ summary.textContent = '—'; return; }}
+    if (checked.length === 1) {{
+      const label = checked[0].closest('.multi-option');
+      summary.textContent = label ? label.textContent.trim() : checked[0].value;
+      return;
+    }}
+    summary.textContent = `Выбрано: ${{checked.length}} кампании`;
+  }}
+  function filterCompanyOptions() {{
+    const showNotice = arguments.length > 0 ? arguments[0] : false;
+    const container = document.getElementById('event-company');
+    const server = document.getElementById('campaign-server-filter');
+    if (!container || !server) return;
+    const selectedServerId = server.value;
+    let cleared = false;
+    container.querySelectorAll('.multi-option').forEach((option) => {{
+      const show = !selectedServerId || String(option.dataset.serverId) === String(selectedServerId);
+      option.hidden = !show;
+      const box = option.querySelector('input');
+      if (box) {{
+        box.disabled = !show || selectedScope() !== 'campaign_setting';
+        if (!show && box.checked) {{ box.checked = false; cleared = true; }}
+      }}
+    }});
+    if (cleared && showNotice) setCampaignSearchError('Выбор кампаний обновлён по выбранному серверу');
+    updateCompanySummary();
+  }}
+  function findCampaignByVisibleId() {{
+    const input = document.getElementById('campaign-id-search');
+    const container = document.getElementById('event-company');
+    const server = document.getElementById('campaign-server-filter');
+    if (!input || !container || !server) return;
+    const campaignId = input.value.trim();
+    setCampaignSearchError('');
+    if (!campaignId) return;
+    const found = campaigns.find((company) => String(company.external_id) === campaignId);
+    if (!found) {{ setCampaignSearchError('Кампания с таким ID не найдена'); return; }}
+    if (server.value && String(found.server_id) !== String(server.value)) {{
+      const selectedServerName = (server.options[server.selectedIndex] && server.options[server.selectedIndex].textContent) || server.value;
+      setCampaignSearchError(`Кампания с ID ${{campaignId}} находится на сервере ${{found.server_name}}, а выбран сервер ${{selectedServerName}}`);
+      return;
+    }}
+    const box = container.querySelector(`input[name="calling_company_ids"][value="${{found.id}}"]`);
+    if (box && !box.disabled) box.checked = true;
+    updateCompanySummary();
   }}
   function sync() {{
     const scope = selectedScope();
@@ -4871,7 +4959,9 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
       content.hidden = !show;
       content.querySelectorAll('input, select, textarea').forEach((field) => {{ field.disabled = !show; }});
     }});
+    form.querySelectorAll('[data-scope-hint]').forEach((hint) => {{ hint.hidden = hint.dataset.scopeHint !== scope; }});
     rebuildAffectedRouteSelect();
+    filterCompanyOptions(false);
     syncCommentRequirement();
   }}
   form.querySelectorAll('input[name="apply_scope"], #event-country, #event-provider').forEach((el) => el.addEventListener('change', sync));
@@ -4879,6 +4969,21 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
   if (affectedRoute) affectedRoute.addEventListener('change', () => updateSelectTitle(affectedRoute));
   const reason = document.getElementById('routing-reason');
   if (reason) reason.addEventListener('change', syncCommentRequirement);
+  form.querySelectorAll('input[name="calling_company_ids"]').forEach((el) => el.addEventListener('change', updateCompanySummary));
+  const campaignServerFilter = document.getElementById('campaign-server-filter');
+  if (campaignServerFilter) campaignServerFilter.addEventListener('change', () => {{ filterCompanyOptions(true); }});
+  const campaignSearchButton = document.getElementById('campaign-id-search-button');
+  if (campaignSearchButton) campaignSearchButton.addEventListener('click', findCampaignByVisibleId);
+  const selectVisible = document.getElementById('campaign-select-visible');
+  if (selectVisible) selectVisible.addEventListener('click', () => {{
+    document.querySelectorAll('#event-company .multi-option:not([hidden]) input[name="calling_company_ids"]').forEach((box) => {{ if (!box.disabled) box.checked = true; }});
+    updateCompanySummary();
+  }});
+  const clearSelected = document.getElementById('campaign-clear-selected');
+  if (clearSelected) clearSelected.addEventListener('click', () => {{
+    form.querySelectorAll('input[name="calling_company_ids"]:checked').forEach((box) => {{ box.checked = false; }});
+    updateCompanySummary();
+  }});
   sync();
 }})();
 </script>
