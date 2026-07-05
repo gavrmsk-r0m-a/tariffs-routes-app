@@ -5508,7 +5508,7 @@ document.addEventListener("DOMContentLoaded", function () {{
   const columnsPanel = document.getElementById("hlr-column-panel");
   const columnsList = document.getElementById("hlr-column-list");
   const resetButton = document.getElementById("hlr-columns-reset");
-  const storageKey = "hlr_safe_column_settings";
+  const storageKey = "hlr_safe_column_settings_v2";
   const defaultVisibleColumns = new Set([
     "original_number",
     "normalized_number",
@@ -5529,7 +5529,23 @@ document.addEventListener("DOMContentLoaded", function () {{
     key: th.dataset.col,
     label: th.textContent.trim(),
   }})).filter((column) => column.key);
-  const defaultOrder = columns.map((column) => column.key);
+  const businessColumnOrder = [
+    "original_number",
+    "normalized_number",
+    "format_status",
+    "country",
+    "number_type",
+    "operator",
+    "hlr_status_raw",
+    "live_status_raw",
+    "final_result",
+    "lead_quality_signal",
+    "comment",
+  ];
+  const tableColumnOrder = columns.map((column) => column.key);
+  const defaultOrder = businessColumnOrder
+    .filter((key) => tableColumnOrder.includes(key))
+    .concat(tableColumnOrder.filter((key) => !businessColumnOrder.includes(key)));
   let settings = loadColumnSettings();
 
   function loadColumnSettings() {{
