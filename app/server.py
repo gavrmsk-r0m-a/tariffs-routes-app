@@ -1040,28 +1040,11 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .metric-value {{ display: block; margin: 6px 0 3px; color: var(--text-strong); font-size: 30px; line-height: 1; letter-spacing: -0.03em; }}
     .metric-hint {{ color: var(--muted); font-size: 12px; }}
     .hlr-workspace {{ display: grid; gap: 10px; min-width: 0; overflow-x: clip; }}
-    .hlr-top-area {{ display: grid; grid-template-columns: minmax(220px, 24%) minmax(0, 1fr); gap: 12px; align-items: stretch; position: sticky; top: 0; z-index: 12; background: var(--bg); padding-bottom: 4px; }}
-    .hlr-input-panel, .hlr-summary-panel {{ margin: 0; min-width: 0; }}
     .hlr-input-form {{ display: grid; gap: 7px; align-items: start; padding: 12px; }}
     .hlr-input-form label {{ display: grid; gap: 5px; min-width: 0; width: 100%; }}
     .hlr-input-form textarea {{ min-width: 0; width: 100%; min-height: 86px; max-height: 18vh; resize: vertical; box-sizing: border-box; }}
     .hlr-counter-line, .hlr-input-hint {{ margin: 0; }}
     .hlr-input-actions {{ display: flex; gap: 8px; flex-wrap: wrap; }}
-    .hlr-summary-panel {{ padding: 10px 12px; overflow: hidden; }}
-    .hlr-summary-panel h2 {{ margin: 0 0 8px; font-size: 16px; }}
-    .hlr-status-panel {{ display: flex; flex-wrap: wrap; gap: 6px; align-items: flex-start; min-width: 0; }}
-    .hlr-status-filter {{ min-height: 0; display: inline-flex; align-items: center; gap: 6px; max-width: 175px; padding: 5px 8px; text-align: left; border-color: var(--border); background: var(--surface); box-shadow: none; font-size: 12px; line-height: 1.15; }}
-    .hlr-status-filter:hover {{ transform: none; border-color: var(--accent); background: var(--surface-muted); }}
-    .hlr-status-filter.active {{ border-color: var(--accent); background: var(--accent-soft); color: var(--text-strong); box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 22%, transparent) inset; }}
-    .hlr-status-name {{ min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 760; }}
-    .hlr-status-count {{ color: var(--accent-strong); font-size: 13px; line-height: 1; }}
-    .hlr-status-filter small {{ display: none; }}
-    .hlr-raw-statuses {{ margin-top: 8px; display: grid; gap: 5px; min-width: 0; }}
-    .hlr-raw-statuses h3 {{ margin: 0; font-size: 12px; color: var(--muted); }}
-    .hlr-raw-chip-list {{ display: flex; flex-wrap: wrap; gap: 5px; min-width: 0; }}
-    .hlr-raw-chip {{ min-height: 0; max-width: 190px; padding: 4px 7px; border-color: var(--border); background: var(--surface-muted); color: var(--text); font-size: 12px; line-height: 1.2; box-shadow: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
-    .hlr-raw-chip:hover {{ transform: none; border-color: var(--accent); }}
-    .hlr-raw-chip.active {{ border-color: var(--accent); background: var(--accent-soft); color: var(--text-strong); }}
     .hlr-severity-good, .hlr-severity-green, .hlr-severity-neutral {{ border-color: color-mix(in srgb, var(--success) 60%, var(--border)); background: color-mix(in srgb, var(--success) 12%, var(--surface)); color: var(--success, var(--text-strong)); }}
     .hlr-severity-bad, .hlr-severity-red, .hlr-severity-api_error {{ border-color: color-mix(in srgb, var(--danger) 65%, var(--border)); background: color-mix(in srgb, var(--danger) 12%, var(--surface)); color: var(--danger); }}
     .hlr-severity-warning, .hlr-severity-unknown, .hlr-severity-yellow, .hlr-severity-orange {{ border-color: color-mix(in srgb, var(--warning) 70%, var(--border)); background: color-mix(in srgb, var(--warning) 16%, var(--surface)); color: var(--warning-hover, var(--warning)); }}
@@ -1072,19 +1055,8 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     #hlr-table tbody tr td[data-col='comment'] .hlr-cell-text {{ color: inherit; }}
     #hlr-table tbody tr.hlr-row-severity-bad td[data-col='comment'] .hlr-cell-text, #hlr-table tbody tr.hlr-row-severity-red td[data-col='comment'] .hlr-cell-text, #hlr-table tbody tr.hlr-row-severity-api_error td[data-col='comment'] .hlr-cell-text {{ color: var(--danger); }}
     #hlr-table tbody tr.hlr-row-severity-warning td[data-col='comment'] .hlr-cell-text, #hlr-table tbody tr.hlr-row-severity-unknown td[data-col='comment'] .hlr-cell-text, #hlr-table tbody tr.hlr-row-severity-yellow td[data-col='comment'] .hlr-cell-text, #hlr-table tbody tr.hlr-row-severity-orange td[data-col='comment'] .hlr-cell-text {{ color: var(--warning-hover, var(--warning)); }}
-    .hlr-status-badge {{ display: inline-block; max-width: 100%; padding: 2px 7px; border: 1px solid var(--border); border-radius: 999px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
-    .hlr-status-legend {{ margin-top: 8px; padding-top: 6px; border-top: 1px solid var(--border); }}
-    .hlr-status-legend summary {{ cursor: pointer; font-weight: 760; font-size: 12px; }}
-    .hlr-status-legend ul {{ margin: 6px 0 0; padding-left: 18px; color: var(--muted); font-size: 12px; }}
-    .hlr-copy-column-tools {{ display: grid; gap: 6px; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); }}
-    .hlr-copy-column-tools select {{ width: 100%; }}
-    .hlr-copy-feedback {{ min-height: 16px; font-size: 12px; }}
     .hlr-demo-note {{ margin-left: 8px; font-size: 12px; font-weight: 500; }}
     .hlr-table-toolbar {{ display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-top: 0; }}
-    .hlr-column-settings .column-settings-panel {{ min-width: 360px; }}
-    .hlr-column-settings .column-settings-row label {{ white-space: normal; }}
-    .hlr-column-settings .column-settings-row {{ cursor: grab; }}
-    .hlr-column-settings .column-settings-row.is-dragging {{ opacity: 0.55; }}
     .column-drag-handle {{ color: var(--muted); margin-right: 4px; cursor: grab; }}
     .hlr-results-area, .hlr-results-area .table-card {{ min-width: 0; overflow: hidden; }}
     .hlr-results-area .table-card {{ margin-top: 0; min-height: 320px; }}
@@ -1098,19 +1070,11 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .hlr-cell-content {{ display: flex; align-items: center; gap: 6px; min-width: 0; }}
     .hlr-cell-text {{ min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
     .hlr-cell-text.hlr-long-text {{ display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; white-space: normal; }}
-    .hlr-details-toggle {{ min-height: 28px; padding: 4px 8px; font-size: 12px; box-shadow: none; }}
-    .hlr-details-row td {{ background: var(--surface-muted); overflow: visible; }}
-    .hlr-details-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; align-items: start; }}
-    .hlr-details-grid h4 {{ margin: 0 0 6px; }}
-    .hlr-detail-list {{ display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 8px; margin: 0; font-size: 12px; }}
-    .hlr-detail-list dt {{ color: var(--muted); font-weight: 700; }}
-    .hlr-detail-list dd {{ margin: 0; min-width: 0; word-break: break-word; }}
-    .hlr-raw-json {{ max-height: 240px; overflow: auto; margin: 0; padding: 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); font-size: 12px; white-space: pre-wrap; }}
     .hlr-api-fields {{ padding: 6px 10px; margin: 0; }}
     .hlr-api-fields summary {{ cursor: pointer; font-weight: 760; }}
     .hlr-api-field-list {{ display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }}
     .hlr-api-field-list code {{ padding: 2px 6px; border-radius: 999px; background: var(--surface-muted); border: 1px solid var(--border); font-size: 12px; }}
-    @media (max-width: 900px) {{ .hlr-top-area {{ position: static; grid-template-columns: 1fr; }} .hlr-input-form textarea {{ min-height: 150px; }} .hlr-results-area .table-scroll {{ max-height: calc(100vh - 300px); }} }}
+    @media (max-width: 900px) {{ .hlr-input-form textarea {{ min-height: 150px; }} .hlr-results-area .table-scroll {{ max-height: calc(100vh - 300px); }} }}
     .dashboard-section {{ margin: 16px 0; }}
     .dashboard-section h2 {{ margin-bottom: 10px; }}
     .quick-links {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px; }}
@@ -5125,26 +5089,6 @@ def hlr_summary(results: list[dict[str, object]]) -> dict[str, int]:
     }
 
 
-def hlr_raw_status_counts(results: list[dict[str, object]]) -> dict[str, int]:
-    counts: dict[str, int] = {}
-    for row in results:
-        statuses = {str(row.get("hlr_status_raw") or "").strip(), str(row.get("live_status_raw") or "").strip(), str(row.get("final_result") or "").strip()}
-        for status in statuses:
-            if status and status != "—":
-                counts[status] = counts.get(status, 0) + 1
-    return dict(sorted(counts.items(), key=lambda item: (-item[1], item[0])))
-
-
-
-def hlr_number_type_counts(results: list[dict[str, object]]) -> dict[str, int]:
-    counts: dict[str, int] = {}
-    for row in results:
-        raw = str(row.get("number_type_raw") or row.get("number_type") or "").strip()
-        key = raw.upper() if raw else str(row.get("number_type") or "UNKNOWN").upper()
-        if key:
-            counts[key] = counts.get(key, 0) + 1
-    return dict(sorted(counts.items(), key=lambda item: (-item[1], item[0])))
-
 def hlr_display_value(value: object) -> str:
     if hlr_is_blank(value):
         return "—"
@@ -5174,25 +5118,6 @@ def hlr_status_severity(row: dict[str, object]) -> str:
         return "yellow"
     if category == "unknown" or result == "UNKNOWN":
         return "yellow"
-    return "neutral"
-
-
-def hlr_token_severity(value: object, group: str = "status") -> str:
-    token = str(value or "").strip().upper()
-    if group == "main":
-        return {"OK": "green", "LIVE": "green", "WARNING": "yellow", "BAD_FORMAT": "red", "BAD FORMAT": "red", "DEAD": "red", "UNKNOWN": "yellow", "MOBILE": "neutral", "FIXED_LINE": "neutral", "ALL": "neutral"}.get(token, "neutral")
-    if token in {"LIVE", "OK", "MOBILE"}:
-        return "green" if token in {"LIVE", "OK"} else "neutral"
-    if token in {"DEAD", "BAD_FORMAT", "INVALID_FORMAT", "API_ERROR"}:
-        return "red"
-    if token in {"LANDLINE", "FIXED_LINE", "INFO"}:
-        return "neutral"
-    if token in {"MACHINE_TO_MACHINE", "PAGER", "VOICEMAIL_ONLY", "STAGE_AND_SCREEN", "PREMIUM", "SHARED_COST", "TOLL_FREE"}:
-        return "red"
-    if token in {"ABSENT_SUBSCRIBER", "NO_TELESERVICE_PROVISIONED", "INCONCLUSIVE", "NOT_AVAILABLE_NETWORK_ONLY", "NO_COVERAGE", "NOT_APPLICABLE", "UNKNOWN", "NETWORK_INFO_ONLY", "MOBILE_OR_LANDLINE", "VOIP", "WARNING"}:
-        return "yellow"
-    if token in {"ERROR", "INSUFFICIENT_CREDIT", "INTERNAL_ERROR", "TIMEOUT", "HTTP_ERROR", "CONNECTION_ERROR", "PARSER_ERROR"}:
-        return "red"
     return "neutral"
 
 
@@ -5257,32 +5182,14 @@ def hlr_has_value(results: list[dict[str, object]], *keys: str) -> bool:
 
 
 def hlr_csv_headers_and_keys(results: list[dict[str, object]]) -> tuple[list[str], list[str]]:
-    keys = ["original_number", "normalized_number", "detected_telephone_number", "formatted_telephone_number", "format_status", "country", "number_type", "number_type_raw", "operator", "hlr_status_raw", "live_status_raw", "final_result", "lead_quality_signal", "lead_quality_reason", "comment"]
-    headers = list(HLR_RESULT_HEADERS)
-    for key, label in HLR_EXTRA_CSV_FIELDS:
-        aliases = (key,)
-        if hlr_has_value(results, *aliases):
-            keys.append(key)
-            headers.append(label)
+    keys = [key for key, _label, _width in HLR_TABLE_COLUMNS]
+    headers = [label for _key, label, _width in HLR_TABLE_COLUMNS]
     return headers, keys
 
 
 def hlr_results_rows(results: list[dict[str, object]]) -> list[list[str]]:
     _, keys = hlr_csv_headers_and_keys(results)
     return [[hlr_display_row(row).get(key, "") for key in keys] for row in results]
-
-
-HLR_FILTERS = [
-    ("ALL", "ALL", "Показать все результаты проверки."),
-    ("OK", "OK", "Номера, по которым HLR вернул валидный статус."),
-    ("LIVE", "LIVE", "Номера, по которым HLR вернул активный live-status."),
-    ("DEAD", "DEAD", "HLR сообщает, что номер не назначен абоненту."),
-    ("BAD_FORMAT", "BAD_FORMAT", "Номер не похож на корректный международный формат."),
-    ("WARNING", "WARNING", "Номер требует внимания или дополнительной проверки."),
-    ("UNKNOWN", "UNKNOWN", "HLR не смог уверенно определить статус."),
-    ("MOBILE", "MOBILE", "Номера, определённые как мобильные."),
-    ("FIXED_LINE", "FIXED_LINE", "Номера, определённые как городские/стационарные."),
-]
 
 
 def hlr_details_html(row: dict[str, object]) -> str:
@@ -5312,53 +5219,65 @@ def hlr_details_html(row: dict[str, object]) -> str:
 
 
 HLR_TABLE_COLUMNS = [
-    ("original_number", "Исходный номер", 130, True), ("normalized_number", "Нормализованный номер", 150, True), ("format_status", "Формат", 110, True), ("country", "Страна", 100, True), ("number_type", "Тип номера", 130, True), ("operator", "Оператор / сеть", 220, True), ("hlr_status_raw", "HLR статус", 110, True), ("live_status_raw", "Live status", 110, True), ("final_result", "Итог", 100, True), ("lead_quality_signal", "Оценка лида", 150, True), ("comment", "Комментарий", 340, True),
-    ("detected_telephone_number", "Detected number", 150, False), ("formatted_telephone_number", "Formatted number", 170, False), ("number_type_raw", "Raw telephone_number_type", 180, False), ("current_network", "Current network", 220, False), ("current_operator", "Current operator", 220, False), ("current_mccmnc", "Current MCCMNC", 130, False), ("current_country", "Current country", 140, False), ("current_country_iso3", "Current ISO3", 110, False), ("current_country_prefix", "Current country prefix", 160, False), ("original_network", "Original network", 220, False), ("original_operator", "Original operator", 220, False), ("original_mccmnc", "Original MCCMNC", 140, False), ("original_country", "Original country", 140, False), ("original_country_iso3", "Original ISO3", 110, False), ("original_area", "Original area", 150, False), ("original_country_prefix", "Original country prefix", 170, False), ("is_ported", "Is ported", 100, False), ("uuid", "UUID", 280, False), ("timestamp", "Timestamp", 180, False), ("credits_spent", "Credits spent", 120, False), ("raw_error", "Raw error", 220, False), ("raw_message", "Raw message", 260, False), ("request_shape_sanitized", "Request parameters", 300, False), ("details", "Детали", 90, False),
+    ("original_number", "Исходный номер", 150),
+    ("normalized_number", "Нормализованный номер", 170),
+    ("detected_telephone_number", "Detected number", 170),
+    ("formatted_telephone_number", "Formatted number", 180),
+    ("format_status", "Формат", 120),
+    ("country", "Страна", 140),
+    ("number_type", "Тип номера", 150),
+    ("number_type_raw", "Raw telephone_number_type", 200),
+    ("operator", "Оператор / сеть", 220),
+    ("hlr_status_raw", "HLR статус", 150),
+    ("live_status_raw", "Live status", 150),
+    ("final_result", "Итог", 140),
+    ("lead_quality_signal", "Оценка лида", 170),
+    ("comment", "Комментарий", 360),
+    ("current_network", "Current network", 220),
+    ("current_operator", "Current operator", 220),
+    ("current_mccmnc", "Current MCCMNC", 150),
+    ("current_country", "Current country", 160),
+    ("current_country_iso3", "Current ISO3", 120),
+    ("current_country_prefix", "Current country prefix", 180),
+    ("original_network", "Original network", 220),
+    ("original_operator", "Original operator", 220),
+    ("original_mccmnc", "Original MCCMNC", 160),
+    ("original_country", "Original country", 160),
+    ("original_country_iso3", "Original ISO3", 120),
+    ("original_area", "Original area", 160),
+    ("original_country_prefix", "Original country prefix", 190),
+    ("is_ported", "Is ported", 110),
+    ("uuid", "UUID", 280),
+    ("timestamp", "Timestamp", 190),
+    ("credits_spent", "Credits spent", 140),
+    ("raw_error", "Raw error", 220),
+    ("raw_message", "Raw message", 280),
+    ("request_shape_sanitized", "Request parameters", 320),
 ]
 
 
-
-
-def hlr_column_settings_markup() -> str:
-    settings_rows = []
-    for key, label, width, visible in HLR_TABLE_COLUMNS:
-        locked = key == "details"
-        locked_class = " is-locked" if locked else ""
-        locked_attr = " data-locked='true'" if locked else ""
-        settings_rows.append(
-            f"<div class='column-settings-row{locked_class}' data-hlr-column-row='{esc(key)}'{locked_attr} draggable='true'>"
-            f"<label><span class='column-drag-handle' title='Перетащить'>↕</span><input type='checkbox' data-hlr-column-toggle='{esc(key)}' {'checked' if visible else ''} {'disabled' if locked else ''}> {esc(label)}</label>"
-            f"<span class='column-order-controls'><button type='button' class='column-order-button' data-hlr-column-move='up' title='Выше' aria-label='Переместить выше'>↑</button><button type='button' class='column-order-button' data-hlr-column-move='down' title='Ниже' aria-label='Переместить ниже'>↓</button><input type='number' min='70' max='520' step='10' value='{width}' data-hlr-column-width='{esc(key)}' aria-label='Ширина {esc(label)}'></span></div>"
-        )
-    copy_options = "".join(f"<option value='{esc(key)}'>{esc(label)}</option>" for key, label, _width, _visible in HLR_TABLE_COLUMNS if key != "details")
-    return f"<details class='column-settings hlr-column-settings'><summary>Колонки</summary><div class='column-settings-panel'><div class='column-settings-list' data-hlr-column-settings-list>{''.join(settings_rows)}</div><button type='button' class='column-reset' data-hlr-column-reset title='Сбросить колонки'>Сбросить вид таблицы</button><div class='hlr-copy-column-tools'><strong>Копировать колонку</strong><select data-hlr-copy-column-select>{copy_options}</select><button type='button' data-hlr-copy-column>Копировать текущую выборку</button><span class='muted hlr-copy-feedback' data-hlr-copy-feedback></span></div></div></details>"
+def hlr_table_cell(display: dict[str, str], key: str) -> str:
+    value = display.get(key) or "—"
+    long_class = " hlr-long-text" if key in {"comment", "raw_error", "raw_message", "request_shape_sanitized"} else ""
+    title = f" title='{esc(value)}'" if long_class or key in {"lead_quality_signal"} else ""
+    return f"<td data-col='{esc(key)}'{title}><span class='hlr-cell-text{long_class}'>{esc(value)}</span></td>"
 
 
 def hlr_table(results: list[dict[str, object]]) -> str:
-    colgroup = "".join(f"<col data-col='{esc(key)}' style='width:{width}px'{' hidden' if not visible else ''}>" for key, _label, width, visible in HLR_TABLE_COLUMNS)
-    thead = "<thead><tr>" + "".join(f"<th class='resizable-header' data-col='{esc(key)}'{' hidden' if not visible else ''}>{esc(label)}<span class='column-resize-handle' data-hlr-resize='{esc(key)}' aria-hidden='true'></span></th>" for key, label, _width, visible in HLR_TABLE_COLUMNS) + "</tr></thead>"
-    table = f"<div class='table-scroll'><table id='hlr-table'><colgroup>{colgroup}</colgroup>{thead}<tbody></tbody></table></div>"
-    empty = "<div class='empty-state' id='hlr-empty-all'><strong>No results available</strong><br>Check input data</div>"
-    filtered_empty = "<div class='empty-state' id='hlr-empty-filter' hidden><strong>No results for selected filters</strong></div>"
-    return "<section class='hlr-results-area'>" + table_card(table + empty + filtered_empty) + "</section>"
-
-def hlr_summary_html(summary: dict[str, int], raw_counts: dict[str, int], type_counts: dict[str, int]) -> str:
-    main = "<section class='hlr-status-panel' aria-label='Фильтры результатов HLR'>" + "".join(
-        f"<button type='button' class='hlr-status-filter hlr-severity-{esc(hlr_token_severity(label, 'main'))}' data-hlr-filter='{esc(key)}' data-filter-type='{('type' if key in {'MOBILE', 'FIXED_LINE'} else 'status')}' title='{esc(help_text)}'><span class='hlr-status-name'>{esc(label)}</span><strong class='hlr-status-count' data-counter-key='{esc(key)}'>{summary.get(key, 0)}</strong><small>{esc(help_text)}</small></button>"
-        for key, label, help_text in HLR_FILTERS
-    ) + "</section>"
-    blocks = [main]
-    def chip_label(value: str) -> str:
-        return value if len(value) <= 18 else value[:13] + "..."
-    if type_counts:
-        type_chips = "".join(f"<button type='button' class='hlr-raw-chip hlr-type-chip hlr-severity-{esc(hlr_token_severity(status, 'type'))}' data-number-type='{esc(status)}' title='{esc(status)}'>{esc(chip_label(status))}: {count}</button>" for status, count in type_counts.items())
-        blocks.append(f"<div class='hlr-raw-statuses'><h3>Типы номеров</h3><div class='hlr-raw-chip-list'>{type_chips}</div></div>")
-    if raw_counts:
-        chips = "".join(f"<button type='button' class='hlr-raw-chip hlr-severity-{esc(hlr_token_severity(status))}' data-raw-status='{esc(status)}' title='{esc(status)}'>{esc(chip_label(status))}: {count}</button>" for status, count in raw_counts.items())
-        blocks.append(f"<div class='hlr-raw-statuses'><h3>Найденные HLR статусы</h3><div class='hlr-raw-chip-list'>{chips}</div></div>")
-    return "".join(blocks)
-
-
+    colgroup = "".join(f"<col data-col='{esc(key)}' style='width:{width}px'>" for key, _label, width in HLR_TABLE_COLUMNS)
+    thead = "<thead><tr>" + "".join(f"<th data-col='{esc(key)}'>{esc(label)}</th>" for key, label, _width in HLR_TABLE_COLUMNS) + "</tr></thead>"
+    rows = []
+    for row in results:
+        display = hlr_display_row(row)
+        severity = esc(str(row.get("status_severity") or hlr_status_severity(row)))
+        cells = "".join(hlr_table_cell(display, key) for key, _label, _width in HLR_TABLE_COLUMNS)
+        rows.append(f"<tr class='hlr-row-severity-{severity}'>{cells}</tr>")
+    tbody = "<tbody>" + "".join(rows) + "</tbody>"
+    if rows:
+        content = f"<div class='table-scroll'><table id='hlr-table'><colgroup>{colgroup}</colgroup>{thead}{tbody}</table></div>"
+    else:
+        content = f"<div class='table-scroll'><table id='hlr-table'><colgroup>{colgroup}</colgroup>{thead}{tbody}</table></div><div class='empty-state'><strong>No results available</strong><br>Check input data</div>"
+    return "<section class='hlr-results-area'>" + table_card(content) + "</section>"
 
 
 def hlr_config_diagnostics_html() -> str:
@@ -5401,244 +5320,59 @@ def hlr_api_fields_html(results: list[dict[str, object]], is_demo_mode: bool) ->
 
 def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = None, summary: dict[str, int] | None = None, error: str | None = None) -> bytes:
     results = results or []
-    summary = summary or hlr_summary(results)
-    summary["all"] = len(results)
     config = hlr_config()
     is_demo_mode = config["mode"] in {"demo", ""}
     write_allowed = can_write("hlr")
     export_allowed = can_export("hlr") and bool(results)
     export_results_json = esc(json.dumps(results, ensure_ascii=False))
-    payload_results = []
-    for index, row in enumerate(results):
-        payload_row = dict(row)
-        payload_row["__index"] = index
-        payload_row["__display"] = hlr_display_row(row)
-        payload_results.append(payload_row)
-    hlr_payload = {"results": payload_results, "columns": HLR_TABLE_COLUMNS}
-    hlr_payload_json = json.dumps(hlr_payload, ensure_ascii=False).replace("</", "<\\/")
     notice = f"<div class='flash error'>{esc(error)}</div>" if error else ""
     demo_badge = "<span class='badge'>Demo mode</span><span class='muted hlr-demo-note'>Результаты сгенерированы для проверки интерфейса. Реальный HLR API не вызывался.</span>" if is_demo_mode else ""
-    export_form = f"<form method='post' action='/hlr/export.csv' id='hlr-export-form'><input type='hidden' name='results_json' id='hlr-export-results' value='{export_results_json}'><button type='submit' {'disabled' if not export_allowed else ''}>Экспорт CSV</button></form>"
+    export_form = f"<form method='post' action='/hlr/export.csv' id='hlr-export-form'><input type='hidden' name='results_json' value='{export_results_json}'><button type='submit' {'disabled' if not export_allowed else ''}>Экспорт CSV</button></form>"
     body = f"""
 <h1>HLR {demo_badge}</h1>
 {notice}
 <section class='hlr-workspace'>
-  <div class='hlr-top-area'>
-    <section class='form-card hlr-input-panel'>
-      <form class='hlr-input-form' method='post' action='/hlr/check' id='hlr-form'>
-        <label>Номера для проверки <textarea name='numbers' id='hlr-numbers' rows='12' {'disabled' if not write_allowed else ''}>{esc(input_text)}</textarea></label>
-        <p class='muted hlr-counter-line'>Max 500 numbers per batch · <span id='hlr-counter'>0 numbers loaded</span></p>
-        <p class='muted hlr-input-hint'>Один номер на строке. Можно вставлять номера с пробелами, +, скобками и дефисами.</p>
-        <div class='hlr-input-actions'>
-          <button type='submit' {'disabled' if not write_allowed else ''}>Запустить проверку</button>
-          <button type='button' id='hlr-clear'>Очистить</button>
-        </div>
-      </form>
-    </section>
-    <section class='card hlr-summary-panel'>
-      <h2>Фильтры статусов</h2>
-      {hlr_summary_html(summary, hlr_raw_status_counts(results), hlr_number_type_counts(results))}
-      <details class='hlr-status-legend'><summary>Подсказка по статусам</summary><ul><li><strong>Красный:</strong> проблема с номером: DEAD, BAD_FORMAT, некорректный формат, неподходящий тип номера.</li><li><strong>Оранжевый:</strong> нужна проверка/внимание: ABSENT_SUBSCRIBER, NO_COVERAGE, INCONCLUSIVE, UNKNOWN. Это не всегда плохой номер.</li><li><strong>Зелёный:</strong> хороший сигнал: LIVE / OK.</li><li><strong>Серый:</strong> информационные данные: оператор, страна, MNP, MCCMNC, credits.</li><li><strong>API error:</strong> ошибка проверки/API, а не статус номера.</li></ul></details>
-    </section>
-  </div>
-  <p class='muted hlr-input-hint'>HLR показывает сетевой статус на момент проверки и/или состояние, доступное у оператора. UNKNOWN, NO_COVERAGE и NOT_AVAILABLE_NETWORK_ONLY не равны плохому номеру; это ограничения проверки. Для оценки веба смотрите доли статусов по пачке номеров, а не один номер отдельно.</p>
-  <div class='hlr-table-toolbar'><span class='muted' id='hlr-filter-caption'>Показаны все результаты</span><span class='muted' id='hlr-filter-debug'>Filtered: 0 / Raw: 0</span><div class='table-footer-tools'>{export_form}{hlr_column_settings_markup()}<span class='muted'>Экспортирует текущую выборку.</span></div></div>
+  <section class='form-card hlr-input-panel'>
+    <form class='hlr-input-form' method='post' action='/hlr/check' id='hlr-form'>
+      <label>Номера для проверки <textarea name='numbers' id='hlr-numbers' rows='12' {'disabled' if not write_allowed else ''}>{esc(input_text)}</textarea></label>
+      <p class='muted hlr-input-hint'>Один номер на строке. Можно вставлять номера с пробелами, +, скобками и дефисами.</p>
+      <p class='muted hlr-counter-line'>Максимум 500 номеров за одну проверку · <span id='hlr-counter'>0 номеров</span></p>
+      <div class='hlr-input-actions'>
+        <button type='submit' {'disabled' if not write_allowed else ''}>Запустить проверку</button>
+        <button type='button' id='hlr-clear'>Очистить</button>
+      </div>
+    </form>
+  </section>
+  <div class='hlr-table-toolbar'><span class='muted'>Показано результатов: {len(results)}</span><div class='table-footer-tools'>{export_form}<span class='muted'>Экспортирует все результаты последней проверки.</span></div></div>
+  {hlr_table(results)}
   {hlr_config_diagnostics_html()}
   {hlr_api_fields_html(results, is_demo_mode)}
-  {hlr_table(results)}
 </section>
 <script>
 (function() {{
-  const backendPayload = {hlr_payload_json};
   const input = document.getElementById('hlr-numbers');
   const counter = document.getElementById('hlr-counter');
   const clear = document.getElementById('hlr-clear');
-  const filters = Array.from(document.querySelectorAll('.hlr-status-filter'));
-  const rawChips = Array.from(document.querySelectorAll('.hlr-raw-chip[data-raw-status]'));
-  const typeChips = Array.from(document.querySelectorAll('.hlr-type-chip'));
-  const table = document.getElementById('hlr-table');
-  const tbody = table?.querySelector('tbody');
-  const exportInput = document.getElementById('hlr-export-results');
-  const allEmpty = document.getElementById('hlr-empty-all');
-  const filterEmpty = document.getElementById('hlr-empty-filter');
-  const caption = document.getElementById('hlr-filter-caption');
-  const filterDebug = document.getElementById('hlr-filter-debug');
-  const columnToggles = Array.from(document.querySelectorAll('[data-hlr-column-toggle]'));
-  const columnWidths = Array.from(document.querySelectorAll('[data-hlr-column-width]'));
-  const copyColumnButton = document.querySelector('[data-hlr-copy-column]');
-  const copyColumnSelect = document.querySelector('[data-hlr-copy-column-select]');
-  const copyFeedback = document.querySelector('[data-hlr-copy-feedback]');
-  const columnsStorageKey = 'hlr_column_config';
-  const HLR_DEBUG_BYPASS_FILTERS = true;
-  const columnData = (Array.isArray(backendPayload.columns) ? backendPayload.columns : []).map((column) => ({{ key: column[0], label: column[1], width: Number(column[2]) || 120, defaultVisible: Boolean(column[3]) }}));
-  const defaultColumnOrder = columnData.map((column) => column.key);
-  const defaultVisible = columnData.filter((column) => column.defaultVisible).map((column) => column.key);
-  const defaultWidths = Object.fromEntries(columnData.map((column) => [column.key, column.width]));
-  /*
-   * HLR state audit / single source of truth:
-   * - backendPayload.results is the backend response structure handed to the UI; each row may include
-   *   raw API fields plus __display values used only for cell text.
-   * - state.rawResults is the immutable raw API response dataset for the current page load.
-   * - state.filteredResults is the only view-state array rendered by renderTable(), exported, and copied.
-   * - state.activeFilters.statuses and state.activeFilters.types are the only filter inputs.
-   * - Status buttons, raw-status chips, and type chips only update activeFilters through onFilterClick();
-   *   they never render, export, or copy data directly and never bypass applyFilters().
-   * - applyFilters() always derives state.filteredResults from state.rawResults, while counters stay derived from rawResults.
-   * - renderTable(data) consumes state.filteredResults callers pass to it; table DOM is never rebuilt from state.rawResults.
-   * - Counters are always derived from state.rawResults; debug caption shows filtered row count / raw row count.
-   */
-  const state = {{
-    rawResults: [],
-    filteredResults: [],
-    activeFilters: {{
-      statuses: [],
-      types: []
-    }},
-    columns: {{
-      schema: columnData,
-      visible: defaultVisible.slice(),
-      order: defaultColumnOrder.slice(),
-      width: Object.assign({{}}, defaultWidths)
-    }},
-    inputNumbers: [],
-    counters: {{
-      raw: {{}}
-    }}
-  }};
-  function uniqueValues(values) {{ return values.filter((value, index, list) => value && list.indexOf(value) === index); }}
-  function isColumnVisible(key) {{ return true; }}
-  function setColumnVisible(key, visible) {{ console.log('HLR DEBUG: column visibility is inactive', key, visible); }}
   function normalizeCandidate(value) {{
-    const raw = (value || '').trim();
-    if (!raw) return '';
-    let compact = raw.replace(/[^0-9+]/g, '');
-    if (compact.startsWith('00')) compact = '+' + compact.slice(2);
+    const compact = (value || '').trim().replace(/[^0-9+]/g, '');
     const digits = compact.replace(/\\D/g, '');
-    return digits.length ? '+' + digits : '';
+    return digits ? '+' + digits : '';
   }}
   function updateCounter() {{
     if (!input || !counter) return;
-    state.inputNumbers = input.value.split(/\\r?\\n/).map(normalizeCandidate).filter(Boolean);
-    const count = new Set(state.inputNumbers).size;
-    counter.textContent = count + ' / 500 numbers loaded';
+    const count = new Set(input.value.split(/\r?\n/).map(normalizeCandidate).filter(Boolean)).size;
+    counter.textContent = count + ' / 500 номеров';
     counter.style.color = count > 500 ? 'var(--danger)' : '';
   }}
-  function normalizeFilterValue(value) {{ const token = (value || '').toString().trim().toUpperCase(); return token === 'FIXED' || token === 'LANDLINE' ? 'FIXED_LINE' : token; }}
-  function rowFilterTokens(row) {{
-    const tokens = new Set();
-    ['hlr_status_raw', 'live_status_raw', 'final_result', 'format_status'].forEach((key) => {{ const value = normalizeFilterValue(row[key]); if (value && value !== '—') tokens.add(value); }});
-    const type = normalizeFilterValue(row.number_type_raw || row.number_type);
-    if (type === 'MOBILE' || (row.number_type || '').toString().toLowerCase() === 'mobile') tokens.add('MOBILE');
-    if (type === 'FIXED_LINE' || (row.number_type || '').toString().toLowerCase() === 'landline') tokens.add('FIXED_LINE');
-    const category = (row.final_category || '').toString().toLowerCase();
-    if (category === 'warning') tokens.add('WARNING');
-    if (category === 'unknown') tokens.add('UNKNOWN');
-    if (category === 'ok') tokens.add('OK');
-    if (category === 'bad' || normalizeFilterValue(row.format_status).includes('INVALID')) tokens.add('BAD_FORMAT');
-    return tokens;
+  function clearInput() {{
+    if (!input) return;
+    input.value = '';
+    updateCounter();
+    input.focus();
   }}
-  function matchesStatus(row) {{ return !state.activeFilters.statuses.length || state.activeFilters.statuses.some((filter) => rowFilterTokens(row).has(filter)); }}
-  function matchesType(row) {{ return !state.activeFilters.types.length || state.activeFilters.types.some((filter) => rowFilterTokens(row).has(filter)); }}
-  function logFilterState() {{
-    console.log("RAW LENGTH", state.rawResults?.length);
-    console.log("FILTERED LENGTH", state.filteredResults?.length);
-    console.log("RAW SAMPLE ROW", state.rawResults?.[0]);
-    console.log("COLUMN SCHEMA", state.columns);
-    if ((!state.filteredResults || state.filteredResults.length === 0) && state.rawResults?.length > 0) {{
-      console.log("HLR DEBUG: filteredResults is empty even though rawResults has rows; filters are bypassed, so check renderer/mapping next.");
-    }}
-  }}
-  function hasActiveFilters() {{ return false; }}
-  function applyFilters(rawResults = state.rawResults, activeFilters = state.activeFilters) {{
-    state.rawResults = Array.isArray(rawResults) ? rawResults : [];
-    state.activeFilters = {{ statuses: [], types: [] }};
-    state.filteredResults = state.rawResults;
-    if (state.filteredResults.length === 0) {{
-      console.log("HLR DEBUG: filteredResults is empty because rawResults length is", state.rawResults.length, "and filters are disabled.");
-    }}
-    updateCounters();
-    logFilterState();
-    return state.filteredResults;
-  }}
-  function countTokens(data) {{ const counters = {{ ALL: data.length }}; data.forEach((row) => rowFilterTokens(row).forEach((token) => {{ counters[token] = (counters[token] || 0) + 1; }})); return counters; }}
-  function updateCounters() {{ state.counters = {{ raw: countTokens(state.rawResults) }}; }}
-  function updateCountersUI() {{ document.querySelectorAll('[data-counter-key]').forEach((node) => {{ const key = normalizeFilterValue(node.dataset.counterKey || 'ALL'); const raw = state.counters.raw?.[key] || 0; node.textContent = raw; node.title = 'Raw count (filters do not affect counters)'; }}); if (filterDebug) filterDebug.textContent = 'Filtered: ' + state.filteredResults.length + ' / Raw: ' + state.rawResults.length; }}
-  function activeFilterList() {{ return state.activeFilters.statuses.concat(state.activeFilters.types); }}
-  function syncFilterUi() {{
-    filters.forEach((button) => {{ const key = normalizeFilterValue(button.dataset.hlrFilter || 'ALL'); const bucket = button.dataset.filterType === 'type' ? 'types' : 'statuses'; const selected = key === 'ALL' ? activeFilterList().length === 0 : state.activeFilters[bucket].includes(key); button.classList.toggle('active', selected); button.setAttribute('aria-pressed', selected ? 'true' : 'false'); }});
-    rawChips.forEach((button) => {{ const selected = state.activeFilters.statuses.includes(normalizeFilterValue(button.dataset.rawStatus || '')); button.classList.toggle('active', selected); button.setAttribute('aria-pressed', selected ? 'true' : 'false'); }});
-    typeChips.forEach((button) => {{ const selected = state.activeFilters.types.includes(normalizeFilterValue(button.dataset.numberType || '')); button.classList.toggle('active', selected); button.setAttribute('aria-pressed', selected ? 'true' : 'false'); }});
-  }}
-  function rowValue(row, key) {{ return (row?.[key] ?? '').toString(); }}
-  function statusSeverity(row, key) {{
-    if (key === 'number_type') return normalizeFilterValue(row.number_type_raw || row.number_type) === 'MOBILE' ? 'good' : 'neutral';
-    const tokens = rowFilterTokens(row); if (tokens.has('DEAD') || tokens.has('BAD_FORMAT') || tokens.has('INVALID') || tokens.has('FORMAT_ERROR') || tokens.has('ERROR')) return 'bad'; if (tokens.has('NOT_AVAILABLE_NETWORK_ONLY') || tokens.has('ABSENT_SUBSCRIBER') || tokens.has('UNKNOWN') || tokens.has('WARNING') || tokens.has('INCONCLUSIVE')) return 'warning'; if (tokens.has('LIVE') || tokens.has('OK')) return 'good'; return 'neutral';
-  }}
-  function appendText(parent, text) {{ parent.appendChild(document.createTextNode(text)); }}
-  function buildDetails(row) {{ const wrap = document.createElement('div'); wrap.className = 'hlr-details-grid'; const pre = document.createElement('pre'); pre.className = 'hlr-raw-json'; pre.textContent = JSON.stringify(row.raw_api_item_sanitized || row, null, 2); wrap.appendChild(pre); return wrap; }}
-  function applyColumnDom() {{
-    defaultColumnOrder.forEach((key) => {{ table?.querySelectorAll('[data-col="' + CSS.escape(key) + '"], col[data-col="' + CSS.escape(key) + '"]').forEach((node) => {{ node.hidden = false; }}); }});
-  }}
-  function renderTable(data) {{
-    if (!data || !tbody) return;
-    tbody.replaceChildren();
-    data.forEach((row) => {{
-      const tr = document.createElement('tr');
-      const severity = statusSeverity(row, 'final_result');
-      tr.className = 'hlr-row-severity-' + severity;
-      tr.dataset.statusSeverity = severity;
-      state.columns.schema.forEach((column) => {{
-        const key = column.key;
-        const td = document.createElement('td'); td.dataset.col = key; td.hidden = !isColumnVisible(key);
-        if (key === 'details') {{ const button = document.createElement('button'); button.type = 'button'; button.className = 'hlr-details-toggle'; button.textContent = 'Детали'; td.appendChild(button); }}
-        else {{ const outer = document.createElement('span'); outer.className = 'hlr-cell-content'; const text = document.createElement('span'); text.className = 'hlr-cell-text'; if (['comment', 'raw_error', 'raw_message', 'request_shape_sanitized'].includes(key)) text.classList.add('hlr-long-text'); const value = rowValue(row, key); td.title = ['comment', 'lead_quality_signal', 'lead_quality_reason', 'raw_error', 'raw_message', 'request_shape_sanitized'].includes(key) ? (key === 'lead_quality_signal' ? rowValue(row, 'lead_quality_reason') : value) : ''; if (['hlr_status_raw', 'live_status_raw', 'final_result', 'lead_quality_signal', 'format_status', 'number_type'].includes(key)) {{ const badge = document.createElement('span'); badge.className = 'hlr-status-badge hlr-severity-' + statusSeverity(row, key); badge.textContent = value; text.appendChild(badge); }} else appendText(text, value); outer.appendChild(text); td.appendChild(outer); }}
-        tr.appendChild(td);
-      }});
-      const detailsTr = document.createElement('tr'); detailsTr.className = 'hlr-details-row'; detailsTr.hidden = true;
-      const detailsTd = document.createElement('td'); detailsTd.colSpan = columnData.length; detailsTd.appendChild(buildDetails(row)); detailsTr.appendChild(detailsTd);
-      tr.querySelector('.hlr-details-toggle')?.addEventListener('click', (event) => {{ const open = detailsTr.hidden; Array.from(tbody.querySelectorAll('tr.hlr-details-row')).forEach((node) => {{ node.hidden = true; }}); detailsTr.hidden = !open; event.currentTarget.textContent = open ? 'Скрыть' : 'Детали'; }});
-      tbody.append(tr, detailsTr);
-    }});
-    applyColumnDom();
-    syncFilterUi();
-    if (allEmpty) allEmpty.hidden = state.rawResults.length > 0;
-    if (filterEmpty) filterEmpty.hidden = state.rawResults.length === 0 || data.length > 0;
-    if (caption) caption.textContent = activeFilterList().length ? 'Показаны ' + data.length + ' результаты; фильтр — ' + activeFilterList().join(', ') : 'Показаны ' + data.length + ' результаты';
-    if (filterDebug) filterDebug.textContent = 'Filtered: ' + data.length + ' / Raw: ' + state.rawResults.length;
-    if (exportInput) exportInput.value = JSON.stringify(data.map((row) => {{ const copy = Object.assign({{}}, row); delete copy.__index; delete copy.__display; return copy; }}));
-  }}
-  function persistColumns() {{ try {{ window.localStorage.setItem(columnsStorageKey, JSON.stringify(state.columns)); }} catch (_) {{}} }}
-  function loadColumnSettings() {{
-    state.columns.visible = defaultColumnOrder.slice();
-    state.columns.width = Object.assign({{}}, defaultWidths);
-    state.columns.order = defaultColumnOrder.slice();
-    columnToggles.forEach((node) => {{ node.checked = true; }});
-    columnWidths.forEach((node) => {{ const key = node.dataset.hlrColumnWidth || ''; node.value = state.columns.width[key] || defaultWidths[key] || 120; }});
-  }}
-  function setFilter(filterType, values) {{ console.log('HLR DEBUG: filters are inactive', filterType, values); applyFilters(); renderTable(state.filteredResults); updateCountersUI(); }}
-  function clearFilters() {{ state.activeFilters.statuses = []; state.activeFilters.types = []; state.filteredResults = state.rawResults; updateCounters(); logFilterState(); renderTable(state.filteredResults); updateCountersUI(); }}
-  function onFilterClick(filterType, value) {{ console.log('HLR DEBUG: filter click ignored', filterType, value); clearFilters(); }}
-  async function copyText(text) {{ try {{ await navigator.clipboard.writeText(text); }} catch (_) {{ const area = document.createElement('textarea'); area.value = text; document.body.appendChild(area); area.select(); document.execCommand('copy'); area.remove(); }} }}
-  columnToggles.forEach((input) => input.addEventListener('change', () => {{ setColumnVisible(input.dataset.hlrColumnToggle || '', input.checked); persistColumns(); renderTable(state.filteredResults); }}));
-  columnWidths.forEach((input) => input.addEventListener('change', () => {{ const value = Math.max(70, Math.min(520, Number(input.value) || 120)); input.value = value; state.columns.width[input.dataset.hlrColumnWidth || ''] = value; persistColumns(); renderTable(state.filteredResults); }}));
-  document.querySelectorAll('[data-hlr-column-move]').forEach((button) => button.addEventListener('click', () => {{ const key = button.closest('[data-hlr-column-row]')?.dataset.hlrColumnRow || ''; const order = state.columns.order.slice(); const index = order.indexOf(key); const next = index + (button.dataset.hlrColumnMove === 'up' ? -1 : 1); if (index < 0 || next < 0 || next >= order.length) return; [order[index], order[next]] = [order[next], order[index]]; state.columns.order = order; persistColumns(); renderTable(state.filteredResults); }}));
-  document.querySelectorAll('[data-hlr-column-row]').forEach((row) => {{ row.addEventListener('dragstart', (event) => {{ event.dataTransfer?.setData('text/plain', row.dataset.hlrColumnRow || ''); row.classList.add('is-dragging'); }}); row.addEventListener('dragend', () => row.classList.remove('is-dragging')); row.addEventListener('dragover', (event) => event.preventDefault()); row.addEventListener('drop', (event) => {{ event.preventDefault(); const from = event.dataTransfer?.getData('text/plain') || ''; const to = row.dataset.hlrColumnRow || ''; if (!from || !to || from === to) return; const order = state.columns.order.filter((key) => key !== from); const targetIndex = order.indexOf(to); order.splice(targetIndex < 0 ? order.length : targetIndex, 0, from); state.columns.order = order; persistColumns(); renderTable(state.filteredResults); const list = document.querySelector('[data-hlr-column-settings-list]'); state.columns.order.forEach((key) => {{ const item = list?.querySelector('[data-hlr-column-row="' + CSS.escape(key) + '"]'); if (item) list.appendChild(item); }}); }}); }}));
-  document.querySelector('[data-hlr-column-reset]')?.addEventListener('click', () => {{ window.localStorage.removeItem(columnsStorageKey); loadColumnSettings(); renderTable(state.filteredResults); }});
-  document.querySelectorAll('[data-hlr-resize]').forEach((handle) => handle.addEventListener('pointerdown', (event) => {{ event.preventDefault(); const key = handle.dataset.hlrResize || ''; const col = table?.querySelector('col[data-col="' + CSS.escape(key) + '"]'); const startX = event.clientX; const startWidth = Number.parseFloat(col?.style.width || '') || 120; const move = (moveEvent) => {{ const width = Math.max(70, Math.min(700, Math.round(startWidth + moveEvent.clientX - startX))); state.columns.width[key] = width; if (col) col.style.width = width + 'px'; }}; const up = () => {{ document.removeEventListener('pointermove', move); document.removeEventListener('pointerup', up); persistColumns(); renderTable(state.filteredResults); }}; document.addEventListener('pointermove', move); document.addEventListener('pointerup', up); }}));
-  copyColumnButton?.addEventListener('click', async () => {{ const key = copyColumnSelect?.value || 'normalized_number'; if (!isColumnVisible(key)) {{ if (copyFeedback) copyFeedback.textContent = 'Колонка скрыта — включите её перед копированием'; return; }} const values = state.filteredResults.map((row) => rowValue(row, key)); await copyText(values.join('\\n')); if (copyFeedback) copyFeedback.textContent = 'Скопировано: ' + values.length + ' значений'; }});
-  function clearInput() {{ state.inputNumbers = []; if (input) input.value = ''; updateCounter(); input?.focus(); }}
-  if (input) {{ input.addEventListener('input', updateCounter); updateCounter(); }}
-  if (clear) clear.addEventListener('click', clearInput);
-  filters.forEach((button) => button.addEventListener('click', () => onFilterClick(button.dataset.filterType || 'status', button.dataset.hlrFilter || 'ALL')));
-  rawChips.forEach((button) => button.addEventListener('click', () => onFilterClick('status', button.dataset.rawStatus || '')));
-  typeChips.forEach((button) => button.addEventListener('click', () => onFilterClick('type', button.dataset.numberType || '')));
-  state.rawResults = Array.isArray(backendPayload.results) ? backendPayload.results : [];
-  state.filteredResults = state.rawResults;
-  loadColumnSettings();
-  updateCounters();
-  applyFilters(state.rawResults, state.activeFilters);
-  renderTable(state.filteredResults);
-  updateCountersUI();
+  input?.addEventListener('input', updateCounter);
+  clear?.addEventListener('click', clearInput);
+  updateCounter();
 }})();
 </script>
 """
