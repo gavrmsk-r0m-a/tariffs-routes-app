@@ -3907,3 +3907,46 @@ class HlrUiStateScriptTest(unittest.TestCase):
         self.assertNotIn("rawResults", content)
         self.assertNotIn("filteredResults", content)
         self.assertNotIn("hlr-results-data", content)
+
+    def test_hlr_default_column_settings_use_business_columns_and_new_storage_key(self):
+        content = self._content()
+        expected_default = [
+            "original_number",
+            "normalized_number",
+            "format_status",
+            "country",
+            "number_type",
+            "operator",
+            "hlr_status_raw",
+            "live_status_raw",
+            "final_result",
+            "lead_quality_signal",
+            "comment",
+        ]
+        self.assertIn('const storageKey = "hlr_safe_column_settings_v2";', content)
+        self.assertNotIn('const storageKey = "hlr_safe_column_settings";', content)
+        for key in expected_default:
+            self.assertIn(f'    "{key}",', content)
+        self.assertIn('visible: defaultOrder.filter((key) => defaultVisibleColumns.has(key))', content)
+        self.assertIn('settings = { order: defaultOrder.slice(), visible: defaultOrder.filter((key) => defaultVisibleColumns.has(key)) };', content)
+
+    def test_hlr_column_manager_keeps_technical_columns_available_after_business_columns(self):
+        content = self._content()
+        self.assertIn('const businessColumnOrder = [', content)
+        self.assertIn('    "original_number",\n    "normalized_number",\n    "format_status",\n    "country",\n    "number_type",\n    "operator",\n    "hlr_status_raw",\n    "live_status_raw",\n    "final_result",\n    "lead_quality_signal",\n    "comment",', content)
+        self.assertIn('.concat(tableColumnOrder.filter((key) => !businessColumnOrder.includes(key)))', content)
+        technical_labels = {label for _key, label, _width in server.HLR_TABLE_COLUMNS}
+        for label in [
+            "UUID",
+            "Timestamp",
+            "Credits",
+            "Raw error",
+            "API message",
+            "Request parameters",
+            "Detected number",
+            "Formatted number",
+            "Current network",
+            "Original operator",
+            "Is ported",
+        ]:
+            self.assertIn(label, technical_labels)
