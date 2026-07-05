@@ -5552,6 +5552,7 @@ def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = Non
     return state.activeFilters.type.some((filter) => tokens.has(filter));
   }}
   function applyFilters() {{
+    console.debug('[HLR filters] activeFilters', JSON.parse(JSON.stringify(state.activeFilters)));
     state.filteredResults = state.rawResults.filter((row) => matchStatus(row) && matchType(row));
   }}
   function updateCounters() {{
@@ -5574,18 +5575,24 @@ def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = Non
     typeChips.forEach((button) => {{ const selected = state.activeFilters.type.includes(normalizeFilterValue(button.dataset.numberType || '')); button.classList.toggle('active', selected); button.setAttribute('aria-pressed', selected ? 'true' : 'false'); }});
   }}
   function renderTable() {{
-    const visibleIndexes = new Set(state.filteredResults.map((row) => row.__index));
+    const resultsToRender = state.filteredResults;
+    console.debug('[HLR filters] filteredResults length before render', resultsToRender.length);
+    const visibleIndexes = new Set(resultsToRender.map((row) => row.__index));
     rows.forEach((row, index) => {{
       const show = visibleIndexes.has(index);
       row.hidden = !show;
+      row.style.display = show ? '' : 'none';
       const details = row.nextElementSibling;
-      if (details && details.classList.contains('hlr-details-row') && !show) details.hidden = true;
+      if (details && details.classList.contains('hlr-details-row') && !show) {{
+        details.hidden = true;
+        details.style.display = 'none';
+      }}
     }});
     syncFilterUi();
-    if (allEmpty) allEmpty.hidden = state.rawResults.length > 0;
-    if (filterEmpty) filterEmpty.hidden = state.rawResults.length === 0 || state.filteredResults.length > 0;
-    if (caption) caption.textContent = activeCaption(state.filteredResults.length);
-    if (exportInput) exportInput.value = JSON.stringify(state.filteredResults.map((row) => {{ const copy = Object.assign({{}}, row); delete copy.__index; delete copy.__display; return copy; }}));
+    if (allEmpty) allEmpty.hidden = rows.length > 0;
+    if (filterEmpty) filterEmpty.hidden = rows.length === 0 || resultsToRender.length > 0;
+    if (caption) caption.textContent = activeCaption(resultsToRender.length);
+    if (exportInput) exportInput.value = JSON.stringify(resultsToRender.map((row) => {{ const copy = Object.assign({{}}, row); delete copy.__index; delete copy.__display; return copy; }}));
   }}
   function setFilter(filterType, values) {{
     state.activeFilters[filterType] = values.map(normalizeFilterValue).filter((value, index, list) => value && value !== 'ALL' && list.indexOf(value) === index);
@@ -5709,7 +5716,7 @@ def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = Non
   }}));
   rawChips.forEach((button) => button.addEventListener('click', () => onChipClick('status', button.dataset.rawStatus || '')));
   typeChips.forEach((button) => button.addEventListener('click', () => onChipClick('type', button.dataset.numberType || '')));
-  detailButtons.forEach((button) => button.addEventListener('click', () => {{ const target = document.getElementById(button.dataset.detailsTarget || ''); if (!target) return; const open = target.hidden; detailRows.forEach((row) => {{ row.hidden = true; }}); target.hidden = !open; button.textContent = open ? 'Скрыть' : 'Детали'; }}));
+  detailButtons.forEach((button) => button.addEventListener('click', () => {{ const target = document.getElementById(button.dataset.detailsTarget || ''); if (!target) return; const open = target.hidden; detailRows.forEach((row) => {{ row.hidden = true; row.style.display = 'none'; }}); target.hidden = !open; target.style.display = open ? '' : 'none'; button.textContent = open ? 'Скрыть' : 'Детали'; }}));
   updateCounters();
   applyFilters();
   renderTable();
