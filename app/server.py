@@ -1046,10 +1046,11 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .hlr-counter-line, .hlr-input-hint {{ margin: 0; }}
     .hlr-input-actions {{ display: flex; gap: 8px; flex-wrap: wrap; }}
     .hlr-severity-good, .hlr-severity-green, .hlr-severity-neutral {{ border-color: color-mix(in srgb, var(--success) 60%, var(--border)); background: color-mix(in srgb, var(--success) 12%, var(--surface)); color: var(--success, var(--text-strong)); }}
-    .hlr-severity-bad, .hlr-severity-red, .hlr-severity-api_error {{ border-color: color-mix(in srgb, var(--danger) 65%, var(--border)); background: color-mix(in srgb, var(--danger) 12%, var(--surface)); color: var(--danger); }}
+    .hlr-severity-bad, .hlr-severity-red {{ border-color: color-mix(in srgb, var(--danger) 65%, var(--border)); background: color-mix(in srgb, var(--danger) 12%, var(--surface)); color: var(--danger); }}
     .hlr-severity-warning, .hlr-severity-unknown, .hlr-severity-yellow, .hlr-severity-orange {{ border-color: color-mix(in srgb, var(--warning) 70%, var(--border)); background: color-mix(in srgb, var(--warning) 16%, var(--surface)); color: var(--warning-hover, var(--warning)); }}
-    .hlr-severity-api_error {{ background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--danger) 9%, var(--surface)), color-mix(in srgb, var(--danger) 9%, var(--surface)) 6px, var(--surface-muted) 6px, var(--surface-muted) 12px); }}
-    #hlr-table tbody tr.hlr-row-severity-bad td, #hlr-table tbody tr.hlr-row-severity-red td, #hlr-table tbody tr.hlr-row-severity-api_error td {{ background: color-mix(in srgb, var(--danger) 5%, var(--surface)); }}
+    .hlr-severity-api_error {{ border-color: color-mix(in srgb, var(--danger) 55%, var(--border)); background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--danger) 9%, var(--surface)), color-mix(in srgb, var(--danger) 9%, var(--surface)) 6px, var(--surface-muted) 6px, var(--surface-muted) 12px); color: var(--danger); }}
+    #hlr-table tbody tr.hlr-row-severity-bad td, #hlr-table tbody tr.hlr-row-severity-red td {{ background: color-mix(in srgb, var(--danger) 5%, var(--surface)); }}
+    #hlr-table tbody tr.hlr-row-severity-api_error td {{ background: color-mix(in srgb, var(--danger) 3%, var(--surface)); }}
     #hlr-table tbody tr.hlr-row-severity-warning td, #hlr-table tbody tr.hlr-row-severity-unknown td, #hlr-table tbody tr.hlr-row-severity-yellow td, #hlr-table tbody tr.hlr-row-severity-orange td {{ background: color-mix(in srgb, var(--warning) 5%, var(--surface)); }}
     #hlr-table tbody tr.hlr-row-severity-good td, #hlr-table tbody tr.hlr-row-severity-green td, #hlr-table tbody tr.hlr-row-severity-neutral td {{ background: color-mix(in srgb, var(--success) 4%, var(--surface)); }}
     #hlr-table tbody tr td[data-col='comment'] .hlr-cell-text {{ color: inherit; }}
@@ -1066,7 +1067,8 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     #hlr-table th {{ position: sticky; top: 0; z-index: 2; }}
     #hlr-table th.is-drag-resizing {{ border-right-color: var(--accent); }}
     #hlr-table tbody tr[hidden] {{ display: none !important; }}
-    #hlr-table th, #hlr-table td {{ max-width: none; overflow: hidden; }}
+    #hlr-table th, #hlr-table td {{ max-width: none; overflow: hidden; padding: 7px 9px; }}
+    #hlr-table .status-badge {{ min-height: 20px; padding: 1px 7px; }}
     .hlr-cell-content {{ display: flex; align-items: center; gap: 6px; min-width: 0; }}
     .hlr-cell-text {{ min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
     .hlr-cell-text.hlr-long-text {{ display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; white-space: normal; }}
@@ -5102,8 +5104,9 @@ def hlr_status_severity(row: dict[str, object]) -> str:
     result = str(row.get("final_result") or "").upper()
     live = str(row.get("live_status_raw") or row.get("hlr_status_raw") or "").upper()
     number_type = str(row.get("number_type") or "").lower()
-    if category == "error" or result == "ERROR":
-        return "red"
+    api_error_markers = {"API ERROR", "ERROR", "TIMEOUT", "CONNECTION ERROR", "PARSER ERROR", "INSUFFICIENT_CREDIT", "INTERNAL_ERROR"}
+    if category == "error" or result in api_error_markers or live in api_error_markers:
+        return "api_error"
     if result in {"DEAD", "BAD_FORMAT", "INVALID_FORMAT"} or live in {"DEAD", "BAD_FORMAT", "INVALID_FORMAT"}:
         return "red"
     if number_type in {"bad_format", "landline", "toll_free", "premium", "shared_cost", "stage_and_screen", "pager", "voicemail_only", "machine_to_machine"}:
@@ -5112,7 +5115,7 @@ def hlr_status_severity(row: dict[str, object]) -> str:
         return "green"
     if live == "LIVE" or category == "ok":
         return "green"
-    if live in {"ABSENT_SUBSCRIBER", "NO_TELESERVICE_PROVISIONED", "INCONCLUSIVE", "NOT_AVAILABLE_NETWORK_ONLY", "NO_COVERAGE", "NOT_APPLICABLE", "UNKNOWN", "NETWORK_INFO_ONLY"} or number_type in {"mobile_or_landline", "voip", "unknown"}:
+    if live in {"ABSENT_SUBSCRIBER", "NO_TELESERVICE_PROVISIONED", "INCONCLUSIVE", "NOT_AVAILABLE_NETWORK_ONLY", "NO_COVERAGE", "NOT_APPLICABLE", "UNKNOWN", "NETWORK_INFO_ONLY", "WARNING"} or result in {"WARNING", "INCONCLUSIVE"} or number_type in {"mobile_or_landline", "voip", "unknown"}:
         return "yellow"
     if category == "warning":
         return "yellow"
@@ -5221,46 +5224,48 @@ def hlr_details_html(row: dict[str, object]) -> str:
 HLR_TABLE_COLUMNS = [
     ("original_number", "Исходный номер", 150),
     ("normalized_number", "Нормализованный номер", 170),
-    ("detected_telephone_number", "Detected number", 170),
-    ("formatted_telephone_number", "Formatted number", 180),
+    ("detected_telephone_number", "Номер из API", 170),
+    ("formatted_telephone_number", "Формат API", 180),
     ("format_status", "Формат", 120),
     ("country", "Страна", 140),
     ("number_type", "Тип номера", 150),
-    ("number_type_raw", "Raw telephone_number_type", 200),
+    ("number_type_raw", "Тип API raw", 200),
     ("operator", "Оператор / сеть", 220),
     ("hlr_status_raw", "HLR статус", 150),
     ("live_status_raw", "Live status", 150),
     ("final_result", "Итог", 140),
     ("lead_quality_signal", "Оценка лида", 170),
     ("comment", "Комментарий", 360),
-    ("current_network", "Current network", 220),
-    ("current_operator", "Current operator", 220),
-    ("current_mccmnc", "Current MCCMNC", 150),
-    ("current_country", "Current country", 160),
-    ("current_country_iso3", "Current ISO3", 120),
-    ("current_country_prefix", "Current country prefix", 180),
-    ("original_network", "Original network", 220),
-    ("original_operator", "Original operator", 220),
-    ("original_mccmnc", "Original MCCMNC", 160),
-    ("original_country", "Original country", 160),
-    ("original_country_iso3", "Original ISO3", 120),
-    ("original_area", "Original area", 160),
-    ("original_country_prefix", "Original country prefix", 190),
-    ("is_ported", "Is ported", 110),
+    ("current_network", "Текущая сеть", 220),
+    ("current_operator", "Текущий оператор", 220),
+    ("current_mccmnc", "Текущий MCCMNC", 150),
+    ("current_country", "Текущая страна", 160),
+    ("current_country_iso3", "Текущий ISO3", 120),
+    ("current_country_prefix", "Текущий префикс", 180),
+    ("original_network", "Исходная сеть", 220),
+    ("original_operator", "Исходный оператор", 220),
+    ("original_mccmnc", "Исходный MCCMNC", 160),
+    ("original_country", "Исходная страна", 160),
+    ("original_country_iso3", "Исходный ISO3", 120),
+    ("original_area", "Исходная область", 160),
+    ("original_country_prefix", "Исходный префикс", 190),
+    ("is_ported", "Перенесён", 110),
     ("uuid", "UUID", 280),
     ("timestamp", "Timestamp", 190),
-    ("credits_spent", "Credits spent", 140),
-    ("raw_error", "Raw error", 220),
-    ("raw_message", "Raw message", 280),
-    ("request_shape_sanitized", "Request parameters", 320),
+    ("credits_spent", "Кредиты", 140),
+    ("raw_error", "Ошибка API raw", 220),
+    ("raw_message", "Сообщение API", 280),
+    ("request_shape_sanitized", "Параметры запроса", 320),
 ]
 
 
-def hlr_table_cell(display: dict[str, str], key: str) -> str:
+def hlr_table_cell(display: dict[str, str], key: str, severity: str) -> str:
     value = display.get(key) or "—"
     long_class = " hlr-long-text" if key in {"comment", "raw_error", "raw_message", "request_shape_sanitized"} else ""
     title = f" title='{esc(value)}'" if long_class or key in {"lead_quality_signal"} else ""
-    return f"<td data-col='{esc(key)}'{title}><span class='hlr-cell-text{long_class}'>{esc(value)}</span></td>"
+    status_keys = {"format_status", "hlr_status_raw", "live_status_raw", "final_result", "lead_quality_signal"}
+    badge_class = f" status-badge hlr-severity-{esc(severity)}" if key in status_keys and value != "—" else ""
+    return f"<td data-col='{esc(key)}'{title}><span class='hlr-cell-text{long_class}{badge_class}'>{esc(value)}</span></td>"
 
 
 def hlr_table(results: list[dict[str, object]]) -> str:
@@ -5270,7 +5275,7 @@ def hlr_table(results: list[dict[str, object]]) -> str:
     for row in results:
         display = hlr_display_row(row)
         severity = esc(str(row.get("status_severity") or hlr_status_severity(row)))
-        cells = "".join(hlr_table_cell(display, key) for key, _label, _width in HLR_TABLE_COLUMNS)
+        cells = "".join(hlr_table_cell(display, key, severity) for key, _label, _width in HLR_TABLE_COLUMNS)
         rows.append(f"<tr class='hlr-row-severity-{severity}'>{cells}</tr>")
     tbody = "<tbody>" + "".join(rows) + "</tbody>"
     if rows:
