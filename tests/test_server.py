@@ -3882,14 +3882,13 @@ class HlrUiStateScriptTest(unittest.TestCase):
     def test_hlr_filters_render_only_filtered_state_after_chip_click(self):
         content = self._content()
         self.assertIn("function onChipClick(filterType, value)", content)
-        self.assertIn("applyFilters();\n    renderTable();", content)
-        self.assertIn("const resultsToRender = state.filteredResults;", content)
+        self.assertIn("applyFilters();\n    renderTable(state.filteredResults);", content)
+        self.assertIn("function renderTable(resultsToRender = state.filteredResults)", content)
         self.assertIn("console.debug('[HLR filters] filteredResults length before render', resultsToRender.length);", content)
         self.assertIn("const visibleIndexes = new Set(resultsToRender.map((row) => row.__index));", content)
-        self.assertNotIn("function renderTable(resultsToRender)", content)
-        self.assertNotIn("renderTable(state.filteredResults)", content)
+        self.assertNotIn("renderTable(state.rawResults)", content)
         self.assertIn("console.debug('[HLR filters] activeFilters', JSON.parse(JSON.stringify(state.activeFilters)));", content)
-        self.assertIn("filters.forEach((button) => button.addEventListener('click', () => {\n    onChipClick('status', button.dataset.hlrFilter || 'ALL');", content)
+        self.assertIn("filters.forEach((button) => button.addEventListener('click', () => {\n    onChipClick(button.dataset.filterType || 'status', button.dataset.hlrFilter || 'ALL');", content)
         self.assertIn("rawChips.forEach((button) => button.addEventListener('click', () => onChipClick('status', button.dataset.rawStatus || '')));", content)
         self.assertIn("typeChips.forEach((button) => button.addEventListener('click', () => onChipClick('type', button.dataset.numberType || '')));", content)
 
