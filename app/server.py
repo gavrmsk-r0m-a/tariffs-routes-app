@@ -5339,12 +5339,12 @@ def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = Non
 <section class='hlr-workspace'>
   <section class='form-card hlr-input-panel'>
     <form class='hlr-input-form' method='post' action='/hlr/check' id='hlr-form'>
-      <label>Номера для проверки <textarea name='numbers' id='hlr-numbers' rows='12' {'disabled' if not write_allowed else ''}>{esc(input_text)}</textarea></label>
+      <label>Номера для проверки <textarea name='numbers' id='hlr-numbers-input' rows='12' {'disabled' if not write_allowed else ''}>{esc(input_text)}</textarea></label>
       <p class='muted hlr-input-hint'>Один номер на строке. Можно вставлять номера с пробелами, +, скобками и дефисами.</p>
-      <p class='muted hlr-counter-line'>Максимум 500 номеров за одну проверку · <span id='hlr-counter'>0 номеров</span></p>
+      <p class='muted hlr-counter-line'>Максимум 500 номеров за одну проверку · <span id='hlr-input-counter'>0 / 500</span></p>
       <div class='hlr-input-actions'>
         <button type='submit' {'disabled' if not write_allowed else ''}>Запустить проверку</button>
-        <button type='button' id='hlr-clear'>Очистить</button>
+        <button type='button' id='hlr-clear-button'>Очистить</button>
       </div>
     </form>
   </section>
@@ -5354,31 +5354,32 @@ def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = Non
   {hlr_api_fields_html(results, is_demo_mode)}
 </section>
 <script>
-(function() {{
-  const input = document.getElementById('hlr-numbers');
-  const counter = document.getElementById('hlr-counter');
-  const clear = document.getElementById('hlr-clear');
-  function normalizeCandidate(value) {{
-    const compact = (value || '').trim().replace(/[^0-9+]/g, '');
-    const digits = compact.replace(/\\D/g, '');
-    return digits ? '+' + digits : '';
-  }}
+document.addEventListener("DOMContentLoaded", function () {{
+  const input = document.getElementById("hlr-numbers-input");
+  const clearButton = document.getElementById("hlr-clear-button");
+  const counter = document.getElementById("hlr-input-counter");
+
+  if (!input || !clearButton) return;
+
   function updateCounter() {{
-    if (!input || !counter) return;
-    const count = new Set(input.value.split(/\r?\n/).map(normalizeCandidate).filter(Boolean)).size;
-    counter.textContent = count + ' / 500 номеров';
-    counter.style.color = count > 500 ? 'var(--danger)' : '';
+    if (!counter) return;
+    const values = input.value
+      .split(/\r?\n/)
+      .map(v => v.trim())
+      .filter(Boolean);
+    counter.textContent = values.length + " / 500";
   }}
-  function clearInput() {{
-    if (!input) return;
-    input.value = '';
+
+  clearButton.addEventListener("click", function (event) {{
+    event.preventDefault();
+    input.value = "";
     updateCounter();
     input.focus();
-  }}
-  input?.addEventListener('input', updateCounter);
-  clear?.addEventListener('click', clearInput);
+  }});
+
+  input.addEventListener("input", updateCounter);
   updateCounter();
-}})();
+}});
 </script>
 """
     return page("HLR", body)
