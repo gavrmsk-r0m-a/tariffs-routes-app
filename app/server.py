@@ -5333,37 +5333,9 @@ def hlr_column_settings_markup() -> str:
 
 def hlr_table(results: list[dict[str, object]]) -> str:
     colgroup = "".join(f"<col data-col='{esc(key)}' style='width:{width}px'{' hidden' if not visible else ''}>" for key, _label, width, visible in HLR_TABLE_COLUMNS)
-    rows = []
-    copyable = set()
-    for index, row in enumerate(results):
-        cells = []
-        display = hlr_display_row(row)
-        for key, _label, _width, visible in HLR_TABLE_COLUMNS:
-            hidden_attr = " hidden" if not visible else ""
-            if key == "details":
-                cells.append(f"<td data-col='details'{hidden_attr}><button type='button' class='hlr-details-toggle' data-details-target='hlr-details-{index}'>Детали</button></td>")
-                continue
-            value = display.get(key, "")
-            title = value if key in {"comment", "lead_quality_signal", "lead_quality_reason", "raw_error", "raw_message", "request_shape_sanitized"} else ""
-            if key == "lead_quality_signal":
-                title = display.get("lead_quality_reason", value)
-            copy = ""
-            long_class = " hlr-long-text" if key in {"comment", "raw_error", "raw_message", "request_shape_sanitized"} else ""
-            status_keys = {"hlr_status_raw", "live_status_raw", "final_result", "lead_quality_signal", "format_status", "number_type"}
-            if key in status_keys:
-                severity = hlr_status_severity(row) if key in {"hlr_status_raw", "live_status_raw", "final_result", "lead_quality_signal", "format_status"} else hlr_token_severity(row.get("number_type_raw") or row.get("number_type"), "type")
-                inner = f"<span class='hlr-status-badge hlr-severity-{esc(severity)}'>{esc(value)}</span>"
-            else:
-                inner = esc(value)
-            cells.append(f"<td data-col='{esc(key)}' title='{esc(title)}'{hidden_attr}><span class='hlr-cell-content'><span class='hlr-cell-text{long_class}'>{inner}</span>{copy}</span></td>")
-        severity = hlr_status_severity(row)
-        attrs = " class='hlr-row-severity-" + esc(severity) + "' data-status-severity='" + esc(severity) + "' data-hlr-status='" + esc(str(row.get("hlr_status_raw", "")).upper()) + "' data-live-status='" + esc(str(row.get("live_status_raw", "")).upper()) + "' data-final-result='" + esc(str(row.get("final_result", "")).upper()) + "' data-final-category='" + esc(str(row.get("final_category", "")).lower()) + "' data-hlr-type='" + esc(str(row.get("number_type", "")).lower()) + "' data-hlr-type-raw='" + esc(str(row.get("number_type_raw", "")).upper()) + "'"
-        rows.append("<tr" + attrs + ">" + "".join(cells) + "</tr>")
-        rows.append(f"<tr class='hlr-details-row' id='hlr-details-{index}' hidden><td colspan='{len(HLR_TABLE_COLUMNS)}'>{hlr_details_html(row)}</td></tr>")
     thead = "<thead><tr>" + "".join(f"<th class='resizable-header' data-col='{esc(key)}'{' hidden' if not visible else ''}>{esc(label)}<span class='column-resize-handle' data-hlr-resize='{esc(key)}' aria-hidden='true'></span></th>" for key, label, _width, visible in HLR_TABLE_COLUMNS) + "</tr></thead>"
-    body = "".join(rows)
-    table = f"<div class='table-scroll'><table id='hlr-table'><colgroup>{colgroup}</colgroup>{thead}<tbody>{body}</tbody></table></div>"
-    empty = "" if results else "<div class='empty-state' id='hlr-empty-all'>Результаты появятся после проверки номеров.</div>"
+    table = f"<div class='table-scroll'><table id='hlr-table'><colgroup>{colgroup}</colgroup>{thead}<tbody></tbody></table></div>"
+    empty = "<div class='empty-state' id='hlr-empty-all'>Результаты появятся после проверки номеров.</div>"
     filtered_empty = "<div class='empty-state' id='hlr-empty-filter' hidden>По выбранному фильтру результатов нет.</div>"
     return "<section class='hlr-results-area'>" + table_card(table + empty + filtered_empty) + "</section>"
 
@@ -5467,6 +5439,7 @@ def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = Non
 </section>
 <script type='application/json' id='hlr-results-data'>{esc(json.dumps(results, ensure_ascii=False))}</script>
 <script type='application/json' id='hlr-display-results-data'>{display_results_json}</script>
+<script type='application/json' id='hlr-column-data'>{esc(json.dumps(HLR_TABLE_COLUMNS, ensure_ascii=False))}</script>
 <script>
 (function() {{
   const input = document.getElementById('hlr-numbers');
@@ -5475,9 +5448,8 @@ def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = Non
   const filters = Array.from(document.querySelectorAll('.hlr-status-filter'));
   const rawChips = Array.from(document.querySelectorAll('.hlr-raw-chip[data-raw-status]'));
   const typeChips = Array.from(document.querySelectorAll('.hlr-type-chip'));
-  const rows = Array.from(document.querySelectorAll('#hlr-table tbody tr:not(.hlr-details-row)'));
-  const detailRows = Array.from(document.querySelectorAll('#hlr-table tbody tr.hlr-details-row'));
-  const detailButtons = Array.from(document.querySelectorAll('.hlr-details-toggle'));
+  const table = document.getElementById('hlr-table');
+  const tbody = table?.querySelector('tbody');
   const exportInput = document.getElementById('hlr-export-results');
   const allEmpty = document.getElementById('hlr-empty-all');
   const filterEmpty = document.getElementById('hlr-empty-filter');
@@ -5488,21 +5460,21 @@ def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = Non
   const copyColumnSelect = document.querySelector('[data-hlr-copy-column-select]');
   const copyFeedback = document.querySelector('[data-hlr-copy-feedback]');
   const columnConfigStorageKey = 'hlr_column_config';
-  const defaultColumnOrder = Array.from(document.querySelectorAll('#hlr-table thead th[data-col]')).map((cell) => cell.dataset.col || '').filter(Boolean);
-  let rawResults = [];
-  let displayResults = [];
-  try {{ rawResults = JSON.parse(document.getElementById('hlr-results-data')?.textContent || '[]'); }} catch (_) {{ rawResults = []; }}
-  try {{ displayResults = JSON.parse(document.getElementById('hlr-display-results-data')?.textContent || '[]'); }} catch (_) {{ displayResults = []; }}
+  function readJsonScript(id, fallback) {{ try {{ return JSON.parse(document.getElementById(id)?.textContent || ''); }} catch (_) {{ return fallback; }} }}
+  const rawResults = readJsonScript('hlr-results-data', []);
+  const displayResults = readJsonScript('hlr-display-results-data', []);
+  const columnData = readJsonScript('hlr-column-data', []);
+  const defaultColumnOrder = columnData.map((column) => column[0]);
+  const defaultVisible = Object.fromEntries(columnData.map((column) => [column[0], Boolean(column[3])]));
+  const defaultWidths = Object.fromEntries(columnData.map((column) => [column[0], Number(column[2]) || 120]));
   const state = {{
+    inputNumbers: [],
     rawResults: rawResults.map((row, index) => Object.assign({{ __index: index, __display: displayResults[index] || {{}} }}, row)),
     filteredResults: [],
     activeFilters: {{ status: [], type: [] }},
-    columnConfig: {{ visible: {{}}, order: defaultColumnOrder.slice(), width: {{}} }},
+    columnConfig: {{ visible: Object.assign({{}}, defaultVisible), order: defaultColumnOrder.slice(), width: Object.assign({{}}, defaultWidths) }},
     counters: {{}},
-    inputNumbers: [],
-    ui: {{ loading: false }},
   }};
-  state.filteredResults = state.rawResults.slice();
   function normalizeCandidate(value) {{
     const raw = (value || '').trim();
     if (!raw) return '';
@@ -5513,216 +5485,101 @@ def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = Non
   }}
   function updateCounter() {{
     if (!input || !counter) return;
-    state.inputNumbers = input.value.split(/\r?\n/).map(normalizeCandidate).filter(Boolean);
-    const unique = new Set(state.inputNumbers);
-    const count = unique.size;
+    state.inputNumbers = input.value.split(/\\r?\\n/).map(normalizeCandidate).filter(Boolean);
+    const count = new Set(state.inputNumbers).size;
     counter.textContent = count + ' / 500';
     counter.style.color = count > 500 ? 'var(--danger)' : '';
   }}
-  function normalizeFilterValue(value) {{
-    const token = (value || '').toString().trim().toUpperCase();
-    if (token === 'FIXED' || token === 'LANDLINE') return 'FIXED_LINE';
-    return token;
-  }}
+  function normalizeFilterValue(value) {{ const token = (value || '').toString().trim().toUpperCase(); return token === 'FIXED' || token === 'LANDLINE' ? 'FIXED_LINE' : token; }}
   function rowFilterTokens(row) {{
     const tokens = new Set();
     ['hlr_status_raw', 'live_status_raw', 'final_result'].forEach((key) => {{ const value = normalizeFilterValue(row[key]); if (value && value !== '—') tokens.add(value); }});
     const type = normalizeFilterValue(row.number_type_raw || row.number_type);
     if (type === 'MOBILE' || (row.number_type || '').toString().toLowerCase() === 'mobile') tokens.add('MOBILE');
     if (type === 'FIXED_LINE' || (row.number_type || '').toString().toLowerCase() === 'landline') tokens.add('FIXED_LINE');
-    if ((row.final_category || '').toString().toLowerCase() === 'warning') tokens.add('WARNING');
-    if ((row.final_category || '').toString().toLowerCase() === 'unknown') tokens.add('UNKNOWN');
-    if ((row.final_category || '').toString().toLowerCase() === 'ok') tokens.add('OK');
+    const category = (row.final_category || '').toString().toLowerCase();
+    if (category === 'warning') tokens.add('WARNING');
+    if (category === 'unknown') tokens.add('UNKNOWN');
+    if (category === 'ok') tokens.add('OK');
     return tokens;
-  }}
-  function matchStatus(row) {{
-    if (!state.activeFilters.status.length) return true;
-    const tokens = rowFilterTokens(row);
-    return state.activeFilters.status.some((filter) => tokens.has(filter));
-  }}
-  function matchType(row) {{
-    if (!state.activeFilters.type.length) return true;
-    const tokens = rowFilterTokens(row);
-    return state.activeFilters.type.some((filter) => tokens.has(filter));
   }}
   function applyFilters() {{
     console.debug('[HLR filters] activeFilters', JSON.parse(JSON.stringify(state.activeFilters)));
-    state.filteredResults = state.rawResults.filter((row) => matchStatus(row) && matchType(row));
+    state.filteredResults = state.rawResults.filter((row) => (!state.activeFilters.status.length || state.activeFilters.status.some((filter) => rowFilterTokens(row).has(filter))) && (!state.activeFilters.type.length || state.activeFilters.type.some((filter) => rowFilterTokens(row).has(filter))));
   }}
-  function updateCounters() {{
-    state.counters = {{ ALL: state.rawResults.length }};
-    state.rawResults.forEach((row) => rowFilterTokens(row).forEach((token) => {{ state.counters[token] = (state.counters[token] || 0) + 1; }}));
-  }}
-  function updateCountersUI() {{
-    document.querySelectorAll('[data-counter-key]').forEach((node) => {{
-      const key = normalizeFilterValue(node.dataset.counterKey || 'ALL');
-      node.textContent = state.counters[key] || 0;
-    }});
-  }}
+  function updateCounters() {{ state.counters = {{ ALL: state.rawResults.length }}; state.rawResults.forEach((row) => rowFilterTokens(row).forEach((token) => {{ state.counters[token] = (state.counters[token] || 0) + 1; }})); }}
+  function updateCountersUI() {{ document.querySelectorAll('[data-counter-key]').forEach((node) => {{ node.textContent = state.counters[normalizeFilterValue(node.dataset.counterKey || 'ALL')] || 0; }}); }}
   function activeFilterList() {{ return state.activeFilters.status.concat(state.activeFilters.type); }}
-  function activeCaption(visible) {{
-    const selected = activeFilterList();
-    return selected.length ? 'Показаны ' + visible + ' результаты; фильтр — ' + selected.join(', ') : 'Показаны ' + visible + ' результаты';
-  }}
   function syncFilterUi() {{
-    filters.forEach((button) => {{
-      const key = normalizeFilterValue(button.dataset.hlrFilter || 'ALL');
-      const bucket = button.dataset.filterType === 'type' ? 'type' : 'status';
-      const selected = key === 'ALL' ? activeFilterList().length === 0 : state.activeFilters[bucket].includes(key);
-      button.classList.toggle('active', selected);
-      button.setAttribute('aria-pressed', selected ? 'true' : 'false');
-    }});
+    filters.forEach((button) => {{ const key = normalizeFilterValue(button.dataset.hlrFilter || 'ALL'); const bucket = button.dataset.filterType === 'type' ? 'type' : 'status'; const selected = key === 'ALL' ? activeFilterList().length === 0 : state.activeFilters[bucket].includes(key); button.classList.toggle('active', selected); button.setAttribute('aria-pressed', selected ? 'true' : 'false'); }});
     rawChips.forEach((button) => {{ const selected = state.activeFilters.status.includes(normalizeFilterValue(button.dataset.rawStatus || '')); button.classList.toggle('active', selected); button.setAttribute('aria-pressed', selected ? 'true' : 'false'); }});
     typeChips.forEach((button) => {{ const selected = state.activeFilters.type.includes(normalizeFilterValue(button.dataset.numberType || '')); button.classList.toggle('active', selected); button.setAttribute('aria-pressed', selected ? 'true' : 'false'); }});
   }}
-  function renderTable(resultsToRender = state.filteredResults) {{
-    resultsToRender = Array.isArray(resultsToRender) ? resultsToRender : state.filteredResults;
-    console.debug('[HLR filters] filteredResults length before render', resultsToRender.length);
-    const visibleIndexes = new Set(resultsToRender.map((row) => row.__index));
-    rows.forEach((row, index) => {{
-      const show = visibleIndexes.has(index);
-      row.hidden = !show;
-      row.style.display = show ? '' : 'none';
-      const details = row.nextElementSibling;
-      if (details && details.classList.contains('hlr-details-row') && !show) {{
-        details.hidden = true;
-        details.style.display = 'none';
-      }}
+  function rowValue(row, key) {{ return ((row.__display && row.__display[key] !== undefined ? row.__display[key] : row[key]) ?? '').toString(); }}
+  function statusSeverity(row, key) {{
+    if (key === 'number_type') return normalizeFilterValue(row.number_type_raw || row.number_type) === 'MOBILE' ? 'good' : 'neutral';
+    const tokens = rowFilterTokens(row); if (tokens.has('DEAD') || tokens.has('BAD_FORMAT') || tokens.has('ERROR')) return 'bad'; if (tokens.has('WARNING') || tokens.has('UNKNOWN')) return 'warning'; if (tokens.has('LIVE') || tokens.has('OK')) return 'good'; return 'neutral';
+  }}
+  function appendText(parent, text) {{ parent.appendChild(document.createTextNode(text)); }}
+  function buildDetails(row) {{ const wrap = document.createElement('div'); wrap.className = 'hlr-details-grid'; const pre = document.createElement('pre'); pre.className = 'hlr-raw-json'; pre.textContent = JSON.stringify(row.raw_api_item_sanitized || row, null, 2); wrap.appendChild(pre); return wrap; }}
+  function applyColumnDom() {{
+    const order = state.columnConfig.order.length ? state.columnConfig.order : defaultColumnOrder;
+    order.forEach((key) => {{ table?.querySelectorAll('[data-col="' + CSS.escape(key) + '"]').forEach((node) => node.parentNode?.appendChild(node)); }});
+    Object.keys(state.columnConfig.visible).forEach((key) => {{ table?.querySelectorAll('[data-col="' + CSS.escape(key) + '"], col[data-col="' + CSS.escape(key) + '"]').forEach((node) => {{ node.hidden = state.columnConfig.visible[key] === false; }}); }});
+    Object.keys(state.columnConfig.width).forEach((key) => {{ table?.querySelectorAll('col[data-col="' + CSS.escape(key) + '"]').forEach((col) => {{ col.style.width = state.columnConfig.width[key] + 'px'; }}); }});
+  }}
+  function renderTable() {{
+    if (!tbody) return;
+    console.debug('[HLR filters] filteredResults length before render', state.filteredResults.length);
+    tbody.replaceChildren();
+    state.filteredResults.forEach((row) => {{
+      const tr = document.createElement('tr');
+      const severity = statusSeverity(row, 'final_result');
+      tr.className = 'hlr-row-severity-' + severity;
+      tr.dataset.statusSeverity = severity;
+      columnData.forEach(([key]) => {{
+        const td = document.createElement('td'); td.dataset.col = key; td.hidden = state.columnConfig.visible[key] === false;
+        if (key === 'details') {{ const button = document.createElement('button'); button.type = 'button'; button.className = 'hlr-details-toggle'; button.textContent = 'Детали'; td.appendChild(button); }}
+        else {{ const outer = document.createElement('span'); outer.className = 'hlr-cell-content'; const text = document.createElement('span'); text.className = 'hlr-cell-text'; if (['comment', 'raw_error', 'raw_message', 'request_shape_sanitized'].includes(key)) text.classList.add('hlr-long-text'); const value = rowValue(row, key); td.title = ['comment', 'lead_quality_signal', 'lead_quality_reason', 'raw_error', 'raw_message', 'request_shape_sanitized'].includes(key) ? (key === 'lead_quality_signal' ? rowValue(row, 'lead_quality_reason') : value) : ''; if (['hlr_status_raw', 'live_status_raw', 'final_result', 'lead_quality_signal', 'format_status', 'number_type'].includes(key)) {{ const badge = document.createElement('span'); badge.className = 'hlr-status-badge hlr-severity-' + statusSeverity(row, key); badge.textContent = value; text.appendChild(badge); }} else appendText(text, value); outer.appendChild(text); td.appendChild(outer); }}
+        tr.appendChild(td);
+      }});
+      const detailsTr = document.createElement('tr'); detailsTr.className = 'hlr-details-row'; detailsTr.hidden = true;
+      const detailsTd = document.createElement('td'); detailsTd.colSpan = columnData.length; detailsTd.appendChild(buildDetails(row)); detailsTr.appendChild(detailsTd);
+      tr.querySelector('.hlr-details-toggle')?.addEventListener('click', (event) => {{ const open = detailsTr.hidden; Array.from(tbody.querySelectorAll('tr.hlr-details-row')).forEach((node) => {{ node.hidden = true; }}); detailsTr.hidden = !open; event.currentTarget.textContent = open ? 'Скрыть' : 'Детали'; }});
+      tbody.append(tr, detailsTr);
     }});
+    applyColumnDom();
     syncFilterUi();
-    if (allEmpty) allEmpty.hidden = rows.length > 0;
-    if (filterEmpty) filterEmpty.hidden = rows.length === 0 || resultsToRender.length > 0;
-    if (caption) caption.textContent = activeCaption(resultsToRender.length);
-    if (exportInput) exportInput.value = JSON.stringify(resultsToRender.map((row) => {{ const copy = Object.assign({{}}, row); delete copy.__index; delete copy.__display; return copy; }}));
+    if (allEmpty) allEmpty.hidden = state.rawResults.length > 0;
+    if (filterEmpty) filterEmpty.hidden = state.rawResults.length === 0 || state.filteredResults.length > 0;
+    if (caption) caption.textContent = activeFilterList().length ? 'Показаны ' + state.filteredResults.length + ' результаты; фильтр — ' + activeFilterList().join(', ') : 'Показаны ' + state.filteredResults.length + ' результаты';
+    if (exportInput) exportInput.value = JSON.stringify(state.filteredResults.map((row) => {{ const copy = Object.assign({{}}, row); delete copy.__index; delete copy.__display; return copy; }}));
   }}
-  function setFilter(filterType, values) {{
-    state.activeFilters[filterType] = values.map(normalizeFilterValue).filter((value, index, list) => value && value !== 'ALL' && list.indexOf(value) === index);
-    applyFilters();
-    renderTable(state.filteredResults);
-    updateCountersUI();
+  function persistColumns() {{ try {{ window.localStorage.setItem(columnConfigStorageKey, JSON.stringify(state.columnConfig)); }} catch (_) {{}} }}
+  function loadColumnSettings() {{
+    try {{ state.columnConfig = Object.assign(state.columnConfig, JSON.parse(window.localStorage.getItem(columnConfigStorageKey) || '{{}}') || {{}}); }} catch (_) {{}}
+    state.columnConfig.visible = Object.assign({{}}, defaultVisible, state.columnConfig.visible || {{}});
+    state.columnConfig.width = Object.assign({{}}, defaultWidths, state.columnConfig.width || {{}});
+    state.columnConfig.order = (state.columnConfig.order || defaultColumnOrder).filter((key) => defaultColumnOrder.includes(key)).concat(defaultColumnOrder.filter((key) => !(state.columnConfig.order || []).includes(key)));
+    columnToggles.forEach((node) => {{ const key = node.dataset.hlrColumnToggle || ''; node.checked = state.columnConfig.visible[key] !== false; }});
+    columnWidths.forEach((node) => {{ const key = node.dataset.hlrColumnWidth || ''; node.value = state.columnConfig.width[key] || defaultWidths[key] || 120; }});
   }}
-  function onChipClick(filterType, value) {{
-    const filter = normalizeFilterValue(value);
-    if (!filter || filter === 'ALL') {{
-      state.activeFilters.status = [];
-      state.activeFilters.type = [];
-      state.filteredResults = state.rawResults.slice();
-      renderTable(state.filteredResults);
-      updateCountersUI();
-      return;
-    }}
-    const current = state.activeFilters[filterType];
-    setFilter(filterType, current.includes(filter) ? current.filter((item) => item !== filter) : current.concat(filter));
-  }}
-  function readJsonStorage(key, fallback) {{
-    try {{ return JSON.parse(window.localStorage.getItem(key) || '') || fallback; }} catch (_) {{ return fallback; }}
-  }}
-  function writeJsonStorage(key, value) {{
-    try {{ window.localStorage.setItem(key, JSON.stringify(value)); }} catch (_) {{}}
-  }}
-  async function copyText(text) {{
-    try {{ await navigator.clipboard.writeText(text); }}
-    catch (_) {{ const area = document.createElement('textarea'); area.value = text; document.body.appendChild(area); area.select(); document.execCommand('copy'); area.remove(); }}
-  }}
-  function setColumnVisible(key, visible) {{
-    document.querySelectorAll('#hlr-table [data-col="' + CSS.escape(key) + '"], #hlr-table col[data-col="' + CSS.escape(key) + '"]').forEach((item) => {{ item.hidden = !visible; }});
-  }}
-  function moveElement(parent, selector, key) {{ const item = parent.querySelector(selector + '[data-col="' + CSS.escape(key) + '"]'); if (item) parent.appendChild(item); }}
-  function applyColumnOrder(order) {{
-    if (!order || !order.length) return;
-    const table = document.getElementById('hlr-table');
-    const colgroup = table?.querySelector('colgroup');
-    const headRow = table?.querySelector('thead tr');
-    if (!table || !colgroup || !headRow) return;
-    order.forEach((key) => {{ moveElement(colgroup, 'col', key); moveElement(headRow, 'th', key); }});
-    Array.from(table.querySelectorAll('tbody tr:not(.hlr-details-row)')).forEach((row) => {{ order.forEach((key) => moveElement(row, 'td', key)); }});
-    const list = document.querySelector('[data-hlr-column-settings-list]');
-    if (list) order.forEach((key) => {{ const item = list.querySelector('[data-hlr-column-row="' + CSS.escape(key) + '"]'); if (item) list.appendChild(item); }});
-  }}
-  function applyColumnSettings() {{
-    state.columnConfig = Object.assign(state.columnConfig, readJsonStorage(columnConfigStorageKey, {{}}));
-    applyColumnOrder(state.columnConfig.order || []);
-    const visible = state.columnConfig.visible || {{}};
-    columnToggles.forEach((input) => {{
-      const key = input.dataset.hlrColumnToggle || '';
-      const isVisible = Object.prototype.hasOwnProperty.call(visible, key) ? Boolean(visible[key]) : input.checked;
-      input.checked = isVisible;
-      setColumnVisible(key, isVisible);
-    }});
-    const widths = state.columnConfig.width || {{}};
-    columnWidths.forEach((input) => {{
-      const key = input.dataset.hlrColumnWidth || '';
-      const value = widths[key] || input.value;
-      input.value = value;
-      document.querySelectorAll('#hlr-table col[data-col="' + CSS.escape(key) + '"]').forEach((col) => {{ col.style.width = value + 'px'; }});
-    }});
-  }}
-  columnToggles.forEach((input) => input.addEventListener('change', () => {{
-    state.columnConfig.visible[input.dataset.hlrColumnToggle || ''] = input.checked;
-    writeJsonStorage(columnConfigStorageKey, state.columnConfig);
-    setColumnVisible(input.dataset.hlrColumnToggle || '', input.checked);
-  }}));
-  columnWidths.forEach((input) => input.addEventListener('change', () => {{
-    const value = Math.max(70, Math.min(520, Number(input.value) || 120));
-    input.value = value;
-    state.columnConfig.width[input.dataset.hlrColumnWidth || ''] = value;
-    writeJsonStorage(columnConfigStorageKey, state.columnConfig);
-    document.querySelectorAll('#hlr-table col[data-col="' + CSS.escape(input.dataset.hlrColumnWidth || '') + '"]').forEach((col) => {{ col.style.width = value + 'px'; }});
-  }}));
-  document.querySelectorAll('[data-hlr-column-move]').forEach((button) => button.addEventListener('click', () => {{
-    const row = button.closest('[data-hlr-column-row]');
-    const key = row?.dataset.hlrColumnRow || '';
-    const order = (state.columnConfig.order && state.columnConfig.order.length ? state.columnConfig.order : defaultColumnOrder).slice();
-    const index = order.indexOf(key);
-    const delta = button.dataset.hlrColumnMove === 'up' ? -1 : 1;
-    const next = index + delta;
-    if (index < 0 || next < 0 || next >= order.length) return;
-    [order[index], order[next]] = [order[next], order[index]];
-    state.columnConfig.order = order;
-    writeJsonStorage(columnConfigStorageKey, state.columnConfig);
-    applyColumnOrder(order);
-  }}));
-  document.querySelector('[data-hlr-column-reset]')?.addEventListener('click', () => {{ window.localStorage.removeItem(columnConfigStorageKey); window.location.reload(); }});
-  document.querySelectorAll('[data-hlr-resize]').forEach((handle) => handle.addEventListener('pointerdown', (event) => {{
-    event.preventDefault();
-    const key = handle.dataset.hlrResize || '';
-    const th = handle.closest('th');
-    const col = document.querySelector('#hlr-table col[data-col="' + CSS.escape(key) + '"]');
-    const startX = event.clientX;
-    const startWidth = Number.parseFloat(col?.style.width || '') || th?.offsetWidth || 120;
-    th?.classList.add('is-drag-resizing'); document.body.classList.add('is-resizing-column');
-    const move = (moveEvent) => {{
-      const width = Math.max(70, Math.min(700, Math.round(startWidth + moveEvent.clientX - startX)));
-      if (col) col.style.width = width + 'px';
-      const widthInput = document.querySelector('[data-hlr-column-width="' + CSS.escape(key) + '"]');
-      if (widthInput) widthInput.value = width;
-    }};
-    const up = () => {{
-      document.removeEventListener('pointermove', move); document.removeEventListener('pointerup', up);
-      th?.classList.remove('is-drag-resizing'); document.body.classList.remove('is-resizing-column');
-      state.columnConfig.width[key] = Number.parseFloat(col?.style.width || '') || startWidth;
-      writeJsonStorage(columnConfigStorageKey, state.columnConfig);
-    }};
-    document.addEventListener('pointermove', move); document.addEventListener('pointerup', up);
-  }}));
-  copyColumnButton?.addEventListener('click', async () => {{
-    const key = copyColumnSelect?.value || 'normalized_number';
-    if (state.columnConfig.visible && state.columnConfig.visible[key] === false) {{ if (copyFeedback) copyFeedback.textContent = 'Колонка скрыта — включите её перед копированием'; return; }}
-    const values = state.filteredResults.map((row) => ((row.__display && row.__display[key] !== undefined ? row.__display[key] : row[key]) ?? '').toString());
-    await copyText(values.join('\\n'));
-    if (copyFeedback) copyFeedback.textContent = 'Скопировано: ' + values.length + ' значений';
-  }});
-  applyColumnSettings();
+  function setFilter(filterType, values) {{ state.activeFilters[filterType] = values.map(normalizeFilterValue).filter((value, index, list) => value && value !== 'ALL' && list.indexOf(value) === index); applyFilters(); renderTable(); updateCountersUI(); }}
+  function onFilterClick(filterType, value) {{ const filter = normalizeFilterValue(value); if (!filter || filter === 'ALL') {{ state.activeFilters.status = []; state.activeFilters.type = []; applyFilters(); renderTable(); updateCountersUI(); return; }} const current = state.activeFilters[filterType]; setFilter(filterType, current.includes(filter) ? current.filter((item) => item !== filter) : current.concat(filter)); }}
+  async function copyText(text) {{ try {{ await navigator.clipboard.writeText(text); }} catch (_) {{ const area = document.createElement('textarea'); area.value = text; document.body.appendChild(area); area.select(); document.execCommand('copy'); area.remove(); }} }}
+  columnToggles.forEach((input) => input.addEventListener('change', () => {{ state.columnConfig.visible[input.dataset.hlrColumnToggle || ''] = input.checked; persistColumns(); renderTable(); }}));
+  columnWidths.forEach((input) => input.addEventListener('change', () => {{ const value = Math.max(70, Math.min(520, Number(input.value) || 120)); input.value = value; state.columnConfig.width[input.dataset.hlrColumnWidth || ''] = value; persistColumns(); renderTable(); }}));
+  document.querySelectorAll('[data-hlr-column-move]').forEach((button) => button.addEventListener('click', () => {{ const key = button.closest('[data-hlr-column-row]')?.dataset.hlrColumnRow || ''; const order = state.columnConfig.order.slice(); const index = order.indexOf(key); const next = index + (button.dataset.hlrColumnMove === 'up' ? -1 : 1); if (index < 0 || next < 0 || next >= order.length) return; [order[index], order[next]] = [order[next], order[index]]; state.columnConfig.order = order; persistColumns(); renderTable(); }}));
+  document.querySelector('[data-hlr-column-reset]')?.addEventListener('click', () => {{ window.localStorage.removeItem(columnConfigStorageKey); loadColumnSettings(); renderTable(); }});
+  document.querySelectorAll('[data-hlr-resize]').forEach((handle) => handle.addEventListener('pointerdown', (event) => {{ event.preventDefault(); const key = handle.dataset.hlrResize || ''; const col = table?.querySelector('col[data-col="' + CSS.escape(key) + '"]'); const startX = event.clientX; const startWidth = Number.parseFloat(col?.style.width || '') || 120; const move = (moveEvent) => {{ const width = Math.max(70, Math.min(700, Math.round(startWidth + moveEvent.clientX - startX))); state.columnConfig.width[key] = width; if (col) col.style.width = width + 'px'; }}; const up = () => {{ document.removeEventListener('pointermove', move); document.removeEventListener('pointerup', up); persistColumns(); renderTable(); }}; document.addEventListener('pointermove', move); document.addEventListener('pointerup', up); }}));
+  copyColumnButton?.addEventListener('click', async () => {{ const key = copyColumnSelect?.value || 'normalized_number'; if (state.columnConfig.visible[key] === false) {{ if (copyFeedback) copyFeedback.textContent = 'Колонка скрыта — включите её перед копированием'; return; }} const values = state.filteredResults.map((row) => rowValue(row, key)); await copyText(values.join('\\n')); if (copyFeedback) copyFeedback.textContent = 'Скопировано: ' + values.length + ' значений'; }});
+  function clearInput() {{ state.inputNumbers = []; state.rawResults = []; state.filteredResults = []; if (input) input.value = ''; updateCounter(); applyFilters(); renderTable(); input?.focus(); }}
   if (input) {{ input.addEventListener('input', updateCounter); updateCounter(); }}
-  if (clear && input) clear.addEventListener('click', () => {{ state.inputNumbers = []; input.value = ''; updateCounter(); input.focus(); }});
-  /* Legacy contract marker for UI tests: filters.forEach((button) => button.addEventListener('click', () => {{
-    onChipClick('status', button.dataset.hlrFilter || 'ALL'); */
-  filters.forEach((button) => button.addEventListener('click', () => {{
-    onChipClick(button.dataset.filterType || 'status', button.dataset.hlrFilter || 'ALL');
-  }}));
-  rawChips.forEach((button) => button.addEventListener('click', () => onChipClick('status', button.dataset.rawStatus || '')));
-  typeChips.forEach((button) => button.addEventListener('click', () => onChipClick('type', button.dataset.numberType || '')));
-  detailButtons.forEach((button) => button.addEventListener('click', () => {{ const target = document.getElementById(button.dataset.detailsTarget || ''); if (!target) return; const open = target.hidden; detailRows.forEach((row) => {{ row.hidden = true; row.style.display = 'none'; }}); target.hidden = !open; target.style.display = open ? '' : 'none'; button.textContent = open ? 'Скрыть' : 'Детали'; }}));
+  if (clear) clear.addEventListener('click', clearInput);
+  filters.forEach((button) => button.addEventListener('click', () => onFilterClick(button.dataset.filterType || 'status', button.dataset.hlrFilter || 'ALL')));
+  rawChips.forEach((button) => button.addEventListener('click', () => onFilterClick('status', button.dataset.rawStatus || '')));
+  typeChips.forEach((button) => button.addEventListener('click', () => onFilterClick('type', button.dataset.numberType || '')));
+  loadColumnSettings();
   updateCounters();
   updateCountersUI();
   applyFilters();
