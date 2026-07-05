@@ -5516,7 +5516,12 @@ def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = Non
     return row.dataset.hlrStatus === status || row.dataset.liveStatus === status || (status === 'BAD_FORMAT' && row.dataset.finalResult === 'BAD_FORMAT') || (status === 'ERROR' && row.dataset.finalCategory === 'error');
   }}
   function matchesType(row, status) {{
-    return row.dataset.hlrTypeRaw === status || row.dataset.hlrType.toUpperCase() === status;
+    const normalized = (status || '').toUpperCase();
+    const raw = (row.dataset.hlrTypeRaw || '').toUpperCase();
+    const mapped = (row.dataset.hlrType || '').toUpperCase();
+    if (normalized === 'MOBILE') return raw === 'MOBILE' || mapped === 'MOBILE';
+    if (normalized === 'LANDLINE' || normalized === 'FIXED_LINE') return raw === 'LANDLINE' || raw === 'FIXED_LINE' || mapped === 'LANDLINE';
+    return raw === normalized || mapped === normalized;
   }}
   function rowMatchesActive(row) {{
     const mainOk = activeFilters.main.size === 0 || Array.from(activeFilters.main).some((filter) => matchesMain(row, filter));
@@ -5529,7 +5534,7 @@ def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = Non
     if (activeFilters.main.size) parts.push('статус: ' + Array.from(activeFilters.main).join(', '));
     if (activeFilters.type.size) parts.push('тип: ' + Array.from(activeFilters.type).join(', '));
     if (activeFilters.raw.size) parts.push('HLR: ' + Array.from(activeFilters.raw).join(', '));
-    return parts.length ? 'Показаны ' + visible + ' результаты; фильтр — ' + parts.join('; ') : 'Показаны все результаты';
+    return parts.length ? 'Показаны ' + visible + ' результаты; фильтр — ' + parts.join('; ') : 'Показаны ' + visible + ' результаты';
   }}
   function applyFilters() {{
     let visible = 0;
@@ -5543,10 +5548,12 @@ def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = Non
     }});
     filters.forEach((button) => {{
       const key = button.dataset.hlrFilter || 'all';
-      button.classList.toggle('active', key === 'all' ? (activeFilters.main.size === 0 && activeFilters.raw.size === 0 && activeFilters.type.size === 0) : activeFilters.main.has(key));
+      const selected = key === 'all' ? (activeFilters.main.size === 0 && activeFilters.raw.size === 0 && activeFilters.type.size === 0) : (key === 'mobile' ? activeFilters.type.has('MOBILE') : (key === 'fixed' ? activeFilters.type.has('LANDLINE') : activeFilters.main.has(key)));
+      button.classList.toggle('active', selected);
+      button.setAttribute('aria-pressed', selected ? 'true' : 'false');
     }});
-    rawChips.forEach((button) => button.classList.toggle('active', activeFilters.raw.has(button.dataset.rawStatus || '')));
-    typeChips.forEach((button) => button.classList.toggle('active', activeFilters.type.has(button.dataset.numberType || '')));
+    rawChips.forEach((button) => {{ const selected = activeFilters.raw.has(button.dataset.rawStatus || ''); button.classList.toggle('active', selected); button.setAttribute('aria-pressed', selected ? 'true' : 'false'); }});
+    typeChips.forEach((button) => {{ const selected = activeFilters.type.has(button.dataset.numberType || ''); button.classList.toggle('active', selected); button.setAttribute('aria-pressed', selected ? 'true' : 'false'); }});
     if (allEmpty) allEmpty.hidden = results.length > 0;
     if (filterEmpty) filterEmpty.hidden = results.length === 0 || visible > 0;
     if (caption) caption.textContent = activeCaption(visible);
@@ -5665,7 +5672,19 @@ def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = Non
   applyColumnSettings();
   if (input) {{ input.addEventListener('input', updateCounter); updateCounter(); }}
   if (clear && input) clear.addEventListener('click', () => {{ input.value = ''; updateCounter(); input.focus(); }});
-  filters.forEach((button) => button.addEventListener('click', () => {{ const value = button.dataset.hlrFilter || 'all'; if (value === 'all') {{ activeFilters.main.clear(); activeFilters.raw.clear(); activeFilters.type.clear(); }} else {{ toggleSet(activeFilters.main, value); }} applyFilters(); }}));
+  filters.forEach((button) => button.addEventListener('click', () => {{
+    const value = button.dataset.hlrFilter || 'all';
+    if (value === 'all') {{
+      activeFilters.main.clear(); activeFilters.raw.clear(); activeFilters.type.clear();
+    }} else if (value === 'mobile') {{
+      toggleSet(activeFilters.type, 'MOBILE');
+    }} else if (value === 'fixed') {{
+      toggleSet(activeFilters.type, 'LANDLINE');
+    }} else {{
+      toggleSet(activeFilters.main, value);
+    }}
+    applyFilters();
+  }}));
   rawChips.forEach((button) => button.addEventListener('click', () => {{ toggleSet(activeFilters.raw, button.dataset.rawStatus || ''); applyFilters(); }}));
   typeChips.forEach((button) => button.addEventListener('click', () => {{ toggleSet(activeFilters.type, button.dataset.numberType || ''); applyFilters(); }}));
   detailButtons.forEach((button) => button.addEventListener('click', () => {{ const target = document.getElementById(button.dataset.detailsTarget || ''); if (!target) return; const open = target.hidden; detailRows.forEach((row) => {{ row.hidden = true; }}); target.hidden = !open; button.textContent = open ? 'Скрыть' : 'Детали'; }}));
