@@ -5470,6 +5470,19 @@ def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = Non
   const defaultColumnOrder = columnData.map((column) => column[0]);
   const defaultVisible = columnData.filter((column) => Boolean(column[3])).map((column) => column[0]);
   const defaultWidths = Object.fromEntries(columnData.map((column) => [column[0], Number(column[2]) || 120]));
+  /*
+   * HLR state audit / single source of truth:
+   * - backendPayload.results is the backend response structure handed to the UI; each row may include
+   *   raw API fields plus __display values used only for cell text.
+   * - state.results is the immutable raw source for the current page load.
+   * - state.filteredResults is the only view-state array rendered by renderTable(), exported, and copied.
+   * - state.activeFilters.statuses and state.activeFilters.types are the only filter inputs.
+   * - Status buttons, raw-status chips, and type chips only update activeFilters through onFilterClick();
+   *   they never render, export, or copy data directly and never bypass applyFilters().
+   * - applyFilters() always derives state.filteredResults from state.results, then counters are recalculated.
+   * - renderTable(data) consumes state.filteredResults callers pass to it; table DOM is never rebuilt from state.results.
+   * - Main counters show filtered / raw token counts; debug caption shows filtered row count / raw row count.
+   */
   const state = {{
     results: [],
     filteredResults: [],
@@ -5523,9 +5536,9 @@ def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = Non
   function matchesStatus(row) {{ return !state.activeFilters.statuses.length || state.activeFilters.statuses.some((filter) => rowFilterTokens(row).has(filter)); }}
   function matchesType(row) {{ return !state.activeFilters.types.length || state.activeFilters.types.some((filter) => rowFilterTokens(row).has(filter)); }}
   function logFilterState() {{
-    console.log("RAW COUNT", state.results.length);
-    console.log("FILTERED COUNT", state.filteredResults.length);
-    console.log("ACTIVE FILTERS", JSON.parse(JSON.stringify(state.activeFilters)));
+    console.log("RAW:", state.results.length);
+    console.log("FILTERED:", state.filteredResults.length);
+    console.log("ACTIVE:", JSON.parse(JSON.stringify(state.activeFilters)));
   }}
   function applyFilters() {{
     state.filteredResults = state.results.filter((row) => matchesStatus(row) && matchesType(row));
@@ -5534,7 +5547,7 @@ def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = Non
   }}
   function countTokens(data) {{ const counters = {{ ALL: data.length }}; data.forEach((row) => rowFilterTokens(row).forEach((token) => {{ counters[token] = (counters[token] || 0) + 1; }})); return counters; }}
   function updateCounters(data = state.filteredResults) {{ state.counters = {{ raw: countTokens(state.results), filtered: countTokens(data) }}; }}
-  function updateCountersUI() {{ document.querySelectorAll('[data-counter-key]').forEach((node) => {{ const key = normalizeFilterValue(node.dataset.counterKey || 'ALL'); const raw = state.counters.raw?.[key] || 0; node.textContent = raw; node.title = 'Raw count (not affected by filters)'; }}); if (filterDebug) filterDebug.textContent = 'Filtered: ' + state.filteredResults.length + ' / Raw: ' + state.results.length; }}
+  function updateCountersUI() {{ document.querySelectorAll('[data-counter-key]').forEach((node) => {{ const key = normalizeFilterValue(node.dataset.counterKey || 'ALL'); const raw = state.counters.raw?.[key] || 0; const filtered = state.counters.filtered?.[key] || 0; node.textContent = filtered + ' / ' + raw; node.title = 'Filtered / raw count'; }}); if (filterDebug) filterDebug.textContent = 'Filtered: ' + state.filteredResults.length + ' / Raw: ' + state.results.length; }}
   function activeFilterList() {{ return state.activeFilters.statuses.concat(state.activeFilters.types); }}
   function syncFilterUi() {{
     filters.forEach((button) => {{ const key = normalizeFilterValue(button.dataset.hlrFilter || 'ALL'); const bucket = button.dataset.filterType === 'type' ? 'types' : 'statuses'; const selected = key === 'ALL' ? activeFilterList().length === 0 : state.activeFilters[bucket].includes(key); button.classList.toggle('active', selected); button.setAttribute('aria-pressed', selected ? 'true' : 'false'); }});
@@ -5604,8 +5617,8 @@ def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = Non
   if (input) {{ input.addEventListener('input', updateCounter); updateCounter(); }}
   if (clear) clear.addEventListener('click', clearInput);
   filters.forEach((button) => button.addEventListener('click', () => onFilterClick(button.dataset.filterType || 'status', button.dataset.hlrFilter || 'ALL')));
-  rawChips.forEach((button) => button.setAttribute('aria-disabled', 'true'));
-  typeChips.forEach((button) => button.setAttribute('aria-disabled', 'true'));
+  rawChips.forEach((button) => button.addEventListener('click', () => onFilterClick('status', button.dataset.rawStatus || '')));
+  typeChips.forEach((button) => button.addEventListener('click', () => onFilterClick('type', button.dataset.numberType || '')));
   state.results = Array.isArray(backendPayload.results) ? backendPayload.results.slice() : [];
   state.filteredResults = state.results.slice();
   loadColumnSettings();
