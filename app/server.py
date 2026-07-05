@@ -5286,6 +5286,21 @@ def hlr_filter_attr(value: object, default: str = "UNKNOWN") -> str:
     return text or default
 
 
+def hlr_number_type_filter_attr(row: dict[str, object]) -> str:
+    normalized_type = str(row.get("number_type") or "").strip().lower()
+    mapping = {
+        "mobile": "MOBILE",
+        "landline": "FIXED_LINE",
+        "mobile_or_landline": "MOBILE_OR_LANDLINE",
+        "voip": "VOIP",
+        "bad_format": "BAD_FORMAT",
+        "unknown": "UNKNOWN",
+    }
+    if normalized_type in mapping:
+        return mapping[normalized_type]
+    return hlr_filter_attr(row.get("number_type_raw") or normalized_type)
+
+
 def hlr_row_filter_attrs(row: dict[str, object], severity: str) -> str:
     format_status = str(row.get("format_status") or row.get("format") or "valid").strip().lower() or "unknown"
     filter_severity = {"green": "good", "red": "bad", "yellow": "warning", "orange": "warning"}.get(str(severity).lower(), str(severity or "unknown").lower())
@@ -5293,7 +5308,7 @@ def hlr_row_filter_attrs(row: dict[str, object], severity: str) -> str:
         "hlr-status": hlr_filter_attr(row.get("hlr_status_raw") or row.get("hlr_status")),
         "live-status": hlr_filter_attr(row.get("live_status_raw") or row.get("live_status")),
         "final-result": hlr_filter_attr(row.get("final_result")),
-        "number-type": hlr_filter_attr(row.get("number_type_raw") or row.get("number_type")),
+        "number-type": hlr_number_type_filter_attr(row),
         "format-status": format_status,
         "severity": filter_severity.strip() or "unknown",
     }
