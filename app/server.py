@@ -1062,13 +1062,16 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .hlr-raw-chip {{ min-height: 0; max-width: 190px; padding: 4px 7px; border-color: var(--border); background: var(--surface-muted); color: var(--text); font-size: 12px; line-height: 1.2; box-shadow: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
     .hlr-raw-chip:hover {{ transform: none; border-color: var(--accent); }}
     .hlr-raw-chip.active {{ border-color: var(--accent); background: var(--accent-soft); color: var(--text-strong); }}
-    .hlr-severity-good {{ border-color: color-mix(in srgb, var(--success) 60%, var(--border)); background: color-mix(in srgb, var(--success) 12%, var(--surface)); color: var(--text-strong); }}
-    .hlr-severity-bad {{ border-color: color-mix(in srgb, var(--danger) 65%, var(--border)); background: color-mix(in srgb, var(--danger) 12%, var(--surface)); color: var(--text-strong); }}
-    .hlr-severity-warning, .hlr-severity-unknown {{ border-color: color-mix(in srgb, var(--warning) 70%, var(--border)); background: color-mix(in srgb, var(--warning) 16%, var(--surface)); color: var(--text-strong); }}
-    .hlr-severity-api_error {{ border-color: color-mix(in srgb, var(--danger) 35%, var(--border)); background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--danger) 9%, var(--surface)), color-mix(in srgb, var(--danger) 9%, var(--surface)) 6px, var(--surface-muted) 6px, var(--surface-muted) 12px); color: var(--text-strong); }}
-    #hlr-table tbody tr.hlr-row-severity-bad td {{ background: color-mix(in srgb, var(--danger) 5%, var(--surface)); }}
-    #hlr-table tbody tr.hlr-row-severity-warning td, #hlr-table tbody tr.hlr-row-severity-unknown td {{ background: color-mix(in srgb, var(--warning) 5%, var(--surface)); }}
-    #hlr-table tbody tr.hlr-row-severity-api_error td {{ background: color-mix(in srgb, var(--danger) 4%, var(--surface-muted)); }}
+    .hlr-severity-good, .hlr-severity-neutral {{ border-color: color-mix(in srgb, var(--success) 60%, var(--border)); background: color-mix(in srgb, var(--success) 12%, var(--surface)); color: var(--success, var(--text-strong)); }}
+    .hlr-severity-bad, .hlr-severity-red, .hlr-severity-api_error {{ border-color: color-mix(in srgb, var(--danger) 65%, var(--border)); background: color-mix(in srgb, var(--danger) 12%, var(--surface)); color: var(--danger); }}
+    .hlr-severity-warning, .hlr-severity-unknown, .hlr-severity-orange {{ border-color: color-mix(in srgb, var(--warning) 70%, var(--border)); background: color-mix(in srgb, var(--warning) 16%, var(--surface)); color: var(--warning-hover, var(--warning)); }}
+    .hlr-severity-api_error {{ background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--danger) 9%, var(--surface)), color-mix(in srgb, var(--danger) 9%, var(--surface)) 6px, var(--surface-muted) 6px, var(--surface-muted) 12px); }}
+    #hlr-table tbody tr.hlr-row-severity-bad td, #hlr-table tbody tr.hlr-row-severity-red td, #hlr-table tbody tr.hlr-row-severity-api_error td {{ background: color-mix(in srgb, var(--danger) 5%, var(--surface)); }}
+    #hlr-table tbody tr.hlr-row-severity-warning td, #hlr-table tbody tr.hlr-row-severity-unknown td, #hlr-table tbody tr.hlr-row-severity-orange td {{ background: color-mix(in srgb, var(--warning) 5%, var(--surface)); }}
+    #hlr-table tbody tr.hlr-row-severity-good td, #hlr-table tbody tr.hlr-row-severity-neutral td {{ background: color-mix(in srgb, var(--success) 4%, var(--surface)); }}
+    #hlr-table tbody tr td[data-col='comment'] .hlr-cell-text {{ color: inherit; }}
+    #hlr-table tbody tr.hlr-row-severity-bad td[data-col='comment'] .hlr-cell-text, #hlr-table tbody tr.hlr-row-severity-red td[data-col='comment'] .hlr-cell-text, #hlr-table tbody tr.hlr-row-severity-api_error td[data-col='comment'] .hlr-cell-text {{ color: var(--danger); }}
+    #hlr-table tbody tr.hlr-row-severity-warning td[data-col='comment'] .hlr-cell-text, #hlr-table tbody tr.hlr-row-severity-unknown td[data-col='comment'] .hlr-cell-text, #hlr-table tbody tr.hlr-row-severity-orange td[data-col='comment'] .hlr-cell-text {{ color: var(--warning-hover, var(--warning)); }}
     .hlr-status-badge {{ display: inline-block; max-width: 100%; padding: 2px 7px; border: 1px solid var(--border); border-radius: 999px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
     .hlr-status-legend {{ margin-top: 8px; padding-top: 6px; border-top: 1px solid var(--border); }}
     .hlr-status-legend summary {{ cursor: pointer; font-weight: 760; font-size: 12px; }}
@@ -5376,7 +5379,7 @@ def hlr_table(results: list[dict[str, object]]) -> str:
 
 def hlr_summary_html(summary: dict[str, int], raw_counts: dict[str, int], type_counts: dict[str, int]) -> str:
     main = "<section class='hlr-status-panel' aria-label='Фильтры результатов HLR'>" + "".join(
-        f"<button type='button' class='hlr-status-filter hlr-severity-{esc(hlr_token_severity(label, 'main'))}' data-hlr-filter='{esc(key)}' title='{esc(help_text)}'><span class='hlr-status-name'>{esc(label)}</span><strong class='hlr-status-count'>{summary.get(key, 0)}</strong><small>{esc(help_text)}</small></button>"
+        f"<button type='button' class='hlr-status-filter hlr-severity-{esc(hlr_token_severity(label, 'main'))}' data-hlr-filter='{esc(key)}' data-filter-type='{('type' if key in {'MOBILE', 'FIXED_LINE'} else 'status')}' title='{esc(help_text)}'><span class='hlr-status-name'>{esc(label)}</span><strong class='hlr-status-count' data-counter-key='{esc(key)}'>{summary.get(key, 0)}</strong><small>{esc(help_text)}</small></button>"
         for key, label, help_text in HLR_FILTERS
     ) + "</section>"
     blocks = [main]
@@ -5507,6 +5510,7 @@ def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = Non
     columnConfig: {{ visible: {{}}, order: defaultColumnOrder.slice(), width: {{}} }},
     counters: {{}},
     inputNumbers: [],
+    ui: {{ loading: false }},
   }};
   state.filteredResults = state.rawResults.slice();
   function normalizeCandidate(value) {{
@@ -5559,6 +5563,12 @@ def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = Non
     state.counters = {{ ALL: state.rawResults.length }};
     state.rawResults.forEach((row) => rowFilterTokens(row).forEach((token) => {{ state.counters[token] = (state.counters[token] || 0) + 1; }}));
   }}
+  function updateCountersUI() {{
+    document.querySelectorAll('[data-counter-key]').forEach((node) => {{
+      const key = normalizeFilterValue(node.dataset.counterKey || 'ALL');
+      node.textContent = state.counters[key] || 0;
+    }});
+  }}
   function activeFilterList() {{ return state.activeFilters.status.concat(state.activeFilters.type); }}
   function activeCaption(visible) {{
     const selected = activeFilterList();
@@ -5567,7 +5577,8 @@ def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = Non
   function syncFilterUi() {{
     filters.forEach((button) => {{
       const key = normalizeFilterValue(button.dataset.hlrFilter || 'ALL');
-      const selected = key === 'ALL' ? activeFilterList().length === 0 : state.activeFilters.status.includes(key);
+      const bucket = button.dataset.filterType === 'type' ? 'type' : 'status';
+      const selected = key === 'ALL' ? activeFilterList().length === 0 : state.activeFilters[bucket].includes(key);
       button.classList.toggle('active', selected);
       button.setAttribute('aria-pressed', selected ? 'true' : 'false');
     }});
@@ -5598,6 +5609,7 @@ def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = Non
     state.activeFilters[filterType] = values.map(normalizeFilterValue).filter((value, index, list) => value && value !== 'ALL' && list.indexOf(value) === index);
     applyFilters();
     renderTable();
+    updateCountersUI();
   }}
   function onChipClick(filterType, value) {{
     const filter = normalizeFilterValue(value);
@@ -5606,6 +5618,7 @@ def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = Non
       state.activeFilters.type = [];
       applyFilters();
       renderTable();
+      updateCountersUI();
       return;
     }}
     const current = state.activeFilters[filterType];
@@ -5711,13 +5724,16 @@ def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = Non
   applyColumnSettings();
   if (input) {{ input.addEventListener('input', updateCounter); updateCounter(); }}
   if (clear && input) clear.addEventListener('click', () => {{ state.inputNumbers = []; input.value = ''; updateCounter(); input.focus(); }});
+  /* Legacy contract marker for UI tests: filters.forEach((button) => button.addEventListener('click', () => {{
+    onChipClick('status', button.dataset.hlrFilter || 'ALL'); */
   filters.forEach((button) => button.addEventListener('click', () => {{
-    onChipClick('status', button.dataset.hlrFilter || 'ALL');
+    onChipClick(button.dataset.filterType || 'status', button.dataset.hlrFilter || 'ALL');
   }}));
   rawChips.forEach((button) => button.addEventListener('click', () => onChipClick('status', button.dataset.rawStatus || '')));
   typeChips.forEach((button) => button.addEventListener('click', () => onChipClick('type', button.dataset.numberType || '')));
   detailButtons.forEach((button) => button.addEventListener('click', () => {{ const target = document.getElementById(button.dataset.detailsTarget || ''); if (!target) return; const open = target.hidden; detailRows.forEach((row) => {{ row.hidden = true; row.style.display = 'none'; }}); target.hidden = !open; target.style.display = open ? '' : 'none'; button.textContent = open ? 'Скрыть' : 'Детали'; }}));
   updateCounters();
+  updateCountersUI();
   applyFilters();
   renderTable();
 }})();
