@@ -5440,6 +5440,7 @@ def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = Non
     write_allowed = can_write("hlr")
     export_allowed = can_export("hlr") and bool(results)
     results_json = esc(json.dumps(results, ensure_ascii=False))
+    display_results_json = esc(json.dumps([hlr_display_row(row) for row in results], ensure_ascii=False))
     notice = f"<div class='flash error'>{esc(error)}</div>" if error else ""
     demo_badge = "<span class='badge'>Demo mode</span><span class='muted hlr-demo-note'>Результаты сгенерированы для проверки интерфейса. Реальный HLR API не вызывался.</span>" if is_demo_mode else ""
     export_form = f"<form method='post' action='/hlr/export.csv' id='hlr-export-form'><input type='hidden' name='results_json' id='hlr-export-results' value='{results_json}'><button type='submit' {'disabled' if not export_allowed else ''}>Экспорт CSV</button></form>"
@@ -5472,6 +5473,7 @@ def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = Non
   {hlr_table(results)}
 </section>
 <script type='application/json' id='hlr-results-data'>{esc(json.dumps(results, ensure_ascii=False))}</script>
+<script type='application/json' id='hlr-display-results-data'>{display_results_json}</script>
 <script>
 (function() {{
   const input = document.getElementById('hlr-numbers');
@@ -5492,15 +5494,21 @@ def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = Non
   const copyColumnButton = document.querySelector('[data-hlr-copy-column]');
   const copyColumnSelect = document.querySelector('[data-hlr-copy-column-select]');
   const copyFeedback = document.querySelector('[data-hlr-copy-feedback]');
-  const columnStorageKey = 'hlr-table-columns-v1';
-  const widthStorageKey = 'hlr-table-widths-v1';
-  const orderStorageKey = 'hlr-table-order-v1';
-  let allResults = [];
-  try {{ allResults = JSON.parse(document.getElementById('hlr-results-data')?.textContent || '[]'); }} catch (_) {{ allResults = []; }}
-  let filteredResults = allResults.slice();
-  let activeFilters = [];
-  let columnConfig = [];
-  let sortState = {{ key: '', direction: 'asc' }};
+  const columnConfigStorageKey = 'hlr_column_config';
+  const defaultColumnOrder = Array.from(document.querySelectorAll('#hlr-table thead th[data-col]')).map((cell) => cell.dataset.col || '').filter(Boolean);
+  let rawResults = [];
+  let displayResults = [];
+  try {{ rawResults = JSON.parse(document.getElementById('hlr-results-data')?.textContent || '[]'); }} catch (_) {{ rawResults = []; }}
+  try {{ displayResults = JSON.parse(document.getElementById('hlr-display-results-data')?.textContent || '[]'); }} catch (_) {{ displayResults = []; }}
+  const state = {{
+    rawResults: rawResults.map((row, index) => Object.assign({{ __index: index, __display: displayResults[index] || {{}} }}, row)),
+    filteredResults: [],
+    activeFilters: {{ status: [], type: [] }},
+    columnConfig: {{ visible: {{}}, order: defaultColumnOrder.slice(), width: {{}} }},
+    counters: {{}},
+    inputNumbers: [],
+  }};
+  state.filteredResults = state.rawResults.slice();
   function normalizeCandidate(value) {{
     const raw = (value || '').trim();
     if (!raw) return '';
@@ -5511,7 +5519,8 @@ def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = Non
   }}
   function updateCounter() {{
     if (!input || !counter) return;
-    const unique = new Set(input.value.split(/\r?\n/).map(normalizeCandidate).filter(Boolean));
+    state.inputNumbers = input.value.split(/\r?\n/).map(normalizeCandidate).filter(Boolean);
+    const unique = new Set(state.inputNumbers);
     const count = unique.size;
     counter.textContent = count + ' / 500';
     counter.style.color = count > 500 ? 'var(--danger)' : '';
@@ -5532,29 +5541,40 @@ def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = Non
     if ((row.final_category || '').toString().toLowerCase() === 'ok') tokens.add('OK');
     return tokens;
   }}
-  function applyFilters(sourceRows, filtersList) {{
-    if (!filtersList.length) return sourceRows.slice();
-    const normalized = filtersList.map(normalizeFilterValue).filter(Boolean);
-    return sourceRows.filter((row) => {{
-      const tokens = rowFilterTokens(row);
-      return normalized.some((filter) => tokens.has(filter));
-    }});
+  function matchStatus(row) {{
+    if (!state.activeFilters.status.length) return true;
+    const tokens = rowFilterTokens(row);
+    return state.activeFilters.status.some((filter) => tokens.has(filter));
   }}
+  function matchType(row) {{
+    if (!state.activeFilters.type.length) return true;
+    const tokens = rowFilterTokens(row);
+    return state.activeFilters.type.some((filter) => tokens.has(filter));
+  }}
+  function applyFilters() {{
+    state.filteredResults = state.rawResults.filter((row) => matchStatus(row) && matchType(row));
+  }}
+  function updateCounters() {{
+    state.counters = {{ ALL: state.rawResults.length }};
+    state.rawResults.forEach((row) => rowFilterTokens(row).forEach((token) => {{ state.counters[token] = (state.counters[token] || 0) + 1; }}));
+  }}
+  function activeFilterList() {{ return state.activeFilters.status.concat(state.activeFilters.type); }}
   function activeCaption(visible) {{
-    return activeFilters.length ? 'Показаны ' + visible + ' результаты; фильтр — ' + activeFilters.join(', ') : 'Показаны ' + visible + ' результаты';
+    const selected = activeFilterList();
+    return selected.length ? 'Показаны ' + visible + ' результаты; фильтр — ' + selected.join(', ') : 'Показаны ' + visible + ' результаты';
   }}
   function syncFilterUi() {{
     filters.forEach((button) => {{
       const key = normalizeFilterValue(button.dataset.hlrFilter || 'ALL');
-      const selected = key === 'ALL' ? activeFilters.length === 0 : activeFilters.includes(key);
+      const selected = key === 'ALL' ? activeFilterList().length === 0 : state.activeFilters.status.includes(key);
       button.classList.toggle('active', selected);
       button.setAttribute('aria-pressed', selected ? 'true' : 'false');
     }});
-    rawChips.forEach((button) => {{ const selected = activeFilters.includes(normalizeFilterValue(button.dataset.rawStatus || '')); button.classList.toggle('active', selected); button.setAttribute('aria-pressed', selected ? 'true' : 'false'); }});
-    typeChips.forEach((button) => {{ const selected = activeFilters.includes(normalizeFilterValue(button.dataset.numberType || '')); button.classList.toggle('active', selected); button.setAttribute('aria-pressed', selected ? 'true' : 'false'); }});
+    rawChips.forEach((button) => {{ const selected = state.activeFilters.status.includes(normalizeFilterValue(button.dataset.rawStatus || '')); button.classList.toggle('active', selected); button.setAttribute('aria-pressed', selected ? 'true' : 'false'); }});
+    typeChips.forEach((button) => {{ const selected = state.activeFilters.type.includes(normalizeFilterValue(button.dataset.numberType || '')); button.classList.toggle('active', selected); button.setAttribute('aria-pressed', selected ? 'true' : 'false'); }});
   }}
-  function renderTable() {{
-    const visibleIndexes = new Set(filteredResults.map((row) => allResults.indexOf(row)));
+  function renderTable(resultsToRender) {{
+    const visibleIndexes = new Set(resultsToRender.map((row) => row.__index));
     rows.forEach((row, index) => {{
       const show = visibleIndexes.has(index);
       row.hidden = !show;
@@ -5562,20 +5582,22 @@ def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = Non
       if (details && details.classList.contains('hlr-details-row') && !show) details.hidden = true;
     }});
     syncFilterUi();
-    if (allEmpty) allEmpty.hidden = allResults.length > 0;
-    if (filterEmpty) filterEmpty.hidden = allResults.length === 0 || filteredResults.length > 0;
-    if (caption) caption.textContent = activeCaption(filteredResults.length);
-    if (exportInput) exportInput.value = JSON.stringify(filteredResults);
+    if (allEmpty) allEmpty.hidden = state.rawResults.length > 0;
+    if (filterEmpty) filterEmpty.hidden = state.rawResults.length === 0 || state.filteredResults.length > 0;
+    if (caption) caption.textContent = activeCaption(state.filteredResults.length);
+    if (exportInput) exportInput.value = JSON.stringify(state.filteredResults.map((row) => {{ const copy = Object.assign({{}}, row); delete copy.__index; delete copy.__display; return copy; }}));
   }}
-  function setActiveFilters(nextFilters) {{
-    activeFilters = nextFilters.map(normalizeFilterValue).filter((value, index, list) => value && value !== 'ALL' && list.indexOf(value) === index);
-    filteredResults = applyFilters(allResults, activeFilters);
-    renderTable();
+  function setFilter(filterType, values) {{
+    state.activeFilters[filterType] = values.map(normalizeFilterValue).filter((value, index, list) => value && value !== 'ALL' && list.indexOf(value) === index);
+    applyFilters();
+    renderTable(state.filteredResults);
+    updateCounters();
   }}
-  function toggleFilter(value) {{
+  function onChipClick(filterType, value) {{
     const filter = normalizeFilterValue(value);
-    if (!filter || filter === 'ALL') return setActiveFilters([]);
-    setActiveFilters(activeFilters.includes(filter) ? activeFilters.filter((item) => item !== filter) : activeFilters.concat(filter));
+    if (!filter || filter === 'ALL') return setFilter('status', []), setFilter('type', []);
+    const current = state.activeFilters[filterType];
+    setFilter(filterType, current.includes(filter) ? current.filter((item) => item !== filter) : current.concat(filter));
   }}
   function readJsonStorage(key, fallback) {{
     try {{ return JSON.parse(window.localStorage.getItem(key) || '') || fallback; }} catch (_) {{ return fallback; }}
@@ -5590,7 +5612,6 @@ def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = Non
   function setColumnVisible(key, visible) {{
     document.querySelectorAll('#hlr-table [data-col="' + CSS.escape(key) + '"], #hlr-table col[data-col="' + CSS.escape(key) + '"]').forEach((item) => {{ item.hidden = !visible; }});
   }}
-  function defaultColumnOrder() {{ return Array.from(document.querySelectorAll('#hlr-table thead th[data-col]')).map((cell) => cell.dataset.col || '').filter(Boolean); }}
   function moveElement(parent, selector, key) {{ const item = parent.querySelector(selector + '[data-col="' + CSS.escape(key) + '"]'); if (item) parent.appendChild(item); }}
   function applyColumnOrder(order) {{
     if (!order || !order.length) return;
@@ -5604,15 +5625,16 @@ def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = Non
     if (list) order.forEach((key) => {{ const item = list.querySelector('[data-hlr-column-row="' + CSS.escape(key) + '"]'); if (item) list.appendChild(item); }});
   }}
   function applyColumnSettings() {{
-    applyColumnOrder(readJsonStorage(orderStorageKey, []));
-    const visible = readJsonStorage(columnStorageKey, {{}});
+    state.columnConfig = Object.assign(state.columnConfig, readJsonStorage(columnConfigStorageKey, {{}}));
+    applyColumnOrder(state.columnConfig.order || []);
+    const visible = state.columnConfig.visible || {{}};
     columnToggles.forEach((input) => {{
       const key = input.dataset.hlrColumnToggle || '';
       const isVisible = Object.prototype.hasOwnProperty.call(visible, key) ? Boolean(visible[key]) : input.checked;
       input.checked = isVisible;
       setColumnVisible(key, isVisible);
     }});
-    const widths = readJsonStorage(widthStorageKey, {{}});
+    const widths = state.columnConfig.width || {{}};
     columnWidths.forEach((input) => {{
       const key = input.dataset.hlrColumnWidth || '';
       const value = widths[key] || input.value;
@@ -5621,32 +5643,31 @@ def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = Non
     }});
   }}
   columnToggles.forEach((input) => input.addEventListener('change', () => {{
-    const state = readJsonStorage(columnStorageKey, {{}});
-    state[input.dataset.hlrColumnToggle || ''] = input.checked;
-    writeJsonStorage(columnStorageKey, state);
+    state.columnConfig.visible[input.dataset.hlrColumnToggle || ''] = input.checked;
+    writeJsonStorage(columnConfigStorageKey, state.columnConfig);
     setColumnVisible(input.dataset.hlrColumnToggle || '', input.checked);
   }}));
   columnWidths.forEach((input) => input.addEventListener('change', () => {{
-    const state = readJsonStorage(widthStorageKey, {{}});
     const value = Math.max(70, Math.min(520, Number(input.value) || 120));
     input.value = value;
-    state[input.dataset.hlrColumnWidth || ''] = value;
-    writeJsonStorage(widthStorageKey, state);
+    state.columnConfig.width[input.dataset.hlrColumnWidth || ''] = value;
+    writeJsonStorage(columnConfigStorageKey, state.columnConfig);
     document.querySelectorAll('#hlr-table col[data-col="' + CSS.escape(input.dataset.hlrColumnWidth || '') + '"]').forEach((col) => {{ col.style.width = value + 'px'; }});
   }}));
   document.querySelectorAll('[data-hlr-column-move]').forEach((button) => button.addEventListener('click', () => {{
     const row = button.closest('[data-hlr-column-row]');
     const key = row?.dataset.hlrColumnRow || '';
-    const order = defaultColumnOrder();
+    const order = (state.columnConfig.order && state.columnConfig.order.length ? state.columnConfig.order : defaultColumnOrder).slice();
     const index = order.indexOf(key);
     const delta = button.dataset.hlrColumnMove === 'up' ? -1 : 1;
     const next = index + delta;
     if (index < 0 || next < 0 || next >= order.length) return;
     [order[index], order[next]] = [order[next], order[index]];
-    writeJsonStorage(orderStorageKey, order);
+    state.columnConfig.order = order;
+    writeJsonStorage(columnConfigStorageKey, state.columnConfig);
     applyColumnOrder(order);
   }}));
-  document.querySelector('[data-hlr-column-reset]')?.addEventListener('click', () => {{ window.localStorage.removeItem(columnStorageKey); window.localStorage.removeItem(widthStorageKey); window.localStorage.removeItem(orderStorageKey); window.location.reload(); }});
+  document.querySelector('[data-hlr-column-reset]')?.addEventListener('click', () => {{ window.localStorage.removeItem(columnConfigStorageKey); window.location.reload(); }});
   document.querySelectorAll('[data-hlr-resize]').forEach((handle) => handle.addEventListener('pointerdown', (event) => {{
     event.preventDefault();
     const key = handle.dataset.hlrResize || '';
@@ -5664,28 +5685,29 @@ def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = Non
     const up = () => {{
       document.removeEventListener('pointermove', move); document.removeEventListener('pointerup', up);
       th?.classList.remove('is-drag-resizing'); document.body.classList.remove('is-resizing-column');
-      const state = readJsonStorage(widthStorageKey, {{}});
-      state[key] = Number.parseFloat(col?.style.width || '') || startWidth;
-      writeJsonStorage(widthStorageKey, state);
+      state.columnConfig.width[key] = Number.parseFloat(col?.style.width || '') || startWidth;
+      writeJsonStorage(columnConfigStorageKey, state.columnConfig);
     }};
     document.addEventListener('pointermove', move); document.addEventListener('pointerup', up);
   }}));
   copyColumnButton?.addEventListener('click', async () => {{
     const key = copyColumnSelect?.value || 'normalized_number';
-    const values = filteredResults.map((row) => (row[key] ?? '').toString());
+    const values = state.filteredResults.map((row) => ((row.__display && row.__display[key] !== undefined ? row.__display[key] : row[key]) ?? '').toString());
     await copyText(values.join('\n'));
     if (copyFeedback) copyFeedback.textContent = 'Скопировано: ' + values.length + ' значений';
   }});
   applyColumnSettings();
   if (input) {{ input.addEventListener('input', updateCounter); updateCounter(); }}
-  if (clear && input) clear.addEventListener('click', () => {{ input.value = ''; updateCounter(); input.focus(); }});
+  if (clear && input) clear.addEventListener('click', () => {{ state.inputNumbers = []; input.value = ''; updateCounter(); input.focus(); }});
   filters.forEach((button) => button.addEventListener('click', () => {{
-    toggleFilter(button.dataset.hlrFilter || 'ALL');
+    onChipClick('status', button.dataset.hlrFilter || 'ALL');
   }}));
-  rawChips.forEach((button) => button.addEventListener('click', () => toggleFilter(button.dataset.rawStatus || '')));
-  typeChips.forEach((button) => button.addEventListener('click', () => toggleFilter(button.dataset.numberType || '')));
+  rawChips.forEach((button) => button.addEventListener('click', () => onChipClick('status', button.dataset.rawStatus || '')));
+  typeChips.forEach((button) => button.addEventListener('click', () => onChipClick('type', button.dataset.numberType || '')));
   detailButtons.forEach((button) => button.addEventListener('click', () => {{ const target = document.getElementById(button.dataset.detailsTarget || ''); if (!target) return; const open = target.hidden; detailRows.forEach((row) => {{ row.hidden = true; }}); target.hidden = !open; button.textContent = open ? 'Скрыть' : 'Детали'; }}));
-  setActiveFilters([]);
+  updateCounters();
+  applyFilters();
+  renderTable(state.filteredResults);
 }})();
 </script>
 """
