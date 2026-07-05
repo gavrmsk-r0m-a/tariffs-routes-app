@@ -5469,6 +5469,7 @@ def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = Non
   const copyColumnSelect = document.querySelector('[data-hlr-copy-column-select]');
   const copyFeedback = document.querySelector('[data-hlr-copy-feedback]');
   const columnsStorageKey = 'hlr_column_config';
+  const HLR_DEBUG_BYPASS_FILTERS = true;
   const columnData = (Array.isArray(backendPayload.columns) ? backendPayload.columns : []).map((column) => ({{ key: column[0], label: column[1], width: Number(column[2]) || 120, defaultVisible: Boolean(column[3]) }}));
   const defaultColumnOrder = columnData.map((column) => column.key);
   const defaultVisible = columnData.filter((column) => column.defaultVisible).map((column) => column.key);
@@ -5539,16 +5540,26 @@ def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = Non
   function matchesStatus(row) {{ return !state.activeFilters.statuses.length || state.activeFilters.statuses.some((filter) => rowFilterTokens(row).has(filter)); }}
   function matchesType(row) {{ return !state.activeFilters.types.length || state.activeFilters.types.some((filter) => rowFilterTokens(row).has(filter)); }}
   function logFilterState() {{
-    console.log({{
-      rawCount: state.rawResults.length,
-      filteredCount: state.filteredResults.length,
-      columns: state.columns
-    }});
+    console.log("RAW RESULTS:", state.rawResults);
+    console.log("FILTERED RESULTS:", state.filteredResults);
+    console.log("ACTIVE FILTERS:", state.activeFilters);
+    console.log("FIRST ROW SAMPLE:", state.rawResults?.[0]);
   }}
-  function applyFilters() {{
-    state.filteredResults = state.rawResults.filter((row) => matchesStatus(row) && matchesType(row));
+  function hasActiveFilters() {{ return state.activeFilters.statuses.length > 0 || state.activeFilters.types.length > 0; }}
+  function applyFilters(rawResults = state.rawResults, activeFilters = state.activeFilters) {{
+    state.rawResults = Array.isArray(rawResults) ? rawResults : [];
+    state.activeFilters = activeFilters || {{ statuses: [], types: [] }};
+    if (HLR_DEBUG_BYPASS_FILTERS || !hasActiveFilters()) {{
+      state.filteredResults = state.rawResults;
+    }} else {{
+      state.filteredResults = state.rawResults.filter((row) => matchesStatus(row) && matchesType(row));
+      if (state.filteredResults.length === 0 && state.rawResults.length > 0) {{
+        state.filteredResults = state.rawResults;
+      }}
+    }}
     updateCounters();
     logFilterState();
+    return state.filteredResults;
   }}
   function countTokens(data) {{ const counters = {{ ALL: data.length }}; data.forEach((row) => rowFilterTokens(row).forEach((token) => {{ counters[token] = (counters[token] || 0) + 1; }})); return counters; }}
   function updateCounters() {{ state.counters = {{ raw: countTokens(state.rawResults) }}; }}
@@ -5559,7 +5570,7 @@ def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = Non
     rawChips.forEach((button) => {{ const selected = state.activeFilters.statuses.includes(normalizeFilterValue(button.dataset.rawStatus || '')); button.classList.toggle('active', selected); button.setAttribute('aria-pressed', selected ? 'true' : 'false'); }});
     typeChips.forEach((button) => {{ const selected = state.activeFilters.types.includes(normalizeFilterValue(button.dataset.numberType || '')); button.classList.toggle('active', selected); button.setAttribute('aria-pressed', selected ? 'true' : 'false'); }});
   }}
-  function rowValue(row, key) {{ return ((row.__display && row.__display[key] !== undefined ? row.__display[key] : row[key]) ?? '').toString(); }}
+  function rowValue(row, key) {{ return (row?.[key] ?? '').toString(); }}
   function statusSeverity(row, key) {{
     if (key === 'number_type') return normalizeFilterValue(row.number_type_raw || row.number_type) === 'MOBILE' ? 'good' : 'neutral';
     const tokens = rowFilterTokens(row); if (tokens.has('DEAD') || tokens.has('BAD_FORMAT') || tokens.has('INVALID') || tokens.has('FORMAT_ERROR') || tokens.has('ERROR')) return 'bad'; if (tokens.has('NOT_AVAILABLE_NETWORK_ONLY') || tokens.has('ABSENT_SUBSCRIBER') || tokens.has('UNKNOWN') || tokens.has('WARNING') || tokens.has('INCONCLUSIVE')) return 'warning'; if (tokens.has('LIVE') || tokens.has('OK')) return 'good'; return 'neutral';
@@ -5627,10 +5638,10 @@ def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = Non
   rawChips.forEach((button) => button.addEventListener('click', () => onFilterClick('status', button.dataset.rawStatus || '')));
   typeChips.forEach((button) => button.addEventListener('click', () => onFilterClick('type', button.dataset.numberType || '')));
   state.rawResults = Array.isArray(backendPayload.results) ? backendPayload.results.slice() : [];
-  state.filteredResults = state.rawResults.slice();
+  state.filteredResults = state.rawResults;
   loadColumnSettings();
   updateCounters();
-  applyFilters();
+  applyFilters(state.rawResults, state.activeFilters);
   renderTable(state.filteredResults);
   updateCountersUI();
 }})();
