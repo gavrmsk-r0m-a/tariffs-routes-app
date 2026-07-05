@@ -5506,8 +5506,8 @@ def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = Non
     }}
   }};
   function uniqueValues(values) {{ return values.filter((value, index, list) => value && list.indexOf(value) === index); }}
-  function isColumnVisible(key) {{ return state.columns.visible.includes(key); }}
-  function setColumnVisible(key, visible) {{ state.columns.visible = visible ? uniqueValues(state.columns.visible.concat(key)) : state.columns.visible.filter((item) => item !== key); }}
+  function isColumnVisible(key) {{ return true; }}
+  function setColumnVisible(key, visible) {{ console.log('HLR DEBUG: column visibility is inactive', key, visible); }}
   function normalizeCandidate(value) {{
     const raw = (value || '').trim();
     if (!raw) return '';
@@ -5540,22 +5540,21 @@ def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = Non
   function matchesStatus(row) {{ return !state.activeFilters.statuses.length || state.activeFilters.statuses.some((filter) => rowFilterTokens(row).has(filter)); }}
   function matchesType(row) {{ return !state.activeFilters.types.length || state.activeFilters.types.some((filter) => rowFilterTokens(row).has(filter)); }}
   function logFilterState() {{
-    console.log("RAW RESULTS:", state.rawResults);
-    console.log("FILTERED RESULTS:", state.filteredResults);
-    console.log("ACTIVE FILTERS:", state.activeFilters);
-    console.log("FIRST ROW SAMPLE:", state.rawResults?.[0]);
+    console.log("RAW LENGTH", state.rawResults?.length);
+    console.log("FILTERED LENGTH", state.filteredResults?.length);
+    console.log("RAW SAMPLE ROW", state.rawResults?.[0]);
+    console.log("COLUMN SCHEMA", state.columns);
+    if ((!state.filteredResults || state.filteredResults.length === 0) && state.rawResults?.length > 0) {{
+      console.log("HLR DEBUG: filteredResults is empty even though rawResults has rows; filters are bypassed, so check renderer/mapping next.");
+    }}
   }}
-  function hasActiveFilters() {{ return state.activeFilters.statuses.length > 0 || state.activeFilters.types.length > 0; }}
+  function hasActiveFilters() {{ return false; }}
   function applyFilters(rawResults = state.rawResults, activeFilters = state.activeFilters) {{
     state.rawResults = Array.isArray(rawResults) ? rawResults : [];
-    state.activeFilters = activeFilters || {{ statuses: [], types: [] }};
-    if (HLR_DEBUG_BYPASS_FILTERS || !hasActiveFilters()) {{
-      state.filteredResults = state.rawResults;
-    }} else {{
-      state.filteredResults = state.rawResults.filter((row) => matchesStatus(row) && matchesType(row));
-      if (state.filteredResults.length === 0 && state.rawResults.length > 0) {{
-        state.filteredResults = state.rawResults;
-      }}
+    state.activeFilters = {{ statuses: [], types: [] }};
+    state.filteredResults = state.rawResults;
+    if (state.filteredResults.length === 0) {{
+      console.log("HLR DEBUG: filteredResults is empty because rawResults length is", state.rawResults.length, "and filters are disabled.");
     }}
     updateCounters();
     logFilterState();
@@ -5578,10 +5577,7 @@ def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = Non
   function appendText(parent, text) {{ parent.appendChild(document.createTextNode(text)); }}
   function buildDetails(row) {{ const wrap = document.createElement('div'); wrap.className = 'hlr-details-grid'; const pre = document.createElement('pre'); pre.className = 'hlr-raw-json'; pre.textContent = JSON.stringify(row.raw_api_item_sanitized || row, null, 2); wrap.appendChild(pre); return wrap; }}
   function applyColumnDom() {{
-    const order = state.columns.order.length ? state.columns.order : defaultColumnOrder;
-    order.forEach((key) => {{ table?.querySelectorAll('[data-col="' + CSS.escape(key) + '"]').forEach((node) => node.parentNode?.appendChild(node)); }});
-    defaultColumnOrder.forEach((key) => {{ table?.querySelectorAll('[data-col="' + CSS.escape(key) + '"], col[data-col="' + CSS.escape(key) + '"]').forEach((node) => {{ node.hidden = !isColumnVisible(key); }}); }});
-    Object.keys(state.columns.width).forEach((key) => {{ table?.querySelectorAll('col[data-col="' + CSS.escape(key) + '"]').forEach((col) => {{ col.style.width = state.columns.width[key] + 'px'; }}); }});
+    defaultColumnOrder.forEach((key) => {{ table?.querySelectorAll('[data-col="' + CSS.escape(key) + '"], col[data-col="' + CSS.escape(key) + '"]').forEach((node) => {{ node.hidden = false; }}); }});
   }}
   function renderTable(data) {{
     if (!data || !tbody) return;
@@ -5613,16 +5609,15 @@ def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = Non
   }}
   function persistColumns() {{ try {{ window.localStorage.setItem(columnsStorageKey, JSON.stringify(state.columns)); }} catch (_) {{}} }}
   function loadColumnSettings() {{
-    try {{ state.columns = Object.assign(state.columns, JSON.parse(window.localStorage.getItem(columnsStorageKey) || '{{}}') || {{}}); }} catch (_) {{}}
-    state.columns.visible = uniqueValues((Array.isArray(state.columns.visible) ? state.columns.visible : Object.keys(state.columns.visible || {{}}).filter((key) => state.columns.visible[key] !== false)).filter((key) => defaultColumnOrder.includes(key))); if (!state.columns.visible.length) state.columns.visible = defaultVisible.slice();
-    state.columns.width = Object.assign({{}}, defaultWidths, state.columns.width || {{}});
-    state.columns.order = (state.columns.order || defaultColumnOrder).filter((key) => defaultColumnOrder.includes(key)).concat(defaultColumnOrder.filter((key) => !(state.columns.order || []).includes(key)));
-    columnToggles.forEach((node) => {{ const key = node.dataset.hlrColumnToggle || ''; node.checked = isColumnVisible(key); }});
+    state.columns.visible = defaultColumnOrder.slice();
+    state.columns.width = Object.assign({{}}, defaultWidths);
+    state.columns.order = defaultColumnOrder.slice();
+    columnToggles.forEach((node) => {{ node.checked = true; }});
     columnWidths.forEach((node) => {{ const key = node.dataset.hlrColumnWidth || ''; node.value = state.columns.width[key] || defaultWidths[key] || 120; }});
   }}
-  function setFilter(filterType, values) {{ const bucket = filterType === 'type' ? 'types' : filterType === 'status' ? 'statuses' : filterType; state.activeFilters[bucket] = values.map(normalizeFilterValue).filter((value, index, list) => value && value !== 'ALL' && list.indexOf(value) === index); applyFilters(); renderTable(state.filteredResults); updateCountersUI(); }}
-  function clearFilters() {{ state.activeFilters.statuses = []; state.activeFilters.types = []; state.filteredResults = state.rawResults.slice(); updateCounters(); logFilterState(); renderTable(state.filteredResults); updateCountersUI(); }}
-  function onFilterClick(filterType, value) {{ const filter = normalizeFilterValue(value); if (!filter || filter === 'ALL') {{ clearFilters(); return; }} const bucket = filterType === 'type' ? 'types' : 'statuses'; const current = state.activeFilters[bucket]; setFilter(bucket, current.includes(filter) ? current.filter((item) => item !== filter) : current.concat(filter)); }}
+  function setFilter(filterType, values) {{ console.log('HLR DEBUG: filters are inactive', filterType, values); applyFilters(); renderTable(state.filteredResults); updateCountersUI(); }}
+  function clearFilters() {{ state.activeFilters.statuses = []; state.activeFilters.types = []; state.filteredResults = state.rawResults; updateCounters(); logFilterState(); renderTable(state.filteredResults); updateCountersUI(); }}
+  function onFilterClick(filterType, value) {{ console.log('HLR DEBUG: filter click ignored', filterType, value); clearFilters(); }}
   async function copyText(text) {{ try {{ await navigator.clipboard.writeText(text); }} catch (_) {{ const area = document.createElement('textarea'); area.value = text; document.body.appendChild(area); area.select(); document.execCommand('copy'); area.remove(); }} }}
   columnToggles.forEach((input) => input.addEventListener('change', () => {{ setColumnVisible(input.dataset.hlrColumnToggle || '', input.checked); persistColumns(); renderTable(state.filteredResults); }}));
   columnWidths.forEach((input) => input.addEventListener('change', () => {{ const value = Math.max(70, Math.min(520, Number(input.value) || 120)); input.value = value; state.columns.width[input.dataset.hlrColumnWidth || ''] = value; persistColumns(); renderTable(state.filteredResults); }}));
@@ -5637,7 +5632,7 @@ def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = Non
   filters.forEach((button) => button.addEventListener('click', () => onFilterClick(button.dataset.filterType || 'status', button.dataset.hlrFilter || 'ALL')));
   rawChips.forEach((button) => button.addEventListener('click', () => onFilterClick('status', button.dataset.rawStatus || '')));
   typeChips.forEach((button) => button.addEventListener('click', () => onFilterClick('type', button.dataset.numberType || '')));
-  state.rawResults = Array.isArray(backendPayload.results) ? backendPayload.results.slice() : [];
+  state.rawResults = Array.isArray(backendPayload.results) ? backendPayload.results : [];
   state.filteredResults = state.rawResults;
   loadColumnSettings();
   updateCounters();
