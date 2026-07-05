@@ -5310,7 +5310,7 @@ def hlr_details_html(row: dict[str, object]) -> str:
 
 HLR_TABLE_COLUMNS = [
     ("original_number", "Исходный номер", 130, True), ("normalized_number", "Нормализованный номер", 150, True), ("format_status", "Формат", 110, True), ("country", "Страна", 100, True), ("number_type", "Тип номера", 130, True), ("operator", "Оператор / сеть", 220, True), ("hlr_status_raw", "HLR статус", 110, True), ("live_status_raw", "Live status", 110, True), ("final_result", "Итог", 100, True), ("lead_quality_signal", "Оценка лида", 150, True), ("comment", "Комментарий", 340, True),
-    ("detected_telephone_number", "Detected number", 150, False), ("formatted_telephone_number", "Formatted number", 170, False), ("number_type_raw", "Raw telephone_number_type", 180, False), ("current_network", "Current network", 220, False), ("current_operator", "Current operator", 220, False), ("current_mccmnc", "Current MCCMNC", 130, False), ("current_country", "Current country", 140, False), ("current_country_iso3", "Current ISO3", 110, False), ("current_country_prefix", "Current country prefix", 160, False), ("original_network", "Original network", 220, False), ("original_operator", "Original operator", 220, False), ("original_mccmnc", "Original MCCMNC", 140, False), ("original_country", "Original country", 140, False), ("original_country_iso3", "Original ISO3", 110, False), ("original_area", "Original area", 150, False), ("original_country_prefix", "Original country prefix", 170, False), ("is_ported", "Is ported", 100, False), ("uuid", "UUID", 280, False), ("timestamp", "Timestamp", 180, False), ("credits_spent", "Credits spent", 120, False), ("raw_error", "Raw error", 220, False), ("raw_message", "Raw message", 260, False), ("request_shape_sanitized", "Request parameters", 300, False), ("details", "Детали", 90, True),
+    ("detected_telephone_number", "Detected number", 150, False), ("formatted_telephone_number", "Formatted number", 170, False), ("number_type_raw", "Raw telephone_number_type", 180, False), ("current_network", "Current network", 220, False), ("current_operator", "Current operator", 220, False), ("current_mccmnc", "Current MCCMNC", 130, False), ("current_country", "Current country", 140, False), ("current_country_iso3", "Current ISO3", 110, False), ("current_country_prefix", "Current country prefix", 160, False), ("original_network", "Original network", 220, False), ("original_operator", "Original operator", 220, False), ("original_mccmnc", "Original MCCMNC", 140, False), ("original_country", "Original country", 140, False), ("original_country_iso3", "Original ISO3", 110, False), ("original_area", "Original area", 150, False), ("original_country_prefix", "Original country prefix", 170, False), ("is_ported", "Is ported", 100, False), ("uuid", "UUID", 280, False), ("timestamp", "Timestamp", 180, False), ("credits_spent", "Credits spent", 120, False), ("raw_error", "Raw error", 220, False), ("raw_message", "Raw message", 260, False), ("request_shape_sanitized", "Request parameters", 300, False), ("details", "Детали", 90, False),
 ]
 
 
@@ -5503,13 +5503,13 @@ def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = Non
     if (!input || !counter) return;
     state.inputNumbers = input.value.split(/\\r?\\n/).map(normalizeCandidate).filter(Boolean);
     const count = new Set(state.inputNumbers).size;
-    counter.textContent = count + ' numbers loaded';
+    counter.textContent = count + ' / 500';
     counter.style.color = count > 500 ? 'var(--danger)' : '';
   }}
   function normalizeFilterValue(value) {{ const token = (value || '').toString().trim().toUpperCase(); return token === 'FIXED' || token === 'LANDLINE' ? 'FIXED_LINE' : token; }}
   function rowFilterTokens(row) {{
     const tokens = new Set();
-    ['hlr_status_raw', 'live_status_raw', 'final_result'].forEach((key) => {{ const value = normalizeFilterValue(row[key]); if (value && value !== '—') tokens.add(value); }});
+    ['hlr_status_raw', 'live_status_raw', 'final_result', 'format_status'].forEach((key) => {{ const value = normalizeFilterValue(row[key]); if (value && value !== '—') tokens.add(value); }});
     const type = normalizeFilterValue(row.number_type_raw || row.number_type);
     if (type === 'MOBILE' || (row.number_type || '').toString().toLowerCase() === 'mobile') tokens.add('MOBILE');
     if (type === 'FIXED_LINE' || (row.number_type || '').toString().toLowerCase() === 'landline') tokens.add('FIXED_LINE');
@@ -5517,14 +5517,15 @@ def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = Non
     if (category === 'warning') tokens.add('WARNING');
     if (category === 'unknown') tokens.add('UNKNOWN');
     if (category === 'ok') tokens.add('OK');
+    if (category === 'bad' || normalizeFilterValue(row.format_status).includes('INVALID')) tokens.add('BAD_FORMAT');
     return tokens;
   }}
   function matchesStatus(row) {{ return !state.activeFilters.statuses.length || state.activeFilters.statuses.some((filter) => rowFilterTokens(row).has(filter)); }}
   function matchesType(row) {{ return !state.activeFilters.types.length || state.activeFilters.types.some((filter) => rowFilterTokens(row).has(filter)); }}
   function logFilterState() {{
-    console.log("RAW:", state.results.length);
-    console.log("FILTERED:", state.filteredResults.length);
-    console.log("ACTIVE:", JSON.parse(JSON.stringify(state.activeFilters)));
+    console.log("RAW COUNT", state.results.length);
+    console.log("FILTERED COUNT", state.filteredResults.length);
+    console.log("ACTIVE FILTERS", JSON.parse(JSON.stringify(state.activeFilters)));
   }}
   function applyFilters() {{
     state.filteredResults = state.results.filter((row) => matchesStatus(row) && matchesType(row));
@@ -5533,7 +5534,7 @@ def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = Non
   }}
   function countTokens(data) {{ const counters = {{ ALL: data.length }}; data.forEach((row) => rowFilterTokens(row).forEach((token) => {{ counters[token] = (counters[token] || 0) + 1; }})); return counters; }}
   function updateCounters(data = state.filteredResults) {{ state.counters = {{ raw: countTokens(state.results), filtered: countTokens(data) }}; }}
-  function updateCountersUI() {{ document.querySelectorAll('[data-counter-key]').forEach((node) => {{ const key = normalizeFilterValue(node.dataset.counterKey || 'ALL'); const raw = state.counters.raw?.[key] || 0; const filtered = state.counters.filtered?.[key] || 0; node.textContent = filtered + ' / ' + raw; node.title = 'Filtered / Raw'; }}); }}
+  function updateCountersUI() {{ document.querySelectorAll('[data-counter-key]').forEach((node) => {{ const key = normalizeFilterValue(node.dataset.counterKey || 'ALL'); const raw = state.counters.raw?.[key] || 0; node.textContent = raw; node.title = 'Raw count (not affected by filters)'; }}); if (filterDebug) filterDebug.textContent = 'Filtered: ' + state.filteredResults.length + ' / Raw: ' + state.results.length; }}
   function activeFilterList() {{ return state.activeFilters.statuses.concat(state.activeFilters.types); }}
   function syncFilterUi() {{
     filters.forEach((button) => {{ const key = normalizeFilterValue(button.dataset.hlrFilter || 'ALL'); const bucket = button.dataset.filterType === 'type' ? 'types' : 'statuses'; const selected = key === 'ALL' ? activeFilterList().length === 0 : state.activeFilters[bucket].includes(key); button.classList.toggle('active', selected); button.setAttribute('aria-pressed', selected ? 'true' : 'false'); }});
@@ -5543,7 +5544,7 @@ def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = Non
   function rowValue(row, key) {{ return ((row.__display && row.__display[key] !== undefined ? row.__display[key] : row[key]) ?? '').toString(); }}
   function statusSeverity(row, key) {{
     if (key === 'number_type') return normalizeFilterValue(row.number_type_raw || row.number_type) === 'MOBILE' ? 'good' : 'neutral';
-    const tokens = rowFilterTokens(row); if (tokens.has('DEAD') || tokens.has('BAD_FORMAT') || tokens.has('ERROR')) return 'bad'; if (tokens.has('WARNING') || tokens.has('UNKNOWN')) return 'warning'; if (tokens.has('LIVE') || tokens.has('OK')) return 'good'; return 'neutral';
+    const tokens = rowFilterTokens(row); if (tokens.has('DEAD') || tokens.has('BAD_FORMAT') || tokens.has('INVALID') || tokens.has('FORMAT_ERROR') || tokens.has('ERROR')) return 'bad'; if (tokens.has('NOT_AVAILABLE_NETWORK_ONLY') || tokens.has('ABSENT_SUBSCRIBER') || tokens.has('UNKNOWN') || tokens.has('WARNING') || tokens.has('INCONCLUSIVE')) return 'warning'; if (tokens.has('LIVE') || tokens.has('OK')) return 'good'; return 'neutral';
   }}
   function appendText(parent, text) {{ parent.appendChild(document.createTextNode(text)); }}
   function buildDetails(row) {{ const wrap = document.createElement('div'); wrap.className = 'hlr-details-grid'; const pre = document.createElement('pre'); pre.className = 'hlr-raw-json'; pre.textContent = JSON.stringify(row.raw_api_item_sanitized || row, null, 2); wrap.appendChild(pre); return wrap; }}
@@ -5590,7 +5591,7 @@ def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = Non
     columnWidths.forEach((node) => {{ const key = node.dataset.hlrColumnWidth || ''; node.value = state.columns.width[key] || defaultWidths[key] || 120; }});
   }}
   function setFilter(filterType, values) {{ const bucket = filterType === 'type' ? 'types' : filterType === 'status' ? 'statuses' : filterType; state.activeFilters[bucket] = values.map(normalizeFilterValue).filter((value, index, list) => value && value !== 'ALL' && list.indexOf(value) === index); applyFilters(); renderTable(state.filteredResults); updateCountersUI(); }}
-  function clearFilters() {{ state.activeFilters.statuses = []; state.activeFilters.types = []; state.filteredResults = state.results.slice(); updateCounters(state.filteredResults); renderTable(state.filteredResults); updateCountersUI(); }}
+  function clearFilters() {{ state.activeFilters.statuses = []; state.activeFilters.types = []; state.filteredResults = state.results.slice(); updateCounters(state.filteredResults); logFilterState(); renderTable(state.filteredResults); updateCountersUI(); }}
   function onFilterClick(filterType, value) {{ const filter = normalizeFilterValue(value); if (!filter || filter === 'ALL') {{ clearFilters(); return; }} const bucket = filterType === 'type' ? 'types' : 'statuses'; const current = state.activeFilters[bucket]; setFilter(bucket, current.includes(filter) ? current.filter((item) => item !== filter) : current.concat(filter)); }}
   async function copyText(text) {{ try {{ await navigator.clipboard.writeText(text); }} catch (_) {{ const area = document.createElement('textarea'); area.value = text; document.body.appendChild(area); area.select(); document.execCommand('copy'); area.remove(); }} }}
   columnToggles.forEach((input) => input.addEventListener('change', () => {{ setColumnVisible(input.dataset.hlrColumnToggle || '', input.checked); persistColumns(); renderTable(state.filteredResults); }}));
@@ -5599,12 +5600,12 @@ def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = Non
   document.querySelector('[data-hlr-column-reset]')?.addEventListener('click', () => {{ window.localStorage.removeItem(columnsStorageKey); loadColumnSettings(); renderTable(state.filteredResults); }});
   document.querySelectorAll('[data-hlr-resize]').forEach((handle) => handle.addEventListener('pointerdown', (event) => {{ event.preventDefault(); const key = handle.dataset.hlrResize || ''; const col = table?.querySelector('col[data-col="' + CSS.escape(key) + '"]'); const startX = event.clientX; const startWidth = Number.parseFloat(col?.style.width || '') || 120; const move = (moveEvent) => {{ const width = Math.max(70, Math.min(700, Math.round(startWidth + moveEvent.clientX - startX))); state.columns.width[key] = width; if (col) col.style.width = width + 'px'; }}; const up = () => {{ document.removeEventListener('pointermove', move); document.removeEventListener('pointerup', up); persistColumns(); renderTable(state.filteredResults); }}; document.addEventListener('pointermove', move); document.addEventListener('pointerup', up); }}));
   copyColumnButton?.addEventListener('click', async () => {{ const key = copyColumnSelect?.value || 'normalized_number'; if (!isColumnVisible(key)) {{ if (copyFeedback) copyFeedback.textContent = 'Колонка скрыта — включите её перед копированием'; return; }} const values = state.filteredResults.map((row) => rowValue(row, key)); await copyText(values.join('\\n')); if (copyFeedback) copyFeedback.textContent = 'Скопировано: ' + values.length + ' значений'; }});
-  function clearInput() {{ state.inputNumbers = []; if (input) input.value = ''; updateCounter(); clearFilters(); input?.focus(); }}
+  function clearInput() {{ state.inputNumbers = []; if (input) input.value = ''; updateCounter(); input?.focus(); }}
   if (input) {{ input.addEventListener('input', updateCounter); updateCounter(); }}
   if (clear) clear.addEventListener('click', clearInput);
   filters.forEach((button) => button.addEventListener('click', () => onFilterClick(button.dataset.filterType || 'status', button.dataset.hlrFilter || 'ALL')));
-  rawChips.forEach((button) => button.addEventListener('click', () => onFilterClick('status', button.dataset.rawStatus || '')));
-  typeChips.forEach((button) => button.addEventListener('click', () => onFilterClick('type', button.dataset.numberType || '')));
+  rawChips.forEach((button) => button.setAttribute('aria-disabled', 'true'));
+  typeChips.forEach((button) => button.setAttribute('aria-disabled', 'true'));
   state.results = Array.isArray(backendPayload.results) ? backendPayload.results.slice() : [];
   state.filteredResults = state.results.slice();
   loadColumnSettings();
