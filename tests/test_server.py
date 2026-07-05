@@ -3897,9 +3897,9 @@ class HlrUiStateScriptTest(unittest.TestCase):
 
     def test_hlr_counters_and_column_copy_use_expected_sources(self):
         content = self._content()
-        self.assertIn("state.counters = { ALL: state.rawResults.length };", content)
-        self.assertIn("state.rawResults.forEach((row) => rowFilterTokens(row).forEach((token) => { state.counters[token] = (state.counters[token] || 0) + 1; }));", content)
-        self.assertNotIn("state.filteredResults.forEach((row) => rowFilterTokens(row)", content)
+        self.assertIn("function countTokens(data)", content)
+        self.assertIn("state.counters = { raw: countTokens(state.rawResults), filtered: countTokens(data) };", content)
+        self.assertIn("node.textContent = filtered + ' / ' + raw;", content)
         self.assertIn("const values = state.filteredResults.map((row) => rowValue(row, key));", content)
         self.assertIn("await copyText(values.join('\\n'));", content)
         self.assertIn("id='hlr-filter-debug'", content)
