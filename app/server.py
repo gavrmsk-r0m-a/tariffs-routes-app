@@ -1058,6 +1058,15 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     #hlr-table tbody tr.hlr-row-severity-warning td[data-col='comment'] .hlr-cell-text, #hlr-table tbody tr.hlr-row-severity-unknown td[data-col='comment'] .hlr-cell-text, #hlr-table tbody tr.hlr-row-severity-yellow td[data-col='comment'] .hlr-cell-text, #hlr-table tbody tr.hlr-row-severity-orange td[data-col='comment'] .hlr-cell-text {{ color: var(--warning-hover, var(--warning)); }}
     .hlr-demo-note {{ margin-left: 8px; font-size: 12px; font-weight: 500; }}
     .hlr-table-toolbar {{ display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-top: 0; }}
+    .hlr-column-manager {{ position: relative; display: inline-flex; }}
+    .hlr-column-panel {{ position: absolute; right: 0; top: calc(100% + 6px); z-index: 20; display: none; width: min(420px, 88vw); max-height: 430px; overflow: auto; padding: 10px; border: 1px solid var(--border); border-radius: var(--radius-card); background: var(--surface); box-shadow: var(--shadow-card); }}
+    .hlr-column-panel.is-open {{ display: grid; gap: 8px; }}
+    .hlr-column-list {{ display: grid; gap: 6px; }}
+    .hlr-column-item {{ display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 6px; padding: 6px; border: 1px solid var(--border); border-radius: var(--radius-small); background: var(--surface-muted); }}
+    .hlr-column-item label {{ display: flex; align-items: center; gap: 7px; min-width: 0; margin: 0; font-weight: 650; }}
+    .hlr-column-item span {{ min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
+    .hlr-column-move {{ min-width: 32px; padding: 3px 7px; box-shadow: none; }}
+    .hlr-column-panel-actions {{ display: flex; justify-content: space-between; gap: 8px; align-items: center; }}
     .column-drag-handle {{ color: var(--muted); margin-right: 4px; cursor: grab; }}
     .hlr-results-area, .hlr-results-area .table-card {{ min-width: 0; overflow: hidden; }}
     .hlr-results-area .table-card {{ margin-top: 0; min-height: 320px; }}
@@ -5348,7 +5357,7 @@ def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = Non
       </div>
     </form>
   </section>
-  <div class='hlr-table-toolbar'><span class='muted'>Показано результатов: {len(results)}</span><div class='table-footer-tools'>{export_form}<span class='muted'>Экспортирует все результаты последней проверки.</span></div></div>
+  <div class='hlr-table-toolbar'><span class='muted'>Показано результатов: {len(results)}</span><div class='table-footer-tools'><div class='hlr-column-manager'><button type='button' id='hlr-columns-button' aria-expanded='false' aria-controls='hlr-column-panel'>Колонки</button><div class='hlr-column-panel' id='hlr-column-panel' aria-label='Настройки колонок'><div class='hlr-column-panel-actions'><strong>Вид таблицы</strong><button type='button' id='hlr-columns-reset'>Сбросить вид таблицы</button></div><div class='hlr-column-list' id='hlr-column-list'></div></div></div>{export_form}<span class='muted'>Экспортирует все результаты последней проверки.</span></div></div>
   {hlr_table(results)}
   {hlr_config_diagnostics_html()}
   {hlr_api_fields_html(results, is_demo_mode)}
@@ -5379,6 +5388,151 @@ document.addEventListener("DOMContentLoaded", function () {{
 
   input.addEventListener("input", updateCounter);
   updateCounter();
+
+  const table = document.getElementById("hlr-table");
+  const columnsButton = document.getElementById("hlr-columns-button");
+  const columnsPanel = document.getElementById("hlr-column-panel");
+  const columnsList = document.getElementById("hlr-column-list");
+  const resetButton = document.getElementById("hlr-columns-reset");
+  const storageKey = "hlr_safe_column_settings";
+  const defaultVisibleColumns = new Set([
+    "original_number",
+    "normalized_number",
+    "format_status",
+    "country",
+    "number_type",
+    "operator",
+    "hlr_status_raw",
+    "live_status_raw",
+    "final_result",
+    "lead_quality_signal",
+    "comment",
+  ]);
+
+  if (!table || !columnsButton || !columnsPanel || !columnsList) return;
+
+  const columns = Array.from(table.querySelectorAll("thead th[data-col]")).map((th) => ({{
+    key: th.dataset.col,
+    label: th.textContent.trim(),
+  }})).filter((column) => column.key);
+  const defaultOrder = columns.map((column) => column.key);
+  let settings = loadColumnSettings();
+
+  function loadColumnSettings() {{
+    try {{
+      const parsed = JSON.parse(localStorage.getItem(storageKey) || "null");
+      if (parsed && Array.isArray(parsed.order) && Array.isArray(parsed.visible)) {{
+        const validKeys = new Set(defaultOrder);
+        return {{
+          order: parsed.order.filter((key) => validKeys.has(key)).concat(defaultOrder.filter((key) => !parsed.order.includes(key))),
+          visible: parsed.visible.filter((key) => validKeys.has(key)),
+        }};
+      }}
+    }} catch (error) {{
+      console.warn("Could not load HLR column settings", error);
+    }}
+    return {{ order: defaultOrder.slice(), visible: defaultOrder.filter((key) => defaultVisibleColumns.has(key)) }};
+  }}
+
+  function saveColumnSettings() {{
+    localStorage.setItem(storageKey, JSON.stringify(settings));
+  }}
+
+  function orderedColumns() {{
+    const byKey = new Map(columns.map((column) => [column.key, column]));
+    return settings.order.map((key) => byKey.get(key)).filter(Boolean);
+  }}
+
+  function moveColumnDom(parent, selector, key) {{
+    if (!parent) return;
+    const element = parent.querySelector(selector + "[data-col='" + CSS.escape(key) + "']");
+    if (element) parent.appendChild(element);
+  }}
+
+  function applyColumnSettings() {{
+    const visible = new Set(settings.visible);
+    settings.order.forEach((key) => moveColumnDom(table.querySelector("colgroup"), "col", key));
+    const headerRow = table.querySelector("thead tr");
+    settings.order.forEach((key) => moveColumnDom(headerRow, "th", key));
+    table.querySelectorAll("tbody tr").forEach((row) => {{
+      settings.order.forEach((key) => moveColumnDom(row, "td", key));
+    }});
+    table.querySelectorAll("col[data-col], th[data-col], td[data-col]").forEach((cell) => {{
+      cell.hidden = !visible.has(cell.dataset.col);
+    }});
+  }}
+
+  function moveColumn(key, direction) {{
+    const index = settings.order.indexOf(key);
+    const nextIndex = index + direction;
+    if (index < 0 || nextIndex < 0 || nextIndex >= settings.order.length) return;
+    const nextOrder = settings.order.slice();
+    [nextOrder[index], nextOrder[nextIndex]] = [nextOrder[nextIndex], nextOrder[index]];
+    settings.order = nextOrder;
+    saveColumnSettings();
+    applyColumnSettings();
+    renderColumnPanel();
+  }}
+
+  function renderColumnPanel() {{
+    columnsList.innerHTML = "";
+    const visible = new Set(settings.visible);
+    orderedColumns().forEach((column, index) => {{
+      const item = document.createElement("div");
+      item.className = "hlr-column-item";
+      item.dataset.col = column.key;
+      const label = document.createElement("label");
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.checked = visible.has(column.key);
+      checkbox.addEventListener("change", () => {{
+        settings.visible = checkbox.checked
+          ? Array.from(new Set(settings.visible.concat(column.key)))
+          : settings.visible.filter((key) => key !== column.key);
+        saveColumnSettings();
+        applyColumnSettings();
+      }});
+      const text = document.createElement("span");
+      text.textContent = column.label;
+      label.append(checkbox, text);
+      const up = document.createElement("button");
+      up.type = "button";
+      up.className = "hlr-column-move";
+      up.textContent = "↑";
+      up.disabled = index === 0;
+      up.addEventListener("click", () => moveColumn(column.key, -1));
+      const down = document.createElement("button");
+      down.type = "button";
+      down.className = "hlr-column-move";
+      down.textContent = "↓";
+      down.disabled = index === settings.order.length - 1;
+      down.addEventListener("click", () => moveColumn(column.key, 1));
+      item.append(label, up, down);
+      columnsList.appendChild(item);
+    }});
+  }}
+
+  columnsButton.addEventListener("click", () => {{
+    const isOpen = columnsPanel.classList.toggle("is-open");
+    columnsButton.setAttribute("aria-expanded", isOpen ? "true" : "false");
+  }});
+  document.addEventListener("click", (event) => {{
+    if (!columnsPanel.contains(event.target) && !columnsButton.contains(event.target)) {{
+      columnsPanel.classList.remove("is-open");
+      columnsButton.setAttribute("aria-expanded", "false");
+    }}
+  }});
+  if (resetButton) {{
+    resetButton.addEventListener("click", () => {{
+      settings = {{ order: defaultOrder.slice(), visible: defaultOrder.filter((key) => defaultVisibleColumns.has(key)) }};
+      saveColumnSettings();
+      applyColumnSettings();
+      renderColumnPanel();
+    }});
+  }}
+
+  applyColumnSettings();
+  renderColumnPanel();
 }});
 </script>
 """
