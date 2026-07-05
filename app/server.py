@@ -1044,7 +1044,7 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .hlr-input-panel, .hlr-summary-panel {{ margin: 0; min-width: 0; }}
     .hlr-input-form {{ display: grid; gap: 7px; align-items: start; padding: 12px; }}
     .hlr-input-form label {{ display: grid; gap: 5px; min-width: 0; width: 100%; }}
-    .hlr-input-form textarea {{ min-width: 0; width: 100%; min-height: 150px; max-height: 28vh; resize: vertical; box-sizing: border-box; }}
+    .hlr-input-form textarea {{ min-width: 0; width: 100%; min-height: 112px; max-height: 22vh; resize: vertical; box-sizing: border-box; }}
     .hlr-counter-line, .hlr-input-hint {{ margin: 0; }}
     .hlr-input-actions {{ display: flex; gap: 8px; flex-wrap: wrap; }}
     .hlr-summary-panel {{ padding: 10px 12px; overflow: hidden; }}
@@ -1062,13 +1062,13 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .hlr-raw-chip {{ min-height: 0; max-width: 190px; padding: 4px 7px; border-color: var(--border); background: var(--surface-muted); color: var(--text); font-size: 12px; line-height: 1.2; box-shadow: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
     .hlr-raw-chip:hover {{ transform: none; border-color: var(--accent); }}
     .hlr-raw-chip.active {{ border-color: var(--accent); background: var(--accent-soft); color: var(--text-strong); }}
-    .hlr-severity-good, .hlr-severity-neutral {{ border-color: color-mix(in srgb, var(--success) 60%, var(--border)); background: color-mix(in srgb, var(--success) 12%, var(--surface)); color: var(--success, var(--text-strong)); }}
+    .hlr-severity-good, .hlr-severity-green, .hlr-severity-neutral {{ border-color: color-mix(in srgb, var(--success) 60%, var(--border)); background: color-mix(in srgb, var(--success) 12%, var(--surface)); color: var(--success, var(--text-strong)); }}
     .hlr-severity-bad, .hlr-severity-red, .hlr-severity-api_error {{ border-color: color-mix(in srgb, var(--danger) 65%, var(--border)); background: color-mix(in srgb, var(--danger) 12%, var(--surface)); color: var(--danger); }}
     .hlr-severity-warning, .hlr-severity-unknown, .hlr-severity-orange {{ border-color: color-mix(in srgb, var(--warning) 70%, var(--border)); background: color-mix(in srgb, var(--warning) 16%, var(--surface)); color: var(--warning-hover, var(--warning)); }}
     .hlr-severity-api_error {{ background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--danger) 9%, var(--surface)), color-mix(in srgb, var(--danger) 9%, var(--surface)) 6px, var(--surface-muted) 6px, var(--surface-muted) 12px); }}
     #hlr-table tbody tr.hlr-row-severity-bad td, #hlr-table tbody tr.hlr-row-severity-red td, #hlr-table tbody tr.hlr-row-severity-api_error td {{ background: color-mix(in srgb, var(--danger) 5%, var(--surface)); }}
     #hlr-table tbody tr.hlr-row-severity-warning td, #hlr-table tbody tr.hlr-row-severity-unknown td, #hlr-table tbody tr.hlr-row-severity-orange td {{ background: color-mix(in srgb, var(--warning) 5%, var(--surface)); }}
-    #hlr-table tbody tr.hlr-row-severity-good td, #hlr-table tbody tr.hlr-row-severity-neutral td {{ background: color-mix(in srgb, var(--success) 4%, var(--surface)); }}
+    #hlr-table tbody tr.hlr-row-severity-good td, #hlr-table tbody tr.hlr-row-severity-green td, #hlr-table tbody tr.hlr-row-severity-neutral td {{ background: color-mix(in srgb, var(--success) 4%, var(--surface)); }}
     #hlr-table tbody tr td[data-col='comment'] .hlr-cell-text {{ color: inherit; }}
     #hlr-table tbody tr.hlr-row-severity-bad td[data-col='comment'] .hlr-cell-text, #hlr-table tbody tr.hlr-row-severity-red td[data-col='comment'] .hlr-cell-text, #hlr-table tbody tr.hlr-row-severity-api_error td[data-col='comment'] .hlr-cell-text {{ color: var(--danger); }}
     #hlr-table tbody tr.hlr-row-severity-warning td[data-col='comment'] .hlr-cell-text, #hlr-table tbody tr.hlr-row-severity-unknown td[data-col='comment'] .hlr-cell-text, #hlr-table tbody tr.hlr-row-severity-orange td[data-col='comment'] .hlr-cell-text {{ color: var(--warning-hover, var(--warning)); }}
@@ -1085,8 +1085,9 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .hlr-column-settings .column-settings-row label {{ white-space: normal; }}
     .hlr-results-area, .hlr-results-area .table-card {{ min-width: 0; overflow: hidden; }}
     .hlr-results-area .table-card {{ margin-top: 0; min-height: 320px; }}
-    .hlr-results-area .table-scroll {{ min-height: 300px; max-height: calc(100vh - 380px); overflow: auto; }}
+    .hlr-results-area .table-scroll {{ min-height: 360px; max-height: calc(100vh - 300px); overflow: auto; }}
     #hlr-table {{ table-layout: fixed; width: max-content; min-width: 100%; }}
+    #hlr-table thead {{ position: sticky; top: 0; z-index: 3; }}
     #hlr-table th {{ position: sticky; top: 0; z-index: 2; }}
     #hlr-table th.is-drag-resizing {{ border-right-color: var(--accent); }}
     #hlr-table tbody tr[hidden] {{ display: none !important; }}
@@ -1094,7 +1095,6 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .hlr-cell-content {{ display: flex; align-items: center; gap: 6px; min-width: 0; }}
     .hlr-cell-text {{ min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
     .hlr-cell-text.hlr-long-text {{ display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; white-space: normal; }}
-    .hlr-copy-button {{ min-height: 22px; padding: 2px 5px; font-size: 11px; box-shadow: none; flex: 0 0 auto; }}
     .hlr-details-toggle {{ min-height: 28px; padding: 4px 8px; font-size: 12px; box-shadow: none; }}
     .hlr-details-row td {{ background: var(--surface-muted); overflow: visible; }}
     .hlr-details-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; align-items: start; }}
@@ -5156,40 +5156,40 @@ def hlr_status_severity(row: dict[str, object]) -> str:
     live = str(row.get("live_status_raw") or row.get("hlr_status_raw") or "").upper()
     number_type = str(row.get("number_type") or "").lower()
     if category == "error" or result == "ERROR":
-        return "api_error"
+        return "red"
     if result in {"DEAD", "BAD_FORMAT", "INVALID_FORMAT"} or live in {"DEAD", "BAD_FORMAT", "INVALID_FORMAT"}:
-        return "bad"
+        return "red"
     if number_type in {"bad_format", "landline", "toll_free", "premium", "shared_cost", "stage_and_screen", "pager", "voicemail_only", "machine_to_machine"}:
-        return "bad"
+        return "red"
     if result == "OK" and live == "LIVE":
-        return "good"
+        return "green"
     if live == "LIVE" or category == "ok":
-        return "good"
+        return "green"
     if live in {"ABSENT_SUBSCRIBER", "NO_TELESERVICE_PROVISIONED", "INCONCLUSIVE", "NOT_AVAILABLE_NETWORK_ONLY", "NO_COVERAGE", "NOT_APPLICABLE", "UNKNOWN", "NETWORK_INFO_ONLY"} or number_type in {"mobile_or_landline", "voip", "unknown"}:
-        return "warning" if live != "UNKNOWN" else "unknown"
+        return "orange"
     if category == "warning":
-        return "warning"
+        return "orange"
     if category == "unknown" or result == "UNKNOWN":
-        return "unknown"
+        return "orange"
     return "neutral"
 
 
 def hlr_token_severity(value: object, group: str = "status") -> str:
     token = str(value or "").strip().upper()
     if group == "main":
-        return {"OK": "good", "LIVE": "good", "WARNING": "warning", "BAD_FORMAT": "bad", "BAD FORMAT": "bad", "DEAD": "bad", "UNKNOWN": "unknown", "MOBILE": "neutral", "FIXED_LINE": "neutral", "ALL": "neutral"}.get(token, "neutral")
+        return {"OK": "green", "LIVE": "green", "WARNING": "orange", "BAD_FORMAT": "red", "BAD FORMAT": "red", "DEAD": "red", "UNKNOWN": "orange", "MOBILE": "neutral", "FIXED_LINE": "neutral", "ALL": "neutral"}.get(token, "neutral")
     if token in {"LIVE", "OK", "MOBILE"}:
-        return "good" if token in {"LIVE", "OK"} else "neutral"
+        return "green" if token in {"LIVE", "OK"} else "neutral"
     if token in {"DEAD", "BAD_FORMAT", "INVALID_FORMAT", "API_ERROR"}:
-        return "bad"
+        return "red"
     if token in {"LANDLINE", "FIXED_LINE", "INFO"}:
         return "neutral"
     if token in {"MACHINE_TO_MACHINE", "PAGER", "VOICEMAIL_ONLY", "STAGE_AND_SCREEN", "PREMIUM", "SHARED_COST", "TOLL_FREE"}:
-        return "bad"
+        return "red"
     if token in {"ABSENT_SUBSCRIBER", "NO_TELESERVICE_PROVISIONED", "INCONCLUSIVE", "NOT_AVAILABLE_NETWORK_ONLY", "NO_COVERAGE", "NOT_APPLICABLE", "UNKNOWN", "NETWORK_INFO_ONLY", "MOBILE_OR_LANDLINE", "VOIP", "WARNING"}:
-        return "warning" if token != "UNKNOWN" else "unknown"
+        return "orange"
     if token in {"ERROR", "INSUFFICIENT_CREDIT", "INTERNAL_ERROR", "TIMEOUT", "HTTP_ERROR", "CONNECTION_ERROR", "PARSER_ERROR"}:
-        return "api_error"
+        return "red"
     return "neutral"
 
 
@@ -5282,13 +5282,6 @@ HLR_FILTERS = [
 ]
 
 
-def hlr_copy_button(value: object, label: str = "Копировать") -> str:
-    text = str(value or "")
-    if not text or text == "—":
-        return ""
-    return f"<button type='button' class='hlr-copy-button' data-copy='{esc(text)}' title='{esc(label)}'>⧉</button>"
-
-
 def hlr_details_html(row: dict[str, object]) -> str:
     display = hlr_display_row(row)
     main_keys = ["original_number", "normalized_number", "detected_telephone_number", "formatted_telephone_number", "format_status", "country", "number_type", "number_type_raw", "operator", "hlr_status_raw", "live_status_raw", "final_result", "lead_quality_signal", "lead_quality_reason", "comment"]
@@ -5300,7 +5293,6 @@ def hlr_details_html(row: dict[str, object]) -> str:
     labels = {
         "original_number": "Исходный номер", "normalized_number": "Нормализованный номер", "detected_telephone_number": "Detected number", "formatted_telephone_number": "Formatted number", "format_status": "Формат", "country": "Страна", "operator": "Оператор / сеть", "hlr_status_raw": "HLR статус", "live_status_raw": "Live status", "number_type": "Telephone number type", "number_type_raw": "Raw telephone_number_type", "final_result": "Итог", "lead_quality_signal": "Оценка лида", "lead_quality_reason": "Почему такая оценка", "comment": "Комментарий", "current_network": "Current network", "current_operator": "Current operator", "current_mccmnc": "Current MCCMNC", "current_country": "Current country", "current_country_iso3": "Current ISO3", "current_country_prefix": "Current country prefix", "original_network": "Original network", "original_operator": "Original operator", "original_mccmnc": "Original MCCMNC", "original_country": "Original country", "original_country_iso3": "Original ISO3", "original_area": "Original area", "original_country_prefix": "Original country prefix", "is_ported": "Is ported", "ported_date": "Ported date", "landline_status": "Landline status", "uuid": "UUID", "timestamp": "Timestamp", "credits_spent": "Credits spent", "raw_error": "Raw error", "raw_message": "Raw message", "error_type": "Error type", "http_status": "HTTP status", "response_content_type": "Response content type", "response_preview_sanitized": "Response preview (sanitized)", "api_message_sanitized": "API message (sanitized)", "http_method": "HTTP method", "api_url": "API URL", "request_shape_sanitized": "Request shape (sanitized)", "parsed_container_detected": "Parsed container detected", "api_url_present": "API URL present", "api_key_present": "API key present", "api_secret_present": "API secret present"
     }
-    copy_keys = {"original_number", "normalized_number", "comment", "uuid", "raw_error", "raw_message", "response_preview_sanitized", "api_message_sanitized"}
     def dl(keys: list[str], skip_empty: bool = False) -> str:
         parts = []
         for key in keys:
@@ -5308,12 +5300,10 @@ def hlr_details_html(row: dict[str, object]) -> str:
             if skip_empty and value == "—":
                 continue
             title = f" title='{esc(value)}'" if key in {"lead_quality_signal", "lead_quality_reason", "comment"} else ""
-            copy = hlr_copy_button(value) if key in copy_keys else ""
-            parts.append(f"<dt{title}>{esc(labels.get(key, key))}</dt><dd{title}>{esc(value)} {copy}</dd>")
+            parts.append(f"<dt{title}>{esc(labels.get(key, key))}</dt><dd{title}>{esc(value)}</dd>")
         return "<dl class='hlr-detail-list'>" + "".join(parts) + "</dl>"
     raw_json = json.dumps(row.get("raw_api_item_sanitized") or {}, ensure_ascii=False, indent=2, sort_keys=True)
-    raw_copy = hlr_copy_button(raw_json, "Копировать raw") if raw_json != "{}" else ""
-    raw_block = f"<div>{raw_copy}<pre class='hlr-raw-json'>{esc(raw_json)}</pre></div>" if raw_json != "{}" else "<p class='muted'>Raw API item недоступен для этой строки.</p>"
+    raw_block = f"<div><pre class='hlr-raw-json'>{esc(raw_json)}</pre></div>" if raw_json != "{}" else "<p class='muted'>Raw API item недоступен для этой строки.</p>"
     error_section = f"<section><h4>Safe error diagnostics</h4>{dl(error_keys, True)}</section>" if any(display.get(key, "—") != "—" for key in error_keys) else ""
     return f"<div class='hlr-details-grid'><section><h4>Main</h4>{dl(main_keys)}</section><section><h4>Network</h4>{dl(network_keys, True)}</section><section><h4>Original network</h4>{dl(original_keys, True)}</section><section><h4>Porting</h4>{dl(porting_keys, True)}</section><section><h4>Meta</h4>{dl(meta_keys, True)}</section>{error_section}<section><h4>Sanitized raw API item</h4>{raw_block}</section></div>"
 
@@ -5357,7 +5347,7 @@ def hlr_table(results: list[dict[str, object]]) -> str:
             title = value if key in {"comment", "lead_quality_signal", "lead_quality_reason", "raw_error", "raw_message", "request_shape_sanitized"} else ""
             if key == "lead_quality_signal":
                 title = display.get("lead_quality_reason", value)
-            copy = hlr_copy_button(value) if key in copyable else ""
+            copy = ""
             long_class = " hlr-long-text" if key in {"comment", "raw_error", "raw_message", "request_shape_sanitized"} else ""
             status_keys = {"hlr_status_raw", "live_status_raw", "final_result", "lead_quality_signal", "format_status", "number_type"}
             if key in status_keys:
@@ -5455,7 +5445,7 @@ def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = Non
     <section class='form-card hlr-input-panel'>
       <form class='hlr-input-form' method='post' action='/hlr/check' id='hlr-form'>
         <label>Номера для проверки <textarea name='numbers' id='hlr-numbers' rows='12' {'disabled' if not write_allowed else ''}>{esc(input_text)}</textarea></label>
-        <p class='muted hlr-counter-line'><span id='hlr-counter'>0 / 500</span></p>
+        <p class='muted hlr-counter-line'>Max 500 numbers per batch · <span id='hlr-counter'>0 / 500</span></p>
         <p class='muted hlr-input-hint'>Один номер на строке. Можно вставлять номера с пробелами, +, скобками и дефисами.</p>
         <div class='hlr-input-actions'>
           <button type='submit' {'disabled' if not write_allowed else ''}>Запустить проверку</button>
@@ -5585,8 +5575,8 @@ def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = Non
     rawChips.forEach((button) => {{ const selected = state.activeFilters.status.includes(normalizeFilterValue(button.dataset.rawStatus || '')); button.classList.toggle('active', selected); button.setAttribute('aria-pressed', selected ? 'true' : 'false'); }});
     typeChips.forEach((button) => {{ const selected = state.activeFilters.type.includes(normalizeFilterValue(button.dataset.numberType || '')); button.classList.toggle('active', selected); button.setAttribute('aria-pressed', selected ? 'true' : 'false'); }});
   }}
-  function renderTable() {{
-    const resultsToRender = state.filteredResults;
+  function renderTable(resultsToRender = state.filteredResults) {{
+    resultsToRender = Array.isArray(resultsToRender) ? resultsToRender : state.filteredResults;
     console.debug('[HLR filters] filteredResults length before render', resultsToRender.length);
     const visibleIndexes = new Set(resultsToRender.map((row) => row.__index));
     rows.forEach((row, index) => {{
@@ -5608,7 +5598,7 @@ def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = Non
   function setFilter(filterType, values) {{
     state.activeFilters[filterType] = values.map(normalizeFilterValue).filter((value, index, list) => value && value !== 'ALL' && list.indexOf(value) === index);
     applyFilters();
-    renderTable();
+    renderTable(state.filteredResults);
     updateCountersUI();
   }}
   function onChipClick(filterType, value) {{
@@ -5616,8 +5606,8 @@ def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = Non
     if (!filter || filter === 'ALL') {{
       state.activeFilters.status = [];
       state.activeFilters.type = [];
-      applyFilters();
-      renderTable();
+      state.filteredResults = state.rawResults.slice();
+      renderTable(state.filteredResults);
       updateCountersUI();
       return;
     }}
@@ -5717,6 +5707,7 @@ def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = Non
   }}));
   copyColumnButton?.addEventListener('click', async () => {{
     const key = copyColumnSelect?.value || 'normalized_number';
+    if (state.columnConfig.visible && state.columnConfig.visible[key] === false) {{ if (copyFeedback) copyFeedback.textContent = 'Колонка скрыта — включите её перед копированием'; return; }}
     const values = state.filteredResults.map((row) => ((row.__display && row.__display[key] !== undefined ? row.__display[key] : row[key]) ?? '').toString());
     await copyText(values.join('\\n'));
     if (copyFeedback) copyFeedback.textContent = 'Скопировано: ' + values.length + ' значений';
