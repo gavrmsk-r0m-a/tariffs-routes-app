@@ -5573,8 +5573,8 @@ def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = Non
     rawChips.forEach((button) => {{ const selected = state.activeFilters.status.includes(normalizeFilterValue(button.dataset.rawStatus || '')); button.classList.toggle('active', selected); button.setAttribute('aria-pressed', selected ? 'true' : 'false'); }});
     typeChips.forEach((button) => {{ const selected = state.activeFilters.type.includes(normalizeFilterValue(button.dataset.numberType || '')); button.classList.toggle('active', selected); button.setAttribute('aria-pressed', selected ? 'true' : 'false'); }});
   }}
-  function renderTable(resultsToRender) {{
-    const visibleIndexes = new Set(resultsToRender.map((row) => row.__index));
+  function renderTable() {{
+    const visibleIndexes = new Set(state.filteredResults.map((row) => row.__index));
     rows.forEach((row, index) => {{
       const show = visibleIndexes.has(index);
       row.hidden = !show;
@@ -5590,12 +5590,17 @@ def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = Non
   function setFilter(filterType, values) {{
     state.activeFilters[filterType] = values.map(normalizeFilterValue).filter((value, index, list) => value && value !== 'ALL' && list.indexOf(value) === index);
     applyFilters();
-    renderTable(state.filteredResults);
-    updateCounters();
+    renderTable();
   }}
   function onChipClick(filterType, value) {{
     const filter = normalizeFilterValue(value);
-    if (!filter || filter === 'ALL') return setFilter('status', []), setFilter('type', []);
+    if (!filter || filter === 'ALL') {{
+      state.activeFilters.status = [];
+      state.activeFilters.type = [];
+      applyFilters();
+      renderTable();
+      return;
+    }}
     const current = state.activeFilters[filterType];
     setFilter(filterType, current.includes(filter) ? current.filter((item) => item !== filter) : current.concat(filter));
   }}
@@ -5693,7 +5698,7 @@ def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = Non
   copyColumnButton?.addEventListener('click', async () => {{
     const key = copyColumnSelect?.value || 'normalized_number';
     const values = state.filteredResults.map((row) => ((row.__display && row.__display[key] !== undefined ? row.__display[key] : row[key]) ?? '').toString());
-    await copyText(values.join('\n'));
+    await copyText(values.join('\\n'));
     if (copyFeedback) copyFeedback.textContent = 'Скопировано: ' + values.length + ' значений';
   }});
   applyColumnSettings();
@@ -5707,7 +5712,7 @@ def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = Non
   detailButtons.forEach((button) => button.addEventListener('click', () => {{ const target = document.getElementById(button.dataset.detailsTarget || ''); if (!target) return; const open = target.hidden; detailRows.forEach((row) => {{ row.hidden = true; }}); target.hidden = !open; button.textContent = open ? 'Скрыть' : 'Детали'; }}));
   updateCounters();
   applyFilters();
-  renderTable(state.filteredResults);
+  renderTable();
 }})();
 </script>
 """

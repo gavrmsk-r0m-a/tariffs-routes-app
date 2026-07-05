@@ -3869,3 +3869,31 @@ class ProviderChangeTelegramServerTest(unittest.TestCase):
             location = server.handle_post(self.repo, f"/provider-changes/{event_id}/update", {"_actor_id": str(self.admin_id), "comment": "new"})
         self.assertEqual(location, "/provider-changes")
         notify.assert_not_called()
+
+
+class HlrUiStateScriptTest(unittest.TestCase):
+    def _content(self):
+        rows = [
+            server.hlr_result_from_api_item({"original": "48789662838", "normalized": "+48789662838"}, {"error": "NONE", "live_status": "LIVE", "telephone_number_type": "MOBILE"}),
+            server.hlr_result_from_api_item({"original": "48123456789", "normalized": "+48123456789"}, {"error": "NONE", "live_status": "DEAD", "telephone_number_type": "FIXED_LINE"}),
+        ]
+        return server.hlr_page("", rows).decode("utf-8")
+
+    def test_hlr_filters_render_only_filtered_state_after_chip_click(self):
+        content = self._content()
+        self.assertIn("function onChipClick(filterType, value)", content)
+        self.assertIn("applyFilters();\n    renderTable();", content)
+        self.assertIn("const visibleIndexes = new Set(state.filteredResults.map((row) => row.__index));", content)
+        self.assertNotIn("function renderTable(resultsToRender)", content)
+        self.assertNotIn("renderTable(state.filteredResults)", content)
+        self.assertIn("filters.forEach((button) => button.addEventListener('click', () => {\n    onChipClick('status', button.dataset.hlrFilter || 'ALL');", content)
+        self.assertIn("rawChips.forEach((button) => button.addEventListener('click', () => onChipClick('status', button.dataset.rawStatus || '')));", content)
+        self.assertIn("typeChips.forEach((button) => button.addEventListener('click', () => onChipClick('type', button.dataset.numberType || '')));", content)
+
+    def test_hlr_counters_and_column_copy_use_expected_sources(self):
+        content = self._content()
+        self.assertIn("state.counters = { ALL: state.rawResults.length };", content)
+        self.assertIn("state.rawResults.forEach((row) => rowFilterTokens(row).forEach((token) => { state.counters[token] = (state.counters[token] || 0) + 1; }));", content)
+        self.assertNotIn("state.filteredResults.forEach((row) => rowFilterTokens(row)", content)
+        self.assertIn("const values = state.filteredResults.map((row) => ((row.__display && row.__display[key] !== undefined ? row.__display[key] : row[key]) ?? '').toString());", content)
+        self.assertIn("await copyText(values.join('\\n'));", content)
