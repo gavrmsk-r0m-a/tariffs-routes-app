@@ -5097,14 +5097,24 @@ def hlr_run_check(input_text: str) -> tuple[list[dict[str, object]], dict[str, i
 
 def hlr_summary(results: list[dict[str, object]]) -> dict[str, int]:
     return {
+        "ALL": len(results),
+        "OK": sum(1 for r in results if r.get("final_result") == "OK" or r.get("final_category") == "ok"),
+        "LIVE": sum(1 for r in results if r.get("live_status_raw") == "LIVE" or r.get("hlr_status_raw") == "LIVE"),
+        "DEAD": sum(1 for r in results if r.get("final_result") == "DEAD" or r.get("live_status_raw") == "DEAD" or r.get("hlr_status_raw") == "DEAD"),
+        "BAD_FORMAT": sum(1 for r in results if r.get("final_result") == "BAD_FORMAT"),
+        "WARNING": sum(1 for r in results if r.get("final_category") == "warning"),
+        "UNKNOWN": sum(1 for r in results if r.get("final_category") == "unknown" or r.get("final_result") == "UNKNOWN"),
+        "MOBILE": sum(1 for r in results if r.get("number_type") == "mobile" or r.get("number_type_raw") == "MOBILE"),
+        "FIXED_LINE": sum(1 for r in results if r.get("number_type") == "landline" or r.get("number_type_raw") in {"LANDLINE", "FIXED_LINE"}),
+        # Backward-compatible aliases used by server-side tests and exports.
         "all": len(results),
-        "ok": sum(1 for r in results if r.get("final_category") == "ok"),
+        "ok": sum(1 for r in results if r.get("final_result") == "OK" or r.get("final_category") == "ok"),
         "warning": sum(1 for r in results if r.get("final_category") == "warning"),
         "bad_format": sum(1 for r in results if r.get("final_result") == "BAD_FORMAT"),
-        "dead": sum(1 for r in results if r.get("final_result") == "DEAD"),
-        "mobile": sum(1 for r in results if r.get("number_type") == "mobile"),
-        "fixed": sum(1 for r in results if r.get("number_type") == "landline"),
-        "unknown": sum(1 for r in results if r.get("final_category") == "unknown"),
+        "dead": sum(1 for r in results if r.get("final_result") == "DEAD" or r.get("live_status_raw") == "DEAD" or r.get("hlr_status_raw") == "DEAD"),
+        "mobile": sum(1 for r in results if r.get("number_type") == "mobile" or r.get("number_type_raw") == "MOBILE"),
+        "fixed": sum(1 for r in results if r.get("number_type") == "landline" or r.get("number_type_raw") in {"LANDLINE", "FIXED_LINE"}),
+        "unknown": sum(1 for r in results if r.get("final_category") == "unknown" or r.get("final_result") == "UNKNOWN"),
         "errors": sum(1 for r in results if r.get("final_category") == "error"),
     }
 
@@ -5164,10 +5174,14 @@ def hlr_status_severity(row: dict[str, object]) -> str:
 def hlr_token_severity(value: object, group: str = "status") -> str:
     token = str(value or "").strip().upper()
     if group == "main":
-        return {"OK": "good", "WARNING": "warning", "BAD FORMAT": "bad", "DEAD": "bad", "UNKNOWN": "unknown", "API ERRORS": "api_error"}.get(token, "neutral")
+        return {"OK": "good", "LIVE": "good", "WARNING": "warning", "BAD_FORMAT": "bad", "BAD FORMAT": "bad", "DEAD": "bad", "UNKNOWN": "unknown", "MOBILE": "neutral", "FIXED_LINE": "neutral", "ALL": "neutral"}.get(token, "neutral")
     if token in {"LIVE", "OK", "MOBILE"}:
         return "good" if token in {"LIVE", "OK"} else "neutral"
-    if token in {"DEAD", "BAD_FORMAT", "INVALID_FORMAT", "LANDLINE", "FIXED_LINE", "MACHINE_TO_MACHINE", "PAGER", "VOICEMAIL_ONLY", "STAGE_AND_SCREEN", "PREMIUM", "SHARED_COST", "TOLL_FREE"}:
+    if token in {"DEAD", "BAD_FORMAT", "INVALID_FORMAT", "API_ERROR"}:
+        return "bad"
+    if token in {"LANDLINE", "FIXED_LINE", "INFO"}:
+        return "neutral"
+    if token in {"MACHINE_TO_MACHINE", "PAGER", "VOICEMAIL_ONLY", "STAGE_AND_SCREEN", "PREMIUM", "SHARED_COST", "TOLL_FREE"}:
         return "bad"
     if token in {"ABSENT_SUBSCRIBER", "NO_TELESERVICE_PROVISIONED", "INCONCLUSIVE", "NOT_AVAILABLE_NETWORK_ONLY", "NO_COVERAGE", "NOT_APPLICABLE", "UNKNOWN", "NETWORK_INFO_ONLY", "MOBILE_OR_LANDLINE", "VOIP", "WARNING"}:
         return "warning" if token != "UNKNOWN" else "unknown"
@@ -5253,15 +5267,15 @@ def hlr_results_rows(results: list[dict[str, object]]) -> list[list[str]]:
 
 
 HLR_FILTERS = [
-    ("all", "Все", "Показать все результаты проверки."),
-    ("ok", "OK", "Номера, по которым HLR вернул активный/валидный статус."),
-    ("warning", "Warning", "Номер выглядит назначенным, но есть ограничение: временно недоступен или сервис недоступен."),
-    ("bad_format", "Bad format", "Номер не похож на корректный международный формат. Часто это ошибка склейки номера у источника трафика."),
-    ("dead", "Dead", "HLR сообщает, что номер не назначен абоненту."),
-    ("mobile", "Mobile", "Номера, определённые как мобильные."),
-    ("fixed", "Fixed line", "Номера, определённые как городские/стационарные. Для них live-status может быть неприменим."),
-    ("unknown", "Unknown", "HLR не смог уверенно определить статус: нет покрытия, оператор не отдаёт данные или результат неоднозначный."),
-    ("errors", "API errors", "Проверка не выполнена из-за ошибки API, таймаута или ошибки провайдера."),
+    ("ALL", "ALL", "Показать все результаты проверки."),
+    ("OK", "OK", "Номера, по которым HLR вернул валидный статус."),
+    ("LIVE", "LIVE", "Номера, по которым HLR вернул активный live-status."),
+    ("DEAD", "DEAD", "HLR сообщает, что номер не назначен абоненту."),
+    ("BAD_FORMAT", "BAD_FORMAT", "Номер не похож на корректный международный формат."),
+    ("WARNING", "WARNING", "Номер требует внимания или дополнительной проверки."),
+    ("UNKNOWN", "UNKNOWN", "HLR не смог уверенно определить статус."),
+    ("MOBILE", "MOBILE", "Номера, определённые как мобильные."),
+    ("FIXED_LINE", "FIXED_LINE", "Номера, определённые как городские/стационарные."),
 ]
 
 
@@ -5327,7 +5341,7 @@ def hlr_column_settings_markup() -> str:
 def hlr_table(results: list[dict[str, object]]) -> str:
     colgroup = "".join(f"<col data-col='{esc(key)}' style='width:{width}px'{' hidden' if not visible else ''}>" for key, _label, width, visible in HLR_TABLE_COLUMNS)
     rows = []
-    copyable = {"original_number", "normalized_number", "comment", "uuid", "raw_error", "raw_message"}
+    copyable = set()
     for index, row in enumerate(results):
         cells = []
         display = hlr_display_row(row)
@@ -5475,15 +5489,18 @@ def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = Non
   const caption = document.getElementById('hlr-filter-caption');
   const columnToggles = Array.from(document.querySelectorAll('[data-hlr-column-toggle]'));
   const columnWidths = Array.from(document.querySelectorAll('[data-hlr-column-width]'));
-  const copyButtons = Array.from(document.querySelectorAll('[data-copy]'));
   const copyColumnButton = document.querySelector('[data-hlr-copy-column]');
   const copyColumnSelect = document.querySelector('[data-hlr-copy-column-select]');
   const copyFeedback = document.querySelector('[data-hlr-copy-feedback]');
   const columnStorageKey = 'hlr-table-columns-v1';
   const widthStorageKey = 'hlr-table-widths-v1';
   const orderStorageKey = 'hlr-table-order-v1';
-  let results = [];
-  try {{ results = JSON.parse(document.getElementById('hlr-results-data')?.textContent || '[]'); }} catch (_) {{ results = []; }}
+  let allResults = [];
+  try {{ allResults = JSON.parse(document.getElementById('hlr-results-data')?.textContent || '[]'); }} catch (_) {{ allResults = []; }}
+  let filteredResults = allResults.slice();
+  let activeFilters = [];
+  let columnConfig = [];
+  let sortState = {{ key: '', direction: 'asc' }};
   function normalizeCandidate(value) {{
     const raw = (value || '').trim();
     if (!raw) return '';
@@ -5499,69 +5516,66 @@ def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = Non
     counter.textContent = count + ' / 500';
     counter.style.color = count > 500 ? 'var(--danger)' : '';
   }}
-  const activeFilters = {{ main: new Set(), raw: new Set(), type: new Set() }};
-  function matchesMain(row, filter) {{
-    if (filter === 'all') return true;
-    if (filter === 'ok') return row.dataset.finalCategory === 'ok';
-    if (filter === 'warning') return row.dataset.finalCategory === 'warning';
-    if (filter === 'bad_format') return row.dataset.finalResult === 'BAD_FORMAT';
-    if (filter === 'dead') return row.dataset.finalResult === 'DEAD';
-    if (filter === 'mobile') return row.dataset.hlrType === 'mobile' || row.dataset.hlrTypeRaw === 'MOBILE';
-    if (filter === 'fixed') return row.dataset.hlrType === 'landline' || row.dataset.hlrTypeRaw === 'LANDLINE';
-    if (filter === 'unknown') return row.dataset.finalCategory === 'unknown' || row.dataset.finalResult === 'UNKNOWN';
-    if (filter === 'errors') return row.dataset.finalCategory === 'error' || row.dataset.finalResult === 'ERROR';
-    return false;
+  function normalizeFilterValue(value) {{
+    const token = (value || '').toString().trim().toUpperCase();
+    if (token === 'FIXED' || token === 'LANDLINE') return 'FIXED_LINE';
+    return token;
   }}
-  function matchesRaw(row, status) {{
-    return row.dataset.hlrStatus === status || row.dataset.liveStatus === status || (status === 'BAD_FORMAT' && row.dataset.finalResult === 'BAD_FORMAT') || (status === 'ERROR' && row.dataset.finalCategory === 'error');
+  function rowFilterTokens(row) {{
+    const tokens = new Set();
+    ['hlr_status_raw', 'live_status_raw', 'final_result'].forEach((key) => {{ const value = normalizeFilterValue(row[key]); if (value && value !== '—') tokens.add(value); }});
+    const type = normalizeFilterValue(row.number_type_raw || row.number_type);
+    if (type === 'MOBILE' || (row.number_type || '').toString().toLowerCase() === 'mobile') tokens.add('MOBILE');
+    if (type === 'FIXED_LINE' || (row.number_type || '').toString().toLowerCase() === 'landline') tokens.add('FIXED_LINE');
+    if ((row.final_category || '').toString().toLowerCase() === 'warning') tokens.add('WARNING');
+    if ((row.final_category || '').toString().toLowerCase() === 'unknown') tokens.add('UNKNOWN');
+    if ((row.final_category || '').toString().toLowerCase() === 'ok') tokens.add('OK');
+    return tokens;
   }}
-  function matchesType(row, status) {{
-    const normalized = (status || '').toUpperCase();
-    const raw = (row.dataset.hlrTypeRaw || '').toUpperCase();
-    const mapped = (row.dataset.hlrType || '').toUpperCase();
-    if (normalized === 'MOBILE') return raw === 'MOBILE' || mapped === 'MOBILE';
-    if (normalized === 'LANDLINE' || normalized === 'FIXED_LINE') return raw === 'LANDLINE' || raw === 'FIXED_LINE' || mapped === 'LANDLINE';
-    return raw === normalized || mapped === normalized;
-  }}
-  function rowMatchesActive(row) {{
-    const mainOk = activeFilters.main.size === 0 || Array.from(activeFilters.main).some((filter) => matchesMain(row, filter));
-    const rawOk = activeFilters.raw.size === 0 || Array.from(activeFilters.raw).some((status) => matchesRaw(row, status));
-    const typeOk = activeFilters.type.size === 0 || Array.from(activeFilters.type).some((status) => matchesType(row, status));
-    return mainOk && rawOk && typeOk;
+  function applyFilters(sourceRows, filtersList) {{
+    if (!filtersList.length) return sourceRows.slice();
+    const normalized = filtersList.map(normalizeFilterValue).filter(Boolean);
+    return sourceRows.filter((row) => {{
+      const tokens = rowFilterTokens(row);
+      return normalized.some((filter) => tokens.has(filter));
+    }});
   }}
   function activeCaption(visible) {{
-    const parts = [];
-    if (activeFilters.main.size) parts.push('статус: ' + Array.from(activeFilters.main).join(', '));
-    if (activeFilters.type.size) parts.push('тип: ' + Array.from(activeFilters.type).join(', '));
-    if (activeFilters.raw.size) parts.push('HLR: ' + Array.from(activeFilters.raw).join(', '));
-    return parts.length ? 'Показаны ' + visible + ' результаты; фильтр — ' + parts.join('; ') : 'Показаны ' + visible + ' результаты';
+    return activeFilters.length ? 'Показаны ' + visible + ' результаты; фильтр — ' + activeFilters.join(', ') : 'Показаны ' + visible + ' результаты';
   }}
-  function applyFilters() {{
-    let visible = 0;
-    const filtered = [];
-    rows.forEach((row, index) => {{
-      const show = rowMatchesActive(row);
-      row.hidden = !show;
-      const details = row.nextElementSibling;
-      if (details && details.classList.contains('hlr-details-row') && !show) details.hidden = true;
-      if (show) {{ visible += 1; if (results[index]) filtered.push(results[index]); }}
-    }});
+  function syncFilterUi() {{
     filters.forEach((button) => {{
-      const key = button.dataset.hlrFilter || 'all';
-      const selected = key === 'all' ? (activeFilters.main.size === 0 && activeFilters.raw.size === 0 && activeFilters.type.size === 0) : (key === 'mobile' ? activeFilters.type.has('MOBILE') : (key === 'fixed' ? activeFilters.type.has('LANDLINE') : activeFilters.main.has(key)));
+      const key = normalizeFilterValue(button.dataset.hlrFilter || 'ALL');
+      const selected = key === 'ALL' ? activeFilters.length === 0 : activeFilters.includes(key);
       button.classList.toggle('active', selected);
       button.setAttribute('aria-pressed', selected ? 'true' : 'false');
     }});
-    rawChips.forEach((button) => {{ const selected = activeFilters.raw.has(button.dataset.rawStatus || ''); button.classList.toggle('active', selected); button.setAttribute('aria-pressed', selected ? 'true' : 'false'); }});
-    typeChips.forEach((button) => {{ const selected = activeFilters.type.has(button.dataset.numberType || ''); button.classList.toggle('active', selected); button.setAttribute('aria-pressed', selected ? 'true' : 'false'); }});
-    if (allEmpty) allEmpty.hidden = results.length > 0;
-    if (filterEmpty) filterEmpty.hidden = results.length === 0 || visible > 0;
-    if (caption) caption.textContent = activeCaption(visible);
-    if (exportInput) exportInput.value = JSON.stringify(filtered);
+    rawChips.forEach((button) => {{ const selected = activeFilters.includes(normalizeFilterValue(button.dataset.rawStatus || '')); button.classList.toggle('active', selected); button.setAttribute('aria-pressed', selected ? 'true' : 'false'); }});
+    typeChips.forEach((button) => {{ const selected = activeFilters.includes(normalizeFilterValue(button.dataset.numberType || '')); button.classList.toggle('active', selected); button.setAttribute('aria-pressed', selected ? 'true' : 'false'); }});
   }}
-  function toggleSet(set, value) {{
-    if (!value) return;
-    if (set.has(value)) set.delete(value); else set.add(value);
+  function renderTable() {{
+    const visibleIndexes = new Set(filteredResults.map((row) => allResults.indexOf(row)));
+    rows.forEach((row, index) => {{
+      const show = visibleIndexes.has(index);
+      row.hidden = !show;
+      const details = row.nextElementSibling;
+      if (details && details.classList.contains('hlr-details-row') && !show) details.hidden = true;
+    }});
+    syncFilterUi();
+    if (allEmpty) allEmpty.hidden = allResults.length > 0;
+    if (filterEmpty) filterEmpty.hidden = allResults.length === 0 || filteredResults.length > 0;
+    if (caption) caption.textContent = activeCaption(filteredResults.length);
+    if (exportInput) exportInput.value = JSON.stringify(filteredResults);
+  }}
+  function setActiveFilters(nextFilters) {{
+    activeFilters = nextFilters.map(normalizeFilterValue).filter((value, index, list) => value && value !== 'ALL' && list.indexOf(value) === index);
+    filteredResults = applyFilters(allResults, activeFilters);
+    renderTable();
+  }}
+  function toggleFilter(value) {{
+    const filter = normalizeFilterValue(value);
+    if (!filter || filter === 'ALL') return setActiveFilters([]);
+    setActiveFilters(activeFilters.includes(filter) ? activeFilters.filter((item) => item !== filter) : activeFilters.concat(filter));
   }}
   function readJsonStorage(key, fallback) {{
     try {{ return JSON.parse(window.localStorage.getItem(key) || '') || fallback; }} catch (_) {{ return fallback; }}
@@ -5656,16 +5670,9 @@ def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = Non
     }};
     document.addEventListener('pointermove', move); document.addEventListener('pointerup', up);
   }}));
-  copyButtons.forEach((button) => button.addEventListener('click', async (event) => {{
-    event.preventDefault(); event.stopPropagation();
-    const text = button.dataset.copy || '';
-    try {{ await copyText(text); button.textContent = '✓'; setTimeout(() => {{ button.textContent = '⧉'; }}, 900); }}
-    catch (_) {{}}
-  }}));
   copyColumnButton?.addEventListener('click', async () => {{
     const key = copyColumnSelect?.value || 'normalized_number';
-    const values = [];
-    rows.forEach((row, index) => {{ if (!row.hidden && results[index]) values.push((results[index][key] ?? '').toString()); }});
+    const values = filteredResults.map((row) => (row[key] ?? '').toString());
     await copyText(values.join('\n'));
     if (copyFeedback) copyFeedback.textContent = 'Скопировано: ' + values.length + ' значений';
   }});
@@ -5673,22 +5680,12 @@ def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = Non
   if (input) {{ input.addEventListener('input', updateCounter); updateCounter(); }}
   if (clear && input) clear.addEventListener('click', () => {{ input.value = ''; updateCounter(); input.focus(); }});
   filters.forEach((button) => button.addEventListener('click', () => {{
-    const value = button.dataset.hlrFilter || 'all';
-    if (value === 'all') {{
-      activeFilters.main.clear(); activeFilters.raw.clear(); activeFilters.type.clear();
-    }} else if (value === 'mobile') {{
-      toggleSet(activeFilters.type, 'MOBILE');
-    }} else if (value === 'fixed') {{
-      toggleSet(activeFilters.type, 'LANDLINE');
-    }} else {{
-      toggleSet(activeFilters.main, value);
-    }}
-    applyFilters();
+    toggleFilter(button.dataset.hlrFilter || 'ALL');
   }}));
-  rawChips.forEach((button) => button.addEventListener('click', () => {{ toggleSet(activeFilters.raw, button.dataset.rawStatus || ''); applyFilters(); }}));
-  typeChips.forEach((button) => button.addEventListener('click', () => {{ toggleSet(activeFilters.type, button.dataset.numberType || ''); applyFilters(); }}));
+  rawChips.forEach((button) => button.addEventListener('click', () => toggleFilter(button.dataset.rawStatus || '')));
+  typeChips.forEach((button) => button.addEventListener('click', () => toggleFilter(button.dataset.numberType || '')));
   detailButtons.forEach((button) => button.addEventListener('click', () => {{ const target = document.getElementById(button.dataset.detailsTarget || ''); if (!target) return; const open = target.hidden; detailRows.forEach((row) => {{ row.hidden = true; }}); target.hidden = !open; button.textContent = open ? 'Скрыть' : 'Детали'; }}));
-  applyFilters();
+  setActiveFilters([]);
 }})();
 </script>
 """
