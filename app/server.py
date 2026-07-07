@@ -1040,9 +1040,17 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .metric-value {{ display: block; margin: 6px 0 3px; color: var(--text-strong); font-size: 30px; line-height: 1; letter-spacing: -0.03em; }}
     .metric-hint {{ color: var(--muted); font-size: 12px; }}
     .hlr-workspace {{ display: grid; gap: 10px; min-width: 0; overflow-x: clip; }}
+    .hlr-tech-spec {{ border: 1px solid var(--border); border-radius: var(--radius-card); background: var(--surface); box-shadow: var(--shadow-soft); overflow: visible; }}
+    .hlr-tech-spec > summary {{ display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; cursor: pointer; font-weight: 820; list-style: none; }}
+    .hlr-tech-spec > summary::-webkit-details-marker {{ display: none; }}
+    .hlr-tech-spec-title::before {{ content: "▶"; display: inline-block; width: 18px; color: var(--muted); }}
+    .hlr-tech-spec[open] .hlr-tech-spec-title::before {{ content: "▼"; }}
+    .hlr-tech-spec-summary {{ display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; color: var(--muted); font-size: 12px; font-weight: 720; }}
+    .hlr-tech-spec-body {{ display: grid; grid-template-columns: minmax(280px, .9fr) minmax(360px, 1.1fr); gap: 12px; padding: 0 12px 12px; }}
+    .hlr-input-panel {{ margin: 0; }}
     .hlr-input-form {{ display: grid; gap: 7px; align-items: start; padding: 12px; }}
     .hlr-input-form label {{ display: grid; gap: 5px; min-width: 0; width: 100%; }}
-    .hlr-input-form textarea {{ min-width: 0; width: 100%; min-height: 86px; max-height: 18vh; resize: vertical; box-sizing: border-box; }}
+    .hlr-input-form textarea {{ min-width: 0; width: 100%; min-height: 140px; max-height: 26vh; resize: vertical; box-sizing: border-box; }}
     .hlr-counter-line, .hlr-input-hint {{ margin: 0; }}
     .hlr-input-actions {{ display: flex; gap: 8px; flex-wrap: wrap; }}
     .hlr-severity-good, .hlr-severity-green, .hlr-severity-neutral {{ border-color: color-mix(in srgb, var(--success) 60%, var(--border)); background: color-mix(in srgb, var(--success) 12%, var(--surface)); color: var(--success, var(--text-strong)); }}
@@ -1058,7 +1066,9 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     #hlr-table tbody tr.hlr-row-severity-warning td[data-col='comment'] .hlr-cell-text, #hlr-table tbody tr.hlr-row-severity-unknown td[data-col='comment'] .hlr-cell-text, #hlr-table tbody tr.hlr-row-severity-yellow td[data-col='comment'] .hlr-cell-text, #hlr-table tbody tr.hlr-row-severity-orange td[data-col='comment'] .hlr-cell-text {{ color: var(--warning-hover, var(--warning)); }}
     .hlr-demo-note {{ margin-left: 8px; font-size: 12px; font-weight: 500; }}
     .hlr-table-toolbar {{ display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-top: 0; }}
-    .hlr-filter-panel {{ display: flex; align-items: center; gap: 7px; flex-wrap: wrap; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius-card); background: var(--surface-muted); }}
+    .hlr-filter-panel {{ display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }}
+    .hlr-filter-group {{ display: flex; align-content: flex-start; align-items: center; gap: 7px; flex-wrap: wrap; padding: 10px; border: 1px solid var(--border); border-radius: var(--radius-card); background: var(--surface-muted); }}
+    .hlr-filter-group-title {{ flex: 0 0 100%; color: var(--text-strong); font-size: 12px; font-weight: 840; text-transform: uppercase; letter-spacing: .04em; }}
     .hlr-filter-chip {{ border: 1px solid var(--border); border-radius: 999px; padding: 4px 10px; background: var(--surface); color: var(--text); box-shadow: none; font-size: 12px; font-weight: 760; }}
     .hlr-filter-chip.is-active {{ outline: 2px solid color-mix(in srgb, var(--accent) 55%, transparent); border-color: var(--accent); }}
     .hlr-filter-count {{ margin-left: 4px; color: var(--muted); font-weight: 800; }}
@@ -1074,7 +1084,7 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .column-drag-handle {{ color: var(--muted); margin-right: 4px; cursor: grab; }}
     .hlr-results-area, .hlr-results-area .table-card {{ min-width: 0; overflow: hidden; }}
     .hlr-results-area .table-card {{ margin-top: 0; min-height: 320px; }}
-    .hlr-results-area .table-scroll {{ min-height: 470px; max-height: calc(100vh - 210px); overflow: auto; }}
+    .hlr-results-area .table-scroll {{ min-height: 520px; max-height: calc(100vh - 170px); overflow: auto; }}
     #hlr-table {{ table-layout: fixed; width: max-content; min-width: 100%; }}
     #hlr-table thead {{ position: sticky; top: 0; z-index: 3; }}
     #hlr-table th {{ position: sticky; top: 0; z-index: 2; }}
@@ -1089,7 +1099,7 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .hlr-api-fields summary {{ cursor: pointer; font-weight: 760; }}
     .hlr-api-field-list {{ display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }}
     .hlr-api-field-list code {{ padding: 2px 6px; border-radius: 999px; background: var(--surface-muted); border: 1px solid var(--border); font-size: 12px; }}
-    @media (max-width: 900px) {{ .hlr-input-form textarea {{ min-height: 150px; }} .hlr-results-area .table-scroll {{ max-height: calc(100vh - 300px); }} }}
+    @media (max-width: 900px) {{ .hlr-tech-spec-body, .hlr-filter-panel {{ grid-template-columns: 1fr; }} .hlr-input-form textarea {{ min-height: 150px; }} .hlr-results-area .table-scroll {{ max-height: calc(100vh - 300px); }} }}
     .dashboard-section {{ margin: 16px 0; }}
     .dashboard-section h2 {{ margin-bottom: 10px; }}
     .quick-links {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px; }}
@@ -5382,23 +5392,28 @@ def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = Non
     demo_badge = "<span class='badge'>Demo mode</span><span class='muted hlr-demo-note'>Результаты сгенерированы для проверки интерфейса. Реальный HLR API не вызывался.</span>" if is_demo_mode else ""
     export_form = f"<form method='post' action='/hlr/export.csv' id='hlr-export-form'><input type='hidden' name='results_json' value='{export_results_json}'><button type='submit' {'disabled' if not export_allowed else ''}>Экспорт CSV</button></form>"
     body = f"""
-<h1>HLR {demo_badge}</h1>
 {notice}
 <section class='hlr-workspace'>
-  <section class='form-card hlr-input-panel'>
-    <form class='hlr-input-form' method='post' action='/hlr/check' id='hlr-form'>
-      <label>Номера для проверки <textarea name='numbers' id='hlr-numbers-input' rows='12' {'disabled' if not write_allowed else ''}>{esc(input_text)}</textarea></label>
-      <p class='muted hlr-input-hint'>Один номер на строке. Можно вставлять номера с пробелами, +, скобками и дефисами.</p>
-      <p class='muted hlr-counter-line'>Максимум 500 номеров за одну проверку · <span id='hlr-input-counter'>0 / 500</span></p>
-      <div class='hlr-input-actions'>
-        <button type='submit' {'disabled' if not write_allowed else ''}>Запустить проверку</button>
-        <button type='button' id='hlr-clear-button'>Очистить</button>
-      </div>
-    </form>
-  </section>
-  <div class='hlr-table-toolbar'><span class='muted' id='hlr-visible-count'>Показано: {len(results)} из {len(results)}</span><div class='table-footer-tools'><div class='hlr-column-manager'><button type='button' id='hlr-columns-button' aria-expanded='false' aria-controls='hlr-column-panel'>Колонки</button><div class='hlr-column-panel' id='hlr-column-panel' aria-label='Настройки колонок'><div class='hlr-column-panel-actions'><strong>Вид таблицы</strong><button type='button' id='hlr-columns-reset'>Сбросить вид таблицы</button></div><div class='hlr-column-list' id='hlr-column-list'></div></div></div>{export_form}<span class='muted'>Экспортирует все результаты последней проверки.</span></div></div>
-  <div class='hlr-filter-panel' id='hlr-filter-panel' aria-label='Фильтры HLR'></div>
+  <details class='hlr-tech-spec' open>
+    <summary><span class='hlr-tech-spec-title'>HLR Tech Spec {demo_badge}</span><span class='hlr-tech-spec-summary' id='hlr-tech-spec-summary'><span>Проверено: {len(results)}</span></span></summary>
+    <div class='hlr-tech-spec-body'>
+      <section class='form-card hlr-input-panel'>
+        <form class='hlr-input-form' method='post' action='/hlr/check' id='hlr-form'>
+          <label>Номера для проверки <textarea name='numbers' id='hlr-numbers-input' rows='12' {'disabled' if not write_allowed else ''}>{esc(input_text)}</textarea></label>
+          <p class='muted hlr-input-hint'>Один номер на строке. Можно вставлять номера с пробелами, +, скобками и дефисами.</p>
+          <p class='muted hlr-counter-line'>Максимум 500 номеров за одну проверку · <span id='hlr-input-counter'>0 / 500</span></p>
+          <div class='hlr-input-actions'>
+            <button type='submit' {'disabled' if not write_allowed else ''}>Запустить проверку</button>
+            <button type='button' id='hlr-clear-button'>Очистить</button>
+          </div>
+        </form>
+      </section>
+      <div class='hlr-filter-panel' id='hlr-filter-panel' aria-label='Фильтры HLR'></div>
+    </div>
+  </details>
+  <div class='hlr-table-toolbar'><span class='muted' id='hlr-visible-count'>Показано: {len(results)} из {len(results)}</span></div>
   {hlr_table(results)}
+  <div class='hlr-table-toolbar'><span class='muted'>Экспортирует все результаты последней проверки.</span><div class='table-footer-tools'><div class='hlr-column-manager'><button type='button' id='hlr-columns-button' aria-expanded='false' aria-controls='hlr-column-panel'>Колонки</button><div class='hlr-column-panel' id='hlr-column-panel' aria-label='Настройки колонок'><div class='hlr-column-panel-actions'><strong>Вид таблицы</strong><button type='button' id='hlr-columns-reset'>Сбросить вид таблицы</button></div><div class='hlr-column-list' id='hlr-column-list'></div></div></div>{export_form}</div></div>
   {hlr_config_diagnostics_html()}
   {hlr_api_fields_html(results, is_demo_mode)}
 </section>
@@ -5434,32 +5449,39 @@ document.addEventListener("DOMContentLoaded", function () {{
   const table = document.getElementById("hlr-table");
   const filterPanel = document.getElementById("hlr-filter-panel");
   const visibleCount = document.getElementById("hlr-visible-count");
+  const techSpecSummary = document.getElementById("hlr-tech-spec-summary");
   const resultRows = table ? Array.from(table.querySelectorAll("tbody tr.hlr-result-row")) : [];
   const activeFilters = new Set();
   const filterDefinitions = [
-    {{ key: "ALL", label: "Все", severity: "neutral", match: () => true }},
-    {{ key: "LIVE", label: "LIVE", severity: "good", match: (row) => row.dataset.liveStatus === "LIVE" || row.dataset.hlrStatus === "LIVE" || row.dataset.finalResult === "OK" }},
-    {{ key: "OK", label: "OK", severity: "good", match: (row) => row.dataset.finalResult === "OK" }},
-    {{ key: "DEAD", label: "DEAD", severity: "bad", match: (row) => row.dataset.liveStatus === "DEAD" || row.dataset.hlrStatus === "DEAD" || row.dataset.finalResult === "DEAD" }},
-    {{ key: "BAD_FORMAT", label: "BAD_FORMAT", severity: "bad", match: (row) => row.dataset.finalResult === "BAD_FORMAT" || row.dataset.formatStatus === "invalid" || row.dataset.formatStatus === "bad_format" }},
-    {{ key: "WARNING", label: "WARNING", severity: "warning", match: (row) => row.dataset.severity === "warning" || row.dataset.finalResult === "WARNING" }},
-    {{ key: "UNKNOWN", label: "UNKNOWN", severity: "unknown", match: (row) => row.dataset.severity === "unknown" || row.dataset.liveStatus === "UNKNOWN" || row.dataset.hlrStatus === "UNKNOWN" || row.dataset.finalResult === "UNKNOWN" }},
-    {{ key: "MOBILE", label: "MOBILE", severity: "neutral", match: (row) => row.dataset.numberType === "MOBILE" }},
-    {{ key: "FIXED_LINE", label: "FIXED_LINE", severity: "neutral", match: (row) => row.dataset.numberType === "FIXED_LINE" }},
-    {{ key: "API_ERROR", label: "API ERROR", severity: "api_error", match: (row) => row.dataset.severity === "api_error" || row.dataset.finalResult === "API_ERROR" || row.dataset.hlrStatus === "API_ERROR" }},
-    {{ key: "ABSENT_SUBSCRIBER", label: "ABSENT_SUBSCRIBER", severity: "warning", match: (row) => row.dataset.liveStatus === "ABSENT_SUBSCRIBER" || row.dataset.hlrStatus === "ABSENT_SUBSCRIBER" }},
-    {{ key: "NO_COVERAGE", label: "NO_COVERAGE", severity: "warning", match: (row) => row.dataset.liveStatus === "NO_COVERAGE" || row.dataset.hlrStatus === "NO_COVERAGE" }},
-    {{ key: "NOT_AVAILABLE_NETWORK_ONLY", label: "NOT_AVAILABLE_NETWORK_ONLY", severity: "warning", match: (row) => row.dataset.liveStatus === "NOT_AVAILABLE_NETWORK_ONLY" || row.dataset.hlrStatus === "NOT_AVAILABLE_NETWORK_ONLY" }},
-    {{ key: "INCONCLUSIVE", label: "INCONCLUSIVE", severity: "warning", match: (row) => row.dataset.liveStatus === "INCONCLUSIVE" || row.dataset.hlrStatus === "INCONCLUSIVE" }},
-    {{ key: "NO_TELESERVICE_PROVISIONED", label: "NO_TELESERVICE_PROVISIONED", severity: "warning", match: (row) => row.dataset.liveStatus === "NO_TELESERVICE_PROVISIONED" || row.dataset.hlrStatus === "NO_TELESERVICE_PROVISIONED" }},
-    {{ key: "VOIP", label: "VOIP", severity: "neutral", match: (row) => row.dataset.numberType === "VOIP" }},
-    {{ key: "LANDLINE", label: "LANDLINE", severity: "neutral", match: (row) => row.dataset.numberType === "LANDLINE" }},
+    {{ key: "ALL", label: "Все", group: "hlr", severity: "neutral", tooltip: "Показать все результаты HLR", match: () => true }},
+    {{ key: "LIVE", label: "LIVE", group: "hlr", severity: "good", tooltip: "HLR подтверждает активное состояние номера", match: (row) => row.dataset.liveStatus === "LIVE" || row.dataset.hlrStatus === "LIVE" || row.dataset.finalResult === "OK" }},
+    {{ key: "OK", label: "OK", group: "analysis", severity: "good", tooltip: "Внутренний итог TeleRoute: номер подходит", match: (row) => row.dataset.finalResult === "OK" }},
+    {{ key: "DEAD", label: "DEAD", group: "hlr", severity: "bad", tooltip: "Номер отключен или недоступен", match: (row) => row.dataset.liveStatus === "DEAD" || row.dataset.hlrStatus === "DEAD" || row.dataset.finalResult === "DEAD" }},
+    {{ key: "BAD_FORMAT", label: "BAD_FORMAT", group: "hlr", severity: "bad", tooltip: "HLR или нормализация не смогли распознать номер как корректный", match: (row) => row.dataset.finalResult === "BAD_FORMAT" || row.dataset.formatStatus === "invalid" || row.dataset.formatStatus === "bad_format" }},
+    {{ key: "WARNING", label: "WARNING", group: "hlr", severity: "warning", tooltip: "HLR вернул предупреждение или неоднозначный статус", match: (row) => row.dataset.severity === "warning" || row.dataset.finalResult === "WARNING" }},
+    {{ key: "UNKNOWN", label: "UNKNOWN", group: "hlr", severity: "unknown", tooltip: "HLR не смог определить состояние номера", match: (row) => row.dataset.severity === "unknown" || row.dataset.liveStatus === "UNKNOWN" || row.dataset.hlrStatus === "UNKNOWN" || row.dataset.finalResult === "UNKNOWN" }},
+    {{ key: "MOBILE", label: "Мобильный", group: "analysis", severity: "neutral", tooltip: "Тип номера: мобильный", match: (row) => row.dataset.numberType === "MOBILE" }},
+    {{ key: "FIXED_LINE", label: "Городской", group: "analysis", severity: "neutral", tooltip: "Тип номера: стационарный", match: (row) => row.dataset.numberType === "FIXED_LINE" }},
+    {{ key: "API_ERROR", label: "API ERROR", group: "analysis", severity: "api_error", tooltip: "Внутренняя ошибка обработки запроса или ответа API", match: (row) => row.dataset.severity === "api_error" || row.dataset.finalResult === "API_ERROR" || row.dataset.hlrStatus === "API_ERROR" }},
+    {{ key: "ABSENT_SUBSCRIBER", label: "ABSENT_SUBSCRIBER", group: "hlr", severity: "warning", tooltip: "HLR status ABSENT_SUBSCRIBER", match: (row) => row.dataset.liveStatus === "ABSENT_SUBSCRIBER" || row.dataset.hlrStatus === "ABSENT_SUBSCRIBER" }},
+    {{ key: "NO_COVERAGE", label: "NO_COVERAGE", group: "hlr", severity: "warning", tooltip: "HLR status NO_COVERAGE", match: (row) => row.dataset.liveStatus === "NO_COVERAGE" || row.dataset.hlrStatus === "NO_COVERAGE" }},
+    {{ key: "NOT_AVAILABLE_NETWORK_ONLY", label: "NOT_AVAILABLE_NETWORK_ONLY", group: "hlr", severity: "warning", tooltip: "Сеть недоступна в момент проверки. Это не обязательно означает плохой номер", match: (row) => row.dataset.liveStatus === "NOT_AVAILABLE_NETWORK_ONLY" || row.dataset.hlrStatus === "NOT_AVAILABLE_NETWORK_ONLY" }},
+    {{ key: "INCONCLUSIVE", label: "INCONCLUSIVE", group: "hlr", severity: "warning", tooltip: "HLR status INCONCLUSIVE", match: (row) => row.dataset.liveStatus === "INCONCLUSIVE" || row.dataset.hlrStatus === "INCONCLUSIVE" }},
+    {{ key: "NO_TELESERVICE_PROVISIONED", label: "NO_TELESERVICE_PROVISIONED", group: "hlr", severity: "warning", tooltip: "HLR status NO_TELESERVICE_PROVISIONED", match: (row) => row.dataset.liveStatus === "NO_TELESERVICE_PROVISIONED" || row.dataset.hlrStatus === "NO_TELESERVICE_PROVISIONED" }},
+    {{ key: "VOIP", label: "VOIP", group: "analysis", severity: "neutral", tooltip: "Тип номера: VOIP", match: (row) => row.dataset.numberType === "VOIP" }},
+    {{ key: "LANDLINE", label: "LANDLINE", group: "analysis", severity: "neutral", tooltip: "Тип номера: стационарный/landline", match: (row) => row.dataset.numberType === "LANDLINE" }},
   ];
 
   function updateVisibleCount() {{
-    if (!visibleCount) return;
     const visible = resultRows.filter((row) => !row.hidden).length;
-    visibleCount.textContent = "Показано: " + visible + " из " + resultRows.length;
+    if (visibleCount) visibleCount.textContent = "Показано: " + visible + " из " + resultRows.length;
+    if (techSpecSummary) {{
+      const live = filterDefinitions.find((definition) => definition.key === "LIVE");
+      const dead = filterDefinitions.find((definition) => definition.key === "DEAD");
+      const liveCount = live ? resultRows.filter((row) => live.match(row)).length : 0;
+      const deadCount = dead ? resultRows.filter((row) => dead.match(row)).length : 0;
+      techSpecSummary.innerHTML = "<span>Проверено: " + resultRows.length + "</span><span>LIVE: " + liveCount + "</span><span>DEAD: " + deadCount + "</span>";
+    }}
   }}
 
   function applyRowFilters() {{
@@ -5480,26 +5502,38 @@ document.addEventListener("DOMContentLoaded", function () {{
   function buildFilterPanel() {{
     if (!filterPanel) return;
     filterPanel.innerHTML = "";
-    filterDefinitions.forEach((definition) => {{
-      const count = definition.key === "ALL" ? resultRows.length : resultRows.filter((row) => definition.match(row)).length;
-      if (definition.key !== "ALL" && count < 1) return;
-      const chip = document.createElement("button");
-      chip.type = "button";
-      chip.className = "hlr-filter-chip hlr-severity-" + definition.severity;
-      chip.dataset.filter = definition.key;
-      chip.setAttribute("aria-pressed", definition.key === "ALL" ? "true" : "false");
-      chip.innerHTML = definition.label + " <span class='hlr-filter-count'>" + count + "</span>";
-      chip.addEventListener("click", () => {{
-        if (definition.key === "ALL") {{
-          activeFilters.clear();
-        }} else if (activeFilters.has(definition.key)) {{
-          activeFilters.delete(definition.key);
-        }} else {{
-          activeFilters.add(definition.key);
-        }}
-        applyRowFilters();
+    const groups = [
+      {{ key: "hlr", title: "HLR Status" }},
+      {{ key: "analysis", title: "TeleRoute Analysis" }},
+    ];
+    groups.forEach((group) => {{
+      const groupEl = document.createElement("section");
+      groupEl.className = "hlr-filter-group";
+      groupEl.innerHTML = "<div class='hlr-filter-group-title'>" + group.title + "</div>";
+      filterDefinitions.filter((definition) => definition.group === group.key).forEach((definition) => {{
+        const count = definition.key === "ALL" ? resultRows.length : resultRows.filter((row) => definition.match(row)).length;
+        if (definition.key !== "ALL" && count < 1) return;
+        const chip = document.createElement("button");
+        chip.type = "button";
+        chip.className = "hlr-filter-chip hlr-severity-" + definition.severity;
+        chip.dataset.filter = definition.key;
+        chip.title = definition.tooltip || definition.label;
+        chip.setAttribute("aria-label", (definition.tooltip || definition.label) + ": " + count);
+        chip.setAttribute("aria-pressed", definition.key === "ALL" ? "true" : "false");
+        chip.innerHTML = definition.label + " <span class='hlr-filter-count'>" + count + "</span>";
+        chip.addEventListener("click", () => {{
+          if (definition.key === "ALL") {{
+            activeFilters.clear();
+          }} else if (activeFilters.has(definition.key)) {{
+            activeFilters.delete(definition.key);
+          }} else {{
+            activeFilters.add(definition.key);
+          }}
+          applyRowFilters();
+        }});
+        groupEl.appendChild(chip);
       }});
-      filterPanel.appendChild(chip);
+      filterPanel.appendChild(groupEl);
     }});
     applyRowFilters();
   }}
