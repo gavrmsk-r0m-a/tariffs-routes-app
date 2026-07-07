@@ -3908,6 +3908,19 @@ class HlrUiStateScriptTest(unittest.TestCase):
         self.assertNotIn("filteredResults", content)
         self.assertNotIn("hlr-results-data", content)
 
+    def test_hlr_inline_script_uses_safe_newline_escaping_and_stable_controls(self):
+        content = self._content()
+        self.assertIn("id='hlr-clear-button'", content)
+        self.assertIn("id='hlr-columns-button'", content)
+        self.assertIn("id='hlr-column-panel'", content)
+        self.assertIn('const storageKey = "hlr_safe_column_settings_v2";', content)
+        self.assertIn('.replace(/\\r/g, "")', content)
+        self.assertIn('.split("\\n")', content)
+        self.assertNotIn('.split(/\r?\n/)', content)
+        self.assertIn('event.stopPropagation();', content)
+        self.assertIn('if (input && clearButton) {', content)
+        self.assertIn('if (!table || !columnsButton || !columnsPanel || !columnsList) return;', content)
+
     def test_hlr_default_column_settings_use_business_columns_and_new_storage_key(self):
         content = self._content()
         expected_default = [
