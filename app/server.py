@@ -5408,26 +5408,28 @@ document.addEventListener("DOMContentLoaded", function () {{
   const clearButton = document.getElementById("hlr-clear-button");
   const counter = document.getElementById("hlr-input-counter");
 
-  if (!input || !clearButton) return;
-
   function updateCounter() {{
-    if (!counter) return;
+    if (!input || !counter) return;
     const values = input.value
-      .split(/\r?\n/)
-      .map(v => v.trim())
+      .replace(/\\r/g, "")
+      .split("\\n")
+      .map((v) => v.trim())
       .filter(Boolean);
     counter.textContent = values.length + " / 500";
   }}
 
-  clearButton.addEventListener("click", function (event) {{
-    event.preventDefault();
-    input.value = "";
-    updateCounter();
-    input.focus();
-  }});
+  if (input && clearButton) {{
+    clearButton.addEventListener("click", function (event) {{
+      event.preventDefault();
+      event.stopPropagation();
+      input.value = "";
+      updateCounter();
+      input.focus();
+    }});
 
-  input.addEventListener("input", updateCounter);
-  updateCounter();
+    input.addEventListener("input", updateCounter);
+    updateCounter();
+  }}
 
   const table = document.getElementById("hlr-table");
   const filterPanel = document.getElementById("hlr-filter-panel");
