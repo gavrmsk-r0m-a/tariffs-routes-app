@@ -1066,7 +1066,7 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     #hlr-table tbody tr.hlr-row-severity-warning td[data-col='comment'] .hlr-cell-text, #hlr-table tbody tr.hlr-row-severity-unknown td[data-col='comment'] .hlr-cell-text, #hlr-table tbody tr.hlr-row-severity-yellow td[data-col='comment'] .hlr-cell-text, #hlr-table tbody tr.hlr-row-severity-orange td[data-col='comment'] .hlr-cell-text {{ color: var(--warning-hover, var(--warning)); }}
     .hlr-demo-note {{ margin-left: 8px; font-size: 12px; font-weight: 500; }}
     .hlr-table-toolbar {{ display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-top: 0; }}
-    .hlr-filter-panel {{ display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }}
+    .hlr-filter-panel {{ display: grid; grid-template-columns: minmax(0, .85fr) minmax(280px, 1.15fr); gap: 10px; align-items: start; }}
     .hlr-filter-group {{ display: flex; align-content: flex-start; align-items: center; gap: 7px; flex-wrap: wrap; padding: 10px; border: 1px solid var(--border); border-radius: var(--radius-card); background: var(--surface-muted); }}
     .hlr-filter-group-title {{ flex: 0 0 100%; color: var(--text-strong); font-size: 12px; font-weight: 840; text-transform: uppercase; letter-spacing: .04em; }}
     .hlr-filter-chip {{ border: 1px solid var(--border); border-radius: 999px; padding: 4px 10px; background: var(--surface); color: var(--text); box-shadow: none; font-size: 12px; font-weight: 760; }}
@@ -1099,6 +1099,18 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .hlr-api-fields summary {{ cursor: pointer; font-weight: 760; }}
     .hlr-api-field-list {{ display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }}
     .hlr-api-field-list code {{ padding: 2px 6px; border-radius: 999px; background: var(--surface-muted); border: 1px solid var(--border); font-size: 12px; }}
+    .hlr-help-card {{ padding: 10px; border: 1px solid var(--border); border-radius: var(--radius-card); background: var(--surface-muted); }}
+    .hlr-help-card h3 {{ margin: 0 0 8px; font-size: 13px; text-transform: uppercase; letter-spacing: .04em; }}
+    .hlr-help-tabs {{ display: flex; gap: 6px; margin-bottom: 8px; flex-wrap: wrap; }}
+    .hlr-help-tab {{ padding: 5px 10px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); color: var(--text); box-shadow: none; font-size: 12px; font-weight: 760; }}
+    .hlr-help-tab.is-active {{ border-color: var(--accent); outline: 2px solid color-mix(in srgb, var(--accent) 40%, transparent); }}
+    .hlr-help-panel[hidden] {{ display: none; }}
+    .hlr-help-list {{ display: grid; gap: 7px; margin: 0; }}
+    .hlr-help-row {{ display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; }}
+    .hlr-help-info {{ cursor: help; color: var(--accent); font-weight: 900; }}
+    .hlr-status-help {{ display: grid; gap: 8px; margin: 0; }}
+    .hlr-status-help dt {{ font-weight: 850; }}
+    .hlr-status-help dd {{ margin: -6px 0 0; color: var(--muted); }}
     @media (max-width: 900px) {{ .hlr-tech-spec-body, .hlr-filter-panel {{ grid-template-columns: 1fr; }} .hlr-input-form textarea {{ min-height: 150px; }} .hlr-results-area .table-scroll {{ max-height: calc(100vh - 300px); }} }}
     .dashboard-section {{ margin: 16px 0; }}
     .dashboard-section h2 {{ margin-bottom: 10px; }}
@@ -4455,6 +4467,7 @@ def hlr_config() -> dict[str, object]:
         "api_url": os.environ.get("HLR_API_URL") or "",
         "api_key": os.environ.get("HLR_API_KEY") or "",
         "api_secret": os.environ.get("HLR_API_SECRET") or "",
+        "api_balance": os.environ.get("HLR_API_BALANCE") or os.environ.get("HLR_BALANCE") or "—",
         "timeout_ms": hlr_int_env("HLR_TIMEOUT_MS", 30000),
         "concurrency": hlr_int_env("HLR_CONCURRENCY", 1),
         "daily_limit": hlr_int_env("HLR_DAILY_CHECK_LIMIT", 500),
@@ -4491,6 +4504,7 @@ def hlr_safe_config_summary() -> dict[str, object]:
         "api_url": hlr_safe_api_url(config["api_url"]),
         "api_key_present": bool(config["api_key"]),
         "api_secret_present": bool(config["api_secret"]),
+        "api_balance": config["api_balance"],
         "timeout_ms": config["timeout_ms"],
         "concurrency": config["concurrency"],
         "daily_limit": config["daily_limit"],
@@ -5356,6 +5370,7 @@ def hlr_config_diagnostics_html() -> str:
         ("api_url", summary["api_url"] or "—"),
         ("api_key_present", "yes" if summary["api_key_present"] else "no"),
         ("api_secret_present", "yes" if summary["api_secret_present"] else "no"),
+        ("Баланс API", f"{summary['api_balance']} credits" if str(summary["api_balance"]).strip() != "—" else "—"),
         ("timeout_ms", summary["timeout_ms"]),
         ("concurrency", summary["concurrency"]),
         ("daily_limit", summary["daily_limit"]),
@@ -5380,6 +5395,33 @@ def hlr_api_fields_html(results: list[dict[str, object]], is_demo_mode: bool) ->
     chips = "".join(f"<code>{esc(field)}</code>" for field in sorted(fields))
     return f"<details class='card hlr-api-fields'><summary>Поля, найденные в ответе API{note}</summary><div class='hlr-api-field-list'>{chips}</div></details>"
 
+
+
+def hlr_help_html() -> str:
+    api_fields = [
+        ("Detected number", "Номер, который HLR сервис распознал после обработки входных данных."),
+        ("Formatted number", "Номер после приведения к стандартному международному формату."),
+        ("Phone number type", "Тип номера: мобильный, городской и другие варианты."),
+        ("Current network", "Текущая сеть оператора, в которой зарегистрирован номер."),
+        ("Operator", "Оператор или сеть, определённая по результату HLR проверки."),
+        ("Country", "Страна номера или текущей сети, если API вернул эти данные."),
+        ("HLR status", "Статус доступности номера, который вернул HLR сервис."),
+    ]
+    statuses = [
+        ("LIVE", "HLR подтвердил активное состояние номера."),
+        ("DEAD", "HLR сообщил, что номер недоступен или неактивен."),
+        ("UNKNOWN", "HLR не смог определить состояние номера."),
+        ("BAD_FORMAT", "Некорректный формат номера."),
+        ("ABSENT_SUBSCRIBER", "Абонент отсутствует или временно недоступен в сети."),
+        ("NO_COVERAGE", "Для направления или сети нет покрытия HLR проверки."),
+        ("NOT_AVAILABLE_NETWORK_ONLY", "Сеть временно недоступна; статус не является финальным подтверждением плохого номера."),
+        ("INCONCLUSIVE", "API вернул неоднозначный результат, требующий ручной оценки."),
+        ("NO_TELESERVICE_PROVISIONED", "Для номера не подключена требуемая телеслужба."),
+        ("API_ERROR", "Ошибка запроса или обработки ответа HLR API."),
+    ]
+    field_rows = "".join(f"<div class='hlr-help-row'><span>{esc(label)}</span><span class='hlr-help-info' title='{esc(tip)}' aria-label='{esc(tip)}'>ⓘ</span></div>" for label, tip in api_fields)
+    status_rows = "".join(f"<dt>{esc(label)}</dt><dd>{esc(text)}</dd>" for label, text in statuses)
+    return f"""<section class='hlr-help-card' aria-label='Справка HLR'><h3>Справка</h3><div class='hlr-help-tabs' role='tablist'><button type='button' class='hlr-help-tab is-active' data-hlr-help-tab='api' aria-pressed='true'>Поля API</button><button type='button' class='hlr-help-tab' data-hlr-help-tab='statuses' aria-pressed='false'>HLR статусы</button></div><div class='hlr-help-panel' data-hlr-help-panel='api'><div class='hlr-help-list'>{field_rows}</div></div><div class='hlr-help-panel' data-hlr-help-panel='statuses' hidden><dl class='hlr-status-help'>{status_rows}</dl></div></section>"""
 
 def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = None, summary: dict[str, int] | None = None, error: str | None = None) -> bytes:
     results = results or []
@@ -5455,21 +5497,16 @@ document.addEventListener("DOMContentLoaded", function () {{
   const filterDefinitions = [
     {{ key: "ALL", label: "Все", group: "hlr", severity: "neutral", tooltip: "Показать все результаты HLR", match: () => true }},
     {{ key: "LIVE", label: "LIVE", group: "hlr", severity: "good", tooltip: "HLR подтверждает активное состояние номера", match: (row) => row.dataset.liveStatus === "LIVE" || row.dataset.hlrStatus === "LIVE" || row.dataset.finalResult === "OK" }},
-    {{ key: "OK", label: "OK", group: "analysis", severity: "good", tooltip: "Внутренний итог TeleRoute: номер подходит", match: (row) => row.dataset.finalResult === "OK" }},
     {{ key: "DEAD", label: "DEAD", group: "hlr", severity: "bad", tooltip: "Номер отключен или недоступен", match: (row) => row.dataset.liveStatus === "DEAD" || row.dataset.hlrStatus === "DEAD" || row.dataset.finalResult === "DEAD" }},
     {{ key: "BAD_FORMAT", label: "BAD_FORMAT", group: "hlr", severity: "bad", tooltip: "HLR или нормализация не смогли распознать номер как корректный", match: (row) => row.dataset.finalResult === "BAD_FORMAT" || row.dataset.formatStatus === "invalid" || row.dataset.formatStatus === "bad_format" }},
     {{ key: "WARNING", label: "WARNING", group: "hlr", severity: "warning", tooltip: "HLR вернул предупреждение или неоднозначный статус", match: (row) => row.dataset.severity === "warning" || row.dataset.finalResult === "WARNING" }},
     {{ key: "UNKNOWN", label: "UNKNOWN", group: "hlr", severity: "unknown", tooltip: "HLR не смог определить состояние номера", match: (row) => row.dataset.severity === "unknown" || row.dataset.liveStatus === "UNKNOWN" || row.dataset.hlrStatus === "UNKNOWN" || row.dataset.finalResult === "UNKNOWN" }},
-    {{ key: "MOBILE", label: "Мобильный", group: "analysis", severity: "neutral", tooltip: "Тип номера: мобильный", match: (row) => row.dataset.numberType === "MOBILE" }},
-    {{ key: "FIXED_LINE", label: "Городской", group: "analysis", severity: "neutral", tooltip: "Тип номера: стационарный", match: (row) => row.dataset.numberType === "FIXED_LINE" }},
-    {{ key: "API_ERROR", label: "API ERROR", group: "analysis", severity: "api_error", tooltip: "Внутренняя ошибка обработки запроса или ответа API", match: (row) => row.dataset.severity === "api_error" || row.dataset.finalResult === "API_ERROR" || row.dataset.hlrStatus === "API_ERROR" }},
+    {{ key: "API_ERROR", label: "API ERROR", group: "hlr", severity: "api_error", tooltip: "Внутренняя ошибка обработки запроса или ответа API", match: (row) => row.dataset.severity === "api_error" || row.dataset.finalResult === "API_ERROR" || row.dataset.hlrStatus === "API_ERROR" }},
     {{ key: "ABSENT_SUBSCRIBER", label: "ABSENT_SUBSCRIBER", group: "hlr", severity: "warning", tooltip: "HLR status ABSENT_SUBSCRIBER", match: (row) => row.dataset.liveStatus === "ABSENT_SUBSCRIBER" || row.dataset.hlrStatus === "ABSENT_SUBSCRIBER" }},
     {{ key: "NO_COVERAGE", label: "NO_COVERAGE", group: "hlr", severity: "warning", tooltip: "HLR status NO_COVERAGE", match: (row) => row.dataset.liveStatus === "NO_COVERAGE" || row.dataset.hlrStatus === "NO_COVERAGE" }},
     {{ key: "NOT_AVAILABLE_NETWORK_ONLY", label: "NOT_AVAILABLE_NETWORK_ONLY", group: "hlr", severity: "warning", tooltip: "Сеть недоступна в момент проверки. Это не обязательно означает плохой номер", match: (row) => row.dataset.liveStatus === "NOT_AVAILABLE_NETWORK_ONLY" || row.dataset.hlrStatus === "NOT_AVAILABLE_NETWORK_ONLY" }},
     {{ key: "INCONCLUSIVE", label: "INCONCLUSIVE", group: "hlr", severity: "warning", tooltip: "HLR status INCONCLUSIVE", match: (row) => row.dataset.liveStatus === "INCONCLUSIVE" || row.dataset.hlrStatus === "INCONCLUSIVE" }},
     {{ key: "NO_TELESERVICE_PROVISIONED", label: "NO_TELESERVICE_PROVISIONED", group: "hlr", severity: "warning", tooltip: "HLR status NO_TELESERVICE_PROVISIONED", match: (row) => row.dataset.liveStatus === "NO_TELESERVICE_PROVISIONED" || row.dataset.hlrStatus === "NO_TELESERVICE_PROVISIONED" }},
-    {{ key: "VOIP", label: "VOIP", group: "analysis", severity: "neutral", tooltip: "Тип номера: VOIP", match: (row) => row.dataset.numberType === "VOIP" }},
-    {{ key: "LANDLINE", label: "LANDLINE", group: "analysis", severity: "neutral", tooltip: "Тип номера: стационарный/landline", match: (row) => row.dataset.numberType === "LANDLINE" }},
   ];
 
   function updateVisibleCount() {{
@@ -5504,7 +5541,6 @@ document.addEventListener("DOMContentLoaded", function () {{
     filterPanel.innerHTML = "";
     const groups = [
       {{ key: "hlr", title: "HLR Status" }},
-      {{ key: "analysis", title: "TeleRoute Analysis" }},
     ];
     groups.forEach((group) => {{
       const groupEl = document.createElement("section");
@@ -5534,6 +5570,20 @@ document.addEventListener("DOMContentLoaded", function () {{
         groupEl.appendChild(chip);
       }});
       filterPanel.appendChild(groupEl);
+    }});
+    filterPanel.insertAdjacentHTML("beforeend", `{hlr_help_html()}`);
+    filterPanel.querySelectorAll("[data-hlr-help-tab]").forEach((tab) => {{
+      tab.addEventListener("click", () => {{
+        const target = tab.dataset.hlrHelpTab;
+        filterPanel.querySelectorAll("[data-hlr-help-tab]").forEach((item) => {{
+          const active = item.dataset.hlrHelpTab === target;
+          item.classList.toggle("is-active", active);
+          item.setAttribute("aria-pressed", active ? "true" : "false");
+        }});
+        filterPanel.querySelectorAll("[data-hlr-help-panel]").forEach((panel) => {{
+          panel.hidden = panel.dataset.hlrHelpPanel !== target;
+        }});
+      }});
     }});
     applyRowFilters();
   }}
