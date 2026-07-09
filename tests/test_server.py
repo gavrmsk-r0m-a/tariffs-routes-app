@@ -3910,6 +3910,22 @@ class HlrUiStateScriptTest(unittest.TestCase):
         self.assertNotIn("filteredResults", content)
         self.assertNotIn("hlr-results-data", content)
 
+    def test_hlr_right_panel_is_compact_and_separates_balance_from_config(self):
+        content = self._content()
+        self.assertIn("id='hlr-filter-panel'", content)
+        self.assertIn("class='hlr-balance-card", content)
+        self.assertIn("Баланс API:", content)
+        self.assertIn("<summary>Справка по HLR</summary>", content)
+        with patch("app.server.current_role_key", return_value="admin"):
+            admin_content = self._content()
+        self.assertIn("<summary>HLR config</summary>", admin_content)
+        self.assertNotIn("data-hlr-help-tab", content)
+        self.assertNotIn("Поля API</button>", content)
+        self.assertNotIn("HLR статусы</button>", content)
+        self.assertNotIn("<dt>api_url</dt>", admin_content)
+        self.assertNotIn("<dt>Баланс API</dt>", admin_content)
+        self.assertNotIn("api_secret</dd>", admin_content)
+
     def test_hlr_inline_script_uses_safe_newline_escaping_and_stable_controls(self):
         content = self._content()
         self.assertIn("id='hlr-clear-button'", content)

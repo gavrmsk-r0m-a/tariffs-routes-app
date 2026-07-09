@@ -1176,18 +1176,18 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .hlr-api-fields .hlr-api-fields {{ margin: 10px; background: var(--surface); }}
     .hlr-api-field-list {{ display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }}
     .hlr-api-field-list code {{ padding: 2px 6px; border-radius: 999px; background: var(--surface-muted); border: 1px solid var(--border); font-size: 12px; }}
-    .hlr-help-card {{ padding: 10px; border: 1px solid var(--border); border-radius: var(--radius-card); background: var(--surface-muted); }}
-    .hlr-help-card h3 {{ margin: 0 0 8px; font-size: 13px; text-transform: uppercase; letter-spacing: .04em; }}
-    .hlr-help-tabs {{ display: flex; gap: 6px; margin-bottom: 8px; flex-wrap: wrap; }}
-    .hlr-help-tab {{ padding: 5px 10px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); color: var(--text); box-shadow: none; font-size: 12px; font-weight: 760; }}
-    .hlr-help-tab.is-active {{ border-color: var(--accent); outline: 2px solid color-mix(in srgb, var(--accent) 40%, transparent); }}
-    .hlr-help-panel[hidden] {{ display: none; }}
+    .hlr-balance-card {{ display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 9px 10px; border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--border)); border-radius: var(--radius-small); background: color-mix(in srgb, var(--accent) 7%, var(--surface)); }}
+    .hlr-balance-main {{ display: grid; gap: 2px; min-width: 0; }}
+    .hlr-balance-value {{ color: var(--text-strong); font-weight: 850; }}
+    .hlr-balance-meta {{ color: var(--muted); font-size: 12px; }}
+    .hlr-balance-card.is-warning {{ border-color: color-mix(in srgb, var(--warning) 55%, var(--border)); background: color-mix(in srgb, var(--warning) 9%, var(--surface)); }}
+    .hlr-balance-card.is-error {{ border-color: color-mix(in srgb, var(--danger) 55%, var(--border)); background: color-mix(in srgb, var(--danger) 8%, var(--surface)); }}
+    .hlr-balance-refresh {{ flex: 0 0 auto; padding: 4px 8px; font-size: 12px; box-shadow: none; }}
+    .hlr-help-card {{ padding: 0; margin: 0; border: 0; background: transparent; }}
+    .hlr-help-card h3 {{ margin: 0 0 8px; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }}
     .hlr-help-list {{ display: grid; gap: 7px; margin: 0; }}
     .hlr-help-row {{ display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; }}
     .hlr-help-info {{ cursor: help; color: var(--accent); font-weight: 900; }}
-    .hlr-status-help {{ display: grid; gap: 8px; margin: 0; }}
-    .hlr-status-help dt {{ font-weight: 850; }}
-    .hlr-status-help dd {{ margin: -6px 0 0; color: var(--muted); }}
     @media (max-width: 900px) {{ .hlr-tech-spec-body {{ grid-template-columns: 1fr; }} .hlr-filter-status-grid {{ grid-template-columns: 1fr; }} .hlr-input-form textarea {{ min-height: 150px; }} .hlr-results-area .table-scroll {{ max-height: calc(100vh - 300px); }} }}
     .dashboard-section {{ margin: 16px 0; }}
     .dashboard-section h2 {{ margin-bottom: 10px; }}
@@ -5779,6 +5779,27 @@ def hlr_table(results: list[dict[str, object]]) -> str:
     return "<section class='hlr-results-area'>" + table_card(content) + "</section>"
 
 
+def hlr_api_balance_state() -> dict[str, str]:
+    config = hlr_config()
+    raw_balance = str(config.get("api_balance") or "").strip()
+    if config.get("mode") in {"demo", ""}:
+        return {"state": "unavailable", "label": "Баланс API: недоступен", "meta": "Demo mode: реальный API не вызывается.", "tone": "warning"}
+    if hlr_config_incomplete(config):
+        return {"state": "not_configured", "label": "Баланс API: не настроен", "meta": "Проверьте HLR API config.", "tone": "warning"}
+    if raw_balance and raw_balance != "—":
+        return {"state": "success", "label": f"Баланс API: {raw_balance}", "meta": f"Обновлено: {datetime.now().strftime('%H:%M')}", "tone": "neutral"}
+    return {"state": "unavailable", "label": "Баланс API: недоступен", "meta": "Endpoint/helper баланса не настроен.", "tone": "warning"}
+
+
+def hlr_api_balance_html() -> str:
+    balance = hlr_api_balance_state()
+    tone_class = " is-error" if balance["tone"] == "error" else (" is-warning" if balance["tone"] == "warning" else "")
+    return f"""<section class='hlr-balance-card{tone_class}' aria-live='polite' data-balance-state='{esc(balance['state'])}'>
+      <div class='hlr-balance-main'><span class='hlr-balance-value'>{esc(balance['label'])}</span><span class='hlr-balance-meta'>{esc(balance['meta'])}</span></div>
+      <a class='button secondary hlr-balance-refresh' href='/hlr' title='Обновить баланс'>Обновить</a>
+    </section>"""
+
+
 def hlr_config_diagnostics_html() -> str:
     if current_role_key() != "admin":
         return ""
@@ -5789,14 +5810,11 @@ def hlr_config_diagnostics_html() -> str:
     rows = [
         ("mode", summary["mode"]),
         ("api_url_present", "yes" if summary["api_url_present"] else "no"),
-        ("api_url", summary["api_url"] or "—"),
         ("api_key_present", "yes" if summary["api_key_present"] else "no"),
         ("api_secret_present", "yes" if summary["api_secret_present"] else "no"),
-        ("Баланс API", f"{summary['api_balance']} credits" if str(summary["api_balance"]).strip() != "—" else "—"),
         ("timeout_ms", summary["timeout_ms"]),
         ("concurrency", summary["concurrency"]),
         ("daily_limit", summary["daily_limit"]),
-        ("dotenv_loaded", summary["dotenv_loaded"]),
         ("config_source", summary["config_source"]),
     ]
     body = "".join(f"<dt>{esc(label)}</dt><dd>{esc(str(value))}</dd>" for label, value in rows)
@@ -5829,21 +5847,8 @@ def hlr_help_html() -> str:
         ("Country", "Страна номера или текущей сети, если API вернул эти данные."),
         ("HLR status", "Статус доступности номера, который вернул HLR сервис."),
     ]
-    statuses = [
-        ("LIVE", "HLR подтвердил активное состояние номера."),
-        ("DEAD", "HLR сообщил, что номер недоступен или неактивен."),
-        ("UNKNOWN", "HLR не смог определить состояние номера."),
-        ("BAD_FORMAT", "Некорректный формат номера."),
-        ("ABSENT_SUBSCRIBER", "Абонент отсутствует или временно недоступен в сети."),
-        ("NO_COVERAGE", "Для направления или сети нет покрытия HLR проверки."),
-        ("NOT_AVAILABLE_NETWORK_ONLY", "Сеть временно недоступна; статус не является финальным подтверждением плохого номера."),
-        ("INCONCLUSIVE", "API вернул неоднозначный результат, требующий ручной оценки."),
-        ("NO_TELESERVICE_PROVISIONED", "Для номера не подключена требуемая телеслужба."),
-        ("API_ERROR", "Ошибка запроса или обработки ответа HLR API."),
-    ]
     field_rows = "".join(f"<div class='hlr-help-row'><span>{esc(label)}</span><span class='hlr-help-info' title='{esc(tip)}' aria-label='{esc(tip)}'>ⓘ</span></div>" for label, tip in api_fields)
-    status_rows = "".join(f"<dt>{esc(label)}</dt><dd>{esc(text)}</dd>" for label, text in statuses)
-    return f"""<section class='hlr-help-card' aria-label='Справка HLR'><h3>Справка</h3><div class='hlr-help-tabs' role='tablist'><button type='button' class='hlr-help-tab is-active' data-hlr-help-tab='api' aria-pressed='true'>Поля API</button><button type='button' class='hlr-help-tab' data-hlr-help-tab='statuses' aria-pressed='false'>HLR статусы</button></div><div class='hlr-help-panel' data-hlr-help-panel='api'><div class='hlr-help-list'>{field_rows}</div></div><div class='hlr-help-panel' data-hlr-help-panel='statuses' hidden><dl class='hlr-status-help'>{status_rows}</dl></div></section>"""
+    return f"""<section class='hlr-help-card' aria-label='Справка HLR'><h3>Поля таблицы/API</h3><div class='hlr-help-list'>{field_rows}</div></section>"""
 
 def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = None, summary: dict[str, int] | None = None, error: str | None = None) -> bytes:
     results = results or []
@@ -5875,6 +5880,7 @@ def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = Non
       <aside class='hlr-side-panel' aria-label='HLR status and details'>
         <div class='hlr-filter-panel' id='hlr-filter-panel' aria-label='Фильтры HLR'></div>
         <div class='hlr-details-stack'>
+          {hlr_api_balance_html()}
           <details class='card hlr-api-fields'><summary>Справка по HLR</summary>{hlr_help_html()}{hlr_api_fields_html(results, is_demo_mode)}</details>
           {hlr_config_diagnostics_html()}
         </div>
