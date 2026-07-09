@@ -2702,6 +2702,39 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     html[data-theme="light-v2"] .checkbox-list label,
     html[data-theme="light-v2"] label.checkbox-inline {{ display: inline-flex; align-items: center; gap: 8px; background: #fff; border: 1px solid var(--border); border-radius: 7px; padding: 6px 8px; }}
 
+    /* TeleRoute Pro filters foundation v1: visual-only standard filter polish scoped to the new theme. */
+    html[data-theme="tele-route-pro"] details.filter-card {{ margin: 8px 0 12px; border: 1px solid var(--border-strong); border-radius: 10px; background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%); box-shadow: 0 1px 2px rgba(17, 24, 39, .04); overflow: hidden; }}
+    html[data-theme="tele-route-pro"] details.filter-card[open] {{ border-color: var(--accent-border); box-shadow: 0 0 0 1px rgba(37, 99, 235, .045), 0 4px 14px rgba(17, 24, 39, .055); }}
+    html[data-theme="tele-route-pro"] details.filter-card > .filter-summary {{ min-height: 34px; padding: 8px 12px; border-bottom: 1px solid transparent; background: linear-gradient(180deg, #f8fafc 0%, #f3f6fa 100%); color: #334155; font-size: 13px; font-weight: 780; letter-spacing: .01em; cursor: pointer; }}
+    html[data-theme="tele-route-pro"] details.filter-card > .filter-summary:hover {{ background: #eef6ff; color: var(--accent-strong); }}
+    html[data-theme="tele-route-pro"] details.filter-card[open] > .filter-summary {{ border-bottom-color: var(--accent-border); background: linear-gradient(180deg, #eff6ff 0%, #f8fbff 100%); color: var(--accent-strong); }}
+    html[data-theme="tele-route-pro"] details.filter-card > .filter-summary::after {{ color: var(--muted); font-size: 11px; font-weight: 740; text-transform: uppercase; letter-spacing: .04em; }}
+    html[data-theme="tele-route-pro"] details.filter-card[open] > .filter-summary::after {{ color: var(--accent-strong); }}
+    html[data-theme="tele-route-pro"] details.filter-card > form {{ margin: 0; }}
+    html[data-theme="tele-route-pro"] .filter-card .filter-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(min(176px, 100%), 1fr)); align-items: end; gap: 9px 10px; padding: 10px 12px 12px; background: #ffffff; }}
+    html[data-theme="tele-route-pro"] .filter-card .filter-grid label {{ min-width: 0; color: #334155; font-size: 12px; font-weight: 760; line-height: 1.25; }}
+    html[data-theme="tele-route-pro"] .filter-card .filter-grid label:not(.checkbox-inline) > input,
+    html[data-theme="tele-route-pro"] .filter-card .filter-grid label:not(.checkbox-inline) > select {{ margin-top: 4px; }}
+    html[data-theme="tele-route-pro"] .filter-card .filter-grid input,
+    html[data-theme="tele-route-pro"] .filter-card .filter-grid select {{ min-height: 32px; padding: 5px 8px; border: 1px solid var(--border-strong); border-radius: 7px; background-color: var(--input-bg); color: var(--text); font-size: 13px; box-shadow: inset 0 1px 1px rgba(17, 24, 39, .025); }}
+    html[data-theme="tele-route-pro"] .filter-card .filter-grid input:hover,
+    html[data-theme="tele-route-pro"] .filter-card .filter-grid select:hover {{ border-color: var(--border-ink); }}
+    html[data-theme="tele-route-pro"] .filter-card .filter-grid input:focus,
+    html[data-theme="tele-route-pro"] .filter-card .filter-grid select:focus {{ border-color: var(--accent); box-shadow: 0 0 0 3px rgba(37, 99, 235, .12); outline: none; }}
+    html[data-theme="tele-route-pro"] .filter-card .filter-grid button,
+    html[data-theme="tele-route-pro"] .filter-card .reset-filters {{ min-height: 32px; padding: 5px 10px; border-radius: 7px; font-size: 13px; font-weight: 760; box-shadow: none; }}
+    html[data-theme="tele-route-pro"] .filter-card .filter-grid button[type="submit"],
+    html[data-theme="tele-route-pro"] .filter-card .filter-grid > button {{ border-color: var(--accent-border); background: var(--accent-soft); color: var(--accent-strong); }}
+    html[data-theme="tele-route-pro"] .filter-card .filter-grid button[type="submit"]:hover,
+    html[data-theme="tele-route-pro"] .filter-card .filter-grid > button:hover {{ border-color: var(--accent); background: #dbeafe; color: var(--accent-hover); }}
+    html[data-theme="tele-route-pro"] .filter-card .reset-filters {{ display: inline-flex; align-items: center; justify-content: center; border-color: var(--border-strong); background: #f8fafc; color: #475569; text-decoration: none; }}
+    html[data-theme="tele-route-pro"] .filter-card .reset-filters:hover {{ border-color: var(--accent-border); background: #eef6ff; color: var(--accent-strong); }}
+    html[data-theme="tele-route-pro"] .filter-card .muted,
+    html[data-theme="tele-route-pro"] .filter-card .metric-hint,
+    html[data-theme="tele-route-pro"] .filter-card .form-hint,
+    html[data-theme="tele-route-pro"] .filter-card small {{ color: var(--muted); font-size: 12px; line-height: 1.35; }}
+    html[data-theme="tele-route-pro"] .filter-card .filter-grid .checkbox-inline {{ min-height: 32px; padding: 5px 8px; border: 1px solid var(--border); border-radius: 7px; background: #f8fafc; color: var(--text); }}
+
     /* TeleRoute Pro tables foundation v1: visual-only table polish scoped to the new theme. */
     html[data-theme="tele-route-pro"] .table-card {{ border: 1px solid var(--border-strong); border-radius: 10px; background: var(--surface); box-shadow: 0 1px 2px rgba(17, 24, 39, .05), 0 8px 20px rgba(17, 24, 39, .055); overflow: hidden; }}
     html[data-theme="tele-route-pro"] .table-scroll {{ background: var(--surface); scrollbar-color: #cbd5e1 var(--surface-soft); }}
