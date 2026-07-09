@@ -2701,6 +2701,46 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     html[data-theme="light-v2"] .permission-matrix label,
     html[data-theme="light-v2"] .checkbox-list label,
     html[data-theme="light-v2"] label.checkbox-inline {{ display: inline-flex; align-items: center; gap: 8px; background: #fff; border: 1px solid var(--border); border-radius: 7px; padding: 6px 8px; }}
+
+    /* TeleRoute Pro tables foundation v1: visual-only table polish scoped to the new theme. */
+    html[data-theme="tele-route-pro"] .table-card {{ border: 1px solid var(--border-strong); border-radius: 10px; background: var(--surface); box-shadow: 0 1px 2px rgba(17, 24, 39, .05), 0 8px 20px rgba(17, 24, 39, .055); overflow: hidden; }}
+    html[data-theme="tele-route-pro"] .table-scroll {{ background: var(--surface); scrollbar-color: #cbd5e1 var(--surface-soft); }}
+    html[data-theme="tele-route-pro"] table {{ background: var(--surface); border-color: var(--border); border-collapse: separate; border-spacing: 0; }}
+    html[data-theme="tele-route-pro"] th {{ background: linear-gradient(180deg, #f4f7fb 0%, #edf3fa 100%); color: #1f2a3a; border-bottom: 1px solid var(--border-ink); border-right: 1px solid var(--border); font-weight: 800; letter-spacing: .018em; text-transform: none; }}
+    html[data-theme="tele-route-pro"] td {{ background: var(--surface); color: var(--text); border-bottom: 1px solid var(--border); border-right: 1px solid var(--border); font-weight: 440; }}
+    html[data-theme="tele-route-pro"] tbody tr:nth-child(even) td {{ background: #fbfdff; }}
+    html[data-theme="tele-route-pro"] tbody tr:hover td {{ background: #eef6ff !important; }}
+    html[data-theme="tele-route-pro"] .table-footer {{ border: 1px solid var(--border-strong); border-radius: 10px; background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%); box-shadow: 0 1px 2px rgba(17, 24, 39, .04); color: var(--muted); }}
+    html[data-theme="tele-route-pro"] .table-status-action-bar {{ border: 1px solid var(--border); border-radius: 8px; background: #f8fafc; color: var(--text); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .72); }}
+    html[data-theme="tele-route-pro"] .column-settings {{ color: var(--text); }}
+    html[data-theme="tele-route-pro"] .column-settings summary {{ border: 1px solid var(--border-strong); border-radius: 7px; background: #ffffff; color: var(--accent-strong); box-shadow: 0 1px 1px rgba(17, 24, 39, .035); font-weight: 740; }}
+    html[data-theme="tele-route-pro"] .column-settings[open] summary,
+    html[data-theme="tele-route-pro"] .column-settings summary:hover {{ background: var(--accent-soft); border-color: var(--accent-border); color: var(--accent-strong); box-shadow: none; }}
+    html[data-theme="tele-route-pro"] .column-settings-panel {{ border: 1px solid var(--border-strong); border-radius: 10px; background: #ffffff; box-shadow: 0 12px 28px rgba(17, 24, 39, .14); color: var(--text); }}
+    html[data-theme="tele-route-pro"] .column-settings-row {{ min-height: 28px; padding: 3px 6px; border-radius: 7px; color: var(--text); }}
+    html[data-theme="tele-route-pro"] .column-settings-row:hover {{ background: #eef6ff; color: var(--text-strong); }}
+    html[data-theme="tele-route-pro"] .column-settings-row label {{ font-size: 13px; font-weight: 600; color: inherit; }}
+    html[data-theme="tele-route-pro"] .column-settings-row.is-locked label {{ color: var(--muted); }}
+    html[data-theme="tele-route-pro"] .column-settings input[type="checkbox"] {{ width: 15px; height: 15px; min-height: 15px; margin: 0 6px 0 0; accent-color: var(--accent); }}
+    html[data-theme="tele-route-pro"] .column-settings .column-reset {{ min-height: 28px; padding: 4px 8px; border-color: var(--border-strong); border-radius: 7px; background: #f8fafc; color: var(--text); font-size: 12px; font-weight: 700; }}
+    html[data-theme="tele-route-pro"] .column-settings .column-reset:hover {{ background: #eef6ff; border-color: var(--accent-border); color: var(--accent-strong); }}
+    html[data-theme="tele-route-pro"] .status-badge {{ border: 1px solid var(--border-strong); border-radius: 999px; background: #f3f6fa; color: #475569; font-weight: 780; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .68); }}
+    html[data-theme="tele-route-pro"] .status-badge.success,
+    html[data-theme="tele-route-pro"] .status-badge.ok,
+    html[data-theme="tele-route-pro"] .status-badge.active,
+    html[data-theme="tele-route-pro"] .status-badge.live,
+    html[data-theme="tele-route-pro"] .status-badge.hlr-severity-ok {{ background: var(--success-soft); border-color: var(--success-border); color: #15803d; }}
+    html[data-theme="tele-route-pro"] .status-badge.warning,
+    html[data-theme="tele-route-pro"] .status-badge.review,
+    html[data-theme="tele-route-pro"] .status-badge.unknown,
+    html[data-theme="tele-route-pro"] .status-badge.hlr-severity-warning,
+    html[data-theme="tele-route-pro"] .status-badge.hlr-severity-unknown {{ background: var(--warning-soft); border-color: var(--warning-border); color: #b45309; }}
+    html[data-theme="tele-route-pro"] .status-badge.danger,
+    html[data-theme="tele-route-pro"] .status-badge.error,
+    html[data-theme="tele-route-pro"] .status-badge.inactive,
+    html[data-theme="tele-route-pro"] .status-badge.dead,
+    html[data-theme="tele-route-pro"] .status-badge.bad_format,
+    html[data-theme="tele-route-pro"] .status-badge.hlr-severity-danger {{ background: var(--danger-soft); border-color: var(--danger-border); color: var(--danger-strong); }}
     @media (max-width: 1020px) {{
       html[data-theme="light-v2"] #routing-event-form,
       html[data-theme="light-v2"] #routing-event-form[data-current-scope='campaign_setting'] .provider-change-campaign-grid,
