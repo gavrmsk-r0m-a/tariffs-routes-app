@@ -585,6 +585,7 @@ def theme_selector() -> str:
           <div class="theme-menu" data-theme-menu role="menu" aria-label="Выбор темы">
             <button type="button" role="menuitemradio" data-theme-option="light-v2" aria-checked="true"><span class="theme-check" aria-hidden="true">{nav_icon("check")}</span><span>Светлая 2.0</span></button>
             <button type="button" role="menuitemradio" data-theme-option="dark" aria-checked="false"><span class="theme-check" aria-hidden="true">{nav_icon("check")}</span><span>Тёмная</span></button>
+            <button type="button" role="menuitemradio" data-theme-option="tele-route-pro" aria-checked="false"><span class="theme-check" aria-hidden="true">{nav_icon("check")}</span><span>TeleRoute Pro</span></button>
           </div>
         </div>
     """
@@ -684,6 +685,59 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
       --shadow-card: 0 2px 8px rgba(31, 41, 51, .055);
       --shadow-card-hover: 0 4px 12px rgba(31, 41, 51, .075);
       --shadow-glow: 0 0 0 1px rgba(15, 118, 110, 0.14), 0 4px 10px rgba(15, 118, 110, 0.08);
+      --radius-control: 6px;
+      --radius-card: 10px;
+    }}
+    html[data-theme="tele-route-pro"] {{
+      --bg: #f4f6f9;
+      --surface: #ffffff;
+      --surface-muted: #f8fafc;
+      --surface-soft: #f3f6fa;
+      --surface-strong: #eef2f7;
+      --table-header-bg: #f3f6fa;
+      --table-row-alt: #f8fafc;
+      --table-row-hover: #eff6ff;
+      --sidebar-bg: #ffffff;
+      --text-strong: #111827;
+      --text: #243244;
+      --muted: #667085;
+      --text-soft: #667085;
+      --border: #e5eaf1;
+      --border-strong: #d7dee8;
+      --border-ink: #b8c2cf;
+      --accent: #2563eb;
+      --accent-strong: #1d4ed8;
+      --accent-hover: #1e40af;
+      --accent-soft: #eff6ff;
+      --accent-border: #bfdbfe;
+      --cyber: #2563eb;
+      --cyber-strong: #1d4ed8;
+      --cyber-soft: #eff6ff;
+      --pink: #2563eb;
+      --pink-soft: #eff6ff;
+      --olive: #2563eb;
+      --olive-soft: #eff6ff;
+      --success: #16a34a;
+      --success-soft: #dcfce7;
+      --success-border: #bbf7d0;
+      --warning: #f59e0b;
+      --warning-hover: #d97706;
+      --warning-soft: #fef3c7;
+      --warning-border: #fde68a;
+      --provider-accent: #f59e0b;
+      --provider-hover: #d97706;
+      --provider-soft: #fef3c7;
+      --provider-border: #fde68a;
+      --danger: #dc2626;
+      --danger-strong: #b91c1c;
+      --danger-soft: #fee2e2;
+      --danger-border: #fecaca;
+      --input-bg: #ffffff;
+      --focus: #2563eb;
+      --shadow-soft: 0 1px 2px rgba(17, 24, 39, .045);
+      --shadow-card: 0 2px 8px rgba(17, 24, 39, .055);
+      --shadow-card-hover: 0 4px 12px rgba(17, 24, 39, .075);
+      --shadow-glow: 0 0 0 1px rgba(37, 99, 235, .14), 0 4px 10px rgba(37, 99, 235, .08);
       --radius-control: 6px;
       --radius-card: 10px;
     }}
@@ -2743,7 +2797,7 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
       }});
       document.querySelectorAll("form").forEach(showFormSubmitError);
     }});
-    const themeLabels = {{ "dark": "Тёмная", "light-v2": "Светлая 2.0" }};
+    const themeLabels = {{ "dark": "Тёмная", "light-v2": "Светлая 2.0", "tele-route-pro": "TeleRoute Pro" }};
     const themeAliases = {{ "mvp": "light-v2", "calm-blue": "light-v2", "cyber-sketch": "dark", "terminal-paper": "light-v2" }};
     const normalizeTheme = (theme) => themeAliases[theme] || (themeLabels[theme] ? theme : "light-v2");
     let savedTheme = normalizeTheme(localStorage.getItem("mvp-theme") || "light-v2");
