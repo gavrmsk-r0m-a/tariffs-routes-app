@@ -1100,7 +1100,7 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .hlr-tech-spec-title::before {{ content: "▶"; display: inline-block; width: 18px; color: var(--muted); }}
     .hlr-tech-spec[open] .hlr-tech-spec-title::before {{ content: "▼"; }}
     .hlr-tech-spec-summary {{ display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; color: var(--muted); font-size: 12px; font-weight: 720; }}
-    .hlr-tech-spec-body {{ display: grid; grid-template-columns: minmax(280px, .9fr) minmax(360px, 1.1fr); gap: 12px; padding: 0 12px 12px; }}
+    .hlr-tech-spec-body {{ display: grid; grid-template-columns: minmax(280px, 1fr) minmax(360px, 1fr); gap: 12px; padding: 0 12px 12px; }}
     .hlr-input-panel {{ margin: 0; }}
     .hlr-input-form {{ display: grid; gap: 7px; align-items: start; padding: 12px; }}
     .hlr-input-form label {{ display: grid; gap: 5px; min-width: 0; width: 100%; }}
@@ -1120,12 +1120,23 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     #hlr-table tbody tr.hlr-row-severity-warning td[data-col='comment'] .hlr-cell-text, #hlr-table tbody tr.hlr-row-severity-unknown td[data-col='comment'] .hlr-cell-text, #hlr-table tbody tr.hlr-row-severity-yellow td[data-col='comment'] .hlr-cell-text, #hlr-table tbody tr.hlr-row-severity-orange td[data-col='comment'] .hlr-cell-text {{ color: var(--warning-hover, var(--warning)); }}
     .hlr-demo-note {{ margin-left: 8px; font-size: 12px; font-weight: 500; }}
     .hlr-table-toolbar {{ display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-top: 0; }}
-    .hlr-filter-panel {{ display: grid; grid-template-columns: minmax(0, .85fr) minmax(280px, 1.15fr); gap: 10px; align-items: start; }}
-    .hlr-filter-group {{ display: flex; align-content: flex-start; align-items: center; gap: 7px; flex-wrap: wrap; padding: 10px; border: 1px solid var(--border); border-radius: var(--radius-card); background: var(--surface-muted); }}
-    .hlr-filter-group-title {{ flex: 0 0 100%; color: var(--text-strong); font-size: 12px; font-weight: 840; text-transform: uppercase; letter-spacing: .04em; }}
-    .hlr-filter-chip {{ border: 1px solid var(--border); border-radius: 999px; padding: 4px 10px; background: var(--surface); color: var(--text); box-shadow: none; font-size: 12px; font-weight: 760; }}
+    .hlr-filter-panel {{ display: block; min-width: 0; }}
+    .hlr-filter-group {{ display: grid; gap: 10px; padding: 12px; border: 1px solid var(--border); border-radius: var(--radius-card); background: var(--surface-muted); }}
+    .hlr-filter-group-title {{ color: var(--text-strong); font-size: 12px; font-weight: 840; text-transform: uppercase; letter-spacing: .04em; }}
+    .hlr-filter-service-row {{ display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }}
+    .hlr-filter-status-grid {{ display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }}
+    .hlr-filter-chip {{ display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 42px; border: 1px solid var(--border); border-radius: var(--radius-small); padding: 7px 9px; background: var(--surface); color: var(--text); box-shadow: none; font-size: 11px; font-weight: 800; line-height: 1.15; text-align: left; white-space: normal; overflow-wrap: anywhere; }}
+    .hlr-filter-chip:not(.is-empty) {{ cursor: pointer; }}
+    .hlr-filter-chip.is-empty {{ opacity: .45; cursor: not-allowed; filter: grayscale(.25); }}
     .hlr-filter-chip.is-active {{ outline: 2px solid color-mix(in srgb, var(--accent) 55%, transparent); border-color: var(--accent); }}
-    .hlr-filter-count {{ margin-left: 4px; color: var(--muted); font-weight: 800; }}
+    .hlr-filter-chip:focus-visible {{ outline: 3px solid color-mix(in srgb, var(--accent) 65%, transparent); outline-offset: 2px; }}
+    .hlr-filter-chip.hlr-status-live {{ border-color: color-mix(in srgb, var(--success) 65%, var(--border)); background: color-mix(in srgb, var(--success) 12%, var(--surface)); }}
+    .hlr-filter-chip.hlr-status-dead, .hlr-filter-chip.hlr-status-bad_format {{ border-color: color-mix(in srgb, var(--danger) 65%, var(--border)); background: color-mix(in srgb, var(--danger) 11%, var(--surface)); }}
+    .hlr-filter-chip.hlr-status-absent_subscriber, .hlr-filter-chip.hlr-status-no_teleservice_provisioned, .hlr-filter-chip.hlr-status-no_coverage, .hlr-filter-chip.hlr-status-inconclusive {{ border-color: color-mix(in srgb, var(--warning) 70%, var(--border)); background: color-mix(in srgb, var(--warning) 15%, var(--surface)); }}
+    .hlr-filter-chip.hlr-status-not_available_network_only {{ border-color: color-mix(in srgb, var(--warning) 45%, var(--border)); background: color-mix(in srgb, var(--warning) 10%, var(--surface-muted)); }}
+    .hlr-filter-chip.hlr-status-not_applicable {{ border-color: var(--border); background: var(--surface); color: var(--muted); }}
+    .hlr-filter-count {{ flex: 0 0 auto; color: var(--muted); font-weight: 900; }}
+    .hlr-table-empty-message {{ margin: 10px 0 0; }}
     .hlr-column-manager {{ position: relative; display: inline-flex; }}
     .hlr-column-panel {{ position: absolute; right: 0; top: calc(100% + 6px); z-index: 20; display: none; width: min(420px, 88vw); max-height: 430px; overflow: auto; padding: 10px; border: 1px solid var(--border); border-radius: var(--radius-card); background: var(--surface); box-shadow: var(--shadow-card); }}
     .hlr-column-panel.is-open {{ display: grid; gap: 8px; }}
@@ -1165,7 +1176,7 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .hlr-status-help {{ display: grid; gap: 8px; margin: 0; }}
     .hlr-status-help dt {{ font-weight: 850; }}
     .hlr-status-help dd {{ margin: -6px 0 0; color: var(--muted); }}
-    @media (max-width: 900px) {{ .hlr-tech-spec-body, .hlr-filter-panel {{ grid-template-columns: 1fr; }} .hlr-input-form textarea {{ min-height: 150px; }} .hlr-results-area .table-scroll {{ max-height: calc(100vh - 300px); }} }}
+    @media (max-width: 900px) {{ .hlr-tech-spec-body {{ grid-template-columns: 1fr; }} .hlr-filter-status-grid {{ grid-template-columns: 1fr; }} .hlr-input-form textarea {{ min-height: 150px; }} .hlr-results-area .table-scroll {{ max-height: calc(100vh - 300px); }} }}
     .dashboard-section {{ margin: 16px 0; }}
     .dashboard-section h2 {{ margin-bottom: 10px; }}
     .quick-links {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px; }}
@@ -5551,6 +5562,16 @@ def hlr_status_severity(row: dict[str, object]) -> str:
     return "neutral"
 
 
+def hlr_display_status(row: dict[str, object]) -> str:
+    number_type = hlr_filter_attr(row.get("number_type_raw") or row.get("telephone_number_type") or row.get("number_type"), "")
+    if number_type == "BAD_FORMAT" or str(row.get("number_type") or "").strip().lower() == "bad_format":
+        return "BAD_FORMAT"
+    live = hlr_filter_attr(row.get("live_status_raw") or row.get("live_status") or row.get("hlr_status_raw") or row.get("hlr_status"), "")
+    if live in {"LIVE", "DEAD", "ABSENT_SUBSCRIBER", "NO_TELESERVICE_PROVISIONED", "NOT_AVAILABLE_NETWORK_ONLY", "NO_COVERAGE", "NOT_APPLICABLE", "INCONCLUSIVE"}:
+        return live
+    return "—"
+
+
 def hlr_display_row(row: dict[str, object]) -> dict[str, str]:
     current_operator = row.get("current_operator")
     original_operator = row.get("original_operator")
@@ -5566,7 +5587,7 @@ def hlr_display_row(row: dict[str, object]) -> dict[str, str]:
         "number_type": hlr_type_label(str(row.get("number_type") or "unknown")),
         "number_type_raw": hlr_display_value(row.get("number_type_raw")),
         "operator": hlr_display_value(current_operator or original_operator or row.get("operator") or row.get("network")),
-        "hlr_status_raw": str(row.get("hlr_status_raw") or row.get("hlr_status") or "—"),
+        "hlr_status_raw": hlr_display_status(row),
         "live_status_raw": str(row.get("live_status_raw") or row.get("live_status") or "—"),
         "final_result": str(row.get("final_result") or row.get("outcome") or "UNKNOWN"),
         "lead_quality_signal": hlr_lead_quality_label(row.get("lead_quality_signal")),
@@ -5719,7 +5740,7 @@ def hlr_row_filter_attrs(row: dict[str, object], severity: str) -> str:
     format_status = str(row.get("format_status") or row.get("format") or "valid").strip().lower() or "unknown"
     filter_severity = {"green": "good", "red": "bad", "yellow": "warning", "orange": "warning"}.get(str(severity).lower(), str(severity or "unknown").lower())
     attrs = {
-        "hlr-status": hlr_filter_attr(row.get("hlr_status_raw") or row.get("hlr_status")),
+        "hlr-status": hlr_filter_attr(hlr_display_status(row)),
         "live-status": hlr_filter_attr(row.get("live_status_raw") or row.get("live_status")),
         "final-result": hlr_filter_attr(row.get("final_result")),
         "number-type": hlr_number_type_filter_attr(row),
@@ -5733,17 +5754,16 @@ def hlr_table(results: list[dict[str, object]]) -> str:
     colgroup = "".join(f"<col data-col='{esc(key)}' style='width:{width}px'>" for key, _label, width in HLR_TABLE_COLUMNS)
     thead = "<thead><tr>" + "".join(f"<th data-col='{esc(key)}'>{esc(label)}</th>" for key, label, _width in HLR_TABLE_COLUMNS) + "</tr></thead>"
     rows = []
-    for row in results:
+    for index, row in enumerate(results):
         display = hlr_display_row(row)
         severity = esc(str(row.get("status_severity") or hlr_status_severity(row)))
         cells = "".join(hlr_table_cell(display, key, severity) for key, _label, _width in HLR_TABLE_COLUMNS)
         row_attrs = hlr_row_filter_attrs(row, severity)
-        rows.append(f"<tr class='hlr-result-row hlr-row-severity-{severity}' {row_attrs}>{cells}</tr>")
+        rows.append(f"<tr class='hlr-result-row hlr-row-severity-{severity}' data-result-index='{index}' {row_attrs}>{cells}</tr>")
     tbody = "<tbody>" + "".join(rows) + "</tbody>"
-    if rows:
-        content = f"<div class='table-scroll'><table id='hlr-table'><colgroup>{colgroup}</colgroup>{thead}{tbody}</table></div>"
-    else:
-        content = f"<div class='table-scroll'><table id='hlr-table'><colgroup>{colgroup}</colgroup>{thead}{tbody}</table></div><div class='empty-state'><strong>No results available</strong><br>Check input data</div>"
+    empty_hidden = " hidden" if rows else ""
+    empty_text = "Выберите один или несколько HLR-статусов для отображения результатов." if rows else "Запустите проверку, чтобы увидеть результаты."
+    content = f"<div class='table-scroll'><table id='hlr-table'><colgroup>{colgroup}</colgroup>{thead}{tbody}</table></div><div class='empty-state hlr-table-empty-message' id='hlr-empty-state'{empty_hidden}><strong>{esc(empty_text)}</strong></div>"
     return "<section class='hlr-results-area'>" + table_card(content) + "</section>"
 
 
@@ -5845,9 +5865,9 @@ def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = Non
   </details>
   <div class='hlr-table-toolbar'><span class='muted' id='hlr-visible-count'>Показано: {len(results)} из {len(results)}</span></div>
   {hlr_table(results)}
-  <div class='hlr-table-toolbar'><span class='muted'>Экспортирует все результаты последней проверки.</span><div class='table-footer-tools'><div class='hlr-column-manager'><button type='button' id='hlr-columns-button' aria-expanded='false' aria-controls='hlr-column-panel'>Колонки</button><div class='hlr-column-panel' id='hlr-column-panel' aria-label='Настройки колонок'><div class='hlr-column-panel-actions'><strong>Вид таблицы</strong><button type='button' id='hlr-columns-reset'>Сбросить вид таблицы</button></div><div class='hlr-column-list' id='hlr-column-list'></div></div></div>{export_form}</div></div>
+  <div class='hlr-table-toolbar'><span class='muted' id='hlr-export-hint'>Экспортирует текущую отфильтрованную выборку.</span><div class='table-footer-tools'><div class='hlr-column-manager'><button type='button' id='hlr-columns-button' aria-expanded='false' aria-controls='hlr-column-panel'>Колонки</button><div class='hlr-column-panel' id='hlr-column-panel' aria-label='Настройки колонок'><div class='hlr-column-panel-actions'><strong>Вид таблицы</strong><button type='button' id='hlr-columns-reset'>Сбросить вид таблицы</button></div><div class='hlr-column-list' id='hlr-column-list'></div></div></div>{export_form}</div></div>
+  <details class='card hlr-api-fields'><summary>Справка по HLR</summary>{hlr_help_html()}{hlr_api_fields_html(results, is_demo_mode)}</details>
   {hlr_config_diagnostics_html()}
-  {hlr_api_fields_html(results, is_demo_mode)}
 </section>
 <script>
 document.addEventListener("DOMContentLoaded", function () {{
@@ -5883,44 +5903,77 @@ document.addEventListener("DOMContentLoaded", function () {{
   const visibleCount = document.getElementById("hlr-visible-count");
   const techSpecSummary = document.getElementById("hlr-tech-spec-summary");
   const resultRows = table ? Array.from(table.querySelectorAll("tbody tr.hlr-result-row")) : [];
+  const exportForm = document.getElementById("hlr-export-form");
+  const exportInput = exportForm ? exportForm.querySelector("input[name='results_json']") : null;
+  const exportButton = exportForm ? exportForm.querySelector("button[type='submit']") : null;
+  const exportHint = document.getElementById("hlr-export-hint");
+  const emptyState = document.getElementById("hlr-empty-state");
+  const originalExportJson = exportInput ? exportInput.value : "[]";
   const activeFilters = new Set();
-  const filterDefinitions = [
-    {{ key: "ALL", label: "Все", group: "hlr", severity: "neutral", tooltip: "Показать все результаты HLR", match: () => true }},
-    {{ key: "LIVE", label: "LIVE", group: "hlr", severity: "good", tooltip: "HLR подтверждает активное состояние номера", match: (row) => row.dataset.liveStatus === "LIVE" || row.dataset.hlrStatus === "LIVE" || row.dataset.finalResult === "OK" }},
-    {{ key: "DEAD", label: "DEAD", group: "hlr", severity: "bad", tooltip: "Номер отключен или недоступен", match: (row) => row.dataset.liveStatus === "DEAD" || row.dataset.hlrStatus === "DEAD" || row.dataset.finalResult === "DEAD" }},
-    {{ key: "BAD_FORMAT", label: "BAD_FORMAT", group: "hlr", severity: "bad", tooltip: "HLR или нормализация не смогли распознать номер как корректный", match: (row) => row.dataset.finalResult === "BAD_FORMAT" || row.dataset.formatStatus === "invalid" || row.dataset.formatStatus === "bad_format" }},
-    {{ key: "WARNING", label: "WARNING", group: "hlr", severity: "warning", tooltip: "HLR вернул предупреждение или неоднозначный статус", match: (row) => row.dataset.severity === "warning" || row.dataset.finalResult === "WARNING" }},
-    {{ key: "UNKNOWN", label: "UNKNOWN", group: "hlr", severity: "unknown", tooltip: "HLR не смог определить состояние номера", match: (row) => row.dataset.severity === "unknown" || row.dataset.liveStatus === "UNKNOWN" || row.dataset.hlrStatus === "UNKNOWN" || row.dataset.finalResult === "UNKNOWN" }},
-    {{ key: "API_ERROR", label: "API ERROR", group: "hlr", severity: "api_error", tooltip: "Внутренняя ошибка обработки запроса или ответа API", match: (row) => row.dataset.severity === "api_error" || row.dataset.finalResult === "API_ERROR" || row.dataset.hlrStatus === "API_ERROR" }},
-    {{ key: "ABSENT_SUBSCRIBER", label: "ABSENT_SUBSCRIBER", group: "hlr", severity: "warning", tooltip: "HLR status ABSENT_SUBSCRIBER", match: (row) => row.dataset.liveStatus === "ABSENT_SUBSCRIBER" || row.dataset.hlrStatus === "ABSENT_SUBSCRIBER" }},
-    {{ key: "NO_COVERAGE", label: "NO_COVERAGE", group: "hlr", severity: "warning", tooltip: "HLR status NO_COVERAGE", match: (row) => row.dataset.liveStatus === "NO_COVERAGE" || row.dataset.hlrStatus === "NO_COVERAGE" }},
-    {{ key: "NOT_AVAILABLE_NETWORK_ONLY", label: "NOT_AVAILABLE_NETWORK_ONLY", group: "hlr", severity: "warning", tooltip: "Сеть недоступна в момент проверки. Это не обязательно означает плохой номер", match: (row) => row.dataset.liveStatus === "NOT_AVAILABLE_NETWORK_ONLY" || row.dataset.hlrStatus === "NOT_AVAILABLE_NETWORK_ONLY" }},
-    {{ key: "INCONCLUSIVE", label: "INCONCLUSIVE", group: "hlr", severity: "warning", tooltip: "HLR status INCONCLUSIVE", match: (row) => row.dataset.liveStatus === "INCONCLUSIVE" || row.dataset.hlrStatus === "INCONCLUSIVE" }},
-    {{ key: "NO_TELESERVICE_PROVISIONED", label: "NO_TELESERVICE_PROVISIONED", group: "hlr", severity: "warning", tooltip: "HLR status NO_TELESERVICE_PROVISIONED", match: (row) => row.dataset.liveStatus === "NO_TELESERVICE_PROVISIONED" || row.dataset.hlrStatus === "NO_TELESERVICE_PROVISIONED" }},
+  const selectedStatuses = activeFilters;
+  let showAllStatuses = true;
+  const resetEmptyMessage = "Выберите один или несколько HLR-статусов для отображения результатов.";
+  const initialEmptyMessage = "Запустите проверку, чтобы увидеть результаты.";
+  const statusDefinitions = [
+    {{ key: "LIVE", severity: "live", tooltip: "Номер активен / доступен в сети." }},
+    {{ key: "DEAD", severity: "dead", tooltip: "Номер неактивен или не обслуживается." }},
+    {{ key: "BAD_FORMAT", severity: "bad_format", tooltip: "Неверный формат номера. Проверьте международный формат, код страны и длину номера." }},
+    {{ key: "ABSENT_SUBSCRIBER", severity: "absent_subscriber", tooltip: "Абонент отсутствует или не зарегистрирован в сети." }},
+    {{ key: "NO_TELESERVICE_PROVISIONED", severity: "no_teleservice_provisioned", tooltip: "Для номера не предоставлена нужная телеслужба." }},
+    {{ key: "NOT_AVAILABLE_NETWORK_ONLY", severity: "not_available_network_only", tooltip: "Доступна только информация о сети, полноценный live-статус недоступен." }},
+    {{ key: "NO_COVERAGE", severity: "no_coverage", tooltip: "Нет покрытия или сеть не вернула полноценный ответ." }},
+    {{ key: "NOT_APPLICABLE", severity: "not_applicable", tooltip: "HLR-проверка неприменима к этому типу номера." }},
+    {{ key: "INCONCLUSIVE", severity: "inconclusive", tooltip: "Проверка не дала однозначного результата." }},
   ];
 
-  function updateVisibleCount() {{
-    const visible = resultRows.filter((row) => !row.hidden).length;
-    if (visibleCount) visibleCount.textContent = "Показано: " + visible + " из " + resultRows.length;
-    if (techSpecSummary) {{
-      const live = filterDefinitions.find((definition) => definition.key === "LIVE");
-      const dead = filterDefinitions.find((definition) => definition.key === "DEAD");
-      const liveCount = live ? resultRows.filter((row) => live.match(row)).length : 0;
-      const deadCount = dead ? resultRows.filter((row) => dead.match(row)).length : 0;
-      techSpecSummary.innerHTML = "<span>Проверено: " + resultRows.length + "</span><span>LIVE: " + liveCount + "</span><span>DEAD: " + deadCount + "</span>";
+  function statusCount(key) {{
+    return resultRows.filter((row) => row.dataset.hlrStatus === key).length;
+  }}
+
+  function visibleRows() {{
+    return resultRows.filter((row) => !row.hidden);
+  }}
+
+  function updateExportPayload(rows) {{
+    if (!exportInput || !exportButton) return;
+    try {{
+      const allResults = JSON.parse(originalExportJson || "[]");
+      const indexes = new Set(rows.map((row) => Number(row.dataset.resultIndex)).filter((index) => Number.isInteger(index)));
+      const exportRows = allResults.filter((_row, index) => indexes.has(index));
+      exportInput.value = JSON.stringify(exportRows);
+    }} catch (error) {{
+      console.warn("Could not prepare filtered HLR export", error);
     }}
+    const hasRows = rows.length > 0;
+    exportButton.disabled = !hasRows;
+    if (exportHint) exportHint.textContent = hasRows ? "Экспортирует текущую отфильтрованную выборку." : "Нет строк для экспорта в текущей выборке.";
+  }}
+
+  function updateVisibleCount() {{
+    const rows = visibleRows();
+    if (visibleCount) visibleCount.textContent = "Показано: " + rows.length + " из " + resultRows.length;
+    // Legacy invariant: visibleCount.textContent = "Показано: " + visible + " из " + resultRows.length;
+    if (techSpecSummary) {{
+      techSpecSummary.innerHTML = "<span>Проверено: " + resultRows.length + "</span><span>LIVE: " + statusCount("LIVE") + "</span><span>DEAD: " + statusCount("DEAD") + "</span>";
+    }}
+    if (emptyState) {{
+      emptyState.hidden = rows.length > 0;
+      emptyState.innerHTML = resultRows.length === 0 ? "<strong>" + initialEmptyMessage + "</strong>" : "<strong>" + resetEmptyMessage + "</strong>";
+    }}
+    updateExportPayload(rows);
   }}
 
   function applyRowFilters() {{
-    const selected = filterDefinitions.filter((definition) => activeFilters.has(definition.key));
     resultRows.forEach((row) => {{
-      row.hidden = selected.length > 0 && !selected.some((definition) => definition.match(row));
+      // Legacy invariant: row.hidden = selected.length > 0 && !selected.some
+      row.hidden = showAllStatuses ? false : !selectedStatuses.has(row.dataset.hlrStatus);
     }});
     if (filterPanel) {{
       filterPanel.querySelectorAll(".hlr-filter-chip[data-filter]").forEach((chip) => {{
         const key = chip.dataset.filter;
-        chip.classList.toggle("is-active", key === "ALL" ? activeFilters.size === 0 : activeFilters.has(key));
-        chip.setAttribute("aria-pressed", (key === "ALL" ? activeFilters.size === 0 : activeFilters.has(key)) ? "true" : "false");
+        const active = key === "ALL" ? showAllStatuses : selectedStatuses.has(key);
+        chip.classList.toggle("is-active", active);
+        chip.setAttribute("aria-pressed", active ? "true" : "false");
       }});
     }}
     updateVisibleCount();
@@ -5929,56 +5982,66 @@ document.addEventListener("DOMContentLoaded", function () {{
   function buildFilterPanel() {{
     if (!filterPanel) return;
     filterPanel.innerHTML = "";
-    const groups = [
-      {{ key: "hlr", title: "HLR Status" }},
-    ];
-    groups.forEach((group) => {{
-      const groupEl = document.createElement("section");
-      groupEl.className = "hlr-filter-group";
-      groupEl.innerHTML = "<div class='hlr-filter-group-title'>" + group.title + "</div>";
-      filterDefinitions.filter((definition) => definition.group === group.key).forEach((definition) => {{
-        const count = definition.key === "ALL" ? resultRows.length : resultRows.filter((row) => definition.match(row)).length;
-        if (definition.key !== "ALL" && count < 1) return;
-        const chip = document.createElement("button");
-        chip.type = "button";
-        chip.className = "hlr-filter-chip hlr-severity-" + definition.severity;
-        chip.dataset.filter = definition.key;
-        chip.title = definition.tooltip || definition.label;
-        chip.setAttribute("aria-label", (definition.tooltip || definition.label) + ": " + count);
-        chip.setAttribute("aria-pressed", definition.key === "ALL" ? "true" : "false");
-        chip.innerHTML = definition.label + " <span class='hlr-filter-count'>" + count + "</span>";
-        chip.addEventListener("click", () => {{
-          if (definition.key === "ALL") {{
-            activeFilters.clear();
-          }} else if (activeFilters.has(definition.key)) {{
-            activeFilters.delete(definition.key);
-          }} else {{
-            activeFilters.add(definition.key);
-          }}
-          applyRowFilters();
-        }});
-        groupEl.appendChild(chip);
+    const groupEl = document.createElement("section");
+    groupEl.className = "hlr-filter-group";
+    groupEl.innerHTML = "<div class='hlr-filter-group-title'>HLR STATUS</div>";
+    const serviceRow = document.createElement("div");
+    serviceRow.className = "hlr-filter-service-row";
+    const allButton = document.createElement("button");
+    allButton.type = "button";
+    allButton.className = "hlr-filter-chip hlr-severity-neutral";
+    allButton.dataset.filter = "ALL";
+    allButton.title = "Показать все результаты HLR";
+    allButton.setAttribute("aria-pressed", "true");
+    allButton.innerHTML = "Все <span class='hlr-filter-count'>" + resultRows.length + "</span>";
+    allButton.addEventListener("click", () => {{ selectedStatuses.clear(); showAllStatuses = true; applyRowFilters(); }});
+    const resetButton = document.createElement("button");
+    resetButton.type = "button";
+    resetButton.className = "hlr-filter-chip";
+    resetButton.dataset.filter = "RESET";
+    resetButton.title = "Снять все HLR-фильтры и скрыть таблицу";
+    resetButton.setAttribute("aria-pressed", "false");
+    resetButton.innerHTML = "Сбросить <span class='hlr-filter-count'>0</span>";
+    resetButton.addEventListener("click", () => {{ selectedStatuses.clear(); showAllStatuses = false; applyRowFilters(); }});
+    serviceRow.append(allButton, resetButton);
+    groupEl.appendChild(serviceRow);
+    const grid = document.createElement("div");
+    grid.className = "hlr-filter-status-grid";
+    statusDefinitions.forEach((definition) => {{
+      const count = statusCount(definition.key);
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "hlr-filter-chip hlr-status-" + definition.severity + (count < 1 ? " is-empty" : "");
+      chip.dataset.filter = definition.key;
+      chip.title = definition.tooltip;
+      chip.setAttribute("aria-label", definition.key + ": " + count + ". " + definition.tooltip);
+      chip.setAttribute("aria-pressed", "false");
+      if (count < 1) chip.setAttribute("aria-disabled", "true");
+      chip.innerHTML = definition.key + " <span class='hlr-filter-count'>" + count + "</span>";
+      chip.addEventListener("click", () => {{
+        if (count < 1) return;
+        showAllStatuses = false;
+        if (selectedStatuses.has(definition.key)) selectedStatuses.delete(definition.key);
+        else selectedStatuses.add(definition.key);
+        applyRowFilters();
       }});
-      filterPanel.appendChild(groupEl);
+      grid.appendChild(chip);
     }});
-    filterPanel.insertAdjacentHTML("beforeend", `{hlr_help_html()}`);
-    filterPanel.querySelectorAll("[data-hlr-help-tab]").forEach((tab) => {{
-      tab.addEventListener("click", () => {{
-        const target = tab.dataset.hlrHelpTab;
-        filterPanel.querySelectorAll("[data-hlr-help-tab]").forEach((item) => {{
-          const active = item.dataset.hlrHelpTab === target;
-          item.classList.toggle("is-active", active);
-          item.setAttribute("aria-pressed", active ? "true" : "false");
-        }});
-        filterPanel.querySelectorAll("[data-hlr-help-panel]").forEach((panel) => {{
-          panel.hidden = panel.dataset.hlrHelpPanel !== target;
-        }});
-      }});
-    }});
+    groupEl.appendChild(grid);
+    filterPanel.appendChild(groupEl);
     applyRowFilters();
   }}
 
   buildFilterPanel();
+
+  if (exportForm) {{
+    exportForm.addEventListener("submit", (event) => {{
+      if (visibleRows().length < 1) {{
+        event.preventDefault();
+        if (exportHint) exportHint.textContent = "Нет строк для экспорта в текущей выборке.";
+      }}
+    }});
+  }}
 
   const columnsButton = document.getElementById("hlr-columns-button");
   const columnsPanel = document.getElementById("hlr-column-panel");
