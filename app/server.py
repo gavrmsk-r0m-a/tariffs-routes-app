@@ -1120,6 +1120,7 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     #hlr-table tbody tr.hlr-row-severity-warning td[data-col='comment'] .hlr-cell-text, #hlr-table tbody tr.hlr-row-severity-unknown td[data-col='comment'] .hlr-cell-text, #hlr-table tbody tr.hlr-row-severity-yellow td[data-col='comment'] .hlr-cell-text, #hlr-table tbody tr.hlr-row-severity-orange td[data-col='comment'] .hlr-cell-text {{ color: var(--warning-hover, var(--warning)); }}
     .hlr-demo-note {{ margin-left: 8px; font-size: 12px; font-weight: 500; }}
     .hlr-table-toolbar {{ display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-top: 0; }}
+    .hlr-side-panel {{ display: grid; align-content: start; gap: 8px; min-width: 0; }}
     .hlr-filter-panel {{ display: block; min-width: 0; }}
     .hlr-filter-group {{ display: grid; gap: 10px; padding: 12px; border: 1px solid var(--border); border-radius: var(--radius-card); background: var(--surface-muted); }}
     .hlr-filter-group-title {{ color: var(--text-strong); font-size: 12px; font-weight: 840; text-transform: uppercase; letter-spacing: .04em; }}
@@ -1128,7 +1129,12 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .hlr-filter-chip {{ display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 42px; border: 1px solid var(--border); border-radius: var(--radius-small); padding: 7px 9px; background: var(--surface); color: var(--text); box-shadow: none; font-size: 11px; font-weight: 800; line-height: 1.15; text-align: left; white-space: normal; overflow-wrap: anywhere; }}
     .hlr-filter-chip:not(.is-empty) {{ cursor: pointer; }}
     .hlr-filter-chip.is-empty {{ opacity: .45; cursor: not-allowed; filter: grayscale(.25); }}
-    .hlr-filter-chip.is-active {{ outline: 2px solid color-mix(in srgb, var(--accent) 55%, transparent); border-color: var(--accent); }}
+    .hlr-filter-chip.is-active:not(.is-empty),
+    .hlr-filter-chip[aria-pressed="true"]:not(.is-empty) {{ border-color: var(--accent); background: color-mix(in srgb, var(--accent) 18%, var(--surface)); color: var(--text-strong); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent), 0 0 0 2px color-mix(in srgb, var(--accent) 18%, transparent); }}
+    .hlr-filter-chip.is-active:not(.is-empty) .hlr-filter-count,
+    .hlr-filter-chip[aria-pressed="true"]:not(.is-empty) .hlr-filter-count {{ color: var(--text-strong); }}
+    .hlr-filter-chip.is-empty,
+    .hlr-filter-chip.is-empty[aria-pressed="true"] {{ border-color: var(--border); background: var(--surface); box-shadow: none; color: var(--muted); }}
     .hlr-filter-chip:focus-visible {{ outline: 3px solid color-mix(in srgb, var(--accent) 65%, transparent); outline-offset: 2px; }}
     .hlr-filter-chip.hlr-status-live {{ border-color: color-mix(in srgb, var(--success) 65%, var(--border)); background: color-mix(in srgb, var(--success) 12%, var(--surface)); }}
     .hlr-filter-chip.hlr-status-dead, .hlr-filter-chip.hlr-status-bad_format {{ border-color: color-mix(in srgb, var(--danger) 65%, var(--border)); background: color-mix(in srgb, var(--danger) 11%, var(--surface)); }}
@@ -1160,8 +1166,14 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .hlr-cell-content {{ display: flex; align-items: center; gap: 6px; min-width: 0; }}
     .hlr-cell-text {{ min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
     .hlr-cell-text.hlr-long-text {{ display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; white-space: normal; }}
-    .hlr-api-fields {{ padding: 6px 10px; margin: 0; }}
-    .hlr-api-fields summary {{ cursor: pointer; font-weight: 760; }}
+    .hlr-details-stack {{ display: grid; gap: 6px; min-width: 0; }}
+    .hlr-api-fields {{ padding: 0; margin: 0; border: 1px solid var(--border); border-radius: var(--radius-small); background: var(--surface); box-shadow: none; overflow: hidden; }}
+    .hlr-api-fields > summary {{ display: flex; align-items: center; min-height: 34px; padding: 6px 10px; cursor: pointer; font-weight: 760; list-style-position: inside; }}
+    .hlr-api-fields > summary:focus-visible {{ outline: 3px solid color-mix(in srgb, var(--accent) 55%, transparent); outline-offset: -3px; }}
+    .hlr-api-fields[open] {{ background: var(--surface-muted); }}
+    .hlr-api-fields[open] > summary {{ border-bottom: 1px solid var(--border); background: var(--surface); }}
+    .hlr-api-fields > :not(summary) {{ margin: 10px; }}
+    .hlr-api-fields .hlr-api-fields {{ margin: 10px; background: var(--surface); }}
     .hlr-api-field-list {{ display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }}
     .hlr-api-field-list code {{ padding: 2px 6px; border-radius: 999px; background: var(--surface-muted); border: 1px solid var(--border); font-size: 12px; }}
     .hlr-help-card {{ padding: 10px; border: 1px solid var(--border); border-radius: var(--radius-card); background: var(--surface-muted); }}
@@ -5860,14 +5872,18 @@ def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = Non
           </div>
         </form>
       </section>
-      <div class='hlr-filter-panel' id='hlr-filter-panel' aria-label='Фильтры HLR'></div>
+      <aside class='hlr-side-panel' aria-label='HLR status and details'>
+        <div class='hlr-filter-panel' id='hlr-filter-panel' aria-label='Фильтры HLR'></div>
+        <div class='hlr-details-stack'>
+          <details class='card hlr-api-fields'><summary>Справка по HLR</summary>{hlr_help_html()}{hlr_api_fields_html(results, is_demo_mode)}</details>
+          {hlr_config_diagnostics_html()}
+        </div>
+      </aside>
     </div>
   </details>
   <div class='hlr-table-toolbar'><span class='muted' id='hlr-visible-count'>Показано: {len(results)} из {len(results)}</span></div>
   {hlr_table(results)}
   <div class='hlr-table-toolbar'><span class='muted' id='hlr-export-hint'>Экспортирует текущую отфильтрованную выборку.</span><div class='table-footer-tools'><div class='hlr-column-manager'><button type='button' id='hlr-columns-button' aria-expanded='false' aria-controls='hlr-column-panel'>Колонки</button><div class='hlr-column-panel' id='hlr-column-panel' aria-label='Настройки колонок'><div class='hlr-column-panel-actions'><strong>Вид таблицы</strong><button type='button' id='hlr-columns-reset'>Сбросить вид таблицы</button></div><div class='hlr-column-list' id='hlr-column-list'></div></div></div>{export_form}</div></div>
-  <details class='card hlr-api-fields'><summary>Справка по HLR</summary>{hlr_help_html()}{hlr_api_fields_html(results, is_demo_mode)}</details>
-  {hlr_config_diagnostics_html()}
 </section>
 <script>
 document.addEventListener("DOMContentLoaded", function () {{
