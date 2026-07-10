@@ -4017,9 +4017,13 @@ class HlrUiStateScriptTest(unittest.TestCase):
 
     def test_hlr_copy_source_numbers_uses_filtered_rows_and_data_attribute(self):
         content = self._content()
+        self.assertIn("<span class='copyable-header'>", content)
         self.assertIn("id='hlr-copy-source-button'", content)
-        self.assertIn("Копировать исходные номера", content)
+        self.assertIn("class='copy-column-button'", content)
+        self.assertIn("title='Скопировать исходные номера'", content)
         self.assertIn("id='hlr-copy-source-status'", content)
+        self.assertNotIn("<span>Копировать исходные номера</span>", content)
+        self.assertNotIn("Копировать исходные номера текущей выборки", content)
         self.assertIn("data-source-number='48789662838'", content)
         self.assertIn('const copySourceButton = document.getElementById("hlr-copy-source-button");', content)
         self.assertIn('const values = rows.map((row) => (row.dataset.sourceNumber || "").trim()).filter(Boolean);', content)
