@@ -5831,7 +5831,23 @@ def hlr_row_filter_attrs(row: dict[str, object], severity: str) -> str:
 
 def hlr_table(results: list[dict[str, object]]) -> str:
     colgroup = "".join(f"<col data-col='{esc(key)}' style='width:{width}px'>" for key, _label, width in HLR_TABLE_COLUMNS)
-    thead = "<thead><tr>" + "".join(f"<th data-col='{esc(key)}'>{esc(label)}</th>" for key, label, _width in HLR_TABLE_COLUMNS) + "</tr></thead>"
+    header_cells = []
+    for key, label, _width in HLR_TABLE_COLUMNS:
+        header_label = esc(label)
+        if key == "original_number":
+            header_label = (
+                "<span class='copyable-header'>"
+                f"{header_label} "
+                "<button class='copy-column-button' type='button' id='hlr-copy-source-button' "
+                "data-hlr-copy-source='1' title='Скопировать исходные номера' "
+                "aria-label='Скопировать исходные номера'>"
+                f"{nav_icon('copy')}"
+                "</button>"
+                "<span class='copy-column-status' id='hlr-copy-source-status' aria-live='polite'></span>"
+                "</span>"
+            )
+        header_cells.append(f"<th data-col='{esc(key)}'>{header_label}</th>")
+    thead = "<thead><tr>" + "".join(header_cells) + "</tr></thead>"
     rows = []
     for index, row in enumerate(results):
         display = hlr_display_row(row)
@@ -5950,7 +5966,7 @@ def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = Non
   </details>
   <div class='hlr-table-toolbar'><span class='muted' id='hlr-visible-count'>Показано: {len(results)} из {len(results)}</span></div>
   {hlr_table(results)}
-  <div class='hlr-table-toolbar'><span class='muted' id='hlr-export-hint'>Экспортирует текущую отфильтрованную выборку.</span><div class='table-footer-tools'><button type='button' id='hlr-copy-source-button' title='Копировать исходные номера текущей выборки'>{nav_icon('copy')}<span>Копировать исходные номера</span></button><span class='hlr-copy-status' id='hlr-copy-source-status' aria-live='polite'></span><div class='hlr-column-manager'><button type='button' id='hlr-columns-button' aria-expanded='false' aria-controls='hlr-column-panel'>Колонки</button><div class='hlr-column-panel' id='hlr-column-panel' aria-label='Настройки колонок'><div class='hlr-column-panel-actions'><strong>Вид таблицы</strong><button type='button' id='hlr-columns-reset'>Сбросить вид таблицы</button></div><div class='hlr-column-list' id='hlr-column-list'></div></div></div>{export_form}</div></div>
+  <div class='hlr-table-toolbar'><span class='muted' id='hlr-export-hint'>Экспортирует текущую отфильтрованную выборку.</span><div class='table-footer-tools'><div class='hlr-column-manager'><button type='button' id='hlr-columns-button' aria-expanded='false' aria-controls='hlr-column-panel'>Колонки</button><div class='hlr-column-panel' id='hlr-column-panel' aria-label='Настройки колонок'><div class='hlr-column-panel-actions'><strong>Вид таблицы</strong><button type='button' id='hlr-columns-reset'>Сбросить вид таблицы</button></div><div class='hlr-column-list' id='hlr-column-list'></div></div></div>{export_form}</div></div>
 </section>
 <script>
 document.addEventListener("DOMContentLoaded", function () {{
@@ -6069,7 +6085,8 @@ document.addEventListener("DOMContentLoaded", function () {{
   function updateCopySourceButton(rows) {{
     if (!copySourceButton) return;
     copySourceButton.disabled = rows.length < 1;
-    copySourceButton.title = rows.length > 0 ? "Копировать исходные номера текущей выборки" : "Нет строк для копирования";
+    copySourceButton.title = rows.length > 0 ? "Скопировать исходные номера" : "Нет строк для копирования";
+    copySourceButton.setAttribute("aria-label", copySourceButton.title);
   }}
 
   function updateExportPayload(rows) {{
