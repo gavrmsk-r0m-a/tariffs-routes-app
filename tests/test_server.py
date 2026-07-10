@@ -10,6 +10,54 @@ from urllib.parse import urlencode
 import app.server as server
 
 
+class _FakeBalanceResponse:
+    headers = {}
+
+    def __init__(self, payload):
+        self.payload = payload
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
+
+    def read(self):
+        return self.payload
+
+
+class HlrBalanceHelperTest(unittest.TestCase):
+    def test_hlr_balance_url_is_derived_from_hlr_endpoint(self):
+        self.assertEqual(
+            server.hlr_balance_url({"api_url": "https://api.hlrlookup.com/apiv2/hlr"}),
+            "https://api.hlrlookup.com/apiv2/balance",
+        )
+
+    def test_get_hlr_balance_posts_credentials_and_returns_credits(self):
+        env = {
+            "HLR_MODE": "production",
+            "HLR_API_URL": "https://api.hlrlookup.com/apiv2/hlr",
+            "HLR_API_KEY": "key-secret",
+            "HLR_API_SECRET": "secret-token",
+            "HLR_TIMEOUT_MS": "5000",
+        }
+        with patch.dict(os.environ, env, clear=False), patch("app.server.urlopen", return_value=_FakeBalanceResponse(b'{"Status":"OK","Credits":1234.5}')) as mocked_urlopen:
+            balance = server.get_hlr_balance()
+        self.assertEqual(balance["status"], "ok")
+        self.assertEqual(balance["credits"], 1234.5)
+        request = mocked_urlopen.call_args.args[0]
+        self.assertEqual(request.full_url, "https://api.hlrlookup.com/apiv2/balance")
+        self.assertIn(b'"api_key": "key-secret"', request.data)
+        self.assertIn(b'"api_secret": "secret-token"', request.data)
+
+    def test_get_hlr_balance_reports_missing_credentials_without_calling_api(self):
+        with patch.dict(os.environ, {"HLR_MODE": "production", "HLR_API_URL": "https://api.hlrlookup.com/apiv2/hlr", "HLR_API_KEY": "", "HLR_API_SECRET": ""}, clear=False), patch("app.server.urlopen") as mocked_urlopen:
+            balance = server.get_hlr_balance()
+        self.assertEqual(balance["status"], "not_configured")
+        self.assertIsNone(balance["credits"])
+        mocked_urlopen.assert_not_called()
+
+
 class HlrApiMappingTest(unittest.TestCase):
     def _row(self, raw):
         return server.hlr_result_from_api_item({"original": "48789662838", "normalized": "+48789662838"}, raw)
@@ -3913,16 +3961,19 @@ class HlrUiStateScriptTest(unittest.TestCase):
     def test_hlr_right_panel_is_compact_and_separates_balance_from_config(self):
         content = self._content()
         self.assertIn("id='hlr-filter-panel'", content)
-        self.assertIn("class='hlr-balance-card", content)
-        self.assertIn("Баланс API:", content)
+        self.assertNotIn("class='hlr-balance-card", content)
+        self.assertNotIn("Баланс API:", content)
         self.assertIn("<summary>Справка по HLR</summary>", content)
         with patch("app.server.current_role_key", return_value="admin"):
             admin_content = self._content()
         self.assertIn("<summary>HLR config</summary>", admin_content)
+        self.assertIn("<dt>balance</dt><dd>unavailable</dd>", admin_content)
+        self.assertIn("<dt>balance_status</dt><dd>unavailable</dd>", admin_content)
+        self.assertIn("Обновить баланс", admin_content)
         self.assertNotIn("data-hlr-help-tab", content)
         self.assertNotIn("Поля API</button>", content)
         self.assertNotIn("HLR статусы</button>", content)
-        self.assertNotIn("<dt>api_url</dt>", admin_content)
+        self.assertIn("<dt>api_url</dt>", admin_content)
         self.assertNotIn("<dt>Баланс API</dt>", admin_content)
         self.assertNotIn("api_secret</dd>", admin_content)
 
@@ -3931,6 +3982,8 @@ class HlrUiStateScriptTest(unittest.TestCase):
         self.assertIn("id='hlr-clear-button'", content)
         self.assertIn("id='hlr-columns-button'", content)
         self.assertIn("id='hlr-column-panel'", content)
+        self.assertIn(".hlr-column-panel.open-up", content)
+        self.assertIn("function placeColumnsPanel()", content)
         self.assertIn('const storageKey = "hlr_safe_column_settings_v2";', content)
         self.assertIn('.replace(/\\r/g, "")', content)
         self.assertIn('.split("\\n")', content)

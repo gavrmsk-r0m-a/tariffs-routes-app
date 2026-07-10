@@ -1144,8 +1144,9 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .hlr-filter-count {{ flex: 0 0 auto; color: var(--muted); font-weight: 900; }}
     .hlr-table-empty-message {{ margin: 10px 0 0; }}
     .hlr-column-manager {{ position: relative; display: inline-flex; }}
-    .hlr-column-panel {{ position: absolute; right: 0; top: calc(100% + 6px); z-index: 20; display: none; width: min(420px, 88vw); max-height: 430px; overflow: auto; padding: 10px; border: 1px solid var(--border); border-radius: var(--radius-card); background: var(--surface); box-shadow: var(--shadow-card); }}
+    .hlr-column-panel {{ position: absolute; right: 0; top: calc(100% + 6px); z-index: 20; display: none; width: min(420px, 88vw); max-height: min(430px, 70vh); overflow: auto; overscroll-behavior: contain; padding: 10px; border: 1px solid var(--border); border-radius: var(--radius-card); background: var(--surface); box-shadow: var(--shadow-card); }}
     .hlr-column-panel.is-open {{ display: grid; gap: 8px; }}
+    .hlr-column-panel.open-up {{ top: auto; bottom: calc(100% + 6px); }}
     .hlr-column-list {{ display: grid; gap: 6px; }}
     .hlr-column-item {{ display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 6px; padding: 6px; border: 1px solid var(--border); border-radius: var(--radius-small); background: var(--surface-muted); }}
     .hlr-column-item label {{ display: flex; align-items: center; gap: 7px; min-width: 0; margin: 0; font-weight: 650; }}
@@ -1182,7 +1183,7 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .hlr-balance-meta {{ color: var(--muted); font-size: 12px; }}
     .hlr-balance-card.is-warning {{ border-color: color-mix(in srgb, var(--warning) 55%, var(--border)); background: color-mix(in srgb, var(--warning) 9%, var(--surface)); }}
     .hlr-balance-card.is-error {{ border-color: color-mix(in srgb, var(--danger) 55%, var(--border)); background: color-mix(in srgb, var(--danger) 8%, var(--surface)); }}
-    .hlr-balance-refresh {{ flex: 0 0 auto; padding: 4px 8px; font-size: 12px; box-shadow: none; }}
+    .hlr-balance-refresh {{ justify-self: start; padding: 4px 8px; font-size: 12px; box-shadow: none; }}
     .hlr-help-card {{ padding: 0; margin: 0; border: 0; background: transparent; }}
     .hlr-help-card h3 {{ margin: 0 0 8px; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }}
     .hlr-help-list {{ display: grid; gap: 7px; margin: 0; }}
@@ -3887,7 +3888,7 @@ def section_for_write_path(path: str) -> str | None:
         return "phones"
     if path.startswith("/companies/") or path == "/companies/create":
         return "companies"
-    if path in {"/hlr/check", "/hlr/export.csv"}:
+    if path in {"/hlr/check", "/hlr/export.csv", "/hlr/balance"}:
         return "hlr"
     if path.startswith("/admin/server-priorities/"):
         return "admin_server_priorities"
@@ -4880,7 +4881,7 @@ def hlr_config() -> dict[str, object]:
         "api_url": os.environ.get("HLR_API_URL") or "",
         "api_key": os.environ.get("HLR_API_KEY") or "",
         "api_secret": os.environ.get("HLR_API_SECRET") or "",
-        "api_balance": os.environ.get("HLR_API_BALANCE") or os.environ.get("HLR_BALANCE") or "—",
+        "balance_url": os.environ.get("HLR_BALANCE_URL") or os.environ.get("HLR_API_BALANCE_URL") or "",
         "timeout_ms": hlr_int_env("HLR_TIMEOUT_MS", 30000),
         "concurrency": hlr_int_env("HLR_CONCURRENCY", 1),
         "daily_limit": hlr_int_env("HLR_DAILY_CHECK_LIMIT", 500),
@@ -4917,7 +4918,7 @@ def hlr_safe_config_summary() -> dict[str, object]:
         "api_url": hlr_safe_api_url(config["api_url"]),
         "api_key_present": bool(config["api_key"]),
         "api_secret_present": bool(config["api_secret"]),
-        "api_balance": config["api_balance"],
+        "balance_url_present": bool(config.get("balance_url")),
         "timeout_ms": config["timeout_ms"],
         "concurrency": config["concurrency"],
         "daily_limit": config["daily_limit"],
@@ -4925,6 +4926,59 @@ def hlr_safe_config_summary() -> dict[str, object]:
         "config_source": hlr_config_source("HLR_MODE"),
     }
 
+
+
+def hlr_balance_url(config: dict[str, object]) -> str:
+    explicit = str(config.get("balance_url") or "").strip()
+    if explicit:
+        return explicit
+    api_url = str(config.get("api_url") or "").strip()
+    if not api_url:
+        return ""
+    if api_url.rstrip("/").endswith("/hlr"):
+        return api_url.rstrip("/")[:-4] + "/balance"
+    return api_url.rstrip("/") + "/balance"
+
+
+def hlr_balance_empty_state(status: str = "unavailable", error_message: str | None = "Нажмите «Обновить баланс», чтобы запросить API.") -> dict[str, object]:
+    return {"status": status, "credits": None, "updated_at": None, "error_message": error_message}
+
+
+def get_hlr_balance() -> dict[str, object]:
+    config = hlr_config()
+    if config.get("mode") in {"demo", ""}:
+        return hlr_balance_empty_state("unavailable", "Demo mode: реальный API баланса не вызывается.")
+    if hlr_config_incomplete(config):
+        return hlr_balance_empty_state("not_configured", "HLR API credentials не настроены.")
+    balance_url = hlr_balance_url(config)
+    if not balance_url:
+        return hlr_balance_empty_state("unavailable", "Endpoint/helper баланса не настроен.")
+    timeout = max(1, min(30, int(config.get("timeout_ms") or 30000) / 1000))
+    body = json.dumps({"api_key": str(config.get("api_key") or ""), "api_secret": str(config.get("api_secret") or "")}, ensure_ascii=False).encode("utf-8")
+    req = Request(balance_url, data=body, headers={"Content-Type": "application/json"}, method="POST")
+    try:
+        with urlopen(req, timeout=timeout) as resp:
+            response_text = resp.read().decode("utf-8", errors="replace")
+        payload = json.loads(response_text)
+    except HTTPError as exc:
+        response_text = exc.read().decode("utf-8", errors="replace") if exc.fp else ""
+        message = hlr_sanitized_api_message(response_text, config) or f"HTTP {exc.code}"
+        return hlr_balance_empty_state("error", message[:180])
+    except TimeoutError:
+        return hlr_balance_empty_state("unavailable", "HLR balance API timeout.")
+    except URLError as exc:
+        reason = str(getattr(exc, "reason", "") or "connection error")
+        return hlr_balance_empty_state("unavailable", hlr_sanitize_text(reason, config)[:180])
+    except (ValueError, json.JSONDecodeError):
+        return hlr_balance_empty_state("error", "HLR balance API вернул неожиданный формат ответа.")
+    if not isinstance(payload, dict):
+        return hlr_balance_empty_state("error", "HLR balance API вернул неожиданный формат ответа.")
+    status = str(payload.get("Status") or payload.get("status") or "").strip().upper()
+    credits = payload.get("Credits", payload.get("credits"))
+    if status == "OK" and isinstance(credits, (int, float)):
+        return {"status": "ok", "credits": credits, "updated_at": datetime.now().strftime("%Y-%m-%d %H:%M"), "error_message": None}
+    safe_message = hlr_sanitize_text(str(payload.get("Message") or payload.get("message") or payload.get("Error") or "HLR balance API returned an error."), config)
+    return hlr_balance_empty_state("error", safe_message[:180])
 
 def hlr_config_incomplete(config: dict[str, object]) -> bool:
     return not (config.get("api_url") and config.get("api_key") and config.get("api_secret"))
@@ -5779,31 +5833,22 @@ def hlr_table(results: list[dict[str, object]]) -> str:
     return "<section class='hlr-results-area'>" + table_card(content) + "</section>"
 
 
-def hlr_api_balance_state() -> dict[str, str]:
-    config = hlr_config()
-    raw_balance = str(config.get("api_balance") or "").strip()
-    if config.get("mode") in {"demo", ""}:
-        return {"state": "unavailable", "label": "Баланс API: недоступен", "meta": "Demo mode: реальный API не вызывается.", "tone": "warning"}
-    if hlr_config_incomplete(config):
-        return {"state": "not_configured", "label": "Баланс API: не настроен", "meta": "Проверьте HLR API config.", "tone": "warning"}
-    if raw_balance and raw_balance != "—":
-        return {"state": "success", "label": f"Баланс API: {raw_balance}", "meta": f"Обновлено: {datetime.now().strftime('%H:%M')}", "tone": "neutral"}
-    return {"state": "unavailable", "label": "Баланс API: недоступен", "meta": "Endpoint/helper баланса не настроен.", "tone": "warning"}
+def hlr_balance_config_rows(balance: dict[str, object]) -> list[tuple[str, object]]:
+    credits = balance.get("credits")
+    status = str(balance.get("status") or "unavailable")
+    return [
+        ("balance", credits if credits is not None else "unavailable"),
+        ("balance_status", status),
+        ("balance_updated_at", balance.get("updated_at") or "—"),
+        ("balance_error", balance.get("error_message") or "—"),
+    ]
 
 
-def hlr_api_balance_html() -> str:
-    balance = hlr_api_balance_state()
-    tone_class = " is-error" if balance["tone"] == "error" else (" is-warning" if balance["tone"] == "warning" else "")
-    return f"""<section class='hlr-balance-card{tone_class}' aria-live='polite' data-balance-state='{esc(balance['state'])}'>
-      <div class='hlr-balance-main'><span class='hlr-balance-value'>{esc(balance['label'])}</span><span class='hlr-balance-meta'>{esc(balance['meta'])}</span></div>
-      <a class='button secondary hlr-balance-refresh' href='/hlr' title='Обновить баланс'>Обновить</a>
-    </section>"""
-
-
-def hlr_config_diagnostics_html() -> str:
+def hlr_config_diagnostics_html(balance: dict[str, object] | None = None) -> str:
     if current_role_key() != "admin":
         return ""
     summary = hlr_safe_config_summary()
+    balance_state = balance or hlr_balance_empty_state()
     warning = ""
     if summary["mode"] == "production" and not (summary["api_url_present"] and summary["api_key_present"] and summary["api_secret_present"]):
         warning = "<p class='flash error'>HLR production mode is enabled, but API configuration is incomplete.</p>"
@@ -5812,13 +5857,16 @@ def hlr_config_diagnostics_html() -> str:
         ("api_url_present", "yes" if summary["api_url_present"] else "no"),
         ("api_key_present", "yes" if summary["api_key_present"] else "no"),
         ("api_secret_present", "yes" if summary["api_secret_present"] else "no"),
+        ("api_url", summary["api_url"] or "—"),
         ("timeout_ms", summary["timeout_ms"]),
         ("concurrency", summary["concurrency"]),
         ("daily_limit", summary["daily_limit"]),
+        ("dotenv_loaded", summary["dotenv_loaded"]),
         ("config_source", summary["config_source"]),
-    ]
+    ] + hlr_balance_config_rows(balance_state)
     body = "".join(f"<dt>{esc(label)}</dt><dd>{esc(str(value))}</dd>" for label, value in rows)
-    return f"<details class='card hlr-api-fields'><summary>HLR config</summary>{warning}<dl class='hlr-detail-list'>{body}</dl></details>"
+    refresh_form = "<form method='post' action='/hlr/balance'><button class='secondary hlr-balance-refresh' type='submit'>Обновить баланс</button></form>"
+    return f"<details class='card hlr-api-fields'><summary>HLR config</summary>{warning}<dl class='hlr-detail-list'>{body}</dl>{refresh_form}</details>"
 
 
 def hlr_api_fields_html(results: list[dict[str, object]], is_demo_mode: bool) -> str:
@@ -5850,7 +5898,7 @@ def hlr_help_html() -> str:
     field_rows = "".join(f"<div class='hlr-help-row'><span>{esc(label)}</span><span class='hlr-help-info' title='{esc(tip)}' aria-label='{esc(tip)}'>ⓘ</span></div>" for label, tip in api_fields)
     return f"""<section class='hlr-help-card' aria-label='Справка HLR'><h3>Поля таблицы/API</h3><div class='hlr-help-list'>{field_rows}</div></section>"""
 
-def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = None, summary: dict[str, int] | None = None, error: str | None = None) -> bytes:
+def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = None, summary: dict[str, int] | None = None, error: str | None = None, balance: dict[str, object] | None = None) -> bytes:
     results = results or []
     config = hlr_config()
     is_demo_mode = config["mode"] in {"demo", ""}
@@ -5880,9 +5928,8 @@ def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = Non
       <aside class='hlr-side-panel' aria-label='HLR status and details'>
         <div class='hlr-filter-panel' id='hlr-filter-panel' aria-label='Фильтры HLR'></div>
         <div class='hlr-details-stack'>
-          {hlr_api_balance_html()}
           <details class='card hlr-api-fields'><summary>Справка по HLR</summary>{hlr_help_html()}{hlr_api_fields_html(results, is_demo_mode)}</details>
-          {hlr_config_diagnostics_html()}
+          {hlr_config_diagnostics_html(balance)}
         </div>
       </aside>
     </div>
@@ -6203,9 +6250,24 @@ document.addEventListener("DOMContentLoaded", function () {{
     }});
   }}
 
+  function placeColumnsPanel() {{
+    columnsPanel.classList.remove("open-up");
+    const buttonRect = columnsButton.getBoundingClientRect();
+    const panelHeight = Math.min(columnsPanel.scrollHeight || 430, Math.round(window.innerHeight * 0.7));
+    const spaceBelow = window.innerHeight - buttonRect.bottom;
+    const spaceAbove = buttonRect.top;
+    if (spaceBelow < panelHeight + 12 && spaceAbove > spaceBelow) {{
+      columnsPanel.classList.add("open-up");
+    }}
+  }}
+
   columnsButton.addEventListener("click", () => {{
     const isOpen = columnsPanel.classList.toggle("is-open");
     columnsButton.setAttribute("aria-expanded", isOpen ? "true" : "false");
+    if (isOpen) placeColumnsPanel();
+  }});
+  window.addEventListener("resize", () => {{
+    if (columnsPanel.classList.contains("is-open")) placeColumnsPanel();
   }});
   document.addEventListener("click", (event) => {{
     if (!columnsPanel.contains(event.target) && !columnsButton.contains(event.target)) {{
@@ -8893,6 +8955,9 @@ def app(environ, start_response):
                 except BusinessRuleError as exc:
                     start_response("400 Bad Request", html_headers())
                     return [hlr_page(parsed.get("numbers", ""), error=user_error(exc))]
+            if path == "/hlr/balance":
+                start_response("200 OK", html_headers())
+                return [hlr_page(balance=get_hlr_balance())]
             if path == "/hlr/export.csv":
                 require_permission("export", "hlr")
                 try:
