@@ -1108,9 +1108,9 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .hlr-counter-line, .hlr-input-hint {{ margin: 0; }}
     .hlr-input-hint {{ align-self: end; line-height: inherit; }}
     .hlr-input-actions {{ display: flex; align-items: center; gap: 8px; flex-wrap: wrap; align-self: end; }}
-    .hlr-progress {{ display: none; align-items: center; width: min(210px, 100%); flex: 0 0 min(210px, 100%); min-height: 36px; }}
+    .hlr-progress {{ display: none; align-items: center; flex: 1 1 320px; min-width: min(320px, 100%); max-width: calc(100% - 8px); min-height: 36px; }}
     .hlr-progress.is-active {{ display: inline-flex; }}
-    .hlr-progress-track {{ position: relative; display: block; width: 100%; height: 28px; overflow: hidden; border: 1px solid var(--border); border-radius: 999px; background: var(--surface-muted); box-shadow: inset 0 1px 2px color-mix(in srgb, var(--text-strong) 10%, transparent); }}
+    .hlr-progress-track {{ position: relative; display: block; width: 100%; height: 30px; overflow: hidden; border: 1px solid var(--border); border-radius: var(--radius-small); background: var(--surface-muted); box-shadow: inset 0 1px 2px color-mix(in srgb, var(--text-strong) 10%, transparent); }}
     .hlr-progress-bar {{ position: absolute; inset: 0 auto 0 0; width: 45%; border-radius: inherit; background: repeating-linear-gradient(45deg, color-mix(in srgb, var(--accent) 82%, var(--surface)), color-mix(in srgb, var(--accent) 82%, var(--surface)) 8px, color-mix(in srgb, var(--accent) 58%, var(--surface)) 8px, color-mix(in srgb, var(--accent) 58%, var(--surface)) 16px); animation: hlr-progress-slide 1s linear infinite; }}
     @keyframes hlr-progress-slide {{ 0% {{ transform: translateX(-110%); }} 100% {{ transform: translateX(230%); }} }}
     .hlr-severity-good, .hlr-severity-green {{ border-color: color-mix(in srgb, var(--success) 60%, var(--border)); background: color-mix(in srgb, var(--success) 12%, var(--surface)); color: var(--success, var(--text-strong)); }}
