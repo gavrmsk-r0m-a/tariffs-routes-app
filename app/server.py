@@ -5704,6 +5704,16 @@ def hlr_csv_headers_and_keys(results: list[dict[str, object]]) -> tuple[list[str
     return headers, keys
 
 
+
+def hlr_filter_results_for_export(results: list[dict[str, object]], selected_statuses: list[object] | None, show_all_statuses: bool) -> list[dict[str, object]]:
+    safe_results = [row for row in results if isinstance(row, dict)]
+    if show_all_statuses:
+        return safe_results
+    statuses = {hlr_filter_attr(status, "") for status in (selected_statuses or []) if hlr_filter_attr(status, "")}
+    if not statuses:
+        return []
+    return [row for row in safe_results if hlr_filter_attr(hlr_display_status(row), "") in statuses]
+
 def hlr_results_rows(results: list[dict[str, object]]) -> list[list[str]]:
     _, keys = hlr_csv_headers_and_keys(results)
     return [[hlr_display_row(row).get(key, "") for key in keys] for row in results]
@@ -5907,7 +5917,7 @@ def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = Non
     export_results_json = esc(json.dumps(results, ensure_ascii=False))
     notice = f"<div class='flash error'>{esc(error)}</div>" if error else ""
     demo_badge = "<span class='badge'>Demo mode</span><span class='muted hlr-demo-note'>Результаты сгенерированы для проверки интерфейса. Реальный HLR API не вызывался.</span>" if is_demo_mode else ""
-    export_form = f"<form method='post' action='/hlr/export.csv' id='hlr-export-form'><input type='hidden' name='results_json' value='{export_results_json}'><button type='submit' {'disabled' if not export_allowed else ''}>Экспорт CSV</button></form>"
+    export_form = f"<form method='post' action='/hlr/export.csv' id='hlr-export-form'><input type='hidden' name='results_json' value='{export_results_json}'><input type='hidden' name='selected_statuses_json' value='[]'><input type='hidden' name='show_all_statuses' value='1'><button type='submit' {'disabled' if not export_allowed else ''}>Экспорт CSV</button></form>"
     body = f"""
 {notice}
 <section class='hlr-workspace'>
@@ -5974,6 +5984,8 @@ document.addEventListener("DOMContentLoaded", function () {{
   const resultRows = table ? Array.from(table.querySelectorAll("tbody tr.hlr-result-row")) : [];
   const exportForm = document.getElementById("hlr-export-form");
   const exportInput = exportForm ? exportForm.querySelector("input[name='results_json']") : null;
+  const exportStatusesInput = exportForm ? exportForm.querySelector("input[name='selected_statuses_json']") : null;
+  const exportShowAllInput = exportForm ? exportForm.querySelector("input[name='show_all_statuses']") : null;
   const exportButton = exportForm ? exportForm.querySelector("button[type='submit']") : null;
   const exportHint = document.getElementById("hlr-export-hint");
   const emptyState = document.getElementById("hlr-empty-state");
@@ -6004,15 +6016,10 @@ document.addEventListener("DOMContentLoaded", function () {{
   }}
 
   function updateExportPayload(rows) {{
-    if (!exportInput || !exportButton) return;
-    try {{
-      const allResults = JSON.parse(originalExportJson || "[]");
-      const indexes = new Set(rows.map((row) => Number(row.dataset.resultIndex)).filter((index) => Number.isInteger(index)));
-      const exportRows = allResults.filter((_row, index) => indexes.has(index));
-      exportInput.value = JSON.stringify(exportRows);
-    }} catch (error) {{
-      console.warn("Could not prepare filtered HLR export", error);
-    }}
+    if (!exportButton) return;
+    if (exportInput) exportInput.value = originalExportJson;
+    if (exportStatusesInput) exportStatusesInput.value = JSON.stringify(Array.from(selectedStatuses));
+    if (exportShowAllInput) exportShowAllInput.value = showAllStatuses ? "1" : "0";
     const hasRows = rows.length > 0;
     exportButton.disabled = !hasRows;
     if (exportHint) exportHint.textContent = hasRows ? "Экспортирует текущую отфильтрованную выборку." : "Нет строк для экспорта в текущей выборке.";
@@ -6105,10 +6112,16 @@ document.addEventListener("DOMContentLoaded", function () {{
 
   if (exportForm) {{
     exportForm.addEventListener("submit", (event) => {{
-      if (visibleRows().length < 1) {{
+      const rows = visibleRows();
+      updateExportPayload(rows);
+      if (rows.length < 1) {{
         event.preventDefault();
         if (exportHint) exportHint.textContent = "Нет строк для экспорта в текущей выборке.";
+        return;
       }}
+      window.setTimeout(() => {{
+        if (exportButton && visibleRows().length > 0) exportButton.disabled = false;
+      }}, 0);
     }});
   }}
 
@@ -8967,7 +8980,14 @@ def app(environ, start_response):
                 if not isinstance(results, list):
                     results = []
                 start_response("200 OK", csv_headers("hlr_results.csv"))
-                safe_results = [row for row in results if isinstance(row, dict)]
+                try:
+                    selected_statuses = json.loads(parsed.get("selected_statuses_json", "[]"))
+                except (TypeError, ValueError, json.JSONDecodeError):
+                    selected_statuses = []
+                if not isinstance(selected_statuses, list):
+                    selected_statuses = []
+                show_all_statuses = str(parsed.get("show_all_statuses", "1")).lower() in {"1", "true", "yes", "on"}
+                safe_results = hlr_filter_results_for_export(results, selected_statuses, show_all_statuses)
                 headers, _ = hlr_csv_headers_and_keys(safe_results)
                 return [csv_response("hlr_results.csv", headers, hlr_results_rows(safe_results))]
             if path == "/admin/import/preview":
