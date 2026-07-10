@@ -1114,17 +1114,19 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .hlr-progress-bar {{ position: absolute; inset: 0 auto 0 0; width: 45%; border-radius: inherit; background: repeating-linear-gradient(45deg, color-mix(in srgb, var(--accent) 82%, var(--surface)), color-mix(in srgb, var(--accent) 82%, var(--surface)) 8px, color-mix(in srgb, var(--accent) 58%, var(--surface)) 8px, color-mix(in srgb, var(--accent) 58%, var(--surface)) 16px); animation: hlr-progress-slide 1s linear infinite; }}
     .hlr-progress-text {{ white-space: nowrap; }}
     @keyframes hlr-progress-slide {{ 0% {{ transform: translateX(-110%); }} 100% {{ transform: translateX(230%); }} }}
-    .hlr-severity-good, .hlr-severity-green, .hlr-severity-neutral {{ border-color: color-mix(in srgb, var(--success) 60%, var(--border)); background: color-mix(in srgb, var(--success) 12%, var(--surface)); color: var(--success, var(--text-strong)); }}
-    .hlr-severity-bad, .hlr-severity-red {{ border-color: color-mix(in srgb, var(--danger) 65%, var(--border)); background: color-mix(in srgb, var(--danger) 12%, var(--surface)); color: var(--danger); }}
-    .hlr-severity-warning, .hlr-severity-unknown, .hlr-severity-yellow, .hlr-severity-orange {{ border-color: color-mix(in srgb, var(--warning) 70%, var(--border)); background: color-mix(in srgb, var(--warning) 16%, var(--surface)); color: var(--warning-hover, var(--warning)); }}
+    .hlr-severity-good, .hlr-severity-green {{ border-color: color-mix(in srgb, var(--success) 60%, var(--border)); background: color-mix(in srgb, var(--success) 12%, var(--surface)); color: var(--success, var(--text-strong)); }}
+    .hlr-severity-neutral, .hlr-severity-unknown {{ border-color: var(--border); background: color-mix(in srgb, var(--surface-muted) 70%, var(--surface)); color: var(--muted); }}
+    .hlr-severity-bad, .hlr-severity-red {{ border-color: color-mix(in srgb, #dc2626 72%, var(--border)); background: color-mix(in srgb, #dc2626 12%, var(--surface)); color: #b91c1c; }}
+    .hlr-severity-warning, .hlr-severity-yellow, .hlr-severity-orange {{ border-color: color-mix(in srgb, #eab308 78%, var(--border)); background: color-mix(in srgb, #fef9c3 76%, var(--surface)); color: #713f12; }}
     .hlr-severity-api_error {{ border-color: color-mix(in srgb, var(--danger) 55%, var(--border)); background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--danger) 9%, var(--surface)), color-mix(in srgb, var(--danger) 9%, var(--surface)) 6px, var(--surface-muted) 6px, var(--surface-muted) 12px); color: var(--danger); }}
-    #hlr-table tbody tr.hlr-row-severity-bad td, #hlr-table tbody tr.hlr-row-severity-red td {{ background: color-mix(in srgb, var(--danger) 5%, var(--surface)); }}
-    #hlr-table tbody tr.hlr-row-severity-api_error td {{ background: color-mix(in srgb, var(--danger) 3%, var(--surface)); }}
-    #hlr-table tbody tr.hlr-row-severity-warning td, #hlr-table tbody tr.hlr-row-severity-unknown td, #hlr-table tbody tr.hlr-row-severity-yellow td, #hlr-table tbody tr.hlr-row-severity-orange td {{ background: color-mix(in srgb, var(--warning) 5%, var(--surface)); }}
-    #hlr-table tbody tr.hlr-row-severity-good td, #hlr-table tbody tr.hlr-row-severity-green td, #hlr-table tbody tr.hlr-row-severity-neutral td {{ background: color-mix(in srgb, var(--success) 4%, var(--surface)); }}
+    #hlr-table tbody tr.hlr-row-severity-bad td, #hlr-table tbody tr.hlr-row-severity-red td {{ background: color-mix(in srgb, #dc2626 5%, var(--surface)); }}
+    #hlr-table tbody tr.hlr-row-severity-api_error td {{ background: color-mix(in srgb, #dc2626 3%, var(--surface)); }}
+    #hlr-table tbody tr.hlr-row-severity-warning td, #hlr-table tbody tr.hlr-row-severity-yellow td, #hlr-table tbody tr.hlr-row-severity-orange td {{ background: color-mix(in srgb, #fef9c3 58%, var(--surface)); }}
+    #hlr-table tbody tr.hlr-row-severity-good td, #hlr-table tbody tr.hlr-row-severity-green td {{ background: color-mix(in srgb, var(--success) 4%, var(--surface)); }}
+    #hlr-table tbody tr.hlr-row-severity-neutral td, #hlr-table tbody tr.hlr-row-severity-unknown td {{ background: color-mix(in srgb, var(--surface-muted) 55%, var(--surface)); }}
     #hlr-table tbody tr td[data-col='comment'] .hlr-cell-text {{ color: inherit; }}
     #hlr-table tbody tr.hlr-row-severity-bad td[data-col='comment'] .hlr-cell-text, #hlr-table tbody tr.hlr-row-severity-red td[data-col='comment'] .hlr-cell-text, #hlr-table tbody tr.hlr-row-severity-api_error td[data-col='comment'] .hlr-cell-text {{ color: var(--danger); }}
-    #hlr-table tbody tr.hlr-row-severity-warning td[data-col='comment'] .hlr-cell-text, #hlr-table tbody tr.hlr-row-severity-unknown td[data-col='comment'] .hlr-cell-text, #hlr-table tbody tr.hlr-row-severity-yellow td[data-col='comment'] .hlr-cell-text, #hlr-table tbody tr.hlr-row-severity-orange td[data-col='comment'] .hlr-cell-text {{ color: var(--warning-hover, var(--warning)); }}
+    #hlr-table tbody tr.hlr-row-severity-warning td[data-col='comment'] .hlr-cell-text, #hlr-table tbody tr.hlr-row-severity-yellow td[data-col='comment'] .hlr-cell-text, #hlr-table tbody tr.hlr-row-severity-orange td[data-col='comment'] .hlr-cell-text {{ color: #713f12; }}
     .hlr-demo-note {{ margin-left: 8px; font-size: 12px; font-weight: 500; }}
     .hlr-table-toolbar {{ display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-top: 0; }}
     .hlr-side-panel {{ display: grid; align-content: start; gap: 8px; min-width: 0; }}
@@ -1144,9 +1146,8 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .hlr-filter-chip.is-empty[aria-pressed="true"] {{ border-color: var(--border); background: var(--surface); box-shadow: none; color: var(--muted); }}
     .hlr-filter-chip:focus-visible {{ outline: 3px solid color-mix(in srgb, var(--accent) 65%, transparent); outline-offset: 2px; }}
     .hlr-filter-chip.hlr-status-live {{ border-color: color-mix(in srgb, var(--success) 65%, var(--border)); background: color-mix(in srgb, var(--success) 12%, var(--surface)); }}
-    .hlr-filter-chip.hlr-status-dead, .hlr-filter-chip.hlr-status-bad_format {{ border-color: color-mix(in srgb, var(--danger) 65%, var(--border)); background: color-mix(in srgb, var(--danger) 11%, var(--surface)); }}
-    .hlr-filter-chip.hlr-status-absent_subscriber, .hlr-filter-chip.hlr-status-no_teleservice_provisioned, .hlr-filter-chip.hlr-status-no_coverage, .hlr-filter-chip.hlr-status-inconclusive {{ border-color: color-mix(in srgb, var(--warning) 70%, var(--border)); background: color-mix(in srgb, var(--warning) 15%, var(--surface)); }}
-    .hlr-filter-chip.hlr-status-not_available_network_only {{ border-color: color-mix(in srgb, var(--warning) 45%, var(--border)); background: color-mix(in srgb, var(--warning) 10%, var(--surface-muted)); }}
+    .hlr-filter-chip.hlr-status-dead, .hlr-filter-chip.hlr-status-bad_format {{ border-color: color-mix(in srgb, #dc2626 72%, var(--border)); background: color-mix(in srgb, #dc2626 12%, var(--surface)); color: #b91c1c; }}
+    .hlr-filter-chip.hlr-status-absent_subscriber, .hlr-filter-chip.hlr-status-no_teleservice_provisioned, .hlr-filter-chip.hlr-status-not_available_network_only, .hlr-filter-chip.hlr-status-no_coverage, .hlr-filter-chip.hlr-status-inconclusive {{ border-color: color-mix(in srgb, #eab308 78%, var(--border)); background: color-mix(in srgb, #fef9c3 76%, var(--surface)); color: #713f12; }}
     .hlr-filter-chip.hlr-status-not_applicable {{ border-color: var(--border); background: var(--surface); color: var(--muted); }}
     .hlr-filter-count {{ flex: 0 0 auto; color: var(--muted); font-weight: 900; }}
     .hlr-table-empty-message {{ margin: 10px 0 0; }}
@@ -1187,8 +1188,8 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .hlr-api-fields .hlr-api-fields {{ margin: 10px; background: var(--surface); }}
     .hlr-api-field-list {{ display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }}
     .hlr-api-field-list code {{ padding: 2px 6px; border-radius: 999px; background: var(--surface-muted); border: 1px solid var(--border); font-size: 12px; }}
-    .hlr-usage-dashboard {{ display: grid; gap: 7px; padding-top: 2px; }}
-    .hlr-usage-title {{ margin: 0; color: var(--muted); font-size: 12px; font-weight: 850; letter-spacing: .04em; text-transform: uppercase; }}
+    .hlr-usage-dashboard {{ display: grid; gap: 10px; min-width: 0; padding: 12px; border: 1px solid var(--border); border-radius: var(--radius-card); background: var(--surface-muted); }}
+    .hlr-usage-title {{ margin: 0; color: var(--text-strong); font-size: 12px; font-weight: 840; letter-spacing: .04em; text-transform: uppercase; }}
     .hlr-usage-grid {{ display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border: 1px solid var(--border); border-radius: var(--radius-small); background: var(--surface); overflow: hidden; }}
     .hlr-usage-cell {{ display: grid; gap: 3px; min-width: 0; padding: 8px 9px; border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); background: color-mix(in srgb, var(--surface-muted) 45%, var(--surface)); }}
     .hlr-usage-balance-cell {{ position: relative; padding-right: 42px; }}
@@ -5650,12 +5651,14 @@ def hlr_status_severity(row: dict[str, object]) -> str:
         return "green"
     if live == "LIVE" or category == "ok":
         return "green"
-    if live in {"ABSENT_SUBSCRIBER", "NO_TELESERVICE_PROVISIONED", "INCONCLUSIVE", "NOT_AVAILABLE_NETWORK_ONLY", "NO_COVERAGE", "NOT_APPLICABLE", "UNKNOWN", "NETWORK_INFO_ONLY", "WARNING"} or result in {"WARNING", "INCONCLUSIVE"} or number_type in {"mobile_or_landline", "voip", "unknown"}:
+    if live in {"ABSENT_SUBSCRIBER", "NO_TELESERVICE_PROVISIONED", "INCONCLUSIVE", "NOT_AVAILABLE_NETWORK_ONLY", "NO_COVERAGE", "NETWORK_INFO_ONLY", "WARNING"} or result in {"WARNING", "INCONCLUSIVE"} or number_type in {"mobile_or_landline", "voip"}:
         return "yellow"
+    if live in {"NOT_APPLICABLE", "UNKNOWN"} or number_type == "unknown":
+        return "neutral"
     if category == "warning":
         return "yellow"
     if category == "unknown" or result == "UNKNOWN":
-        return "yellow"
+        return "neutral"
     return "neutral"
 
 
