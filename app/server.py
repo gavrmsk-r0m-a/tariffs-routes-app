@@ -6171,19 +6171,19 @@ document.addEventListener("DOMContentLoaded", function () {{
   const counter = document.getElementById("hlr-input-counter");
   let hlrSubmitting = false;
 
-  function updateCounter() {{
-    if (!input || !counter) return;
-    const values = input.value
+  function parseHlrInputLines() {{
+    if (!input) return [];
+    return input.value
       .replace(/\\r/g, "")
       .split("\\n")
       .map((v) => v.trim())
       .filter(Boolean);
-    counter.textContent = values.length + " / 500";
   }}
 
-  function hlrInputLines() {{
-    if (!input) return [];
-    return input.value.replace(/\r/g, "").split("\n").map((v) => v.trim()).filter(Boolean);
+  function updateCounter() {{
+    if (!counter) return;
+    const values = parseHlrInputLines();
+    counter.textContent = values.length + " / 500";
   }}
 
   function setHlrLoading(isLoading, count) {{
@@ -6203,7 +6203,7 @@ document.addEventListener("DOMContentLoaded", function () {{
 
   if (form) {{
     form.addEventListener("submit", function (event) {{
-      const lines = hlrInputLines();
+      const lines = parseHlrInputLines();
       const dailyLimit = Number(form.dataset.hlrDailyLimit || "0");
       const remainingToday = Number(form.dataset.hlrRemainingToday || "0");
       if (hlrSubmitting) {{
@@ -6211,8 +6211,12 @@ document.addEventListener("DOMContentLoaded", function () {{
         return;
       }}
       if (lines.length < 1 || lines.length > 500 || (dailyLimit > 0 && remainingToday < 1)) return;
+      event.preventDefault();
       hlrSubmitting = true;
       setHlrLoading(true, lines.length);
+      requestAnimationFrame(() => {{
+        HTMLFormElement.prototype.submit.call(form);
+      }});
     }});
   }}
 
