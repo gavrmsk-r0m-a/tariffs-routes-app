@@ -1116,16 +1116,16 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .hlr-severity-good, .hlr-severity-green {{ border-color: color-mix(in srgb, var(--success) 60%, var(--border)); background: color-mix(in srgb, var(--success) 12%, var(--surface)); color: var(--success, var(--text-strong)); }}
     .hlr-severity-neutral, .hlr-severity-unknown {{ border-color: var(--border); background: color-mix(in srgb, var(--surface-muted) 70%, var(--surface)); color: var(--muted); }}
     .hlr-severity-bad, .hlr-severity-red {{ border-color: color-mix(in srgb, #dc2626 72%, var(--border)); background: color-mix(in srgb, #dc2626 12%, var(--surface)); color: #b91c1c; }}
-    .hlr-severity-warning, .hlr-severity-yellow, .hlr-severity-orange {{ border-color: color-mix(in srgb, #eab308 78%, var(--border)); background: color-mix(in srgb, #fef9c3 76%, var(--surface)); color: #713f12; }}
+    .hlr-severity-warning, .hlr-severity-yellow, .hlr-severity-orange {{ border-color: color-mix(in srgb, #d6b94f 46%, var(--border)); background: color-mix(in srgb, #fffbea 62%, var(--surface)); color: #5f4700; }}
     .hlr-severity-api_error {{ border-color: color-mix(in srgb, var(--danger) 55%, var(--border)); background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--danger) 9%, var(--surface)), color-mix(in srgb, var(--danger) 9%, var(--surface)) 6px, var(--surface-muted) 6px, var(--surface-muted) 12px); color: var(--danger); }}
     #hlr-table tbody tr.hlr-row-severity-bad td, #hlr-table tbody tr.hlr-row-severity-red td {{ background: color-mix(in srgb, #dc2626 5%, var(--surface)); }}
     #hlr-table tbody tr.hlr-row-severity-api_error td {{ background: color-mix(in srgb, #dc2626 3%, var(--surface)); }}
-    #hlr-table tbody tr.hlr-row-severity-warning td, #hlr-table tbody tr.hlr-row-severity-yellow td, #hlr-table tbody tr.hlr-row-severity-orange td {{ background: color-mix(in srgb, #fef9c3 58%, var(--surface)); }}
+    #hlr-table tbody tr.hlr-row-severity-warning td, #hlr-table tbody tr.hlr-row-severity-yellow td, #hlr-table tbody tr.hlr-row-severity-orange td {{ background: color-mix(in srgb, #fffbea 48%, var(--surface)); }}
     #hlr-table tbody tr.hlr-row-severity-good td, #hlr-table tbody tr.hlr-row-severity-green td {{ background: color-mix(in srgb, var(--success) 4%, var(--surface)); }}
     #hlr-table tbody tr.hlr-row-severity-neutral td, #hlr-table tbody tr.hlr-row-severity-unknown td {{ background: color-mix(in srgb, var(--surface-muted) 55%, var(--surface)); }}
     #hlr-table tbody tr td[data-col='comment'] .hlr-cell-text {{ color: inherit; }}
     #hlr-table tbody tr.hlr-row-severity-bad td[data-col='comment'] .hlr-cell-text, #hlr-table tbody tr.hlr-row-severity-red td[data-col='comment'] .hlr-cell-text, #hlr-table tbody tr.hlr-row-severity-api_error td[data-col='comment'] .hlr-cell-text {{ color: var(--danger); }}
-    #hlr-table tbody tr.hlr-row-severity-warning td[data-col='comment'] .hlr-cell-text, #hlr-table tbody tr.hlr-row-severity-yellow td[data-col='comment'] .hlr-cell-text, #hlr-table tbody tr.hlr-row-severity-orange td[data-col='comment'] .hlr-cell-text {{ color: #713f12; }}
+    #hlr-table tbody tr.hlr-row-severity-warning td[data-col='comment'] .hlr-cell-text, #hlr-table tbody tr.hlr-row-severity-yellow td[data-col='comment'] .hlr-cell-text, #hlr-table tbody tr.hlr-row-severity-orange td[data-col='comment'] .hlr-cell-text {{ color: #5f4700; }}
     .hlr-demo-note {{ margin-left: 8px; font-size: 12px; font-weight: 500; }}
     .hlr-table-toolbar {{ display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-top: 0; }}
     .hlr-side-panel {{ display: grid; align-content: start; gap: 8px; min-width: 0; }}
@@ -1146,7 +1146,7 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .hlr-filter-chip:focus-visible {{ outline: 3px solid color-mix(in srgb, var(--accent) 65%, transparent); outline-offset: 2px; }}
     .hlr-filter-chip.hlr-status-live {{ border-color: color-mix(in srgb, var(--success) 65%, var(--border)); background: color-mix(in srgb, var(--success) 12%, var(--surface)); }}
     .hlr-filter-chip.hlr-status-dead, .hlr-filter-chip.hlr-status-bad_format {{ border-color: color-mix(in srgb, #dc2626 72%, var(--border)); background: color-mix(in srgb, #dc2626 12%, var(--surface)); color: #b91c1c; }}
-    .hlr-filter-chip.hlr-status-absent_subscriber, .hlr-filter-chip.hlr-status-no_teleservice_provisioned, .hlr-filter-chip.hlr-status-not_available_network_only, .hlr-filter-chip.hlr-status-no_coverage, .hlr-filter-chip.hlr-status-inconclusive {{ border-color: color-mix(in srgb, #eab308 78%, var(--border)); background: color-mix(in srgb, #fef9c3 76%, var(--surface)); color: #713f12; }}
+    .hlr-filter-chip.hlr-status-absent_subscriber, .hlr-filter-chip.hlr-status-no_teleservice_provisioned, .hlr-filter-chip.hlr-status-not_available_network_only, .hlr-filter-chip.hlr-status-no_coverage, .hlr-filter-chip.hlr-status-inconclusive {{ border-color: color-mix(in srgb, #d6b94f 46%, var(--border)); background: color-mix(in srgb, #fffbea 62%, var(--surface)); color: #5f4700; }}
     .hlr-filter-chip.hlr-status-not_applicable {{ border-color: var(--border); background: var(--surface); color: var(--muted); }}
     .hlr-filter-count {{ flex: 0 0 auto; color: var(--muted); font-weight: 900; }}
     .hlr-table-empty-message {{ margin: 10px 0 0; }}
