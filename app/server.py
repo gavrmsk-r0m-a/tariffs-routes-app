@@ -1101,12 +1101,13 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .hlr-tech-spec[open] .hlr-tech-spec-title::before {{ content: "▼"; }}
     .hlr-tech-spec-summary {{ display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; color: var(--muted); font-size: 12px; font-weight: 720; }}
     .hlr-tech-spec-body {{ display: grid; grid-template-columns: minmax(280px, 1fr) minmax(360px, 1fr); gap: 12px; padding: 0 12px 12px; }}
-    .hlr-input-panel {{ margin: 0; }}
-    .hlr-input-form {{ display: grid; gap: 7px; align-items: start; padding: 12px; }}
-    .hlr-input-form label {{ display: grid; gap: 5px; min-width: 0; width: 100%; }}
-    .hlr-input-form textarea {{ min-width: 0; width: 100%; min-height: 140px; max-height: 26vh; resize: vertical; box-sizing: border-box; }}
+    .hlr-input-panel {{ display: flex; margin: 0; }}
+    .hlr-input-form {{ display: grid; grid-template-rows: minmax(220px, 1fr) auto auto auto; gap: 6px; align-items: end; width: 100%; padding: 12px; }}
+    .hlr-input-form label {{ display: grid; grid-template-rows: auto minmax(190px, 1fr); gap: 5px; align-self: stretch; min-width: 0; width: 100%; }}
+    .hlr-input-form textarea {{ min-width: 0; width: 100%; height: 100%; min-height: 190px; max-height: none; resize: vertical; box-sizing: border-box; }}
     .hlr-counter-line, .hlr-input-hint {{ margin: 0; }}
-    .hlr-input-actions {{ display: flex; gap: 8px; flex-wrap: wrap; }}
+    .hlr-input-hint {{ align-self: end; line-height: inherit; }}
+    .hlr-input-actions {{ display: flex; gap: 8px; flex-wrap: wrap; align-self: end; }}
     .hlr-severity-good, .hlr-severity-green, .hlr-severity-neutral {{ border-color: color-mix(in srgb, var(--success) 60%, var(--border)); background: color-mix(in srgb, var(--success) 12%, var(--surface)); color: var(--success, var(--text-strong)); }}
     .hlr-severity-bad, .hlr-severity-red {{ border-color: color-mix(in srgb, var(--danger) 65%, var(--border)); background: color-mix(in srgb, var(--danger) 12%, var(--surface)); color: var(--danger); }}
     .hlr-severity-warning, .hlr-severity-unknown, .hlr-severity-yellow, .hlr-severity-orange {{ border-color: color-mix(in srgb, var(--warning) 70%, var(--border)); background: color-mix(in srgb, var(--warning) 16%, var(--surface)); color: var(--warning-hover, var(--warning)); }}
@@ -6110,7 +6111,7 @@ def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = Non
       <section class='form-card hlr-input-panel'>
         <form class='hlr-input-form' method='post' action='/hlr/check' id='hlr-form'>
           <label>Номера для проверки <textarea name='numbers' id='hlr-numbers-input' rows='12' {'disabled' if not write_allowed else ''}>{esc(input_text)}</textarea></label>
-          <p class='muted hlr-input-hint'>Один номер на строке. Можно вставлять номера с пробелами, +, скобками и дефисами.</p>
+          <p class='hlr-input-hint hlr-usage-label'>Один номер на строке. Можно вставлять номера с пробелами, +, скобками и дефисами.</p>
           <p class='muted hlr-counter-line'>Максимум 500 номеров за одну проверку · <span id='hlr-input-counter'>0 / 500</span></p>
           <div class='hlr-input-actions'>
             <button type='submit' {'disabled' if not write_allowed else ''}>Запустить проверку</button>

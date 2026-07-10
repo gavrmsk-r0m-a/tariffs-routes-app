@@ -3969,6 +3969,7 @@ class HlrUiStateScriptTest(unittest.TestCase):
         self.assertIn(">refresh</span>", content)
         self.assertIn("<span class='hlr-usage-label'>Осталось сегодня</span>", content)
         self.assertIn("<span class='hlr-usage-label'>Проверено сегодня</span>", content)
+        self.assertIn("<p class='hlr-input-hint hlr-usage-label'>Один номер на строке. Можно вставлять номера с пробелами, +, скобками и дефисами.</p>", content)
         self.assertIn("<span class='hlr-usage-label'>Последняя проверка</span>", content)
         self.assertIn("<summary>Справка по HLR</summary>", content)
         with patch("app.server.current_role_key", return_value="admin"):
