@@ -1143,6 +1143,9 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .hlr-filter-chip.hlr-status-not_applicable {{ border-color: var(--border); background: var(--surface); color: var(--muted); }}
     .hlr-filter-count {{ flex: 0 0 auto; color: var(--muted); font-weight: 900; }}
     .hlr-table-empty-message {{ margin: 10px 0 0; }}
+    .hlr-copy-status {{ min-width: 150px; color: var(--muted); font-size: 12px; font-weight: 720; }}
+    .hlr-copy-status.is-success {{ color: var(--success); }}
+    .hlr-copy-status.is-error {{ color: var(--danger); }}
     .hlr-column-manager {{ position: relative; display: inline-flex; }}
     .hlr-column-panel {{ position: absolute; right: 0; top: calc(100% + 6px); z-index: 20; display: none; width: min(420px, 88vw); max-height: min(430px, 70vh); overflow: auto; overscroll-behavior: contain; padding: 10px; border: 1px solid var(--border); border-radius: var(--radius-card); background: var(--surface); box-shadow: var(--shadow-card); }}
     .hlr-column-panel.is-open {{ display: grid; gap: 8px; }}
@@ -5835,7 +5838,8 @@ def hlr_table(results: list[dict[str, object]]) -> str:
         severity = esc(str(row.get("status_severity") or hlr_status_severity(row)))
         cells = "".join(hlr_table_cell(display, key, severity) for key, _label, _width in HLR_TABLE_COLUMNS)
         row_attrs = hlr_row_filter_attrs(row, severity)
-        rows.append(f"<tr class='hlr-result-row hlr-row-severity-{severity}' data-result-index='{index}' {row_attrs}>{cells}</tr>")
+        source_number = esc(display.get("original_number", ""))
+        rows.append(f"<tr class='hlr-result-row hlr-row-severity-{severity}' data-result-index='{index}' data-source-number='{source_number}' {row_attrs}>{cells}</tr>")
     tbody = "<tbody>" + "".join(rows) + "</tbody>"
     empty_hidden = " hidden" if rows else ""
     empty_text = "Выберите один или несколько HLR-статусов для отображения результатов." if rows else "Запустите проверку, чтобы увидеть результаты."
@@ -5946,7 +5950,7 @@ def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = Non
   </details>
   <div class='hlr-table-toolbar'><span class='muted' id='hlr-visible-count'>Показано: {len(results)} из {len(results)}</span></div>
   {hlr_table(results)}
-  <div class='hlr-table-toolbar'><span class='muted' id='hlr-export-hint'>Экспортирует текущую отфильтрованную выборку.</span><div class='table-footer-tools'><div class='hlr-column-manager'><button type='button' id='hlr-columns-button' aria-expanded='false' aria-controls='hlr-column-panel'>Колонки</button><div class='hlr-column-panel' id='hlr-column-panel' aria-label='Настройки колонок'><div class='hlr-column-panel-actions'><strong>Вид таблицы</strong><button type='button' id='hlr-columns-reset'>Сбросить вид таблицы</button></div><div class='hlr-column-list' id='hlr-column-list'></div></div></div>{export_form}</div></div>
+  <div class='hlr-table-toolbar'><span class='muted' id='hlr-export-hint'>Экспортирует текущую отфильтрованную выборку.</span><div class='table-footer-tools'><button type='button' id='hlr-copy-source-button' title='Копировать исходные номера текущей выборки'>{nav_icon('copy')}<span>Копировать исходные номера</span></button><span class='hlr-copy-status' id='hlr-copy-source-status' aria-live='polite'></span><div class='hlr-column-manager'><button type='button' id='hlr-columns-button' aria-expanded='false' aria-controls='hlr-column-panel'>Колонки</button><div class='hlr-column-panel' id='hlr-column-panel' aria-label='Настройки колонок'><div class='hlr-column-panel-actions'><strong>Вид таблицы</strong><button type='button' id='hlr-columns-reset'>Сбросить вид таблицы</button></div><div class='hlr-column-list' id='hlr-column-list'></div></div></div>{export_form}</div></div>
 </section>
 <script>
 document.addEventListener("DOMContentLoaded", function () {{
@@ -5988,6 +5992,9 @@ document.addEventListener("DOMContentLoaded", function () {{
   const exportShowAllInput = exportForm ? exportForm.querySelector("input[name='show_all_statuses']") : null;
   const exportButton = exportForm ? exportForm.querySelector("button[type='submit']") : null;
   const exportHint = document.getElementById("hlr-export-hint");
+  const copySourceButton = document.getElementById("hlr-copy-source-button");
+  const copySourceStatus = document.getElementById("hlr-copy-source-status");
+  let copySourceStatusTimer = null;
   const emptyState = document.getElementById("hlr-empty-state");
   const originalExportJson = exportInput ? exportInput.value : "[]";
   const activeFilters = new Set();
@@ -6015,6 +6022,56 @@ document.addEventListener("DOMContentLoaded", function () {{
     return resultRows.filter((row) => !row.hidden);
   }}
 
+  function hlrNumberWord(count) {{
+    const mod10 = count % 10;
+    const mod100 = count % 100;
+    if (mod10 === 1 && mod100 !== 11) return "номер";
+    if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return "номера";
+    return "номеров";
+  }}
+
+  function setCopySourceStatus(message, state) {{
+    if (!copySourceStatus) return;
+    copySourceStatus.textContent = message;
+    copySourceStatus.classList.toggle("is-success", state === "success");
+    copySourceStatus.classList.toggle("is-error", state === "error");
+    if (copySourceStatusTimer) window.clearTimeout(copySourceStatusTimer);
+    copySourceStatusTimer = window.setTimeout(() => {{
+      copySourceStatus.textContent = "";
+      copySourceStatus.classList.remove("is-success", "is-error");
+      copySourceStatusTimer = null;
+    }}, 2500);
+  }}
+
+  function fallbackCopyText(text) {{
+    const textarea = document.createElement("textarea");
+    textarea.value = text;
+    textarea.setAttribute("readonly", "");
+    textarea.style.position = "fixed";
+    textarea.style.top = "-1000px";
+    document.body.appendChild(textarea);
+    textarea.select();
+    try {{
+      document.execCommand("copy");
+    }} finally {{
+      document.body.removeChild(textarea);
+    }}
+  }}
+
+  async function copyText(text) {{
+    if (navigator.clipboard && window.isSecureContext) {{
+      await navigator.clipboard.writeText(text);
+    }} else {{
+      fallbackCopyText(text);
+    }}
+  }}
+
+  function updateCopySourceButton(rows) {{
+    if (!copySourceButton) return;
+    copySourceButton.disabled = rows.length < 1;
+    copySourceButton.title = rows.length > 0 ? "Копировать исходные номера текущей выборки" : "Нет строк для копирования";
+  }}
+
   function updateExportPayload(rows) {{
     if (!exportButton) return;
     if (exportInput) exportInput.value = originalExportJson;
@@ -6037,6 +6094,7 @@ document.addEventListener("DOMContentLoaded", function () {{
       emptyState.innerHTML = resultRows.length === 0 ? "<strong>" + initialEmptyMessage + "</strong>" : "<strong>" + resetEmptyMessage + "</strong>";
     }}
     updateExportPayload(rows);
+    updateCopySourceButton(rows);
   }}
 
   function applyRowFilters() {{
@@ -6109,6 +6167,29 @@ document.addEventListener("DOMContentLoaded", function () {{
   }}
 
   buildFilterPanel();
+
+  if (copySourceButton) {{
+    copySourceButton.addEventListener("click", async () => {{
+      const rows = visibleRows();
+      const values = rows.map((row) => (row.dataset.sourceNumber || "").trim()).filter(Boolean);
+      if (values.length < 1) {{
+        setCopySourceStatus("Нет строк для копирования", "error");
+        updateCopySourceButton(rows);
+        return;
+      }}
+      try {{
+        await copyText(values.join("\\n"));
+        setCopySourceStatus("Скопировано " + values.length + " " + hlrNumberWord(values.length), "success");
+      }} catch (error) {{
+        try {{
+          fallbackCopyText(values.join("\\n"));
+          setCopySourceStatus("Скопировано " + values.length + " " + hlrNumberWord(values.length), "success");
+        }} catch (fallbackError) {{
+          setCopySourceStatus("Не удалось скопировать", "error");
+        }}
+      }}
+    }});
+  }}
 
   if (exportForm) {{
     exportForm.addEventListener("submit", (event) => {{

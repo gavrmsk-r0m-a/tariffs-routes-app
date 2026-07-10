@@ -4015,6 +4015,18 @@ class HlrUiStateScriptTest(unittest.TestCase):
         self.assertIn('settings = { order: defaultOrder.slice(), visible: defaultOrder.filter((key) => defaultVisibleColumns.has(key)) };', content)
 
 
+    def test_hlr_copy_source_numbers_uses_filtered_rows_and_data_attribute(self):
+        content = self._content()
+        self.assertIn("id='hlr-copy-source-button'", content)
+        self.assertIn("Копировать исходные номера", content)
+        self.assertIn("id='hlr-copy-source-status'", content)
+        self.assertIn("data-source-number='48789662838'", content)
+        self.assertIn('const copySourceButton = document.getElementById("hlr-copy-source-button");', content)
+        self.assertIn('const values = rows.map((row) => (row.dataset.sourceNumber || "").trim()).filter(Boolean);', content)
+        self.assertIn('await copyText(values.join("\\n"));', content)
+        self.assertIn('setCopySourceStatus("Нет строк для копирования", "error");', content)
+        self.assertIn('copySourceButton.disabled = rows.length < 1;', content)
+
     def test_hlr_export_uses_status_payload_and_keeps_full_results_for_repeated_submits(self):
         content = self._content()
         self.assertIn("name='selected_statuses_json' value='[]'", content)
