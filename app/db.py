@@ -235,6 +235,16 @@ def run_lightweight_migrations(conn: sqlite3.Connection) -> None:
     _add_column_if_missing(conn, "users", "password_hash", "TEXT")
     _add_column_if_missing(conn, "users", "password_salt", "TEXT")
     conn.execute("""
+        CREATE TABLE IF NOT EXISTS hlr_daily_usage (
+            usage_date TEXT PRIMARY KEY,
+            checked_count INTEGER NOT NULL DEFAULT 0 CHECK (checked_count >= 0),
+            credits_spent NUMERIC,
+            last_check_count INTEGER NOT NULL DEFAULT 0 CHECK (last_check_count >= 0),
+            last_check_credits NUMERIC,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    conn.execute("""
         CREATE TABLE IF NOT EXISTS user_permissions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
