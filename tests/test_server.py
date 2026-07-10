@@ -4045,6 +4045,19 @@ class HlrUiStateScriptTest(unittest.TestCase):
         self.assertIn("wasConfigOpen", content)
         self.assertIn("replaceBalanceFragments", content)
 
+    def test_hlr_check_submit_shows_compact_loading_state(self):
+        content = self._content()
+        self.assertIn("id='hlr-submit-button'", content)
+        self.assertIn("id='hlr-progress'", content)
+        self.assertIn("class='hlr-progress-track'", content)
+        self.assertIn("@keyframes hlr-progress-slide", content)
+        self.assertIn('let hlrSubmitting = false;', content)
+        self.assertIn('if (hlrSubmitting) {', content)
+        self.assertIn('setHlrLoading(true, lines.length);', content)
+        self.assertIn('submitButton.textContent = isLoading ? "Проверяется..." : "Запустить проверку";', content)
+        self.assertIn('if (clearButton) clearButton.disabled = isLoading;', content)
+        self.assertIn('lines.length < 1 || lines.length > 500 || (dailyLimit > 0 && remainingToday < 1)', content)
+
     def test_hlr_inline_script_uses_safe_newline_escaping_and_stable_controls(self):
         content = self._content()
         self.assertIn("id='hlr-clear-button'", content)

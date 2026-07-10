@@ -1107,7 +1107,13 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .hlr-input-form textarea {{ min-width: 0; width: 100%; height: 100%; min-height: 190px; max-height: none; resize: vertical; box-sizing: border-box; }}
     .hlr-counter-line, .hlr-input-hint {{ margin: 0; }}
     .hlr-input-hint {{ align-self: end; line-height: inherit; }}
-    .hlr-input-actions {{ display: flex; gap: 8px; flex-wrap: wrap; align-self: end; }}
+    .hlr-input-actions {{ display: flex; align-items: center; gap: 8px; flex-wrap: wrap; align-self: end; }}
+    .hlr-progress {{ display: none; align-items: center; gap: 8px; min-width: min(260px, 100%); flex: 1 1 260px; color: var(--muted); font-size: 12px; font-weight: 720; }}
+    .hlr-progress.is-active {{ display: inline-flex; }}
+    .hlr-progress-track {{ position: relative; flex: 1 1 150px; height: 10px; min-width: 120px; overflow: hidden; border: 1px solid var(--border); border-radius: 999px; background: var(--surface-muted); }}
+    .hlr-progress-bar {{ position: absolute; inset: 0 auto 0 0; width: 45%; border-radius: inherit; background: repeating-linear-gradient(45deg, color-mix(in srgb, var(--accent) 82%, var(--surface)), color-mix(in srgb, var(--accent) 82%, var(--surface)) 8px, color-mix(in srgb, var(--accent) 58%, var(--surface)) 8px, color-mix(in srgb, var(--accent) 58%, var(--surface)) 16px); animation: hlr-progress-slide 1s linear infinite; }}
+    .hlr-progress-text {{ white-space: nowrap; }}
+    @keyframes hlr-progress-slide {{ 0% {{ transform: translateX(-110%); }} 100% {{ transform: translateX(230%); }} }}
     .hlr-severity-good, .hlr-severity-green, .hlr-severity-neutral {{ border-color: color-mix(in srgb, var(--success) 60%, var(--border)); background: color-mix(in srgb, var(--success) 12%, var(--surface)); color: var(--success, var(--text-strong)); }}
     .hlr-severity-bad, .hlr-severity-red {{ border-color: color-mix(in srgb, var(--danger) 65%, var(--border)); background: color-mix(in srgb, var(--danger) 12%, var(--surface)); color: var(--danger); }}
     .hlr-severity-warning, .hlr-severity-unknown, .hlr-severity-yellow, .hlr-severity-orange {{ border-color: color-mix(in srgb, var(--warning) 70%, var(--border)); background: color-mix(in srgb, var(--warning) 16%, var(--surface)); color: var(--warning-hover, var(--warning)); }}
@@ -6109,6 +6115,9 @@ def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = Non
     is_demo_mode = config["mode"] in {"demo", ""}
     write_allowed = can_write("hlr")
     export_allowed = can_export("hlr") and bool(results)
+    usage_state = hlr_usage_with_limits()
+    daily_limit = int(usage_state.get("daily_limit") or 0)
+    remaining_today = int(usage_state.get("remaining_today") or 0)
     export_results_json = esc(json.dumps(results, ensure_ascii=False))
     notice = f"<div class='flash error'>{esc(error)}</div>" if error else ""
     demo_badge = "<span class='badge'>Demo mode</span><span class='muted hlr-demo-note'>Результаты сгенерированы для проверки интерфейса. Реальный HLR API не вызывался.</span>" if is_demo_mode else ""
@@ -6120,13 +6129,17 @@ def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = Non
     <summary><span class='hlr-tech-spec-title'>HLR Tech Spec {demo_badge}</span><span class='hlr-tech-spec-summary' id='hlr-tech-spec-summary'><span>Проверено: {len(results)}</span></span></summary>
     <div class='hlr-tech-spec-body'>
       <section class='form-card hlr-input-panel'>
-        <form class='hlr-input-form' method='post' action='/hlr/check' id='hlr-form'>
+        <form class='hlr-input-form' method='post' action='/hlr/check' id='hlr-form' data-hlr-daily-limit='{daily_limit}' data-hlr-remaining-today='{remaining_today}'>
           <label>Номера для проверки <textarea name='numbers' id='hlr-numbers-input' rows='12' {'disabled' if not write_allowed else ''}>{esc(input_text)}</textarea></label>
           <p class='hlr-input-hint hlr-usage-label'>Один номер на строке. Можно вставлять номера с пробелами, +, скобками и дефисами.</p>
           <p class='muted hlr-counter-line'>Максимум 500 номеров за одну проверку · <span id='hlr-input-counter'>0 / 500</span></p>
           <div class='hlr-input-actions'>
-            <button type='submit' {'disabled' if not write_allowed else ''}>Запустить проверку</button>
-            <button type='button' id='hlr-clear-button'>Очистить</button>
+            <button type='submit' id='hlr-submit-button' {'disabled' if not write_allowed else ''}>Запустить проверку</button>
+            <button type='button' id='hlr-clear-button' {'disabled' if not write_allowed else ''}>Очистить</button>
+            <div class='hlr-progress' id='hlr-progress' role='status' aria-live='polite' aria-hidden='true'>
+              <span class='hlr-progress-track' aria-hidden='true'><span class='hlr-progress-bar'></span></span>
+              <span class='hlr-progress-text' id='hlr-progress-text'>Проверка выполняется...</span>
+            </div>
           </div>
         </form>
       </section>
@@ -6146,9 +6159,14 @@ def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = Non
 </section>
 <script>
 document.addEventListener("DOMContentLoaded", function () {{
+  const form = document.getElementById("hlr-form");
   const input = document.getElementById("hlr-numbers-input");
   const clearButton = document.getElementById("hlr-clear-button");
+  const submitButton = document.getElementById("hlr-submit-button");
+  const progress = document.getElementById("hlr-progress");
+  const progressText = document.getElementById("hlr-progress-text");
   const counter = document.getElementById("hlr-input-counter");
+  let hlrSubmitting = false;
 
   function updateCounter() {{
     if (!input || !counter) return;
@@ -6158,6 +6176,41 @@ document.addEventListener("DOMContentLoaded", function () {{
       .map((v) => v.trim())
       .filter(Boolean);
     counter.textContent = values.length + " / 500";
+  }}
+
+  function hlrInputLines() {{
+    if (!input) return [];
+    return input.value.replace(/\r/g, "").split("\n").map((v) => v.trim()).filter(Boolean);
+  }}
+
+  function setHlrLoading(isLoading, count) {{
+    if (submitButton) {{
+      submitButton.disabled = isLoading;
+      submitButton.textContent = isLoading ? "Проверяется..." : "Запустить проверку";
+    }}
+    if (clearButton) clearButton.disabled = isLoading;
+    if (progress) {{
+      progress.classList.toggle("is-active", isLoading);
+      progress.setAttribute("aria-hidden", isLoading ? "false" : "true");
+    }}
+    if (progressText && isLoading) {{
+      progressText.textContent = count > 0 ? "Проверка выполняется: " + count + " строк..." : "Проверка выполняется...";
+    }}
+  }}
+
+  if (form) {{
+    form.addEventListener("submit", function (event) {{
+      const lines = hlrInputLines();
+      const dailyLimit = Number(form.dataset.hlrDailyLimit || "0");
+      const remainingToday = Number(form.dataset.hlrRemainingToday || "0");
+      if (hlrSubmitting) {{
+        event.preventDefault();
+        return;
+      }}
+      if (lines.length < 1 || lines.length > 500 || (dailyLimit > 0 && remainingToday < 1)) return;
+      hlrSubmitting = true;
+      setHlrLoading(true, lines.length);
+    }});
   }}
 
   if (input && clearButton) {{
