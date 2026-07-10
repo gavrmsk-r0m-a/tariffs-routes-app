@@ -5574,6 +5574,10 @@ def hlr_real_api_check(numbers: list[dict[str, str]], config: dict[str, object])
     return results
 
 
+def hlr_usage_checked_count(rows: list[dict[str, object]]) -> int:
+    return sum(1 for row in rows if not row.get("error_type"))
+
+
 def hlr_run_check(input_text: str) -> tuple[list[dict[str, object]], dict[str, int]]:
     config = hlr_config()
     prepared, invalid = hlr_prepare_numbers(input_text)
@@ -5585,8 +5589,9 @@ def hlr_run_check(input_text: str) -> tuple[list[dict[str, object]], dict[str, i
             raise BusinessRuleError("Дневной лимит HLR исчерпан.")
         raise BusinessRuleError(f"Нельзя запустить проверку: осталось {int(remaining_today)} номеров из дневного лимита, а выбрано {len(prepared)}.")
     checked = hlr_demo_check(prepared) if config["mode"] in {"demo", ""} else hlr_real_api_check(prepared, config)
-    if checked:
-        hlr_record_daily_usage(len(checked), hlr_sum_credits(checked))
+    usage_checked_count = hlr_usage_checked_count(checked)
+    if usage_checked_count:
+        hlr_record_daily_usage(usage_checked_count, hlr_sum_credits(checked))
     results = invalid + checked
     return results, hlr_summary(results)
 
@@ -5891,6 +5896,8 @@ def hlr_today_key() -> str:
 def hlr_empty_usage() -> dict[str, object]:
     return {
         "date": hlr_today_key(),
+        "usage_date": hlr_today_key(),
+        "usage_source": "database",
         "checked_today": 0,
         "credits_spent_today": None,
         "last_check_count": 0,
@@ -5909,6 +5916,8 @@ def hlr_daily_usage() -> dict[str, object]:
         return hlr_empty_usage()
     return {
         "date": row["usage_date"],
+        "usage_date": row["usage_date"],
+        "usage_source": "database",
         "checked_today": int(row["checked_count"] or 0),
         "credits_spent_today": row["credits_spent"],
         "last_check_count": int(row["last_check_count"] or 0),
@@ -6056,6 +6065,8 @@ def hlr_config_diagnostics_html(balance: dict[str, object] | None = None) -> str
         ("credits_spent_today", hlr_format_metric(usage.get("credits_spent_today"))),
         ("last_check_count", usage.get("last_check_count", 0)),
         ("last_check_credits", hlr_format_metric(usage.get("last_check_credits"))),
+        ("usage_date", usage.get("usage_date") or usage.get("date") or "—"),
+        ("usage_source", usage.get("usage_source") or "database"),
         ("dotenv_loaded", summary["dotenv_loaded"]),
         ("config_source", summary["config_source"]),
     ] + hlr_balance_config_rows(balance_state)
