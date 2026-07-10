@@ -3963,12 +3963,19 @@ class HlrUiStateScriptTest(unittest.TestCase):
         self.assertIn("id='hlr-filter-panel'", content)
         self.assertNotIn("class='hlr-balance-card", content)
         self.assertNotIn("Баланс API:", content)
+        self.assertIn("<h3 class='hlr-usage-title'>HLR usage</h3>", content)
+        self.assertIn("<span class='hlr-usage-label'>Баланс API</span>", content)
+        self.assertIn("<span class='hlr-usage-label'>Осталось сегодня</span>", content)
+        self.assertIn("<span class='hlr-usage-label'>Проверено сегодня</span>", content)
+        self.assertIn("<span class='hlr-usage-label'>Последняя проверка</span>", content)
         self.assertIn("<summary>Справка по HLR</summary>", content)
         with patch("app.server.current_role_key", return_value="admin"):
             admin_content = self._content()
         self.assertIn("<summary>HLR config</summary>", admin_content)
         self.assertIn("<dt>balance</dt><dd>unavailable</dd>", admin_content)
         self.assertIn("<dt>balance_status</dt><dd>unavailable</dd>", admin_content)
+        self.assertIn("<dt>checked_today</dt><dd>0</dd>", admin_content)
+        self.assertIn("<dt>remaining_today</dt><dd>500</dd>", admin_content)
         self.assertIn("Обновить баланс", admin_content)
         self.assertNotIn("data-hlr-help-tab", content)
         self.assertNotIn("Поля API</button>", content)
@@ -3976,6 +3983,13 @@ class HlrUiStateScriptTest(unittest.TestCase):
         self.assertIn("<dt>api_url</dt>", admin_content)
         self.assertNotIn("<dt>Баланс API</dt>", admin_content)
         self.assertNotIn("api_secret</dd>", admin_content)
+
+    def test_hlr_balance_refresh_keeps_config_open_and_updates_usage_dashboard(self):
+        with patch("app.server.current_role_key", return_value="admin"):
+            content = server.hlr_page(balance={"status": "ok", "credits": 1234.5, "updated_at": "2026-07-10 18:14", "error_message": None}).decode("utf-8")
+        self.assertIn("<details class='card hlr-api-fields' open><summary>HLR config</summary>", content)
+        self.assertIn("<span class='hlr-usage-label'>Баланс API</span><strong class='hlr-usage-value'>1234.5</strong>", content)
+        self.assertIn("<dt>balance</dt><dd>1234.5</dd>", content)
 
     def test_hlr_inline_script_uses_safe_newline_escaping_and_stable_controls(self):
         content = self._content()

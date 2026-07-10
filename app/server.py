@@ -10,7 +10,7 @@ import logging
 import os
 import re
 import sqlite3
-from datetime import datetime
+from datetime import date, datetime
 from http.cookies import SimpleCookie
 from pathlib import Path
 from urllib.parse import parse_qs, quote, unquote, urlencode, urlsplit
@@ -1180,12 +1180,17 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .hlr-api-fields .hlr-api-fields {{ margin: 10px; background: var(--surface); }}
     .hlr-api-field-list {{ display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }}
     .hlr-api-field-list code {{ padding: 2px 6px; border-radius: 999px; background: var(--surface-muted); border: 1px solid var(--border); font-size: 12px; }}
-    .hlr-balance-card {{ display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 9px 10px; border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--border)); border-radius: var(--radius-small); background: color-mix(in srgb, var(--accent) 7%, var(--surface)); }}
-    .hlr-balance-main {{ display: grid; gap: 2px; min-width: 0; }}
-    .hlr-balance-value {{ color: var(--text-strong); font-weight: 850; }}
-    .hlr-balance-meta {{ color: var(--muted); font-size: 12px; }}
-    .hlr-balance-card.is-warning {{ border-color: color-mix(in srgb, var(--warning) 55%, var(--border)); background: color-mix(in srgb, var(--warning) 9%, var(--surface)); }}
-    .hlr-balance-card.is-error {{ border-color: color-mix(in srgb, var(--danger) 55%, var(--border)); background: color-mix(in srgb, var(--danger) 8%, var(--surface)); }}
+    .hlr-usage-dashboard {{ display: grid; gap: 7px; padding-top: 2px; }}
+    .hlr-usage-title {{ margin: 0; color: var(--muted); font-size: 12px; font-weight: 850; letter-spacing: .04em; text-transform: uppercase; }}
+    .hlr-usage-grid {{ display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border: 1px solid var(--border); border-radius: var(--radius-small); background: var(--surface); overflow: hidden; }}
+    .hlr-usage-cell {{ display: grid; gap: 3px; min-width: 0; padding: 8px 9px; border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); background: color-mix(in srgb, var(--surface-muted) 45%, var(--surface)); }}
+    .hlr-usage-cell:nth-child(2n) {{ border-right: 0; }}
+    .hlr-usage-cell:nth-last-child(-n+2) {{ border-bottom: 0; }}
+    .hlr-usage-label {{ color: var(--muted); font-size: 11px; font-weight: 760; }}
+    .hlr-usage-value {{ color: var(--text-strong); font-size: 15px; font-weight: 850; line-height: 1.15; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
+    .hlr-usage-meta {{ color: var(--muted); font-size: 11px; line-height: 1.2; }}
+    .hlr-usage-cell.is-warning .hlr-usage-value {{ color: var(--warning); }}
+    .hlr-usage-cell.is-danger .hlr-usage-value {{ color: var(--danger); }}
     .hlr-balance-refresh {{ justify-self: start; padding: 4px 8px; font-size: 12px; box-shadow: none; }}
     .hlr-help-card {{ padding: 0; margin: 0; border: 0; background: transparent; }}
     .hlr-help-card h3 {{ margin: 0 0 8px; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }}
@@ -5566,10 +5571,16 @@ def hlr_real_api_check(numbers: list[dict[str, str]], config: dict[str, object])
 def hlr_run_check(input_text: str) -> tuple[list[dict[str, object]], dict[str, int]]:
     config = hlr_config()
     prepared, invalid = hlr_prepare_numbers(input_text)
-    daily_limit = int(config["daily_limit"])
-    if daily_limit and len(prepared) > daily_limit:
-        raise BusinessRuleError(f"HLR daily limit exceeded: лимит {daily_limit} номеров в день")
+    usage = hlr_usage_with_limits()
+    daily_limit = int(usage.get("daily_limit") or 0)
+    remaining_today = usage.get("remaining_today")
+    if daily_limit and remaining_today is not None and len(prepared) > int(remaining_today):
+        if int(remaining_today) <= 0:
+            raise BusinessRuleError("Дневной лимит HLR исчерпан.")
+        raise BusinessRuleError(f"Нельзя запустить проверку: осталось {int(remaining_today)} номеров из дневного лимита, а выбрано {len(prepared)}.")
     checked = hlr_demo_check(prepared) if config["mode"] in {"demo", ""} else hlr_real_api_check(prepared, config)
+    if checked:
+        hlr_record_daily_usage(len(checked), hlr_sum_credits(checked))
     results = invalid + checked
     return results, hlr_summary(results)
 
@@ -5862,6 +5873,149 @@ def hlr_table(results: list[dict[str, object]]) -> str:
     return "<section class='hlr-results-area'>" + table_card(content) + "</section>"
 
 
+def current_repo() -> Repository | None:
+    repo = _REQUEST_CONTEXT.get("repo")
+    return repo if isinstance(repo, Repository) else None
+
+
+def hlr_today_key() -> str:
+    return date.today().isoformat()
+
+
+def hlr_empty_usage() -> dict[str, object]:
+    return {
+        "date": hlr_today_key(),
+        "checked_today": 0,
+        "credits_spent_today": None,
+        "last_check_count": 0,
+        "last_check_credits": None,
+        "updated_at": None,
+    }
+
+
+def hlr_daily_usage() -> dict[str, object]:
+    repo = current_repo()
+    if repo is None:
+        return hlr_empty_usage()
+    usage_date = hlr_today_key()
+    row = repo.conn.execute("SELECT * FROM hlr_daily_usage WHERE usage_date = ?", (usage_date,)).fetchone()
+    if row is None:
+        return hlr_empty_usage()
+    return {
+        "date": row["usage_date"],
+        "checked_today": int(row["checked_count"] or 0),
+        "credits_spent_today": row["credits_spent"],
+        "last_check_count": int(row["last_check_count"] or 0),
+        "last_check_credits": row["last_check_credits"],
+        "updated_at": row["updated_at"],
+    }
+
+
+def hlr_sum_credits(rows: list[dict[str, object]]) -> object | None:
+    total = 0.0
+    found = False
+    for row in rows:
+        value = row.get("credits_spent")
+        if value in (None, "", "—"):
+            continue
+        try:
+            total += float(value)
+            found = True
+        except (TypeError, ValueError):
+            continue
+    if not found:
+        return None
+    return int(total) if total.is_integer() else round(total, 4)
+
+
+def hlr_record_daily_usage(checked_count: int, credits_spent: object | None) -> dict[str, object]:
+    repo = current_repo()
+    if repo is None or checked_count <= 0:
+        return hlr_daily_usage()
+    usage_date = hlr_today_key()
+    now = datetime.now().strftime("%Y-%m-%d %H:%M")
+    existing = repo.conn.execute("SELECT checked_count, credits_spent FROM hlr_daily_usage WHERE usage_date = ?", (usage_date,)).fetchone()
+    previous_checked = int(existing["checked_count"] or 0) if existing else 0
+    previous_credits = existing["credits_spent"] if existing else None
+    if credits_spent is None:
+        next_credits = previous_credits
+    else:
+        next_credits = float(previous_credits or 0) + float(credits_spent)
+        if float(next_credits).is_integer():
+            next_credits = int(next_credits)
+    repo.conn.execute(
+        """
+        INSERT INTO hlr_daily_usage(usage_date, checked_count, credits_spent, last_check_count, last_check_credits, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(usage_date) DO UPDATE SET
+            checked_count = excluded.checked_count,
+            credits_spent = excluded.credits_spent,
+            last_check_count = excluded.last_check_count,
+            last_check_credits = excluded.last_check_credits,
+            updated_at = excluded.updated_at
+        """,
+        (usage_date, previous_checked + checked_count, next_credits, checked_count, credits_spent, now),
+    )
+    repo.conn.commit()
+    return hlr_daily_usage()
+
+
+def hlr_usage_with_limits() -> dict[str, object]:
+    usage = hlr_daily_usage()
+    daily_limit = int(hlr_config()["daily_limit"] or 0)
+    checked_today = int(usage.get("checked_today") or 0)
+    remaining = max(daily_limit - checked_today, 0) if daily_limit else None
+    usage.update({"daily_limit": daily_limit, "remaining_today": remaining})
+    return usage
+
+
+def hlr_format_metric(value: object | None, empty: str = "—") -> str:
+    if value is None or value == "":
+        return empty
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    return str(value)
+
+
+def hlr_balance_usage_value(balance: dict[str, object]) -> str:
+    status = str(balance.get("status") or "unavailable")
+    credits = balance.get("credits")
+    if credits is not None:
+        return hlr_format_metric(credits)
+    return {"error": "ошибка", "not_configured": "не настроен", "unavailable": "недоступен"}.get(status, "недоступен")
+
+
+def hlr_usage_dashboard_html(balance: dict[str, object] | None = None, usage: dict[str, object] | None = None) -> str:
+    state = usage or hlr_usage_with_limits()
+    balance_state = balance or hlr_balance_empty_state()
+    daily_limit = int(state.get("daily_limit") or 0)
+    checked_today = int(state.get("checked_today") or 0)
+    remaining = state.get("remaining_today")
+    remaining_class = ""
+    if daily_limit and remaining is not None:
+        if int(remaining) == 0:
+            remaining_class = " is-danger"
+        elif int(remaining) <= daily_limit * 0.2:
+            remaining_class = " is-warning"
+    checked_text = f"{checked_today} / {daily_limit}" if daily_limit else str(checked_today)
+    last_count = int(state.get("last_check_count") or 0)
+    last_text = f"{last_count} номера" if last_count == 1 else f"{last_count} номеров"
+    updated = str(state.get("updated_at") or "")
+    updated_meta = f"Обновлено: {esc(updated[-5:])}" if updated else "Обновлено: —"
+    credits_today = hlr_format_metric(state.get("credits_spent_today"))
+    last_credits = hlr_format_metric(state.get("last_check_credits"))
+    return f"""
+        <section class='hlr-usage-dashboard' aria-label='HLR usage'>
+          <h3 class='hlr-usage-title'>HLR usage</h3>
+          <div class='hlr-usage-grid'>
+            <div class='hlr-usage-cell'><span class='hlr-usage-label'>Баланс API</span><strong class='hlr-usage-value'>{esc(hlr_balance_usage_value(balance_state))}</strong><span class='hlr-usage-meta'>{esc(str(balance_state.get('status') or 'unavailable'))}</span></div>
+            <div class='hlr-usage-cell{remaining_class}'><span class='hlr-usage-label'>Осталось сегодня</span><strong class='hlr-usage-value'>{esc(hlr_format_metric(remaining))}</strong><span class='hlr-usage-meta'>Лимит: {esc(hlr_format_metric(daily_limit))}</span></div>
+            <div class='hlr-usage-cell'><span class='hlr-usage-label'>Проверено сегодня</span><strong class='hlr-usage-value'>{esc(checked_text)}</strong><span class='hlr-usage-meta'>Кредиты сегодня: {esc(credits_today)}</span></div>
+            <div class='hlr-usage-cell'><span class='hlr-usage-label'>Последняя проверка</span><strong class='hlr-usage-value'>{esc(last_text)}</strong><span class='hlr-usage-meta'>Кредиты: {esc(last_credits)} · {esc(updated_meta)}</span></div>
+          </div>
+        </section>"""
+
+
 def hlr_balance_config_rows(balance: dict[str, object]) -> list[tuple[str, object]]:
     credits = balance.get("credits")
     status = str(balance.get("status") or "unavailable")
@@ -5881,6 +6035,7 @@ def hlr_config_diagnostics_html(balance: dict[str, object] | None = None) -> str
     warning = ""
     if summary["mode"] == "production" and not (summary["api_url_present"] and summary["api_key_present"] and summary["api_secret_present"]):
         warning = "<p class='flash error'>HLR production mode is enabled, but API configuration is incomplete.</p>"
+    usage = hlr_usage_with_limits()
     rows = [
         ("mode", summary["mode"]),
         ("api_url_present", "yes" if summary["api_url_present"] else "no"),
@@ -5890,12 +6045,18 @@ def hlr_config_diagnostics_html(balance: dict[str, object] | None = None) -> str
         ("timeout_ms", summary["timeout_ms"]),
         ("concurrency", summary["concurrency"]),
         ("daily_limit", summary["daily_limit"]),
+        ("checked_today", usage.get("checked_today", 0)),
+        ("remaining_today", hlr_format_metric(usage.get("remaining_today"))),
+        ("credits_spent_today", hlr_format_metric(usage.get("credits_spent_today"))),
+        ("last_check_count", usage.get("last_check_count", 0)),
+        ("last_check_credits", hlr_format_metric(usage.get("last_check_credits"))),
         ("dotenv_loaded", summary["dotenv_loaded"]),
         ("config_source", summary["config_source"]),
     ] + hlr_balance_config_rows(balance_state)
     body = "".join(f"<dt>{esc(label)}</dt><dd>{esc(str(value))}</dd>" for label, value in rows)
     refresh_form = "<form method='post' action='/hlr/balance'><button class='secondary hlr-balance-refresh' type='submit'>Обновить баланс</button></form>"
-    return f"<details class='card hlr-api-fields'><summary>HLR config</summary>{warning}<dl class='hlr-detail-list'>{body}</dl>{refresh_form}</details>"
+    open_attr = " open" if balance is not None else ""
+    return f"<details class='card hlr-api-fields'{open_attr}><summary>HLR config</summary>{warning}<dl class='hlr-detail-list'>{body}</dl>{refresh_form}</details>"
 
 
 def hlr_api_fields_html(results: list[dict[str, object]], is_demo_mode: bool) -> str:
@@ -5957,6 +6118,7 @@ def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = Non
       <aside class='hlr-side-panel' aria-label='HLR status and details'>
         <div class='hlr-filter-panel' id='hlr-filter-panel' aria-label='Фильтры HLR'></div>
         <div class='hlr-details-stack'>
+          {hlr_usage_dashboard_html(balance)}
           <details class='card hlr-api-fields'><summary>Справка по HLR</summary>{hlr_help_html()}{hlr_api_fields_html(results, is_demo_mode)}</details>
           {hlr_config_diagnostics_html(balance)}
         </div>
