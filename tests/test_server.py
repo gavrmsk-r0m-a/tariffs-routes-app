@@ -3965,6 +3965,8 @@ class HlrUiStateScriptTest(unittest.TestCase):
         self.assertNotIn("Баланс API:", content)
         self.assertIn("<h3 class='hlr-usage-title'>HLR usage</h3>", content)
         self.assertIn("<span class='hlr-usage-label'>Баланс API</span>", content)
+        self.assertIn("id='hlr-balance-refresh-button'", content)
+        self.assertIn(">refresh</span>", content)
         self.assertIn("<span class='hlr-usage-label'>Осталось сегодня</span>", content)
         self.assertIn("<span class='hlr-usage-label'>Проверено сегодня</span>", content)
         self.assertIn("<span class='hlr-usage-label'>Последняя проверка</span>", content)
@@ -3976,7 +3978,7 @@ class HlrUiStateScriptTest(unittest.TestCase):
         self.assertIn("<dt>balance_status</dt><dd>unavailable</dd>", admin_content)
         self.assertIn("<dt>checked_today</dt><dd>0</dd>", admin_content)
         self.assertIn("<dt>remaining_today</dt><dd>500</dd>", admin_content)
-        self.assertIn("Обновить баланс", admin_content)
+        self.assertNotIn("<button class='secondary hlr-balance-refresh' type='submit'>Обновить баланс</button>", admin_content)
         self.assertNotIn("data-hlr-help-tab", content)
         self.assertNotIn("Поля API</button>", content)
         self.assertNotIn("HLR статусы</button>", content)
@@ -3987,9 +3989,13 @@ class HlrUiStateScriptTest(unittest.TestCase):
     def test_hlr_balance_refresh_keeps_config_open_and_updates_usage_dashboard(self):
         with patch("app.server.current_role_key", return_value="admin"):
             content = server.hlr_page(balance={"status": "ok", "credits": 1234.5, "updated_at": "2026-07-10 18:14", "error_message": None}).decode("utf-8")
-        self.assertIn("<details class='card hlr-api-fields' open><summary>HLR config</summary>", content)
-        self.assertIn("<span class='hlr-usage-label'>Баланс API</span><strong class='hlr-usage-value'>1234.5</strong>", content)
+        self.assertIn("<details class='card hlr-api-fields' id='hlr-config-details'><summary>HLR config</summary>", content)
+        self.assertNotIn("<details class='card hlr-api-fields' id='hlr-config-details' open>", content)
+        self.assertIn("id='hlr-usage-balance-card'", content)
+        self.assertIn("<strong class='hlr-usage-value'>1234.5</strong>", content)
         self.assertIn("<dt>balance</dt><dd>1234.5</dd>", content)
+        self.assertIn("wasConfigOpen", content)
+        self.assertIn("replaceBalanceFragments", content)
 
     def test_hlr_inline_script_uses_safe_newline_escaping_and_stable_controls(self):
         content = self._content()
