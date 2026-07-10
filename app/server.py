@@ -5843,7 +5843,6 @@ def hlr_table(results: list[dict[str, object]]) -> str:
                 "aria-label='Скопировать исходные номера'>"
                 f"{nav_icon('copy')}"
                 "</button>"
-                "<span class='copy-column-status' id='hlr-copy-source-status' aria-live='polite'></span>"
                 "</span>"
             )
         header_cells.append(f"<th data-col='{esc(key)}'>{header_label}</th>")
@@ -6009,8 +6008,9 @@ document.addEventListener("DOMContentLoaded", function () {{
   const exportButton = exportForm ? exportForm.querySelector("button[type='submit']") : null;
   const exportHint = document.getElementById("hlr-export-hint");
   const copySourceButton = document.getElementById("hlr-copy-source-button");
-  const copySourceStatus = document.getElementById("hlr-copy-source-status");
-  let copySourceStatusTimer = null;
+  const copySourceDefaultIcon = copySourceButton ? copySourceButton.innerHTML : "";
+  const copySourceSuccessIcon = {COPY_SUCCESS_ICON_JS};
+  let copySourceSuccessTimer = null;
   const emptyState = document.getElementById("hlr-empty-state");
   const originalExportJson = exportInput ? exportInput.value : "[]";
   const activeFilters = new Set();
@@ -6036,27 +6036,6 @@ document.addEventListener("DOMContentLoaded", function () {{
 
   function visibleRows() {{
     return resultRows.filter((row) => !row.hidden);
-  }}
-
-  function hlrNumberWord(count) {{
-    const mod10 = count % 10;
-    const mod100 = count % 100;
-    if (mod10 === 1 && mod100 !== 11) return "номер";
-    if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return "номера";
-    return "номеров";
-  }}
-
-  function setCopySourceStatus(message, state) {{
-    if (!copySourceStatus) return;
-    copySourceStatus.textContent = message;
-    copySourceStatus.classList.toggle("is-success", state === "success");
-    copySourceStatus.classList.toggle("is-error", state === "error");
-    if (copySourceStatusTimer) window.clearTimeout(copySourceStatusTimer);
-    copySourceStatusTimer = window.setTimeout(() => {{
-      copySourceStatus.textContent = "";
-      copySourceStatus.classList.remove("is-success", "is-error");
-      copySourceStatusTimer = null;
-    }}, 2500);
   }}
 
   function fallbackCopyText(text) {{
@@ -6190,21 +6169,28 @@ document.addEventListener("DOMContentLoaded", function () {{
       const rows = visibleRows();
       const values = rows.map((row) => (row.dataset.sourceNumber || "").trim()).filter(Boolean);
       if (values.length < 1) {{
-        setCopySourceStatus("Нет строк для копирования", "error");
         updateCopySourceButton(rows);
         return;
       }}
       try {{
         await copyText(values.join("\\n"));
-        setCopySourceStatus("Скопировано " + values.length + " " + hlrNumberWord(values.length), "success");
       }} catch (error) {{
         try {{
           fallbackCopyText(values.join("\\n"));
-          setCopySourceStatus("Скопировано " + values.length + " " + hlrNumberWord(values.length), "success");
         }} catch (fallbackError) {{
-          setCopySourceStatus("Не удалось скопировать", "error");
+          updateCopySourceButton(rows);
+          return;
         }}
       }}
+      copySourceButton.innerHTML = copySourceSuccessIcon;
+      copySourceButton.title = "Скопировано";
+      copySourceButton.setAttribute("aria-label", "Скопировано");
+      if (copySourceSuccessTimer) window.clearTimeout(copySourceSuccessTimer);
+      copySourceSuccessTimer = window.setTimeout(() => {{
+        copySourceButton.innerHTML = copySourceDefaultIcon;
+        updateCopySourceButton(visibleRows());
+        copySourceSuccessTimer = null;
+      }}, 1500);
     }});
   }}
 

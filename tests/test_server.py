@@ -4021,14 +4021,16 @@ class HlrUiStateScriptTest(unittest.TestCase):
         self.assertIn("id='hlr-copy-source-button'", content)
         self.assertIn("class='copy-column-button'", content)
         self.assertIn("title='Скопировать исходные номера'", content)
-        self.assertIn("id='hlr-copy-source-status'", content)
+        self.assertNotIn("id='hlr-copy-source-status'", content)
         self.assertNotIn("<span>Копировать исходные номера</span>", content)
         self.assertNotIn("Копировать исходные номера текущей выборки", content)
         self.assertIn("data-source-number='48789662838'", content)
         self.assertIn('const copySourceButton = document.getElementById("hlr-copy-source-button");', content)
         self.assertIn('const values = rows.map((row) => (row.dataset.sourceNumber || "").trim()).filter(Boolean);', content)
         self.assertIn('await copyText(values.join("\\n"));', content)
-        self.assertIn('setCopySourceStatus("Нет строк для копирования", "error");', content)
+        self.assertIn('copySourceButton.innerHTML = copySourceSuccessIcon;', content)
+        self.assertIn('}, 1500);', content)
+        self.assertNotIn('setCopySourceStatus("Нет строк для копирования", "error");', content)
         self.assertIn('copySourceButton.disabled = rows.length < 1;', content)
 
     def test_hlr_export_uses_status_payload_and_keeps_full_results_for_repeated_submits(self):
