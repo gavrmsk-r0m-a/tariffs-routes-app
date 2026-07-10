@@ -1184,6 +1184,8 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .hlr-usage-title {{ margin: 0; color: var(--muted); font-size: 12px; font-weight: 850; letter-spacing: .04em; text-transform: uppercase; }}
     .hlr-usage-grid {{ display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border: 1px solid var(--border); border-radius: var(--radius-small); background: var(--surface); overflow: hidden; }}
     .hlr-usage-cell {{ display: grid; gap: 3px; min-width: 0; padding: 8px 9px; border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); background: color-mix(in srgb, var(--surface-muted) 45%, var(--surface)); }}
+    .hlr-usage-balance-cell {{ position: relative; padding-right: 42px; }}
+    .hlr-usage-header {{ display: flex; align-items: center; justify-content: space-between; gap: 6px; min-width: 0; }}
     .hlr-usage-cell:nth-child(2n) {{ border-right: 0; }}
     .hlr-usage-cell:nth-last-child(-n+2) {{ border-bottom: 0; }}
     .hlr-usage-label {{ color: var(--muted); font-size: 11px; font-weight: 760; }}
@@ -1191,7 +1193,10 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .hlr-usage-meta {{ color: var(--muted); font-size: 11px; line-height: 1.2; }}
     .hlr-usage-cell.is-warning .hlr-usage-value {{ color: var(--warning); }}
     .hlr-usage-cell.is-danger .hlr-usage-value {{ color: var(--danger); }}
-    .hlr-balance-refresh {{ justify-self: start; padding: 4px 8px; font-size: 12px; box-shadow: none; }}
+    .hlr-balance-refresh {{ position: absolute; top: 6px; right: 7px; display: inline-grid; place-items: center; width: 28px; height: 28px; min-height: 0; padding: 0; border-radius: 999px; box-shadow: none; }}
+    .hlr-balance-refresh .material-symbols-rounded {{ font-size: 17px; }}
+    .hlr-balance-refresh[aria-busy="true"] .material-symbols-rounded {{ animation: hlr-refresh-spin .8s linear infinite; }}
+    @keyframes hlr-refresh-spin {{ to {{ transform: rotate(360deg); }} }}
     .hlr-help-card {{ padding: 0; margin: 0; border: 0; background: transparent; }}
     .hlr-help-card h3 {{ margin: 0 0 8px; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }}
     .hlr-help-list {{ display: grid; gap: 7px; margin: 0; }}
@@ -6008,7 +6013,7 @@ def hlr_usage_dashboard_html(balance: dict[str, object] | None = None, usage: di
         <section class='hlr-usage-dashboard' aria-label='HLR usage'>
           <h3 class='hlr-usage-title'>HLR usage</h3>
           <div class='hlr-usage-grid'>
-            <div class='hlr-usage-cell'><span class='hlr-usage-label'>Баланс API</span><strong class='hlr-usage-value'>{esc(hlr_balance_usage_value(balance_state))}</strong><span class='hlr-usage-meta'>{esc(str(balance_state.get('status') or 'unavailable'))}</span></div>
+            <div class='hlr-usage-cell hlr-usage-balance-cell' id='hlr-usage-balance-card'><div class='hlr-usage-header'><span class='hlr-usage-label'>Баланс API</span><form method='post' action='/hlr/balance' id='hlr-balance-refresh-form'><button class='secondary hlr-balance-refresh' id='hlr-balance-refresh-button' type='submit' title='Обновить баланс' aria-label='Обновить баланс'>{material_icon('refresh')}</button></form></div><strong class='hlr-usage-value'>{esc(hlr_balance_usage_value(balance_state))}</strong><span class='hlr-usage-meta'>{esc(str(balance_state.get('status') or 'unavailable'))}</span></div>
             <div class='hlr-usage-cell{remaining_class}'><span class='hlr-usage-label'>Осталось сегодня</span><strong class='hlr-usage-value'>{esc(hlr_format_metric(remaining))}</strong><span class='hlr-usage-meta'>Лимит: {esc(hlr_format_metric(daily_limit))}</span></div>
             <div class='hlr-usage-cell'><span class='hlr-usage-label'>Проверено сегодня</span><strong class='hlr-usage-value'>{esc(checked_text)}</strong><span class='hlr-usage-meta'>Кредиты сегодня: {esc(credits_today)}</span></div>
             <div class='hlr-usage-cell'><span class='hlr-usage-label'>Последняя проверка</span><strong class='hlr-usage-value'>{esc(last_text)}</strong><span class='hlr-usage-meta'>Кредиты: {esc(last_credits)} · {esc(updated_meta)}</span></div>
@@ -6054,9 +6059,7 @@ def hlr_config_diagnostics_html(balance: dict[str, object] | None = None) -> str
         ("config_source", summary["config_source"]),
     ] + hlr_balance_config_rows(balance_state)
     body = "".join(f"<dt>{esc(label)}</dt><dd>{esc(str(value))}</dd>" for label, value in rows)
-    refresh_form = "<form method='post' action='/hlr/balance'><button class='secondary hlr-balance-refresh' type='submit'>Обновить баланс</button></form>"
-    open_attr = " open" if balance is not None else ""
-    return f"<details class='card hlr-api-fields'{open_attr}><summary>HLR config</summary>{warning}<dl class='hlr-detail-list'>{body}</dl>{refresh_form}</details>"
+    return f"<details class='card hlr-api-fields' id='hlr-config-details'><summary>HLR config</summary>{warning}<dl class='hlr-detail-list' id='hlr-config-balance-fields'>{body}</dl></details>"
 
 
 def hlr_api_fields_html(results: list[dict[str, object]], is_demo_mode: bool) -> str:
@@ -6325,6 +6328,49 @@ document.addEventListener("DOMContentLoaded", function () {{
   }}
 
   buildFilterPanel();
+
+  function replaceBalanceFragments(htmlText) {{
+    const parser = new DOMParser();
+    const nextDocument = parser.parseFromString(htmlText, "text/html");
+    const nextBalanceCard = nextDocument.getElementById("hlr-usage-balance-card");
+    const currentBalanceCard = document.getElementById("hlr-usage-balance-card");
+    if (nextBalanceCard && currentBalanceCard) currentBalanceCard.replaceWith(nextBalanceCard);
+    const nextConfigList = nextDocument.getElementById("hlr-config-balance-fields");
+    const currentConfigList = document.getElementById("hlr-config-balance-fields");
+    if (nextConfigList && currentConfigList) currentConfigList.replaceWith(nextConfigList);
+  }}
+
+  document.addEventListener("submit", async (event) => {{
+    const balanceRefreshForm = event.target && event.target.closest ? event.target.closest("#hlr-balance-refresh-form") : null;
+    if (!balanceRefreshForm) return;
+    event.preventDefault();
+    const balanceRefreshButton = balanceRefreshForm.querySelector("#hlr-balance-refresh-button");
+    const configDetails = document.getElementById("hlr-config-details");
+    const wasConfigOpen = configDetails ? configDetails.open : null;
+    if (balanceRefreshButton) {{
+      balanceRefreshButton.disabled = true;
+      balanceRefreshButton.setAttribute("aria-busy", "true");
+      balanceRefreshButton.title = "Обновление...";
+      balanceRefreshButton.setAttribute("aria-label", "Обновление баланса");
+    }}
+    try {{
+      const response = await fetch(balanceRefreshForm.action, {{ method: "POST", body: new FormData(balanceRefreshForm), credentials: "same-origin" }});
+      const htmlText = await response.text();
+      if (!response.ok) throw new Error("Balance refresh failed");
+      replaceBalanceFragments(htmlText);
+    }} catch (error) {{
+      const currentButton = document.getElementById("hlr-balance-refresh-button");
+      if (currentButton) {{
+        currentButton.disabled = false;
+        currentButton.removeAttribute("aria-busy");
+        currentButton.title = "Обновить баланс";
+        currentButton.setAttribute("aria-label", "Обновить баланс");
+      }}
+    }} finally {{
+      const currentConfigDetails = document.getElementById("hlr-config-details");
+      if (currentConfigDetails && wasConfigOpen !== null) currentConfigDetails.open = wasConfigOpen;
+    }}
+  }});
 
   if (copySourceButton) {{
     copySourceButton.addEventListener("click", async () => {{
