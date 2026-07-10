@@ -4014,6 +4014,48 @@ class HlrUiStateScriptTest(unittest.TestCase):
         self.assertIn('visible: defaultOrder.filter((key) => defaultVisibleColumns.has(key))', content)
         self.assertIn('settings = { order: defaultOrder.slice(), visible: defaultOrder.filter((key) => defaultVisibleColumns.has(key)) };', content)
 
+
+    def test_hlr_export_uses_status_payload_and_keeps_full_results_for_repeated_submits(self):
+        content = self._content()
+        self.assertIn("name='selected_statuses_json' value='[]'", content)
+        self.assertIn("name='show_all_statuses' value='1'", content)
+        self.assertIn('if (exportInput) exportInput.value = originalExportJson;', content)
+        self.assertIn('if (exportStatusesInput) exportStatusesInput.value = JSON.stringify(Array.from(selectedStatuses));', content)
+        self.assertIn('if (exportShowAllInput) exportShowAllInput.value = showAllStatuses ? "1" : "0";', content)
+        self.assertIn('const rows = visibleRows();', content)
+        self.assertIn('updateExportPayload(rows);', content)
+        self.assertIn('if (rows.length < 1) {', content)
+        self.assertIn('Нет строк для экспорта в текущей выборке.', content)
+        self.assertIn('window.setTimeout(() => {', content)
+        self.assertIn('if (exportButton && visibleRows().length > 0) exportButton.disabled = false;', content)
+
+    def test_hlr_export_filter_helper_matches_current_status_selection(self):
+        rows = [
+            server.hlr_result_from_api_item({"original": "48789662838", "normalized": "+48789662838"}, {"error": "NONE", "live_status": "LIVE", "telephone_number_type": "MOBILE"}),
+            server.hlr_result_from_api_item({"original": "48123456789", "normalized": "+48123456789"}, {"error": "NONE", "live_status": "DEAD", "telephone_number_type": "FIXED_LINE"}),
+            server.hlr_result_from_api_item({"original": "bad", "normalized": ""}, {"error": "NONE", "live_status": "INCONCLUSIVE", "telephone_number_type": "BAD_FORMAT"}),
+        ]
+        self.assertEqual(server.hlr_filter_results_for_export(rows, [], True), rows)
+        live_rows = server.hlr_filter_results_for_export(rows, ["LIVE"], False)
+        self.assertEqual([server.hlr_display_status(row) for row in live_rows], ["LIVE"])
+        multi_rows = server.hlr_filter_results_for_export(rows, ["LIVE", "BAD_FORMAT"], False)
+        self.assertEqual([server.hlr_display_status(row) for row in multi_rows], ["LIVE", "BAD_FORMAT"])
+        self.assertEqual(server.hlr_filter_results_for_export(rows, [], False), [])
+
+    def test_hlr_export_rows_always_use_canonical_table_columns(self):
+        row = server.hlr_result_from_api_item(
+            {"original": "48789662838", "normalized": "+48789662838"},
+            {"error": "NONE", "live_status": "LIVE", "telephone_number_type": "MOBILE", "credits_spent": 1, "uuid": "abc"},
+        )
+        headers, keys = server.hlr_csv_headers_and_keys([row])
+        export_row = server.hlr_results_rows([row])[0]
+        self.assertEqual(keys, [key for key, _label, _width in server.HLR_TABLE_COLUMNS])
+        self.assertEqual(headers, [label for _key, label, _width in server.HLR_TABLE_COLUMNS])
+        self.assertEqual(len(export_row), len(server.HLR_TABLE_COLUMNS))
+        self.assertIn("UUID", headers)
+        self.assertIn("Timestamp", headers)
+        self.assertIn("Credits", headers)
+
     def test_hlr_column_manager_keeps_technical_columns_available_after_business_columns(self):
         content = self._content()
         self.assertIn('const businessColumnOrder = [', content)
