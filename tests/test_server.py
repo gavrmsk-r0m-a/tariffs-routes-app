@@ -58,6 +58,53 @@ class HlrBalanceHelperTest(unittest.TestCase):
         mocked_urlopen.assert_not_called()
 
 
+class HlrDailyUsageTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.NamedTemporaryFile(delete=False)
+        self.tmp.close()
+        self.conn = server.connect(self.tmp.name)
+        server.init_db(self.conn)
+        self.repo = server.Repository(self.conn)
+        server._REQUEST_CONTEXT.clear()
+        server._REQUEST_CONTEXT["repo"] = self.repo
+
+    def tearDown(self):
+        server._REQUEST_CONTEXT.clear()
+        self.conn.close()
+        os.unlink(self.tmp.name)
+
+    def test_hlr_run_check_records_valid_numbers_only_and_sums_credits(self):
+        with patch.dict(os.environ, {"HLR_MODE": "demo", "HLR_DAILY_CHECK_LIMIT": "5"}, clear=False):
+            results, _summary = server.hlr_run_check("+48123456789\nbad-number")
+            usage = server.hlr_usage_with_limits()
+        self.assertEqual(len(results), 2)
+        self.assertEqual(usage["checked_today"], 1)
+        self.assertEqual(usage["remaining_today"], 4)
+        self.assertEqual(usage["last_check_count"], 1)
+        self.assertEqual(usage["last_check_credits"], 0)
+        self.assertEqual(usage["credits_spent_today"], 0)
+
+    def test_hlr_daily_limit_blocks_before_api_call_and_does_not_increment_usage(self):
+        server.hlr_record_daily_usage(2, None)
+        with patch.dict(os.environ, {"HLR_MODE": "production", "HLR_DAILY_CHECK_LIMIT": "2"}, clear=False), patch("app.server.hlr_real_api_check") as mocked_check:
+            with self.assertRaises(server.BusinessRuleError) as ctx:
+                server.hlr_run_check("+48123456789")
+            usage = server.hlr_usage_with_limits()
+        self.assertEqual(str(ctx.exception), "Дневной лимит HLR исчерпан.")
+        mocked_check.assert_not_called()
+        self.assertEqual(usage["checked_today"], 2)
+        self.assertEqual(usage["remaining_today"], 0)
+
+    def test_hlr_transport_failure_rows_are_not_counted_as_daily_usage(self):
+        with patch.dict(os.environ, {"HLR_MODE": "production", "HLR_DAILY_CHECK_LIMIT": "5"}, clear=False), patch("app.server.hlr_real_api_check", return_value=[server.hlr_error_result({"original": "+48123456789", "normalized": "+48123456789"}, server.hlr_config(), "connection_error")]):
+            results, _summary = server.hlr_run_check("+48123456789")
+            usage = server.hlr_usage_with_limits()
+        self.assertEqual(len(results), 1)
+        self.assertEqual(usage["checked_today"], 0)
+        self.assertEqual(usage["remaining_today"], 5)
+        self.assertEqual(usage["last_check_count"], 0)
+
+
 class HlrApiMappingTest(unittest.TestCase):
     def _row(self, raw):
         return server.hlr_result_from_api_item({"original": "48789662838", "normalized": "+48789662838"}, raw)
