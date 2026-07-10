@@ -1108,11 +1108,10 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .hlr-counter-line, .hlr-input-hint {{ margin: 0; }}
     .hlr-input-hint {{ align-self: end; line-height: inherit; }}
     .hlr-input-actions {{ display: flex; align-items: center; gap: 8px; flex-wrap: wrap; align-self: end; }}
-    .hlr-progress {{ display: none; align-items: center; gap: 8px; min-width: min(260px, 100%); flex: 1 1 260px; color: var(--muted); font-size: 12px; font-weight: 720; }}
+    .hlr-progress {{ display: none; align-items: center; width: min(210px, 100%); flex: 0 0 min(210px, 100%); min-height: 36px; }}
     .hlr-progress.is-active {{ display: inline-flex; }}
-    .hlr-progress-track {{ position: relative; flex: 1 1 150px; height: 10px; min-width: 120px; overflow: hidden; border: 1px solid var(--border); border-radius: 999px; background: var(--surface-muted); }}
+    .hlr-progress-track {{ position: relative; display: block; width: 100%; height: 28px; overflow: hidden; border: 1px solid var(--border); border-radius: 999px; background: var(--surface-muted); box-shadow: inset 0 1px 2px color-mix(in srgb, var(--text-strong) 10%, transparent); }}
     .hlr-progress-bar {{ position: absolute; inset: 0 auto 0 0; width: 45%; border-radius: inherit; background: repeating-linear-gradient(45deg, color-mix(in srgb, var(--accent) 82%, var(--surface)), color-mix(in srgb, var(--accent) 82%, var(--surface)) 8px, color-mix(in srgb, var(--accent) 58%, var(--surface)) 8px, color-mix(in srgb, var(--accent) 58%, var(--surface)) 16px); animation: hlr-progress-slide 1s linear infinite; }}
-    .hlr-progress-text {{ white-space: nowrap; }}
     @keyframes hlr-progress-slide {{ 0% {{ transform: translateX(-110%); }} 100% {{ transform: translateX(230%); }} }}
     .hlr-severity-good, .hlr-severity-green {{ border-color: color-mix(in srgb, var(--success) 60%, var(--border)); background: color-mix(in srgb, var(--success) 12%, var(--surface)); color: var(--success, var(--text-strong)); }}
     .hlr-severity-neutral, .hlr-severity-unknown {{ border-color: var(--border); background: color-mix(in srgb, var(--surface-muted) 70%, var(--surface)); color: var(--muted); }}
@@ -6139,9 +6138,8 @@ def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = Non
           <div class='hlr-input-actions'>
             <button type='submit' id='hlr-submit-button' {'disabled' if not write_allowed else ''}>Запустить проверку</button>
             <button type='button' id='hlr-clear-button' {'disabled' if not write_allowed else ''}>Очистить</button>
-            <div class='hlr-progress' id='hlr-progress' role='status' aria-live='polite' aria-hidden='true'>
+            <div class='hlr-progress' id='hlr-progress' role='status' aria-label='Проверка выполняется' aria-hidden='true'>
               <span class='hlr-progress-track' aria-hidden='true'><span class='hlr-progress-bar'></span></span>
-              <span class='hlr-progress-text' id='hlr-progress-text'>Проверка выполняется...</span>
             </div>
           </div>
         </form>
@@ -6167,7 +6165,6 @@ document.addEventListener("DOMContentLoaded", function () {{
   const clearButton = document.getElementById("hlr-clear-button");
   const submitButton = document.getElementById("hlr-submit-button");
   const progress = document.getElementById("hlr-progress");
-  const progressText = document.getElementById("hlr-progress-text");
   const counter = document.getElementById("hlr-input-counter");
   let hlrSubmitting = false;
 
@@ -6195,9 +6192,6 @@ document.addEventListener("DOMContentLoaded", function () {{
     if (progress) {{
       progress.classList.toggle("is-active", isLoading);
       progress.setAttribute("aria-hidden", isLoading ? "false" : "true");
-    }}
-    if (progressText && isLoading) {{
-      progressText.textContent = count > 0 ? "Проверка выполняется: " + count + " строк..." : "Проверка выполняется...";
     }}
   }}
 
