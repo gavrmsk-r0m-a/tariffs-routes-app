@@ -2811,6 +2811,16 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     html[data-theme="tele-route-pro"] .filter-card .form-hint,
     html[data-theme="tele-route-pro"] .filter-card small {{ color: var(--muted); font-size: 12px; line-height: 1.35; }}
     html[data-theme="tele-route-pro"] .filter-card .filter-grid .checkbox-inline {{ min-height: 32px; padding: 5px 8px; border: 1px solid var(--border); border-radius: 7px; background: #f8fafc; color: var(--text); }}
+    .phones-page .filter-review-control {{ display: flex; flex-direction: column; justify-content: flex-end; min-width: 0; }}
+    .phones-page .filter-review-spacer {{ display: block; height: 15px; margin: 0 0 4px; visibility: hidden; color: transparent; font-size: 12px; font-weight: 760; line-height: 1.25; user-select: none; }}
+    .phones-page .filter-review-checkbox {{ box-sizing: border-box; width: 100%; min-height: 34px; display: flex; align-items: center; gap: 7px; margin: 0; padding: 6px 9px; border: 1px solid var(--border-strong); border-radius: var(--radius-control); background: var(--input-bg, var(--surface)); color: var(--text); font-weight: 760; line-height: 1.25; white-space: nowrap; }}
+    .phones-page .filter-review-checkbox input[type="checkbox"] {{ flex: 0 0 16px; width: 16px; height: 16px; min-width: 16px; min-height: 16px; margin: 0; }}
+    html[data-theme="tele-route-pro"] .phones-page .filter-card .filter-grid .filter-review-control {{ min-width: 0; }}
+    html[data-theme="tele-route-pro"] .phones-page .filter-card .filter-grid .filter-review-spacer {{ height: 15px; margin-bottom: 4px; font-size: 12px; font-weight: 760; line-height: 1.25; }}
+    html[data-theme="tele-route-pro"] .phones-page .filter-card .filter-grid .filter-review-checkbox,
+    html[data-theme="tele-route-pro"] .phones-page .filter-card .filter-grid label.filter-review-checkbox:has(input[name="review_required"]) {{ min-height: 32px; padding: 5px 8px; border: 1px solid var(--border-strong); border-radius: 7px; background: var(--input-bg); color: var(--text); box-shadow: inset 0 1px 1px rgba(17, 24, 39, .025); }}
+    html[data-theme="tele-route-pro"] .phones-page .filter-card .filter-grid .filter-review-checkbox:has(input[name="review_required"]:checked) {{ border-color: var(--border-ink); background: #f1f5f9; color: var(--text-strong); }}
+    html[data-theme="tele-route-pro"] .phones-page .filter-card .filter-grid .filter-review-checkbox input[type="checkbox"] {{ width: 16px; height: 16px; min-width: 16px; min-height: 16px; margin: 0; padding: 0; }}
 
     /* TeleRoute Pro tables foundation v1: visual-only table polish scoped to the new theme. */
     html[data-theme="tele-route-pro"] .table-card {{ border: 1px solid var(--border-strong); border-radius: 10px; background: var(--surface); box-shadow: 0 1px 2px rgba(17, 24, 39, .05), 0 8px 20px rgba(17, 24, 39, .055); overflow: hidden; }}
@@ -7447,7 +7457,7 @@ def phones_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
     <label>Назначение <select name="assignment_type">{assignment_options(repo, selected=q.get('assignment_type'), empty='Все')}</select></label>
 <label>Рабочий статус <select name="status">{phone_status_options(q.get('status'), empty='Все')}</select></label>
 <label>Поиск по номеру <input name="number" value="{esc(q.get('number'))}"></label>
-<label class="checkbox-inline"><input type="checkbox" name="review_required" value="1" {'checked' if q.get('review_required') == '1' else ''}> Требует проверки</label><button>Найти</button></form>"""
+<div class="filter-review-control" aria-label="Фильтр: Требует проверки"><span class="filter-review-spacer" aria-hidden="true">Требует проверки</span><label class="checkbox-inline filter-review-checkbox"><input type="checkbox" name="review_required" value="1" {'checked' if q.get('review_required') == '1' else ''}> <span>Требует проверки</span></label></div><button>Найти</button></form>"""
     create_html = f"""<form class="phone-dialog phone-dialog-form" method="post" action="/phones/create">
   <header class="phone-dialog-header"><h2>Добавить номер</h2></header>
   <div class="phone-dialog-body">
