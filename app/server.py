@@ -3022,11 +3022,11 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     /* Routes page UI polish: dedicated route create/edit modal rebuilt as a compact portrait card. */
     .routes-page > h1 {{ display: none; }}
     .routes-page .route-create-shell {{ width: auto; max-width: max-content; margin: 0 0 10px auto; border: 0; background: transparent; box-shadow: none; overflow: visible; }}
-    .routes-page .route-create-shell > .form-summary {{ display: inline-flex; align-items: center; justify-content: center; width: max-content; min-height: 36px; padding: 8px 14px; border: 1px solid #2563eb; border-radius: var(--radius-control); background: #2563eb; color: #fff; box-shadow: 0 4px 12px rgba(37, 99, 235, .18); font-size: 13px; font-weight: 820; letter-spacing: .01em; text-transform: uppercase; }}
-    .routes-page .route-create-shell > .form-summary::after, .routes-page .route-create-shell[open] > .form-summary::after {{ content: none; }}
-    .routes-page .route-create-shell > .form-summary:hover {{ border-color: #1d4ed8; background: #1d4ed8; color: #fff; }}
-    .routes-page .route-create-shell > .form-summary:focus-visible {{ outline: none; border-color: #1d4ed8; background: #2563eb; color: #fff; box-shadow: 0 0 0 3px rgba(37, 99, 235, .22); }}
-    .routes-page .route-create-shell > .form-summary:active, .routes-page .route-create-shell[open] > .form-summary {{ border-color: #1e40af; background: #1e40af; color: #fff; }}
+    .routes-page .route-primary-summary {{ display: inline-flex; align-items: center; justify-content: center; width: max-content; min-height: 36px; box-sizing: border-box; margin: 0; padding: 8px 14px; border: 1px solid #2563eb !important; border-radius: var(--radius-control); background: #2563eb !important; color: #fff !important; box-shadow: 0 4px 12px rgba(37, 99, 235, .18); font-size: 13px; font-weight: 820; letter-spacing: .01em; text-transform: uppercase; transition: background-color 140ms ease, border-color 140ms ease, box-shadow 140ms ease, color 140ms ease; }}
+    .routes-page .route-primary-summary::after, .routes-page .route-create-shell[open] > .route-primary-summary::after {{ content: none !important; }}
+    .routes-page .route-primary-summary:hover {{ border-color: #1d4ed8 !important; background: #1d4ed8 !important; color: #fff !important; }}
+    .routes-page .route-primary-summary:focus-visible {{ outline: none; border-color: #1d4ed8 !important; background: #2563eb !important; color: #fff !important; box-shadow: 0 0 0 3px rgba(37, 99, 235, .22); }}
+    .routes-page .route-primary-summary:active, .routes-page .route-create-shell[open] > .route-primary-summary {{ border-color: #1e40af !important; background: #1e40af !important; color: #fff !important; }}
     .routes-page .table-footer-tools {{ align-items: center; justify-content: flex-end; gap: 8px; }}
     .routes-page .table-footer-tools .column-settings {{ order: 1; }}
     .routes-page .table-footer-tools .export-button {{ order: 2; min-width: auto; width: auto; min-height: 31px; padding: 5px 11px; border-color: var(--accent-strong); background: var(--accent); color: #fff; font-size: 12px; font-weight: 750; }}
@@ -3039,7 +3039,7 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .routes-page .hlr-like-column-panel .column-order-button {{ min-width: 32px; padding: 3px 7px; box-shadow: none; }}
     .modal-form-card[open] > form.route-dialog, .route-dialog.route-dialog {{ position: fixed; left: 50%; top: 50%; z-index: 990; width: min(590px, calc(100vw - 48px)); max-width: calc(100vw - 48px); max-height: min(780px, calc(100vh - 48px)); margin: 0; padding: 0; transform: translate(-50%, -50%); display: grid; grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr) auto; gap: 0; overflow: hidden; border: 1px solid var(--border-strong); border-radius: 14px; background: #fff; color: var(--text); box-shadow: 0 22px 62px rgba(15, 23, 42, .22); box-sizing: border-box; }}
     .route-dialog.route-dialog-page-form {{ position: relative; left: auto; top: auto; transform: none; z-index: auto; margin: 0 0 16px; }}
-    .route-dialog-header {{ align-self: stretch; width: 100%; box-sizing: border-box; padding: 15px 20px 13px; border-bottom: 1px solid var(--border-strong); background: linear-gradient(180deg, #fff 0%, #f8fafc 100%); }}
+    .route-dialog-header {{ grid-column: 1 / -1; align-self: stretch; width: 100%; max-width: none; box-sizing: border-box; margin: 0; padding: 15px 20px 13px; border-bottom: 1px solid var(--border-strong); background: linear-gradient(180deg, #fff 0%, #f8fafc 100%); }}
     .route-dialog-header h2 {{ margin: 0; color: var(--text-strong); font-size: 18px; font-weight: 860; line-height: 1.2; }}
     .route-dialog-body {{ min-height: 0; overflow-y: auto; overflow-x: hidden; scrollbar-gutter: stable; }}
     .route-dialog-section {{ display: grid; gap: 10px; min-width: 0; margin: 0; padding: 14px 20px 16px; border: 0; border-bottom: 1px solid #e5edf7; background: #fff; }}
@@ -3098,6 +3098,14 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     html[data-theme="tele-route-pro"] .admin-edit-save {{ border-color: #111827; background: #111827; color: #fff; }}
     html[data-theme="tele-route-pro"] .modal-save:hover,
     html[data-theme="tele-route-pro"] .admin-edit-save:hover {{ border-color: #020617; background: #020617; color: #fff; }}
+    html[data-theme="tele-route-pro"] .routes-page .route-primary-summary {{ border-color: #2563eb !important; background: #2563eb !important; color: #fff !important; }}
+    html[data-theme="tele-route-pro"] .routes-page .route-primary-summary:hover {{ border-color: #1d4ed8 !important; background: #1d4ed8 !important; color: #fff !important; }}
+    html[data-theme="tele-route-pro"] .routes-page .route-primary-summary:focus-visible {{ border-color: #1d4ed8 !important; background: #2563eb !important; color: #fff !important; }}
+    html[data-theme="tele-route-pro"] .routes-page .route-primary-summary:active, html[data-theme="tele-route-pro"] .routes-page .route-create-shell[open] > .route-primary-summary {{ border-color: #1e40af !important; background: #1e40af !important; color: #fff !important; }}
+    html[data-theme="tele-route-pro"] .routes-page .route-primary-summary::after, html[data-theme="tele-route-pro"] .routes-page .route-create-shell[open] > .route-primary-summary::after {{ content: none !important; }}
+    html[data-theme="tele-route-pro"] .modal-form-card[open] > form.route-dialog, html[data-theme="tele-route-pro"] .route-dialog.route-dialog {{ gap: 0; padding: 0; }}
+    html[data-theme="tele-route-pro"] .route-dialog-header, html[data-theme="tele-route-pro"] .route-dialog-footer {{ grid-column: 1 / -1; width: 100%; max-width: none; box-sizing: border-box; margin: 0; }}
+    html[data-theme="tele-route-pro"] .route-dialog-footer {{ justify-content: flex-start; }}
     html[data-theme="tele-route-pro"] .modal-cancel,
     html[data-theme="tele-route-pro"] .admin-edit-cancel {{ border-color: var(--border-strong); background: #fff; color: #334155; }}
     html[data-theme="tele-route-pro"] .modal-cancel:hover,
@@ -4128,10 +4136,11 @@ def filter_card(form_html: str, q: dict[str, str], keys: list[str] | tuple[str, 
     return f"<details class='filter-card'{open_attr}><summary class='filter-summary'>Фильтры</summary>{form_html}</details>{script}"
 
 
-def form_card(summary: str, form_html: str, *, open_by_default: bool = False, extra_class: str = "") -> str:
+def form_card(summary: str, form_html: str, *, open_by_default: bool = False, extra_class: str = "", summary_class: str = "") -> str:
     open_attr = " open" if open_by_default else ""
     classes = f"form-card modal-form-card {extra_class}".strip()
-    return f"<details class='{classes}'{open_attr} data-modal-details><summary class='form-summary'>{summary}</summary>{form_html}</details>"
+    summary_classes = f"form-summary {summary_class}".strip()
+    return f"<details class='{classes}'{open_attr} data-modal-details><summary class='{summary_classes}'>{summary}</summary>{form_html}</details>"
 
 
 def table_page_container(inner_html: str, *, extra_class: str = "") -> str:
@@ -7171,7 +7180,7 @@ def routes_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
     table_html = f"{data_table('routes', [('geo', 'ГЕО'), ('route', f"<span class='copyable-header'>Название маршрута {copy_column_button('route-name')}</span>"), ('provider', 'Провайдер'), ('prefix', 'Префикс'), ('actual', 'Актуальный'), ('aon_pool', 'АОН/пул'), ('comment', 'Комментарий'), ('numbers', 'Номера'), ('history', 'Ист.'), ('actions', 'Действия')], ''.join(rows))}"
     body = f"""
 {filter_card(filters_html, q, ('country_id', 'provider_id', 'prefix_id', 'is_actual', 'search'))}
-{form_card('+ Добавить маршрут', create_html, extra_class='route-create-shell') if can_write("routes") else ""}
+{form_card('+ Добавить маршрут', create_html, extra_class='route-create-shell', summary_class='route-primary-summary') if can_write("routes") else ""}
 {table_card(table_html)}
 {table_footer(pagination_html, column_settings('routes', [('geo', 'ГЕО'), ('route', 'Название маршрута'), ('provider', 'Провайдер'), ('prefix', 'Префикс'), ('actual', 'Актуальный'), ('aon_pool', 'АОН/пул'), ('comment', 'Комментарий'), ('numbers', 'Номера'), ('actions', 'Действия')], hlr_style=True) + export_link('/routes', q, text=True))}
 """
