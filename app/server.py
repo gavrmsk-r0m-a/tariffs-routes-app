@@ -1118,6 +1118,18 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .admin-users-page .admin-primary-summary::after, .admin-users-page details[open] > .admin-primary-summary::after, .admin-users-page .admin-user-primary-summary::after, .admin-users-page details[open] > .admin-user-primary-summary::after {{ content: none; }}
     .admin-users-page .user-create-card {{ width: fit-content; max-width: 100%; }}
     .admin-users-page .user-create-card[open] {{ width: min(860px, 100%); }}
+    .admin-naming-page .admin-naming-primary-summary,
+    .admin-change-reasons-page .admin-reason-primary-summary,
+    .admin-users-page .admin-user-primary-summary {{ justify-content: center !important; width: fit-content !important; min-width: 0 !important; border-color: #2563eb !important; background: #2563eb !important; color: #fff !important; font-weight: 750; box-shadow: 0 8px 18px rgba(37, 99, 235, .18) !important; }}
+    .admin-naming-page .admin-naming-primary-summary:hover, .admin-naming-page .admin-naming-primary-summary:focus, .admin-naming-page .admin-naming-primary-summary:active,
+    .admin-change-reasons-page .admin-reason-primary-summary:hover, .admin-change-reasons-page .admin-reason-primary-summary:focus, .admin-change-reasons-page .admin-reason-primary-summary:active,
+    .admin-users-page .admin-user-primary-summary:hover, .admin-users-page .admin-user-primary-summary:focus, .admin-users-page .admin-user-primary-summary:active,
+    .admin-naming-page details[open] > .admin-naming-primary-summary,
+    .admin-change-reasons-page details[open] > .admin-reason-primary-summary,
+    .admin-users-page details[open] > .admin-user-primary-summary {{ border-color: #1d4ed8 !important; background: #1d4ed8 !important; color: #fff !important; }}
+    .admin-naming-page .admin-naming-primary-summary::after, .admin-naming-page details[open] > .admin-naming-primary-summary::after,
+    .admin-change-reasons-page .admin-reason-primary-summary::after, .admin-change-reasons-page details[open] > .admin-reason-primary-summary::after,
+    .admin-users-page .admin-user-primary-summary::after, .admin-users-page details[open] > .admin-user-primary-summary::after {{ content: none !important; }}
     .admin-users-page .user-dialog {{ display: flex; flex-direction: column; width: min(860px, calc(100vw - 48px)); max-height: min(760px, calc(100vh - 72px)); margin: 0; overflow: hidden; border-radius: 16px; background: var(--surface); }}
     .admin-users-page .user-dialog-header {{ padding: 16px 20px; border-bottom: 1px solid var(--border); background: var(--surface); }}
     .admin-users-page .user-dialog-header h2 {{ margin: 0 0 4px; font-size: 20px; }}
@@ -3654,7 +3666,8 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     }});
     function enhanceModalForm(form, closeCallback) {{
       if (!form || form.dataset.modalEnhanced === "1") return;
-      if (form.classList.contains("route-dialog-form") || form.classList.contains("tariff-dialog-form") || form.classList.contains("phone-dialog-form") || form.classList.contains("company-dialog-form")) {{
+      const hasDedicatedFooter = form.querySelector(".route-dialog-footer, .tariff-dialog-footer, .phone-dialog-footer, .company-dialog-footer, .naming-dialog-footer, .reason-dialog-footer, .user-dialog-footer");
+      if (form.classList.contains("route-dialog-form") || form.classList.contains("tariff-dialog-form") || form.classList.contains("phone-dialog-form") || form.classList.contains("company-dialog-form") || form.classList.contains("naming-dialog-form") || form.classList.contains("reason-dialog-form") || form.classList.contains("user-dialog-form") || hasDedicatedFooter) {{
         form.dataset.modalEnhanced = "1";
         form.querySelectorAll("[data-modal-close]").forEach((button) => button.addEventListener("click", closeCallback));
         return;
@@ -8738,7 +8751,7 @@ def users_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
   </td>
 </tr>""")
     create_permissions_html = permission_matrix_form(repo).replace("<table>", "<div class='user-permissions-scroll'><table>", 1).replace("</table><p", "</table></div><p", 1)
-    create_html = f"""<form class='user-dialog' method='post' action='/admin/users/create'>
+    create_html = f"""<form class='user-dialog user-dialog-form' method='post' action='/admin/users/create'>
   <div class='user-dialog-header'>
     <h2>Создать пользователя</h2>
     <p class='muted'>Заполните учётные данные и индивидуальные права доступа.</p>
@@ -9034,7 +9047,7 @@ def naming_rules_page(repo: Repository) -> bytes:
     rows = []
     for rule in repo.conn.execute("SELECT * FROM route_naming_rules ORDER BY is_active DESC, name"):
         rows.append(f"<tr><td>{esc(rule['name'])}</td><td>{esc(rule['template'])}</td><td>{'Да' if rule['is_active'] else 'Нет'}</td><td>{esc(rule['comment'])}</td></tr>")
-    create_html = f"""<form class="naming-dialog" method="post" action="/admin/naming-rules/create">
+    create_html = f"""<form class="naming-dialog naming-dialog-form" method="post" action="/admin/naming-rules/create">
   <header class="naming-dialog-header"><h2>Добавить правило</h2></header>
   <div class="naming-dialog-body">
     <div class="naming-dialog-grid">
@@ -9119,7 +9132,7 @@ def change_reasons_page(repo: Repository) -> bytes:
     rows = []
     for reason in repo.conn.execute("SELECT * FROM change_reasons ORDER BY is_active DESC, name"):
         rows.append(f"""<tr><td>{esc(reason['name'])}</td><td>{'Да' if reason['is_active'] else 'Нет'}</td><td>{esc(reason['description'])}</td><td data-col='actions'><details class='edit-details'><summary title='Редактировать' aria-label='Редактировать'>Редактировать</summary><form method='post' action='/admin/change-reasons/{reason['id']}/update'><label>Название <input name='name' value='{esc(reason['name'])}'></label><label>Активна <select name='is_active'><option value='1' {'selected' if reason['is_active'] else ''}>Да</option><option value='0' {'selected' if not reason['is_active'] else ''}>Нет</option></select></label><label>Комментарий <input name='comment' value='{esc(reason['description'])}'></label><button>Сохранить</button></form></details></td></tr>""")
-    create_html = """<form class='reason-dialog' method='post' action='/admin/change-reasons/create'>
+    create_html = """<form class='reason-dialog reason-dialog-form' method='post' action='/admin/change-reasons/create'>
   <header class='reason-dialog-header'><h2>Добавить причину</h2></header>
   <div class='reason-dialog-body'>
     <div class='reason-dialog-grid'>
