@@ -1096,6 +1096,46 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .inactive-row {{ color: var(--muted); background: var(--surface-strong); }}
     .status-badge {{ display: inline-flex; align-items: center; min-height: 22px; padding: 2px 7px; border: 1px solid var(--cyber); border-radius: 999px; background: var(--cyber-soft); color: var(--text-strong); font-size: 12px; font-weight: 720; white-space: nowrap; }}
 
+
+    .admin-naming-page .admin-primary-summary,
+    .admin-change-reasons-page .admin-primary-summary,
+    .admin-currency-page .admin-primary-summary,
+    .admin-users-page .admin-primary-summary {{ justify-content: center; width: fit-content; min-width: 0; border-color: #2563eb; background: #2563eb; color: #fff; box-shadow: 0 8px 18px rgba(37, 99, 235, .18); }}
+    .admin-naming-page .admin-primary-summary:hover, .admin-naming-page .admin-primary-summary:focus,
+    .admin-change-reasons-page .admin-primary-summary:hover, .admin-change-reasons-page .admin-primary-summary:focus,
+    .admin-currency-page .admin-primary-summary:hover, .admin-currency-page .admin-primary-summary:focus,
+    .admin-users-page .admin-primary-summary:hover, .admin-users-page .admin-primary-summary:focus,
+    .admin-naming-page details[open] > .admin-primary-summary,
+    .admin-change-reasons-page details[open] > .admin-primary-summary,
+    .admin-currency-page details[open] > .admin-primary-summary,
+    .admin-users-page details[open] > .admin-primary-summary {{ border-color: #1d4ed8; background: #1d4ed8; color: #fff; }}
+    .admin-naming-page .admin-primary-summary::after, .admin-naming-page details[open] > .admin-primary-summary::after,
+    .admin-change-reasons-page .admin-primary-summary::after, .admin-change-reasons-page details[open] > .admin-primary-summary::after,
+    .admin-currency-page .admin-primary-summary::after, .admin-currency-page details[open] > .admin-primary-summary::after,
+    .admin-users-page .admin-primary-summary::after, .admin-users-page details[open] > .admin-primary-summary::after {{ content: none; }}
+    .admin-users-page .user-create-card {{ width: fit-content; max-width: 100%; }}
+    .admin-users-page .user-create-card[open] {{ width: min(860px, 100%); }}
+    .admin-users-page .user-dialog {{ display: flex; flex-direction: column; width: min(860px, calc(100vw - 48px)); max-height: min(760px, calc(100vh - 72px)); margin: 0; overflow: hidden; border-radius: 16px; background: var(--surface); }}
+    .admin-users-page .user-dialog-header {{ padding: 16px 20px; border-bottom: 1px solid var(--border); background: var(--surface); }}
+    .admin-users-page .user-dialog-header h2 {{ margin: 0 0 4px; font-size: 20px; }}
+    .admin-users-page .user-dialog-body {{ display: grid; gap: 16px; padding: 18px 20px; overflow: auto; }}
+    .admin-users-page .user-dialog-section {{ display: grid; gap: 10px; }}
+    .admin-users-page .user-dialog-section-title {{ margin: 0; color: var(--text-strong); font-size: 13px; font-weight: 820; text-transform: uppercase; letter-spacing: .04em; }}
+    .admin-users-page .user-dialog-grid {{ display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 14px; }}
+    .admin-users-page .user-dialog-grid label {{ min-width: 0; margin: 0; }}
+    .admin-users-page .user-dialog-grid input, .admin-users-page .user-dialog-grid select {{ width: 100%; box-sizing: border-box; }}
+    .admin-users-page .user-dialog-checkbox {{ display: inline-flex; align-items: center; gap: 8px; min-height: 34px; margin: 0; font-weight: 650; }}
+    .admin-users-page .user-dialog-checkbox input {{ flex: 0 0 auto; width: 16px; height: 16px; min-height: 16px; margin: 0; accent-color: var(--accent); }}
+    .admin-users-page .user-permissions-section fieldset {{ min-width: 0; margin: 0; padding: 0; border: 0; }}
+    .admin-users-page .user-permissions-section legend {{ position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }}
+    .admin-users-page .user-permissions-section table {{ min-width: 620px; margin: 0; }}
+    .admin-users-page .user-permissions-scroll {{ max-height: 300px; overflow: auto; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }}
+    .admin-users-page .user-permissions-scroll + .muted, .admin-users-page .user-permissions-section fieldset > .muted {{ margin: 8px 0 0; }}
+    .admin-users-page .user-dialog-footer {{ display: flex; justify-content: flex-start; gap: 8px; width: 100%; padding: 14px 20px; border-top: 1px solid var(--border); background: #f1f5f9; box-sizing: border-box; }}
+    .admin-users-page .user-dialog-footer .modal-save {{ background: #2563eb; border-color: #2563eb; color: #fff; }}
+    .admin-users-page .user-dialog-footer .modal-save:hover {{ background: #1d4ed8; border-color: #1d4ed8; color: #fff; }}
+    @media (max-width: 760px) {{ .admin-users-page .user-dialog-grid {{ grid-template-columns: 1fr; }} .admin-users-page .user-dialog {{ width: calc(100vw - 28px); }} }}
+
     .hero-action {{ background: var(--accent-strong); border-color: var(--accent-strong); color: #fff; white-space: nowrap; }}
     .hero-action:hover {{ background: var(--accent); border-color: var(--accent); color: #fff; }}
     .metrics-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; margin: 0 0 18px; }}
@@ -8631,25 +8671,47 @@ def users_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
     </details>
   </td>
 </tr>""")
-    create_html = f"""<form class='form-grid' method='post' action='/admin/users/create'>
-<label>Логин <span class='required'>*</span><input name='username' placeholder='operator2' required></label>
-<label>Email <input name='email' type='email' placeholder='user@example.com'></label>
-<label>Отображаемое имя <span class='required'>*</span><input name='display_name' placeholder='Оператор' required></label>
-<label>Роль <select name='role_key'>{role_options('operator')}</select></label>
-<label>Временный пароль <span class='required'>*</span><input name='password' type='password' minlength='6' required autocomplete='new-password'></label>
-<label>Повторите пароль <span class='required'>*</span><input name='password_confirm' type='password' minlength='6' required autocomplete='new-password'></label>
-<label class='checkbox-inline'><input type='checkbox' name='must_change_password' value='1' checked> Требовать смену пароля при первом входе</label>
-{permission_matrix_form(repo)}
-<button>Создать</button></form>"""
+    create_permissions_html = permission_matrix_form(repo).replace("<table>", "<div class='user-permissions-scroll'><table>", 1).replace("</table><p", "</table></div><p", 1)
+    create_html = f"""<form class='user-dialog' method='post' action='/admin/users/create'>
+  <div class='user-dialog-header'>
+    <h2>Создать пользователя</h2>
+    <p class='muted'>Заполните учётные данные и индивидуальные права доступа.</p>
+  </div>
+  <div class='user-dialog-body'>
+    <section class='user-dialog-section'>
+      <h3 class='user-dialog-section-title'>Основные данные</h3>
+      <div class='user-dialog-grid'>
+        <label>Логин <span class='required'>*</span><input name='username' placeholder='operator2' required></label>
+        <label>Email <input name='email' type='email' placeholder='user@example.com'></label>
+        <label>Отображаемое имя <span class='required'>*</span><input name='display_name' placeholder='Оператор' required></label>
+        <label>Роль <select name='role_key'>{role_options('operator')}</select></label>
+      </div>
+    </section>
+    <section class='user-dialog-section'>
+      <h3 class='user-dialog-section-title'>Пароль</h3>
+      <div class='user-dialog-grid'>
+        <label>Временный пароль <span class='required'>*</span><input name='password' type='password' minlength='6' required autocomplete='new-password'></label>
+        <label>Повторите пароль <span class='required'>*</span><input name='password_confirm' type='password' minlength='6' required autocomplete='new-password'></label>
+        <label class='user-dialog-checkbox'><input type='checkbox' name='must_change_password' value='1' checked> <span>Требовать смену пароля при первом входе</span></label>
+        <span aria-hidden='true'></span>
+      </div>
+    </section>
+    <section class='user-dialog-section user-permissions-section'>
+      <h3 class='user-dialog-section-title'>Права доступа</h3>
+      {create_permissions_html}
+    </section>
+  </div>
+  <div class='user-dialog-footer'><button type='submit' class='modal-save'>Создать</button><button type='button' class='modal-cancel' data-modal-close>Отмена</button></div>
+</form>"""
     table_html = f"<table><thead><tr><th>ID</th><th>Логин</th><th>Отображаемое имя</th><th>Email</th><th>Роль</th><th>Активен</th><th>Смена пароля</th><th>Создан</th><th>Обновлён</th><th data-col='actions'>Действия</th></tr></thead><tbody>{''.join(rows)}</tbody></table>"
     body = f"""
 <h1>Пользователи</h1>
 {f"<div class='notice ok'>{esc(q.get('notice'))}</div>" if q.get('notice') else ""}
 <p class='muted'>Пользователи входят по логину и паролю. Права доступа берутся из индивидуальной матрицы; если она не заполнена, применяются права роли по умолчанию.</p>
-{form_card('+ Создать пользователя', create_html)}
+{form_card('+ Создать пользователя', create_html, extra_class='user-create-card', summary_class='admin-primary-summary')}
 {table_card(table_html)}
 {table_footer(f"<nav class='pagination table-status-nav' aria-label='Статус таблицы'><span class='table-status-summary'><span class='table-status-item'>Всего записей: {len(rows)}</span><span class='table-status-item table-selection-status' data-selected-count hidden>Выбрано: <strong>0</strong></span><span class='table-status-item'>Страница 1 из 1</span></span></nav>")}"""
-    return page("Пользователи", table_page_container(body))
+    return page("Пользователи", table_page_container(body, extra_class="admin-users-page"))
 
 def server_priorities_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
     q = q or {}
@@ -8908,8 +8970,8 @@ def naming_rules_page(repo: Repository) -> bytes:
         rows.append(f"<tr><td>{esc(rule['name'])}</td><td>{esc(rule['template'])}</td><td>{'Да' if rule['is_active'] else 'Нет'}</td><td>{esc(rule['comment'])}</td></tr>")
     create_html = f"""<form class="form-grid" method="post" action="/admin/naming-rules/create"><label>Название <span class="required">*</span><input name="name"></label><label>Шаблон <span class="required">*</span><input name="template" value="{{country}}/{{project_label}}/{{provider}}/{{cli_source_label}}@" size="70"></label><label class="checkbox-inline"><input type="checkbox" name="is_active" value="1"> Активно</label><label>Тип номера <input name="phone_type"></label><label>Тариф <input name="tariff_label"></label><label>Комментарий <input name="comment"></label><button>Сохранить</button></form>"""
     table_html = f"<table><thead><tr><th>Название</th><th>Шаблон</th><th>Активен</th><th>Комментарий</th></tr></thead><tbody>{''.join(rows)}</tbody></table>"
-    body = f"""<h1>Администрирование → Правила нейминга маршрутов</h1><p class="muted">Пока без изменений: изменение шаблона не переименовывает существующие маршруты автоматически.</p>{form_card('Добавить правило', create_html)}{table_card(table_html)}"""
-    return page("Правила нейминга", body)
+    body = f"""<h1>Администрирование → Правила нейминга маршрутов</h1><p class="muted">Пока без изменений: изменение шаблона не переименовывает существующие маршруты автоматически.</p>{form_card('Добавить правило', create_html, summary_class='admin-primary-summary')}{table_card(table_html)}"""
+    return page("Правила нейминга", table_page_container(body, extra_class="admin-naming-page"))
 
 
 def import_page(repo: Repository, preview_html: str = "", *, selected_entity: str = "routes", selected_mode: str = "append_update", csv_data: str = "") -> bytes:
@@ -8968,10 +9030,10 @@ def currency_rates_page(repo: Repository) -> bytes:
 <div class="modal-actions currency-rate-actions"><button type="submit" class="modal-save">Применить</button><button type="button" class="modal-cancel" data-modal-close>Отмена</button></div></form>"""
     table_html = f"<table><thead><tr><th>Валюта</th><th>Курс к EUR</th><th>Дата курса</th></tr></thead><tbody>{''.join(rows)}</tbody></table>"
     body = f"""<h1>Администрирование → Курсы валют</h1>
-{form_card('Обновить курс', create_html, open_by_default=True)}
+{form_card('Обновить курс', create_html, open_by_default=True, summary_class='admin-primary-summary')}
 <p class="muted">Формула: Цена EUR = Цена провайдера × Курс к EUR.</p>
 {table_card(table_html)}"""
-    return page("Курсы валют", body)
+    return page("Курсы валют", table_page_container(body, extra_class="admin-currency-page"))
 
 
 def change_reasons_page(repo: Repository) -> bytes:
@@ -8980,7 +9042,7 @@ def change_reasons_page(repo: Repository) -> bytes:
         rows.append(f"""<tr><td>{esc(reason['name'])}</td><td>{'Да' if reason['is_active'] else 'Нет'}</td><td>{esc(reason['description'])}</td><td data-col='actions'><details class='edit-details'><summary title='Редактировать' aria-label='Редактировать'>Редактировать</summary><form method='post' action='/admin/change-reasons/{reason['id']}/update'><label>Название <input name='name' value='{esc(reason['name'])}'></label><label>Активна <select name='is_active'><option value='1' {'selected' if reason['is_active'] else ''}>Да</option><option value='0' {'selected' if not reason['is_active'] else ''}>Нет</option></select></label><label>Комментарий <input name='comment' value='{esc(reason['description'])}'></label><button>Сохранить</button></form></details></td></tr>""")
     create_html = "<form class='form-grid' method='post' action='/admin/change-reasons/create'><label>Название причины <span class='required'>*</span><input name='name'></label><label>Активна <select name='is_active'><option value='1'>Да</option><option value='0'>Нет</option></select></label><label>Комментарий <input name='comment'></label><button>Сохранить</button></form>"
     table_html = f"<table><thead><tr><th>Название причины</th><th>Активна</th><th>Комментарий</th><th data-col='actions'>Действия</th></tr></thead><tbody>{''.join(rows)}</tbody></table>"
-    return page("Причины смены провайдера", f"<h1>Администрирование → Причины смены провайдера</h1>{form_card('Добавить причину', create_html)}{table_card(table_html)}")
+    return page("Причины смены провайдера", table_page_container(f"<h1>Администрирование → Причины смены провайдера</h1>{form_card('Добавить причину', create_html, summary_class='admin-primary-summary')}{table_card(table_html)}", extra_class="admin-change-reasons-page"))
 
 
 def dictionaries_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
