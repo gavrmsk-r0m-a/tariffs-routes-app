@@ -1093,6 +1093,9 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .dictionary-add {{ margin: 0; box-shadow: var(--shadow-soft); }}
     .dictionary-add .form-grid {{ grid-template-columns: repeat(auto-fit, minmax(170px, 260px)); }}
     .dictionary-add input, .dictionary-add select {{ width: 100%; box-sizing: border-box; }}
+    .dictionary-workspace .dictionary-mass-confirm {{ display: flex; align-items: flex-start; gap: 8px; margin-top: 8px; font-weight: 700; line-height: 1.35; white-space: normal; }}
+    .dictionary-workspace .dictionary-mass-confirm input[type="checkbox"] {{ flex: 0 0 auto; width: 14px !important; min-width: 14px; max-width: 14px; height: 14px; min-height: 14px; margin: 2px 0 0; padding: 0; box-sizing: border-box; }}
+    .dictionary-workspace .dictionary-mass-confirm span {{ min-width: 0; }}
     .dictionary-add .dictionary-add-submit {{ background: #2563eb; border-color: #2563eb; color: #fff; }}
     .dictionary-add .dictionary-add-submit:hover, .dictionary-add .dictionary-add-submit:focus-visible {{ background: #1d4ed8; border-color: #1d4ed8; color: #fff; }}
     .dictionary-add .dictionary-add-submit:active {{ background: #1e40af; border-color: #1e40af; color: #fff; }}
@@ -9183,7 +9186,7 @@ def dictionaries_page(repo: Repository, q: dict[str, str] | None = None) -> byte
         return f"""<fieldset class='safe-rename-block'><legend>Что сделать со связанными записями?</legend>
 <label class='safe-rename-option'><input type='radio' name='rename_mode' value='dictionary_only' checked><span class='safe-rename-indicator' aria-hidden='true'></span><span><strong>Только переименовать справочник</strong><span class='muted'>Новые записи будут использовать новое название. Уже связанные записи сохранят текущее отображаемое значение.</span></span></label>
 <label class='safe-rename-option'><input type='radio' name='rename_mode' value='update_linked'><span class='safe-rename-indicator' aria-hidden='true'></span><span><strong>Переименовать справочник и обновить связанные записи</strong><span class='muted'>Все связанные записи будут показывать новое название. Используйте для исправления опечаток или неправильных названий.</span></span></label>
-<div class='notice warning'><strong>Preview массового обновления:</strong><ul>{count_items}</ul><label><input type='checkbox' name='confirm_update_linked' value='1'> Подтверждаю обновление связанных записей, если выбран массовый режим.</label></div>
+<div class='notice warning'><strong>Preview массового обновления:</strong><ul>{count_items}</ul><label class='dictionary-mass-confirm'><input type='checkbox' name='confirm_update_linked' value='1'><span>Подтверждаю обновление связанных записей, если выбран массовый режим.</span></label></div>
 </fieldset>"""
 
     def add_form(section: str) -> str:
