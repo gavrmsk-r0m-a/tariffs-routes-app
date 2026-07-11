@@ -3055,6 +3055,42 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .tariffs-page .hlr-like-column-panel .column-settings-row {{ display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 6px; padding: 6px; border: 1px solid var(--border); border-radius: var(--radius-small); background: var(--surface-muted); }}
     .tariffs-page .hlr-like-column-panel .column-settings-row label {{ display: flex; align-items: center; gap: 7px; min-width: 0; margin: 0; font-weight: 650; }}
     .tariffs-page .hlr-like-column-panel .column-order-button {{ min-width: 32px; padding: 3px 7px; box-shadow: none; }}
+
+
+    /* Phones page UI: align create modal and table actions with HLR/routes/tariffs. */
+    .phones-page .phone-create-shell {{ width: auto; max-width: max-content; margin: 0 0 10px auto; border: 0; background: transparent; box-shadow: none; overflow: visible; }}
+    .phones-page .phone-primary-summary {{ display: inline-flex; align-items: center; justify-content: center; width: max-content; min-height: 36px; box-sizing: border-box; margin: 0; padding: 8px 14px; border: 1px solid #2563eb !important; border-radius: var(--radius-control); background: #2563eb !important; color: #fff !important; box-shadow: 0 4px 12px rgba(37, 99, 235, .18); font-size: 13px; font-weight: 820; letter-spacing: .01em; text-transform: uppercase; transition: background-color 140ms ease, border-color 140ms ease, box-shadow 140ms ease, color 140ms ease; }}
+    .phones-page .phone-primary-summary::after, .phones-page .phone-create-shell[open] > .phone-primary-summary::after {{ content: none !important; }}
+    .phones-page .phone-primary-summary:hover {{ border-color: #1d4ed8 !important; background: #1d4ed8 !important; color: #fff !important; }}
+    .phones-page .phone-primary-summary:focus-visible {{ outline: none; border-color: #1d4ed8 !important; background: #2563eb !important; color: #fff !important; box-shadow: 0 0 0 3px rgba(37, 99, 235, .22); }}
+    .phones-page .phone-primary-summary:active, .phones-page .phone-create-shell[open] > .phone-primary-summary {{ border-color: #1e40af !important; background: #1e40af !important; color: #fff !important; }}
+    .phones-page .table-footer-tools {{ align-items: center; justify-content: flex-end; gap: 8px; }}
+    .phones-page .table-footer-tools .column-settings {{ order: 1; }}
+    .phones-page .table-footer-tools .export-button {{ order: 2; min-width: auto; width: auto; min-height: 31px; padding: 5px 11px; border-color: var(--accent-strong); background: var(--accent); color: #fff; font-size: 12px; font-weight: 750; }}
+    .phones-page .table-footer-tools .export-button:hover {{ border-color: var(--accent-hover); background: var(--accent-hover); color: #fff; }}
+    .phones-page .hlr-like-column-panel {{ width: min(420px, 88vw); max-height: min(430px, 70vh); padding: 10px; border-radius: var(--radius-card); gap: 8px; overflow: hidden; }}
+    .phones-page .hlr-like-column-panel .column-settings-panel-actions {{ display: flex; align-items: center; justify-content: space-between; gap: 8px; }}
+    .phones-page .hlr-like-column-panel .column-settings-list {{ display: grid; gap: 6px; max-height: min(340px, 56vh); overflow: auto; overscroll-behavior: contain; padding-right: 2px; }}
+    .phones-page .hlr-like-column-panel .column-settings-row {{ display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 6px; padding: 6px; border: 1px solid var(--border); border-radius: var(--radius-small); background: var(--surface-muted); }}
+    .phones-page .hlr-like-column-panel .column-settings-row label {{ display: flex; align-items: center; gap: 7px; min-width: 0; margin: 0; font-weight: 650; }}
+    .phones-page .hlr-like-column-panel .column-order-button {{ min-width: 32px; padding: 3px 7px; box-shadow: none; }}
+    .modal-form-card[open] > form.phone-dialog, .phone-dialog.phone-dialog {{ position: fixed; left: 50%; top: 50%; z-index: 990; width: min(560px, calc(100vw - 48px)); max-width: calc(100vw - 48px); max-height: min(780px, calc(100vh - 48px)); margin: 0; padding: 0; transform: translate(-50%, -50%); display: grid; grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr) auto; gap: 0; overflow: hidden; border: 1px solid var(--border-strong); border-radius: 14px; background: #fff; color: var(--text); box-shadow: 0 22px 62px rgba(15, 23, 42, .22); box-sizing: border-box; }}
+    .phone-dialog-header {{ grid-column: 1 / -1; width: 100%; box-sizing: border-box; margin: 0; padding: 12px 20px 10px; border-bottom: 1px solid var(--border-strong); background: linear-gradient(180deg, #fff 0%, #f8fafc 100%); }}
+    .phone-dialog-header h2 {{ margin: 0; color: var(--text-strong); font-size: 17px; font-weight: 860; line-height: 1.16; }}
+    .phone-dialog-body {{ min-height: 0; overflow-y: auto; overflow-x: hidden; scrollbar-gutter: stable; }}
+    .phone-dialog-section {{ display: grid; gap: 8px; min-width: 0; margin: 0; padding: 10px 20px 12px; border: 0; border-bottom: 1px solid #e5edf7; background: #fff; }}
+    .phone-dialog-section h3 {{ margin: 0; color: #1e3a5f; font-size: 11.5px; font-weight: 850; line-height: 1.15; letter-spacing: .03em; text-transform: uppercase; }}
+    .phone-dialog-grid {{ display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px 12px; align-items: start; }}
+    .phone-dialog label {{ display: block; min-width: 0; margin: 0; color: var(--text); font-size: 11.5px; font-weight: 740; line-height: 1.2; }}
+    .phone-dialog input, .phone-dialog select, .phone-dialog textarea {{ display: block; width: 100%; min-height: 33px; box-sizing: border-box; margin-top: 3px; padding-top: 6px; padding-bottom: 6px; font-size: 13px; line-height: 1.25; }}
+    .phone-dialog .phone-dialog-full {{ grid-column: 1 / -1; }}
+    .phone-dialog-footer {{ display: flex; justify-content: flex-start; align-items: center; gap: 10px; grid-column: 1 / -1; width: 100%; box-sizing: border-box; margin: 0; padding: 10px 20px; border-top: 1px solid var(--border-strong); background: #eef5ff; }}
+    .phone-dialog-footer button {{ min-height: 32px; padding-top: 6px; padding-bottom: 6px; }}
+    .phone-dialog-footer .modal-save {{ order: 1; border-color: #2563eb; background: #2563eb; color: #fff; }}
+    .phone-dialog-footer .modal-save:hover {{ border-color: #1d4ed8; background: #1d4ed8; color: #fff; }}
+    .phone-dialog-footer .modal-cancel {{ order: 2; }}
+    @media (max-width: 720px) {{ .modal-form-card[open] > form.phone-dialog, .phone-dialog.phone-dialog {{ width: calc(100vw - 18px); max-width: calc(100vw - 18px); max-height: calc(100vh - 18px); }} .phone-dialog-grid {{ grid-template-columns: 1fr; }} .phone-dialog-section, .phone-dialog-header, .phone-dialog-footer {{ padding-left: 16px; padding-right: 16px; }} }}
+
     .modal-form-card[open] > form.tariff-dialog, .tariff-dialog.tariff-dialog {{ position: fixed; left: 50%; top: 50%; z-index: 990; width: min(520px, calc(100vw - 48px)); max-width: calc(100vw - 48px); max-height: min(680px, calc(100vh - 48px)); margin: 0; padding: 0; transform: translate(-50%, -50%); display: grid; grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr) auto; gap: 0; overflow: hidden; border: 1px solid var(--border-strong); border-radius: 14px; background: #fff; color: var(--text); box-shadow: 0 22px 62px rgba(15, 23, 42, .22); box-sizing: border-box; }}
     .tariff-dialog.tariff-dialog-page-form {{ position: relative; left: auto; top: auto; transform: none; z-index: auto; margin: 0 0 16px; }}
     .tariff-dialog-header {{ grid-column: 1 / -1; width: 100%; box-sizing: border-box; margin: 0; padding: 12px 20px 10px; border-bottom: 1px solid var(--border-strong); background: linear-gradient(180deg, #fff 0%, #f8fafc 100%); }}
@@ -3405,7 +3441,7 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     }});
     function enhanceModalForm(form, closeCallback) {{
       if (!form || form.dataset.modalEnhanced === "1") return;
-      if (form.classList.contains("route-dialog-form") || form.classList.contains("tariff-dialog-form")) {{
+      if (form.classList.contains("route-dialog-form") || form.classList.contains("tariff-dialog-form") || form.classList.contains("phone-dialog-form")) {{
         form.dataset.modalEnhanced = "1";
         form.querySelectorAll("[data-modal-close]").forEach((button) => button.addEventListener("click", closeCallback));
         return;
@@ -7355,16 +7391,37 @@ def phones_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
 <label>Рабочий статус <select name="status">{phone_status_options(q.get('status'), empty='Все')}</select></label>
 <label>Поиск по номеру <input name="number" value="{esc(q.get('number'))}"></label>
 <label class="checkbox-inline"><input type="checkbox" name="review_required" value="1" {'checked' if q.get('review_required') == '1' else ''}> Требует проверки</label><button>Найти</button></form>"""
-    create_html = f"""<form class="form-grid" method="post" action="/phones/create">
-<label>Номер <span class="required">*</span><input name="number" placeholder="393331234567"></label><label>ГЕО <span class="required">*</span><select name="country_id">{active_options(repo, 'countries')}</select></label><label>Провайдер <span class="required">*</span><select name="provider_id"><option value="">—</option>{active_options(repo, 'providers')}</select></label><label>Проект <select name="project_label">{project_options(repo, empty='—')}</select></label><label>Назначение <span class="required">*</span><select name="assignment_type">{assignment_options(repo)}</select></label><label>Рабочий статус <span class="required">*</span><select name="status">{phone_status_options('unknown')}</select></label><label>Стоимость подключения <input name="connection_cost"></label><label>Абонентская плата <input name="monthly_fee"></label><label>Валюта <select name="currency_id"><option value="">—</option>{active_options(repo, 'currencies', 'code')}</select></label><label>Тип номера <select name="phone_type">{phone_type_options(repo, empty='—')}</select></label><label>Тариф <input name="tariff_label"></label><label>Комментарий <input name="comment"></label><button>Сохранить</button></form>"""
+    create_html = f"""<form class="phone-dialog phone-dialog-form" method="post" action="/phones/create">
+  <header class="phone-dialog-header"><h2>Добавить номер</h2></header>
+  <div class="phone-dialog-body">
+    <section class="phone-dialog-section"><h3>Основные параметры</h3><div class="phone-dialog-grid">
+      <label>Номер <span class="required">*</span><input name="number" placeholder="393331234567"></label>
+      <label>ГЕО <span class="required">*</span><select name="country_id">{active_options(repo, 'countries')}</select></label>
+      <label>Провайдер <span class="required">*</span><select name="provider_id"><option value="">—</option>{active_options(repo, 'providers')}</select></label>
+      <label>Проект <select name="project_label">{project_options(repo, empty='—')}</select></label>
+      <label>Назначение <span class="required">*</span><select name="assignment_type">{assignment_options(repo)}</select></label>
+      <label>Рабочий статус <span class="required">*</span><select name="status">{phone_status_options('unknown')}</select></label>
+    </div></section>
+    <section class="phone-dialog-section"><h3>Стоимость и тариф</h3><div class="phone-dialog-grid">
+      <label>Стоимость подключения <input name="connection_cost"></label>
+      <label>Абонентская плата <input name="monthly_fee"></label>
+      <label>Валюта <select name="currency_id"><option value="">—</option>{active_options(repo, 'currencies', 'code')}</select></label>
+      <label>Тип номера <select name="phone_type">{phone_type_options(repo, empty='—')}</select></label>
+      <label class="phone-dialog-full">Тариф <input name="tariff_label"></label>
+    </div></section>
+    <section class="phone-dialog-section"><h3>Описание</h3><div class="phone-dialog-grid">
+      <label class="phone-dialog-full">Комментарий <input name="comment"></label>
+    </div></section>
+  </div>
+  <footer class="phone-dialog-footer"><button type="submit" class="modal-save">Сохранить</button><button type="button" class="modal-cancel" data-modal-close>Отмена</button></footer>
+</form>"""
     table_html = f"{data_table('phones', [('number', f"<span class='copyable-header'>Номер {copy_column_button('phone-number')}</span>"), ('geo', 'ГЕО'), ('provider', 'Провайдер'), ('project', 'Проект'), ('assignment', 'Назначение'), ('status', 'Рабочий статус'), ('active', 'Активен у провайдера'), ('routes', 'Маршруты'), ('connection', 'Подключение'), ('monthly', 'Абонплата'), ('currency', 'Валюта'), ('phone_type', 'Тип номера'), ('tariff', 'Тариф'), ('created', 'Дата создания'), ('updated', 'Дата изменения'), ('deactivated', 'Дата отключения'), ('comment', 'Комментарий'), ('history', 'Ист.'), ('actions', 'Действия')], ''.join(rows))}"
     body = f"""
-<h1>Купленные номера</h1>
 {filter_card(filters_html, q, ('country_id', 'provider_id', 'project', 'assignment_type', 'status', 'number', 'review_required'))}
-{form_card('+ Добавить номер <span class="muted">Admin</span>', create_html) if can_write("phones") else ""}
+{form_card('+ Добавить номер', create_html, extra_class='phone-create-shell', summary_class='phone-primary-summary') if can_write("phones") else ""}
 {table_card(table_html)}
-{table_footer(pagination_html, export_link('/phones', q) + column_settings('phones', [('number', 'Номер'), ('geo', 'ГЕО'), ('provider', 'Провайдер'), ('project', 'Проект'), ('assignment', 'Назначение'), ('status', 'Рабочий статус'), ('active', 'Активен у провайдера'), ('routes', 'Маршруты'), ('connection', 'Подключение'), ('monthly', 'Абонплата'), ('currency', 'Валюта'), ('phone_type', 'Тип номера'), ('tariff', 'Тариф'), ('created', 'Дата создания'), ('updated', 'Дата изменения'), ('deactivated', 'Дата отключения'), ('comment', 'Комментарий'), ('actions', 'Действия')]))}"""
-    return page("Купленные номера", table_page_container(body))
+{table_footer(pagination_html, column_settings('phones', [('number', 'Номер'), ('geo', 'ГЕО'), ('provider', 'Провайдер'), ('project', 'Проект'), ('assignment', 'Назначение'), ('status', 'Рабочий статус'), ('active', 'Активен у провайдера'), ('routes', 'Маршруты'), ('connection', 'Подключение'), ('monthly', 'Абонплата'), ('currency', 'Валюта'), ('phone_type', 'Тип номера'), ('tariff', 'Тариф'), ('created', 'Дата создания'), ('updated', 'Дата изменения'), ('deactivated', 'Дата отключения'), ('comment', 'Комментарий'), ('actions', 'Действия')], hlr_style=True) + export_link('/phones', q, text=True))}"""
+    return page("Купленные номера", table_page_container(body, extra_class="phones-page"))
 
 
 def companies_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
