@@ -1098,21 +1098,24 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
 
 
     .admin-naming-page .admin-primary-summary,
+    .admin-naming-page .admin-naming-primary-summary,
     .admin-change-reasons-page .admin-primary-summary,
+    .admin-change-reasons-page .admin-reason-primary-summary,
     .admin-currency-page .admin-primary-summary,
-    .admin-users-page .admin-primary-summary {{ justify-content: center; width: fit-content; min-width: 0; border-color: #2563eb; background: #2563eb; color: #fff; box-shadow: 0 8px 18px rgba(37, 99, 235, .18); }}
-    .admin-naming-page .admin-primary-summary:hover, .admin-naming-page .admin-primary-summary:focus,
-    .admin-change-reasons-page .admin-primary-summary:hover, .admin-change-reasons-page .admin-primary-summary:focus,
+    .admin-users-page .admin-primary-summary,
+    .admin-users-page .admin-user-primary-summary {{ justify-content: center; width: fit-content; min-width: 0; border-color: #2563eb; background: #2563eb; color: #fff; box-shadow: 0 8px 18px rgba(37, 99, 235, .18); }}
+    .admin-naming-page .admin-primary-summary:hover, .admin-naming-page .admin-primary-summary:focus, .admin-naming-page .admin-naming-primary-summary:hover, .admin-naming-page .admin-naming-primary-summary:focus,
+    .admin-change-reasons-page .admin-primary-summary:hover, .admin-change-reasons-page .admin-primary-summary:focus, .admin-change-reasons-page .admin-reason-primary-summary:hover, .admin-change-reasons-page .admin-reason-primary-summary:focus,
     .admin-currency-page .admin-primary-summary:hover, .admin-currency-page .admin-primary-summary:focus,
-    .admin-users-page .admin-primary-summary:hover, .admin-users-page .admin-primary-summary:focus,
-    .admin-naming-page details[open] > .admin-primary-summary,
-    .admin-change-reasons-page details[open] > .admin-primary-summary,
+    .admin-users-page .admin-primary-summary:hover, .admin-users-page .admin-primary-summary:focus, .admin-users-page .admin-user-primary-summary:hover, .admin-users-page .admin-user-primary-summary:focus,
+    .admin-naming-page details[open] > .admin-primary-summary, .admin-naming-page details[open] > .admin-naming-primary-summary,
+    .admin-change-reasons-page details[open] > .admin-primary-summary, .admin-change-reasons-page details[open] > .admin-reason-primary-summary,
     .admin-currency-page details[open] > .admin-primary-summary,
-    .admin-users-page details[open] > .admin-primary-summary {{ border-color: #1d4ed8; background: #1d4ed8; color: #fff; }}
-    .admin-naming-page .admin-primary-summary::after, .admin-naming-page details[open] > .admin-primary-summary::after,
-    .admin-change-reasons-page .admin-primary-summary::after, .admin-change-reasons-page details[open] > .admin-primary-summary::after,
+    .admin-users-page details[open] > .admin-primary-summary, .admin-users-page details[open] > .admin-user-primary-summary {{ border-color: #1d4ed8; background: #1d4ed8; color: #fff; }}
+    .admin-naming-page .admin-primary-summary::after, .admin-naming-page details[open] > .admin-primary-summary::after, .admin-naming-page .admin-naming-primary-summary::after, .admin-naming-page details[open] > .admin-naming-primary-summary::after,
+    .admin-change-reasons-page .admin-primary-summary::after, .admin-change-reasons-page details[open] > .admin-primary-summary::after, .admin-change-reasons-page .admin-reason-primary-summary::after, .admin-change-reasons-page details[open] > .admin-reason-primary-summary::after,
     .admin-currency-page .admin-primary-summary::after, .admin-currency-page details[open] > .admin-primary-summary::after,
-    .admin-users-page .admin-primary-summary::after, .admin-users-page details[open] > .admin-primary-summary::after {{ content: none; }}
+    .admin-users-page .admin-primary-summary::after, .admin-users-page details[open] > .admin-primary-summary::after, .admin-users-page .admin-user-primary-summary::after, .admin-users-page details[open] > .admin-user-primary-summary::after {{ content: none; }}
     .admin-users-page .user-create-card {{ width: fit-content; max-width: 100%; }}
     .admin-users-page .user-create-card[open] {{ width: min(860px, 100%); }}
     .admin-users-page .user-dialog {{ display: flex; flex-direction: column; width: min(860px, calc(100vw - 48px)); max-height: min(760px, calc(100vh - 72px)); margin: 0; overflow: hidden; border-radius: 16px; background: var(--surface); }}
@@ -3259,6 +3262,48 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .route-dialog-footer .modal-save:hover {{ border-color: #1d4ed8; background: #1d4ed8; color: #fff; }}
     .route-dialog-footer .modal-cancel {{ order: 2; }}
     @media (max-width: 720px) {{ .modal-form-card[open] > form.route-dialog, .route-dialog.route-dialog {{ width: calc(100vw - 18px); max-width: calc(100vw - 18px); max-height: calc(100vh - 18px); }} .route-dialog-grid {{ grid-template-columns: 1fr; }} .route-dialog-section, .route-dialog-header, .route-dialog-footer {{ padding-left: 16px; padding-right: 16px; }} }}
+
+    .modal-form-card[open] > form.naming-dialog, .naming-dialog.naming-dialog,
+    .modal-form-card[open] > form.reason-dialog, .reason-dialog.reason-dialog {{ position: fixed; left: 50%; top: 50%; z-index: 990; width: min(720px, calc(100vw - 48px)); max-width: calc(100vw - 48px); max-height: min(620px, calc(100vh - 48px)); margin: 0; padding: 0; transform: translate(-50%, -50%); display: grid; grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr) auto; gap: 0; overflow: hidden; border: 1px solid var(--border-strong); border-radius: 14px; background: #fff; color: var(--text); box-shadow: 0 22px 62px rgba(15, 23, 42, .22); box-sizing: border-box; }}
+    .naming-dialog-header, .reason-dialog-header {{ grid-column: 1 / -1; width: 100%; box-sizing: border-box; margin: 0; padding: 14px 20px 12px; border-bottom: 1px solid var(--border-strong); background: linear-gradient(180deg, #fff 0%, #f8fafc 100%); }}
+    .naming-dialog-header h2, .reason-dialog-header h2 {{ margin: 0; color: var(--text-strong); font-size: 18px; font-weight: 860; line-height: 1.16; }}
+    .naming-dialog-body, .reason-dialog-body {{ min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 14px 20px 16px; scrollbar-gutter: stable; }}
+    .naming-dialog-grid, .reason-dialog-grid {{ display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 12px; align-items: start; }}
+    .naming-dialog-grid .naming-dialog-third {{ grid-column: span 1; }}
+    .naming-dialog label, .reason-dialog label {{ display: block; min-width: 0; margin: 0; color: var(--text); font-size: 12px; font-weight: 740; line-height: 1.2; }}
+    .naming-dialog input, .naming-dialog select, .naming-dialog textarea, .reason-dialog input, .reason-dialog select, .reason-dialog textarea {{ display: block; width: 100%; min-height: 34px; box-sizing: border-box; margin-top: 4px; padding-top: 6px; padding-bottom: 6px; font-size: 13px; line-height: 1.25; }}
+    .naming-dialog textarea, .reason-dialog textarea {{ resize: vertical; line-height: 1.35; }}
+    .naming-dialog-checkbox, .reason-dialog-checkbox {{ display: inline-flex !important; align-items: center; gap: 8px; min-height: 34px; margin-top: 18px !important; padding: 0; white-space: nowrap; }}
+    .naming-dialog-checkbox input, .reason-dialog-checkbox input {{ flex: 0 0 16px; width: 16px; height: 16px; min-height: 16px; margin: 0; accent-color: var(--accent); }}
+    .naming-dialog-full, .reason-dialog-full {{ grid-column: 1 / -1; }}
+    .naming-dialog-footer, .reason-dialog-footer {{ display: flex; justify-content: flex-start; align-items: center; gap: 10px; grid-column: 1 / -1; width: 100%; box-sizing: border-box; margin: 0; padding: 12px 20px; border-top: 1px solid var(--border-strong); background: #eef5ff; }}
+    .naming-dialog-footer .modal-save, .reason-dialog-footer .modal-save {{ order: 1; border-color: #2563eb; background: #2563eb; color: #fff; }}
+    .naming-dialog-footer .modal-save:hover, .reason-dialog-footer .modal-save:hover {{ border-color: #1d4ed8; background: #1d4ed8; color: #fff; }}
+    .naming-dialog-footer .modal-cancel, .reason-dialog-footer .modal-cancel {{ order: 2; }}
+
+    .modal-form-card[open] > form.user-dialog, .user-dialog.user-dialog {{ position: fixed; left: 50%; top: 50%; z-index: 990; width: min(860px, calc(100vw - 48px)); max-width: calc(100vw - 48px); max-height: calc(100vh - 48px); margin: 0; padding: 0; transform: translate(-50%, -50%); display: grid; grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr) auto; gap: 0; overflow: hidden; border: 1px solid var(--border-strong); border-radius: 14px; background: #fff; color: var(--text); box-shadow: 0 22px 62px rgba(15, 23, 42, .22); box-sizing: border-box; }}
+    .admin-users-page .user-dialog-header {{ grid-column: 1 / -1; width: 100%; box-sizing: border-box; margin: 0; padding: 14px 22px 12px; border-bottom: 1px solid var(--border-strong); background: linear-gradient(180deg, #fff 0%, #f8fafc 100%); }}
+    .admin-users-page .user-dialog-header h2 {{ margin: 0 0 4px; color: var(--text-strong); font-size: 19px; font-weight: 860; line-height: 1.16; }}
+    .admin-users-page .user-dialog-header .muted {{ margin: 0; }}
+    .admin-users-page .user-dialog-body {{ display: grid; gap: 14px; min-height: 0; padding: 16px 22px 18px; overflow-y: auto; overflow-x: hidden; scrollbar-gutter: stable; }}
+    .admin-users-page .user-dialog-section {{ display: grid; gap: 9px; min-width: 0; }}
+    .admin-users-page .user-dialog-section-title {{ margin: 0; color: #1e3a5f; font-size: 11.5px; font-weight: 850; line-height: 1.15; letter-spacing: .03em; text-transform: uppercase; }}
+    .admin-users-page .user-dialog-grid {{ display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 14px; align-items: start; }}
+    .admin-users-page .user-dialog-grid label {{ display: block; min-width: 0; margin: 0; color: var(--text); font-size: 12px; font-weight: 740; line-height: 1.2; }}
+    .admin-users-page .user-dialog-grid input, .admin-users-page .user-dialog-grid select {{ display: block; width: 100%; min-height: 34px; box-sizing: border-box; margin-top: 4px; padding-top: 6px; padding-bottom: 6px; font-size: 13px; line-height: 1.25; }}
+    .admin-users-page .user-dialog-checkbox {{ box-sizing: border-box; display: inline-flex !important; align-items: center; gap: 8px; min-height: 34px; margin: 0; padding: 7px 9px; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--input-bg, #fff); font-size: 12px; font-weight: 740; }}
+    .admin-users-page .user-dialog-checkbox input {{ flex: 0 0 16px; width: 16px; height: 16px; min-height: 16px; margin: 0; accent-color: var(--accent); }}
+    .admin-users-page .user-permissions-panel {{ min-width: 0; overflow: hidden; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }}
+    .admin-users-page .user-permissions-section fieldset {{ min-width: 0; margin: 0; padding: 0; border: 0; }}
+    .admin-users-page .user-permissions-section legend {{ position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }}
+    .admin-users-page .user-permissions-section table {{ min-width: 620px; margin: 0; }}
+    .admin-users-page .user-permissions-scroll {{ max-height: 260px; overflow: auto; border: 0; border-radius: 0; background: var(--surface); }}
+    .admin-users-page .user-permissions-scroll + .muted, .admin-users-page .user-permissions-section fieldset > .muted {{ margin: 8px 0 0; }}
+    .admin-users-page .user-dialog-footer {{ display: flex; justify-content: flex-start; align-items: center; gap: 10px; grid-column: 1 / -1; width: 100%; box-sizing: border-box; margin: 0; padding: 12px 22px; border-top: 1px solid var(--border-strong); background: #eef5ff; }}
+    .admin-users-page .user-dialog-footer .modal-save {{ order: 1; border-color: #2563eb; background: #2563eb; color: #fff; }}
+    .admin-users-page .user-dialog-footer .modal-save:hover {{ border-color: #1d4ed8; background: #1d4ed8; color: #fff; }}
+    .admin-users-page .user-dialog-footer .modal-cancel {{ order: 2; }}
+    @media (max-width: 720px) {{ .modal-form-card[open] > form.naming-dialog, .naming-dialog.naming-dialog, .modal-form-card[open] > form.reason-dialog, .reason-dialog.reason-dialog, .modal-form-card[open] > form.user-dialog, .user-dialog.user-dialog {{ width: calc(100vw - 18px); max-width: calc(100vw - 18px); max-height: calc(100vh - 18px); }} .naming-dialog-grid, .reason-dialog-grid, .admin-users-page .user-dialog-grid {{ grid-template-columns: 1fr; }} .naming-dialog-header, .naming-dialog-body, .naming-dialog-footer, .reason-dialog-header, .reason-dialog-body, .reason-dialog-footer, .admin-users-page .user-dialog-header, .admin-users-page .user-dialog-body, .admin-users-page .user-dialog-footer {{ padding-left: 16px; padding-right: 16px; }} }}
     html[data-theme="tele-route-pro"] .routes-page .table-footer-tools .export-button {{ width: auto; min-width: auto; padding: 5px 11px; border-color: var(--info); background: var(--info); color: #fff; }}
     html[data-theme="tele-route-pro"] .routes-page .route-create-shell > .form-summary {{ border-color: #2563eb; background: #2563eb; color: #fff; }}
     html[data-theme="tele-route-pro"] .routes-page .route-create-shell > .form-summary::after, html[data-theme="tele-route-pro"] .routes-page .route-create-shell[open] > .form-summary::after {{ content: none; }}
@@ -3308,6 +3353,27 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     html[data-theme="tele-route-pro"] .routes-page .route-primary-summary:focus-visible {{ border-color: #1d4ed8 !important; background: #2563eb !important; color: #fff !important; }}
     html[data-theme="tele-route-pro"] .routes-page .route-primary-summary:active, html[data-theme="tele-route-pro"] .routes-page .route-create-shell[open] > .route-primary-summary {{ border-color: #1e40af !important; background: #1e40af !important; color: #fff !important; }}
     html[data-theme="tele-route-pro"] .routes-page .route-primary-summary::after, html[data-theme="tele-route-pro"] .routes-page .route-create-shell[open] > .route-primary-summary::after {{ content: none !important; }}
+    html[data-theme="tele-route-pro"] .admin-naming-page .admin-naming-primary-summary,
+    html[data-theme="tele-route-pro"] .admin-change-reasons-page .admin-reason-primary-summary,
+    html[data-theme="tele-route-pro"] .admin-users-page .admin-user-primary-summary {{ border-color: #2563eb !important; background: #2563eb !important; color: #fff !important; }}
+    html[data-theme="tele-route-pro"] .admin-naming-page .admin-naming-primary-summary:hover,
+    html[data-theme="tele-route-pro"] .admin-change-reasons-page .admin-reason-primary-summary:hover,
+    html[data-theme="tele-route-pro"] .admin-users-page .admin-user-primary-summary:hover {{ border-color: #1d4ed8 !important; background: #1d4ed8 !important; color: #fff !important; }}
+    html[data-theme="tele-route-pro"] .admin-naming-page .admin-naming-primary-summary::after,
+    html[data-theme="tele-route-pro"] .admin-naming-page details[open] > .admin-naming-primary-summary::after,
+    html[data-theme="tele-route-pro"] .admin-change-reasons-page .admin-reason-primary-summary::after,
+    html[data-theme="tele-route-pro"] .admin-change-reasons-page details[open] > .admin-reason-primary-summary::after,
+    html[data-theme="tele-route-pro"] .admin-users-page .admin-user-primary-summary::after,
+    html[data-theme="tele-route-pro"] .admin-users-page details[open] > .admin-user-primary-summary::after {{ content: none !important; }}
+    html[data-theme="tele-route-pro"] .modal-form-card[open] > form.naming-dialog,
+    html[data-theme="tele-route-pro"] .modal-form-card[open] > form.reason-dialog,
+    html[data-theme="tele-route-pro"] .modal-form-card[open] > form.user-dialog {{ gap: 0; padding: 0; }}
+    html[data-theme="tele-route-pro"] .naming-dialog-footer .modal-save,
+    html[data-theme="tele-route-pro"] .reason-dialog-footer .modal-save,
+    html[data-theme="tele-route-pro"] .user-dialog-footer .modal-save {{ border-color: #2563eb; background: #2563eb; color: #fff; }}
+    html[data-theme="tele-route-pro"] .naming-dialog-footer .modal-save:hover,
+    html[data-theme="tele-route-pro"] .reason-dialog-footer .modal-save:hover,
+    html[data-theme="tele-route-pro"] .user-dialog-footer .modal-save:hover {{ border-color: #1d4ed8; background: #1d4ed8; color: #fff; }}
     html[data-theme="tele-route-pro"] .tariffs-page .table-footer-tools .export-button {{ width: auto; min-width: auto; padding: 5px 11px; border-color: var(--info); background: var(--info); color: #fff; }}
     html[data-theme="tele-route-pro"] .tariffs-page .tariff-primary-summary {{ border-color: #2563eb !important; background: #2563eb !important; color: #fff !important; }}
     html[data-theme="tele-route-pro"] .tariffs-page .tariff-primary-summary:hover {{ border-color: #1d4ed8 !important; background: #1d4ed8 !important; color: #fff !important; }}
@@ -8698,7 +8764,7 @@ def users_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
     </section>
     <section class='user-dialog-section user-permissions-section'>
       <h3 class='user-dialog-section-title'>Права доступа</h3>
-      {create_permissions_html}
+      <div class='user-permissions-panel'>{create_permissions_html}</div>
     </section>
   </div>
   <div class='user-dialog-footer'><button type='submit' class='modal-save'>Создать</button><button type='button' class='modal-cancel' data-modal-close>Отмена</button></div>
@@ -8708,7 +8774,7 @@ def users_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
 <h1>Пользователи</h1>
 {f"<div class='notice ok'>{esc(q.get('notice'))}</div>" if q.get('notice') else ""}
 <p class='muted'>Пользователи входят по логину и паролю. Права доступа берутся из индивидуальной матрицы; если она не заполнена, применяются права роли по умолчанию.</p>
-{form_card('+ Создать пользователя', create_html, extra_class='user-create-card', summary_class='admin-primary-summary')}
+{form_card('+ Создать пользователя', create_html, extra_class='user-create-card', summary_class='admin-user-primary-summary')}
 {table_card(table_html)}
 {table_footer(f"<nav class='pagination table-status-nav' aria-label='Статус таблицы'><span class='table-status-summary'><span class='table-status-item'>Всего записей: {len(rows)}</span><span class='table-status-item table-selection-status' data-selected-count hidden>Выбрано: <strong>0</strong></span><span class='table-status-item'>Страница 1 из 1</span></span></nav>")}"""
     return page("Пользователи", table_page_container(body, extra_class="admin-users-page"))
@@ -8968,9 +9034,22 @@ def naming_rules_page(repo: Repository) -> bytes:
     rows = []
     for rule in repo.conn.execute("SELECT * FROM route_naming_rules ORDER BY is_active DESC, name"):
         rows.append(f"<tr><td>{esc(rule['name'])}</td><td>{esc(rule['template'])}</td><td>{'Да' if rule['is_active'] else 'Нет'}</td><td>{esc(rule['comment'])}</td></tr>")
-    create_html = f"""<form class="form-grid" method="post" action="/admin/naming-rules/create"><label>Название <span class="required">*</span><input name="name"></label><label>Шаблон <span class="required">*</span><input name="template" value="{{country}}/{{project_label}}/{{provider}}/{{cli_source_label}}@" size="70"></label><label class="checkbox-inline"><input type="checkbox" name="is_active" value="1"> Активно</label><label>Тип номера <input name="phone_type"></label><label>Тариф <input name="tariff_label"></label><label>Комментарий <input name="comment"></label><button>Сохранить</button></form>"""
+    create_html = f"""<form class="naming-dialog" method="post" action="/admin/naming-rules/create">
+  <header class="naming-dialog-header"><h2>Добавить правило</h2></header>
+  <div class="naming-dialog-body">
+    <div class="naming-dialog-grid">
+      <label>Название <span class="required">*</span><input name="name"></label>
+      <label>Шаблон <span class="required">*</span><input name="template" value="{{country}}/{{project_label}}/{{provider}}/{{cli_source_label}}@" size="70"></label>
+      <label class="naming-dialog-third">Тип номера <input name="phone_type"></label>
+      <label class="naming-dialog-third">Тариф <input name="tariff_label"></label>
+      <label class="naming-dialog-checkbox"><input type="checkbox" name="is_active" value="1"> <span>Активно</span></label>
+      <label class="naming-dialog-full">Комментарий <input name="comment"></label>
+    </div>
+  </div>
+  <footer class="naming-dialog-footer"><button type="submit" class="modal-save">Сохранить</button><button type="button" class="modal-cancel" data-modal-close>Отмена</button></footer>
+</form>"""
     table_html = f"<table><thead><tr><th>Название</th><th>Шаблон</th><th>Активен</th><th>Комментарий</th></tr></thead><tbody>{''.join(rows)}</tbody></table>"
-    body = f"""<h1>Администрирование → Правила нейминга маршрутов</h1><p class="muted">Пока без изменений: изменение шаблона не переименовывает существующие маршруты автоматически.</p>{form_card('Добавить правило', create_html, summary_class='admin-primary-summary')}{table_card(table_html)}"""
+    body = f"""<h1>Администрирование → Правила нейминга маршрутов</h1><p class="muted">Пока без изменений: изменение шаблона не переименовывает существующие маршруты автоматически.</p>{form_card('Добавить правило', create_html, summary_class='admin-naming-primary-summary')}{table_card(table_html)}"""
     return page("Правила нейминга", table_page_container(body, extra_class="admin-naming-page"))
 
 
@@ -9040,9 +9119,19 @@ def change_reasons_page(repo: Repository) -> bytes:
     rows = []
     for reason in repo.conn.execute("SELECT * FROM change_reasons ORDER BY is_active DESC, name"):
         rows.append(f"""<tr><td>{esc(reason['name'])}</td><td>{'Да' if reason['is_active'] else 'Нет'}</td><td>{esc(reason['description'])}</td><td data-col='actions'><details class='edit-details'><summary title='Редактировать' aria-label='Редактировать'>Редактировать</summary><form method='post' action='/admin/change-reasons/{reason['id']}/update'><label>Название <input name='name' value='{esc(reason['name'])}'></label><label>Активна <select name='is_active'><option value='1' {'selected' if reason['is_active'] else ''}>Да</option><option value='0' {'selected' if not reason['is_active'] else ''}>Нет</option></select></label><label>Комментарий <input name='comment' value='{esc(reason['description'])}'></label><button>Сохранить</button></form></details></td></tr>""")
-    create_html = "<form class='form-grid' method='post' action='/admin/change-reasons/create'><label>Название причины <span class='required'>*</span><input name='name'></label><label>Активна <select name='is_active'><option value='1'>Да</option><option value='0'>Нет</option></select></label><label>Комментарий <input name='comment'></label><button>Сохранить</button></form>"
+    create_html = """<form class='reason-dialog' method='post' action='/admin/change-reasons/create'>
+  <header class='reason-dialog-header'><h2>Добавить причину</h2></header>
+  <div class='reason-dialog-body'>
+    <div class='reason-dialog-grid'>
+      <label>Название причины <span class='required'>*</span><input name='name'></label>
+      <label>Активна <select name='is_active'><option value='1'>Да</option><option value='0'>Нет</option></select></label>
+      <label class='reason-dialog-full'>Комментарий <textarea name='comment' rows='3'></textarea></label>
+    </div>
+  </div>
+  <footer class='reason-dialog-footer'><button type='submit' class='modal-save'>Сохранить</button><button type='button' class='modal-cancel' data-modal-close>Отмена</button></footer>
+</form>"""
     table_html = f"<table><thead><tr><th>Название причины</th><th>Активна</th><th>Комментарий</th><th data-col='actions'>Действия</th></tr></thead><tbody>{''.join(rows)}</tbody></table>"
-    return page("Причины смены провайдера", table_page_container(f"<h1>Администрирование → Причины смены провайдера</h1>{form_card('Добавить причину', create_html, summary_class='admin-primary-summary')}{table_card(table_html)}", extra_class="admin-change-reasons-page"))
+    return page("Причины смены провайдера", table_page_container(f"<h1>Администрирование → Причины смены провайдера</h1>{form_card('Добавить причину', create_html, summary_class='admin-reason-primary-summary')}{table_card(table_html)}", extra_class="admin-change-reasons-page"))
 
 
 def dictionaries_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
