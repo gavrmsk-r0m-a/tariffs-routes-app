@@ -166,13 +166,15 @@ def paginate_rows(rows: list, q: dict[str, str], base_path: str) -> tuple[list, 
     )
 
 
-def export_link(base_path: str, q: dict[str, str]) -> str:
+def export_link(base_path: str, q: dict[str, str], *, text: bool = False) -> str:
     section = section_for_get_path(base_path)
     if section and not can_export(section):
         return ""
     params = {key: value for key, value in q.items() if key not in {"page", "limit", "export"} and value not in (None, "")}
     params["export"] = "csv"
     href = esc(base_path + '?' + urlencode(params))
+    if text:
+        return f"<a class='button export-button table-utility-button' href='{href}' title='Экспорт CSV' aria-label='Экспорт CSV' data-tooltip='Экспорт CSV'>Экспорт CSV</a>"
     return f"<a class='button export-button table-utility-button icon-button' href='{href}' title='Экспорт CSV' aria-label='Экспорт CSV' data-tooltip='Экспорт CSV'>{nav_icon('export')}<span class='sr-only'>Экспорт</span></a><a class='sr-only' href='{href}'>Экспорт</a>"
 
 
@@ -2192,6 +2194,12 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     html[data-theme="light-v2"] .provider-changes-page .form-summary::after {{ content: none; }}
     html[data-theme="light-v2"] .provider-changes-page .table-footer-tools .export-button {{ background: var(--accent); border-color: var(--accent); color: #fff; }}
     html[data-theme="light-v2"] .provider-changes-page .table-footer-tools .export-button:hover {{ background: var(--accent-strong); border-color: var(--accent-strong); color: #fff; }}
+    html[data-theme="light-v2"] .provider-changes-page .hlr-like-column-panel {{ width: min(420px, 88vw); max-height: min(430px, 70vh); padding: 10px; border-color: var(--border); border-radius: var(--radius-card); background: var(--surface); box-shadow: var(--shadow-card); gap: 8px; }}
+    html[data-theme="light-v2"] .provider-changes-page .hlr-like-column-panel .column-settings-panel-actions {{ display: flex; justify-content: space-between; gap: 8px; align-items: center; }}
+    html[data-theme="light-v2"] .provider-changes-page .hlr-like-column-panel .column-settings-list {{ display: grid; gap: 6px; overflow: auto; }}
+    html[data-theme="light-v2"] .provider-changes-page .hlr-like-column-panel .column-settings-row {{ display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 6px; padding: 6px; border: 1px solid var(--border); border-radius: var(--radius-small); background: var(--surface-muted); }}
+    html[data-theme="light-v2"] .provider-changes-page .hlr-like-column-panel .column-settings-row label {{ display: flex; align-items: center; gap: 7px; min-width: 0; margin: 0; font-weight: 650; }}
+    html[data-theme="light-v2"] .provider-changes-page .hlr-like-column-panel .column-order-button {{ min-width: 32px; padding: 3px 7px; box-shadow: none; }}
     html[data-theme="light-v2"] .reset-filters, html[data-theme="light-v2"] .modal-cancel, html[data-theme="light-v2"] .admin-edit-cancel {{ background: var(--surface-muted); border-color: var(--border-strong); color: var(--text); box-shadow: none; }}
     html[data-theme="light-v2"] .reset-filters:hover, html[data-theme="light-v2"] .modal-cancel:hover, html[data-theme="light-v2"] .admin-edit-cancel:hover {{ background: var(--surface-strong); border-color: var(--border-strong); color: var(--text-strong); }}
     html[data-theme="light-v2"] .danger-action, html[data-theme="light-v2"] form[action$="/deactivate"] button, html[data-theme="light-v2"] button[onclick*="Удал"], html[data-theme="light-v2"] button[onclick*="Деактив"], html[data-theme="light-v2"] button[onclick*="Отключ"] {{ background: var(--danger-soft); border-color: var(--danger-border); color: var(--danger-strong); box-shadow: none; }}
@@ -2642,17 +2650,17 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     html[data-theme="light-v2"] .admin-edit-cancel:hover,
     html[data-theme="light-v2"] .reset-filters:hover {{ background: var(--accent-soft) !important; border-color: var(--accent-border) !important; color: var(--accent-strong) !important; }}
     html[data-theme="light-v2"] .provider-changes-page .modal-form-card[open] > form {{ box-sizing: border-box; width: min(940px, calc(100vw - 32px)); max-width: calc(100vw - 32px); min-height: 560px; padding: 16px; }}
-    html[data-theme="light-v2"] .provider-change-create-shell #routing-event-form {{ display: flex; flex-direction: column; align-items: stretch; gap: 14px; width: min(940px, calc(100vw - 32px)); max-width: calc(100vw - 32px); min-width: 0; min-height: 480px; padding: 16px 16px 0; }}
+    html[data-theme="light-v2"] .provider-change-create-shell #routing-event-form {{ display: flex; flex-direction: column; align-items: stretch; gap: 14px; width: min(940px, calc(100vw - 32px)); max-width: calc(100vw - 32px); min-width: 0; height: min(740px, calc(100vh - 48px)); min-height: min(740px, calc(100vh - 48px)); padding: 16px 16px 0; overflow: hidden; }}
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-shell-scope {{ margin: 0; padding: 0; border: 0; min-inline-size: 0; }}
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-shell-scope > legend {{ margin: 0 0 10px; padding: 0; font-weight: 700; color: var(--text-strong); }}
     html[data-theme="light-v2"] .provider-change-create-shell .scope-cards {{ display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; width: 100%; }}
     html[data-theme="light-v2"] .provider-change-create-shell .scope-card {{ min-width: 0; }}
-    html[data-theme="light-v2"] .provider-change-create-shell .provider-change-content-grid {{ flex: 1 1 auto; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; align-content: start; min-height: 180px; padding: 0; }}
+    html[data-theme="light-v2"] .provider-change-create-shell .provider-change-content-grid {{ flex: 1 1 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; align-content: start; min-height: 0; padding: 0; }}
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-content-grid label {{ min-width: 0; }}
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-content-grid .span-2 {{ grid-column: span 2; }}
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-content-grid .wide {{ grid-column: 1 / -1; }}
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-content-grid textarea {{ width: 100%; resize: vertical; }}
-    html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid {{ flex: 1 1 auto; display: grid; grid-template-columns: minmax(125px, .85fr) minmax(125px, .85fr) minmax(205px, 1.2fr) minmax(150px, 1fr) 48px; gap: 12px; align-content: start; align-items: start; min-height: 180px; padding: 0; }}
+    html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid {{ flex: 1 1 0; display: grid; grid-template-columns: minmax(125px, .85fr) minmax(125px, .85fr) minmax(205px, 1.2fr) minmax(150px, 1fr) 48px; gap: 12px; align-content: start; align-items: start; min-height: 0; padding: 0; }}
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid label,
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .campaign-id-action-field,
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .campaign-company-field {{ min-width: 0; width: auto; }}
@@ -2680,7 +2688,7 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .span-2 {{ grid-column: span 2; }}
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .wide {{ grid-column: 1 / -1; }}
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid textarea {{ width: 100%; resize: vertical; }}
-    html[data-theme="light-v2"] .provider-change-create-shell .provider-change-server-priority-create {{ flex: 1 1 auto; min-height: 180px; min-width: 0; }}
+    html[data-theme="light-v2"] .provider-change-create-shell .provider-change-server-priority-create {{ flex: 1 1 0; min-height: 0; min-width: 0; overflow: hidden; }}
     html[data-theme="light-v2"] .provider-change-create-shell .server-priority-create-columns {{ display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: 14px; align-items: start; min-width: 0; }}
     html[data-theme="light-v2"] .provider-change-create-shell .server-priority-create-left {{ display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; min-width: 0; }}
     html[data-theme="light-v2"] .provider-change-create-shell .server-priority-create-row {{ display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; align-items: end; min-width: 0; }}
@@ -4097,7 +4105,7 @@ def table_storage_key(table_key: str) -> str:
     }.get(table_key, f"teleRoute.table.{table_key}")
 
 
-def column_settings(table_key: str, columns: list[tuple[str, str]]) -> str:
+def column_settings(table_key: str, columns: list[tuple[str, str]], *, hlr_style: bool = False) -> str:
     rows = []
     for key, label in columns:
         locked = key == "actions"
@@ -4113,9 +4121,12 @@ def column_settings(table_key: str, columns: list[tuple[str, str]]) -> str:
             "<button type='button' class='column-order-button' data-column-move='down' title='Ниже' aria-label='Переместить ниже'>↓</button>"
             "</span></div>"
         )
+    panel_class = "column-settings-panel hlr-like-column-panel" if hlr_style else "column-settings-panel"
+    panel_header = "<div class='column-settings-panel-actions'><strong>Вид таблицы</strong><button type='button' class='column-reset' data-column-reset title='Сбросить колонки'>Сбросить вид таблицы</button></div>" if hlr_style else ""
+    panel_footer = "" if hlr_style else "<button type='button' class='column-reset' data-column-reset title='Сбросить колонки'>Сбросить вид таблицы</button>"
     return f"""<details class='column-settings' data-column-settings='{esc(table_key)}' data-storage-key='{esc(table_storage_key(table_key))}'>
 <summary>Колонки</summary>
-<div class='column-settings-panel'><div class='column-settings-list' data-column-settings-list>{''.join(rows)}</div><button type='button' class='column-reset' data-column-reset title='Сбросить колонки'>Сбросить вид таблицы</button></div>
+<div class='{panel_class}'>{panel_header}<div class='column-settings-list' data-column-settings-list>{''.join(rows)}</div>{panel_footer}</div>
 </details>"""
 
 
@@ -7294,7 +7305,7 @@ def route_options_for_dynamic_form(repo: Repository, selected: object | None = N
         (selected or 0,),
     )
     for row in rows:
-        label = f"{row['country_name']} / {row['provider_name']} / {row['name']}"
+        label = row['name']
         opts += (
             f"<option value='{row['id']}' data-country-id='{row['country_id']}' data-provider-id='{row['provider_id']}' "
             f"title='{esc(label)}' {'selected' if str(row['id']) == str(selected) else ''}>{esc(label)}</option>"
@@ -7316,7 +7327,7 @@ def overflow_route_options(repo: Repository, selected: object | None = None, emp
         (selected or 0,),
     ).fetchall()
     for row in rows:
-        label = f"{row['country_name']} / {row['provider_name']} / {row['name']}"
+        label = row['name']
         opts += (
             f"<option value='{row['id']}' data-country-id='{row['country_id']}' data-provider-id='{row['provider_id']}' "
             f"title='{esc(label)}' {'selected' if str(row['id']) == str(selected) else ''}>{esc(label)}</option>"
@@ -7339,7 +7350,7 @@ def route_metadata_json(repo: Repository) -> str:
             "id": row["id"],
             "country_id": row["country_id"],
             "provider_id": row["provider_id"],
-            "label": f"{row['country_name']} / {row['provider_name']} / {row['name']}",
+            "label": row["name"],
         }
         for row in rows
     ], ensure_ascii=False)
@@ -7348,7 +7359,7 @@ def route_metadata_json(repo: Repository) -> str:
 def current_priorities_json(repo: Repository) -> str:
     rows = repo.conn.execute(
         """
-        SELECT srp.country_id, srp.server_id, COALESCE(c.name || ' / ' || p.name || ' / ' || r.name, '—') AS route_label
+        SELECT srp.country_id, srp.server_id, COALESCE(r.name, '—') AS route_label
         FROM server_route_priorities srp
         LEFT JOIN countries c ON c.id = srp.country_id
         LEFT JOIN routes r ON r.id = srp.current_route_id
@@ -8141,10 +8152,9 @@ def provider_event_details(ev) -> tuple[str, str, str]:
     def company_route_label(prefix: str) -> str:
         route_id = ev[f"{prefix}_company_route_id"]
         route_name = ev[f"{prefix}_company_route_name"] if f"{prefix}_company_route_name" in ev.keys() else None
-        provider_name = ev[f"{prefix}_company_route_provider_name"] if f"{prefix}_company_route_provider_name" in ev.keys() else None
         if not route_id:
             return "—"
-        return f"{provider_name} / {route_name}" if route_name and provider_name else str(route_id)
+        return route_name or str(route_id)
 
     details = []
     if ev["company_change_type"]:
@@ -8217,7 +8227,7 @@ def provider_changes_page(repo: Repository, q: dict[str, str] | None = None, for
 {f"<div class='notice ok'>{esc(q.get('notice'))}</div>" if q.get('notice') else ""}
 {f"<div class='notice error'>{esc(filter_error)}</div>" if filter_error else ""}
 {table_card(journal_html, title='Журнал событий', extra_class='journal-card')}
-{table_footer(pagination_html, column_settings('provider_changes', [('event_at', 'Дата события'), ('scope', 'Область применения'), ('geo', 'GEO'), ('server', 'Сервер'), ('campaign', 'Кампания'), ('details', 'Детали'), ('comment', 'Комментарий'), ('reason', 'Причина'), ('actions', 'Действия')]) + export_link('/provider-changes', q))}
+{table_footer(pagination_html, column_settings('provider_changes', [('event_at', 'Дата события'), ('scope', 'Область применения'), ('geo', 'GEO'), ('server', 'Сервер'), ('campaign', 'Кампания'), ('details', 'Детали'), ('comment', 'Комментарий'), ('reason', 'Причина'), ('actions', 'Действия')], hlr_style=True) + export_link('/provider-changes', q, text=True))}
 """
     return page("Смена провайдеров", table_page_container(body, extra_class="provider-changes-page"))
 
