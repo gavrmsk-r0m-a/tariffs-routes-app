@@ -975,6 +975,10 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .filter-summary::after, .form-summary::after {{ content: "Настроить"; color: var(--muted); font-size: 12px; font-weight: 650; }}
     details[open] > .filter-summary::after, details[open] > .form-summary::after {{ content: "Свернуть"; }}
     .provider-changes-page .form-summary::after, .provider-changes-page details[open] > .form-summary::after {{ content: none; }}
+    .provider-changes-page .provider-change-primary-summary {{ width: max-content; min-height: 34px; box-sizing: border-box; margin: 0; padding: 7px 12px; border: 1px solid #2563eb !important; border-radius: var(--radius-control); background: #2563eb !important; color: #fff !important; box-shadow: 0 4px 10px rgba(37, 99, 235, .16); font-weight: 760; transition: background-color 140ms ease, border-color 140ms ease, box-shadow 140ms ease, color 140ms ease; }}
+    .provider-changes-page .provider-change-primary-summary:hover {{ border-color: #1d4ed8 !important; background: #1d4ed8 !important; color: #fff !important; }}
+    .provider-changes-page .provider-change-primary-summary:focus-visible {{ outline: none; border-color: #1d4ed8 !important; background: #2563eb !important; color: #fff !important; box-shadow: 0 0 0 3px rgba(37, 99, 235, .22); }}
+    .provider-changes-page .provider-change-primary-summary:active, .provider-changes-page .provider-change-create-shell[open] > .provider-change-primary-summary {{ border-color: #1e40af !important; background: #1e40af !important; color: #fff !important; }}
     .filter-grid, .form-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, max-content)); gap: 10px 12px; align-items: end; padding: 14px; }}
     .filter-grid {{ display: flex; flex-wrap: wrap; gap: 10px; align-items: end; }}
     .filter-grid label, .form-grid label {{ min-width: 150px; }}
@@ -7484,7 +7488,7 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
     error_html = f"<div class='error wide'>{esc(error_message)}</div>" if error_message else ""
     if not is_existing_event:
         return f"""
-<details class='form-card modal-form-card provider-change-create-shell' {'open' if error_message else ''} data-modal-details><summary class='form-summary'>+ Добавить событие</summary>
+<details class='form-card modal-form-card provider-change-create-shell' {'open' if error_message else ''} data-modal-details><summary class='form-summary provider-change-primary-summary'>+ Добавить событие</summary>
 <form method='post' action='{action}' class='form-grid' id='routing-event-form' data-current-scope='{esc(scope)}'>
   {error_html}
   <fieldset class='provider-change-shell-scope'><legend>Область применения</legend>
