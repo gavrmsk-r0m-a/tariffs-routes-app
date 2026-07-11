@@ -3405,7 +3405,7 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     }});
     function enhanceModalForm(form, closeCallback) {{
       if (!form || form.dataset.modalEnhanced === "1") return;
-      if (form.classList.contains("route-dialog-form")) {{
+      if (form.classList.contains("route-dialog-form") || form.classList.contains("tariff-dialog-form")) {{
         form.dataset.modalEnhanced = "1";
         form.querySelectorAll("[data-modal-close]").forEach((button) => button.addEventListener("click", closeCallback));
         return;
