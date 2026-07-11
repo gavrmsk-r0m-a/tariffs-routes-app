@@ -3022,8 +3022,9 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     /* Routes page UI polish: match HLR/provider-change action and modal patterns without touching route logic. */
     .routes-page > h1 {{ display: none; }}
     .routes-page .route-create-shell {{ width: auto; max-width: max-content; margin: 0 0 10px auto; border: 0; background: transparent; box-shadow: none; overflow: visible; }}
-    .routes-page .route-create-shell > .form-summary {{ display: inline-flex; min-height: 34px; padding: 7px 13px; border-color: var(--accent-strong); background: var(--accent); color: #fff; box-shadow: none; }}
-    .routes-page .route-create-shell > .form-summary:hover {{ border-color: var(--accent-hover); background: var(--accent-hover); color: #fff; }}
+    .routes-page .route-create-shell > .form-summary {{ display: inline-flex; justify-content: center; width: max-content; min-height: 34px; padding: 7px 13px; border: 1px solid #2563eb; border-radius: var(--radius-control); background: #2563eb; color: #fff; box-shadow: 0 4px 10px rgba(37, 99, 235, .16); font-weight: 760; }}
+    .routes-page .route-create-shell > .form-summary::after, .routes-page .route-create-shell[open] > .form-summary::after {{ content: none; }}
+    .routes-page .route-create-shell > .form-summary:hover {{ border-color: #1d4ed8; background: #1d4ed8; color: #fff; }}
     .routes-page .table-footer-tools {{ align-items: center; justify-content: flex-end; gap: 8px; }}
     .routes-page .table-footer-tools .column-settings {{ order: 1; }}
     .routes-page .table-footer-tools .export-button {{ order: 2; min-width: auto; width: auto; min-height: 31px; padding: 5px 11px; border-color: var(--accent-strong); background: var(--accent); color: #fff; font-size: 12px; font-weight: 750; }}
@@ -3034,16 +3035,19 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .routes-page .hlr-like-column-panel .column-settings-row {{ display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 6px; padding: 6px; border: 1px solid var(--border); border-radius: var(--radius-small); background: var(--surface-muted); }}
     .routes-page .hlr-like-column-panel .column-settings-row label {{ display: flex; align-items: center; gap: 7px; min-width: 0; margin: 0; font-weight: 650; }}
     .routes-page .hlr-like-column-panel .column-order-button {{ min-width: 32px; padding: 3px 7px; box-shadow: none; }}
-    .route-modal-form.route-modal-form {{ width: min(760px, calc(100vw - 32px)); min-height: min(620px, calc(100vh - 48px)); padding: 0; overflow: auto; grid-template-columns: 1fr; align-content: start; gap: 0; }}
-    .route-modal-form > h2 {{ margin: 0; padding: 14px 18px; border-bottom: 1px solid var(--border-strong); background: #F8FAFC; color: var(--text-strong); }}
-    .route-modal-form .route-form-section {{ margin: 0; padding: 14px 18px; border: 0; border-bottom: 1px solid var(--border); border-radius: 0; background: #fff; }}
+    .route-modal-form.route-modal-form {{ width: min(660px, calc(100vw - 32px)); min-height: min(680px, calc(100vh - 48px)); padding: 0; overflow: auto; grid-template-columns: 1fr; align-content: start; gap: 0; }}
+    .route-modal-form > h2 {{ margin: 0; padding: 15px 20px; border-bottom: 1px solid var(--border-strong); background: #F8FAFC; color: var(--text-strong); }}
+    .route-modal-form .route-form-section {{ margin: 0; padding: 15px 20px; border: 0; border-bottom: 1px solid var(--border); border-radius: 0; background: #fff; }}
     .route-modal-form .route-form-section legend {{ padding: 0; margin-bottom: 10px; font-weight: 820; color: var(--text-strong); }}
     .route-modal-form .route-form-grid {{ display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }}
     .route-modal-form .route-form-grid .wide {{ grid-column: 1 / -1; }}
-    .route-modal-form > .modal-actions {{ grid-column: 1 / -1; width: auto; margin: 0; padding: 12px 18px; border-top: 1px solid var(--border-strong); background: #F1F6FD; }}
+    .route-modal-form > .modal-actions {{ grid-column: 1 / -1; width: 100%; box-sizing: border-box; margin: 0; padding: 13px 20px; border-top: 1px solid var(--border-strong); background: #F1F6FD; }}
+    .route-modal-form > .modal-actions .modal-save {{ border-color: #2563eb; background: #2563eb; color: #fff; }}
+    .route-modal-form > .modal-actions .modal-save:hover {{ border-color: #1d4ed8; background: #1d4ed8; color: #fff; }}
     @media (max-width: 720px) {{ .route-modal-form.route-modal-form {{ width: calc(100vw - 18px); min-height: 0; }} .route-modal-form .route-form-grid {{ grid-template-columns: 1fr; }} }}
     html[data-theme="tele-route-pro"] .routes-page .table-footer-tools .export-button {{ width: auto; min-width: auto; padding: 5px 11px; border-color: var(--info); background: var(--info); color: #fff; }}
-    html[data-theme="tele-route-pro"] .routes-page .route-create-shell > .form-summary {{ border-color: var(--info); background: var(--info); color: #fff; }}
+    html[data-theme="tele-route-pro"] .routes-page .route-create-shell > .form-summary {{ border-color: #2563eb; background: #2563eb; color: #fff; }}
+    html[data-theme="tele-route-pro"] .routes-page .route-create-shell > .form-summary::after, html[data-theme="tele-route-pro"] .routes-page .route-create-shell[open] > .form-summary::after {{ content: none; }}
 
     /* TeleRoute Pro forms/modals/details/states foundation v1. UI-only theme layer. */
     html[data-theme="tele-route-pro"] select {{ width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
@@ -7146,7 +7150,7 @@ def routes_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
     <label>Комментарий <input name="comment"></label>
     <label class="wide">Название маршрута <span class="required">*</span><input name="name" placeholder="Заполните обязательные поля для формирования названия"></label>
   </div></fieldset>
-  <button>Сохранить</button>
+  <div class="modal-actions"><button type="submit" class="modal-save">Сохранить</button><button type="button" class="modal-cancel" data-modal-close>Отмена</button></div>
 </form>""" + route_aon_script()
     table_html = f"{data_table('routes', [('geo', 'ГЕО'), ('route', f"<span class='copyable-header'>Название маршрута {copy_column_button('route-name')}</span>"), ('provider', 'Провайдер'), ('prefix', 'Префикс'), ('actual', 'Актуальный'), ('aon_pool', 'АОН/пул'), ('comment', 'Комментарий'), ('numbers', 'Номера'), ('history', 'Ист.'), ('actions', 'Действия')], ''.join(rows))}"
     body = f"""
@@ -8904,9 +8908,10 @@ def route_edit_page(repo: Repository, route_id: int) -> bytes:
 <form class='form-grid route-modal-form' method='post' action='/routes/{route_id}/update' data-country-name='{esc(route['country_name']) if 'country_name' in route.keys() else ''}'>
 <h2>Редактировать маршрут</h2>
 <fieldset class='route-form-section'><legend>Основные параметры</legend><div class='route-form-grid'>
-<label class='wide'>Название маршрута <span class='required'>*</span><input name='name' value='{esc(route['name'])}' size='60'></label>
+<label>ГЕО <input value='{esc(route['country_name']) if 'country_name' in route.keys() else ''}' readonly></label>
 <label>Провайдер <span class='required'>*</span><select name='provider_id'>{active_options(repo, 'providers', selected=route['provider_id'])}</select></label>
 <label>Префикс <select name='provider_prefix_id'>{prefix_options(repo, selected=route['provider_prefix_id'])}</select></label>
+<label>Проект/метка <input name='project_label' value='{esc(route['project_label'] or '')}' readonly></label>
 </div></fieldset>
 <fieldset class='route-form-section'><legend>AON / пул</legend><div class='route-form-grid'>
 <label>Тип АОН <span class='required'>*</span><select name='cli_source_type'>{aon_source_options(route['cli_source_type'], include_legacy=True)}</select></label>
@@ -8919,8 +8924,9 @@ def route_edit_page(repo: Repository, route_id: int) -> bytes:
 <label>Актуальный <select name='is_actual'><option value='1' {'selected' if route['is_actual'] else ''}>Активный</option><option value='0' {'selected' if not route['is_actual'] else ''}>Неактивный</option></select></label>
 <label>Приоритет <select name='priority_status'><option value='priority' {'selected' if route['priority_status']=='priority' else ''}>priority</option><option value='alternative' {'selected' if route['priority_status']=='alternative' else ''}>alternative</option><option value='unknown' {'selected' if route['priority_status']=='unknown' else ''}>unknown</option></select></label>
 <label class='wide'>Комментарий <input name='comment' value='{esc(route['comment'])}'></label>
+<label class='wide'>Название маршрута <span class='required'>*</span><input name='name' value='{esc(route['name'])}' size='60'></label>
 </div></fieldset>
-<button>Сохранить</button></form>
+<div class='modal-actions'><button type='submit' class='modal-save'>Сохранить</button><button type='button' class='modal-cancel' onclick="history.back()">Отмена</button></div></form>
 {route_aon_script()}
 <div class='card'><h2>Номера маршрута / АОНы</h2><p>Управление купленными номерами доступно для каждого маршрута, даже если номеров пока нет.</p><p><a class='button' href='/routes/{route_id}/numbers/manage'>Номера маршрута / АОНы</a></p></div>"""
     return page("Редактировать маршрут", body)
