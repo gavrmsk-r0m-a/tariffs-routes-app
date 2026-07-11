@@ -3039,17 +3039,19 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .routes-page .hlr-like-column-panel .column-order-button {{ min-width: 32px; padding: 3px 7px; box-shadow: none; }}
     .modal-form-card[open] > form.route-dialog, .route-dialog.route-dialog {{ position: fixed; left: 50%; top: 50%; z-index: 990; width: min(590px, calc(100vw - 48px)); max-width: calc(100vw - 48px); max-height: min(780px, calc(100vh - 48px)); margin: 0; padding: 0; transform: translate(-50%, -50%); display: grid; grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr) auto; gap: 0; overflow: hidden; border: 1px solid var(--border-strong); border-radius: 14px; background: #fff; color: var(--text); box-shadow: 0 22px 62px rgba(15, 23, 42, .22); box-sizing: border-box; }}
     .route-dialog.route-dialog-page-form {{ position: relative; left: auto; top: auto; transform: none; z-index: auto; margin: 0 0 16px; }}
-    .route-dialog-header {{ grid-column: 1 / -1; align-self: stretch; width: 100%; max-width: none; box-sizing: border-box; margin: 0; padding: 15px 20px 13px; border-bottom: 1px solid var(--border-strong); background: linear-gradient(180deg, #fff 0%, #f8fafc 100%); }}
-    .route-dialog-header h2 {{ margin: 0; color: var(--text-strong); font-size: 18px; font-weight: 860; line-height: 1.2; }}
+    .route-dialog-header {{ grid-column: 1 / -1; align-self: stretch; width: 100%; max-width: none; box-sizing: border-box; margin: 0; padding: 12px 20px 10px; border-bottom: 1px solid var(--border-strong); background: linear-gradient(180deg, #fff 0%, #f8fafc 100%); }}
+    .route-dialog-header h2 {{ margin: 0; color: var(--text-strong); font-size: 17px; font-weight: 860; line-height: 1.16; }}
     .route-dialog-body {{ min-height: 0; overflow-y: auto; overflow-x: hidden; scrollbar-gutter: stable; }}
-    .route-dialog-section {{ display: grid; gap: 10px; min-width: 0; margin: 0; padding: 14px 20px 16px; border: 0; border-bottom: 1px solid #e5edf7; background: #fff; }}
-    .route-dialog-section h3 {{ margin: 0; color: #1e3a5f; font-size: 12px; font-weight: 850; letter-spacing: .03em; text-transform: uppercase; }}
-    .route-dialog-grid {{ display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 11px 12px; }}
-    .route-dialog label {{ min-width: 0; margin: 0; color: var(--text); font-size: 12px; font-weight: 740; }}
-    .route-dialog input, .route-dialog select, .route-dialog textarea {{ width: 100%; min-height: 36px; box-sizing: border-box; }}
-    .route-dialog textarea {{ min-height: 58px; resize: vertical; line-height: 1.35; }}
+    .route-dialog-section {{ display: grid; gap: 8px; min-width: 0; margin: 0; padding: 10px 20px 12px; border: 0; border-bottom: 1px solid #e5edf7; background: #fff; }}
+    .route-dialog-section h3 {{ margin: 0; color: #1e3a5f; font-size: 11.5px; font-weight: 850; line-height: 1.15; letter-spacing: .03em; text-transform: uppercase; }}
+    .route-dialog-grid {{ display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px 12px; align-items: start; }}
+    .route-dialog label {{ display: block; min-width: 0; margin: 0; color: var(--text); font-size: 11.5px; font-weight: 740; line-height: 1.2; }}
+    .route-dialog input, .route-dialog select, .route-dialog textarea {{ display: block; width: 100%; min-height: 33px; box-sizing: border-box; margin-top: 3px; padding-top: 6px; padding-bottom: 6px; font-size: 13px; line-height: 1.25; }}
+    .route-dialog textarea {{ min-height: 50px; resize: vertical; line-height: 1.3; }}
     .route-dialog .route-dialog-full {{ grid-column: 1 / -1; }}
-    .route-dialog-footer {{ display: flex; justify-content: flex-start; align-items: center; gap: 10px; grid-column: 1 / -1; align-self: stretch; width: 100%; box-sizing: border-box; margin: 0; padding: 14px 20px; border-top: 1px solid var(--border-strong); background: #eef5ff; }}
+    .route-dialog-required-spacer {{ visibility: hidden; }}
+    .route-dialog-footer {{ display: flex; justify-content: flex-start; align-items: center; gap: 10px; grid-column: 1 / -1; align-self: stretch; width: 100%; box-sizing: border-box; margin: 0; padding: 10px 20px; border-top: 1px solid var(--border-strong); background: #eef5ff; }}
+    .route-dialog-footer button {{ min-height: 32px; padding-top: 6px; padding-bottom: 6px; }}
     .route-dialog-footer .modal-save {{ order: 1; border-color: #2563eb; background: #2563eb; color: #fff; }}
     .route-dialog-footer .modal-save:hover {{ border-color: #1d4ed8; background: #1d4ed8; color: #fff; }}
     .route-dialog-footer .modal-cancel {{ order: 2; }}
@@ -7167,7 +7169,7 @@ def routes_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
       <label>Метка АОН <span class="required">*</span><input name="cli_source_label" value="Pool_A"></label>
       <label>Тип пула <span class="required">*</span><select name="aon_pool">{pool_type_options("Пул купленных номеров")}</select></label>
       <input type="hidden" name="rnd_type">
-      <label>Принадлежность пула <input name="rnd_pool_owner" placeholder="венгерский пул"></label>
+      <label>Принадлежность пула <span class="required route-dialog-required-spacer" aria-hidden="true">*</span><input name="rnd_pool_owner" placeholder="венгерский пул"></label>
     </div></section>
     <section class="route-dialog-section"><h3>Статус и описание</h3><div class="route-dialog-grid">
       <label>Статус <span class="required">*</span><select name="is_actual"><option value="1">Активный</option><option value="0">Неактивный</option></select></label>
@@ -8944,7 +8946,7 @@ def route_edit_page(repo: Repository, route_id: int) -> bytes:
 <label>Метка АОН <span class='required'>*</span><input name='cli_source_label' value='{esc(route['cli_source_label'])}'></label>
 <label>Тип пула <span class='required'>*</span><select name='aon_pool'>{pool_type_options((route['aon_pool'] or '').split(':', 1)[0])}</select></label>
 <input type='hidden' name='rnd_type' value='{esc(route['rnd_type'] or '')}'>
-<label>Принадлежность пула <input name='rnd_pool_owner' value='{esc(route['rnd_pool_owner'] or '')}'></label>
+<label>Принадлежность пула <span class='required route-dialog-required-spacer' aria-hidden='true'>*</span><input name='rnd_pool_owner' value='{esc(route['rnd_pool_owner'] or '')}'></label>
 </div></section>
 <section class='route-dialog-section'><h3>Статус и описание</h3><div class='route-dialog-grid'>
 <label>Актуальный <select name='is_actual'><option value='1' {'selected' if route['is_actual'] else ''}>Активный</option><option value='0' {'selected' if not route['is_actual'] else ''}>Неактивный</option></select></label>
