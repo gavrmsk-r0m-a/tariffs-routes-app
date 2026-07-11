@@ -3092,6 +3092,25 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .companies-page .hlr-like-column-panel .column-settings-row {{ display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 6px; padding: 6px; border: 1px solid var(--border); border-radius: var(--radius-small); background: var(--surface-muted); }}
     .companies-page .hlr-like-column-panel .column-settings-row label {{ display: flex; align-items: center; gap: 7px; min-width: 0; margin: 0; font-weight: 650; }}
     .companies-page .hlr-like-column-panel .column-order-button {{ min-width: 32px; padding: 3px 7px; box-shadow: none; }}
+
+    /* Server priorities page UI: align filters, footer actions, and columns panel with HLR-style table pages. */
+    .server-priorities-page .filter-grid button[type="submit"] {{ border-color: var(--accent-strong); background: var(--accent); color: #fff; box-shadow: 0 4px 12px rgba(37, 99, 235, .18); }}
+    .server-priorities-page .filter-grid button[type="submit"]:hover,
+    .server-priorities-page .filter-grid button[type="submit"]:focus-visible {{ border-color: var(--accent-hover); background: var(--accent-hover); color: #fff; }}
+    .server-priorities-page .filter-grid button[type="submit"]:active {{ border-color: #1e40af; background: #1e40af; color: #fff; }}
+    .server-priorities-page .filter-grid .reset-filters {{ background: var(--surface-muted); border-color: var(--border-strong); color: var(--text); box-shadow: none; }}
+    .server-priorities-page .filter-grid .reset-filters:hover {{ background: var(--surface-strong); border-color: var(--border-strong); color: var(--text-strong); }}
+    .server-priorities-page .table-footer-tools {{ align-items: center; justify-content: flex-end; gap: 8px; }}
+    .server-priorities-page .table-footer-tools .column-settings {{ order: 1; }}
+    .server-priorities-page .table-footer-tools .export-button {{ order: 2; min-width: auto; width: auto; min-height: 31px; padding: 5px 11px; border-color: var(--accent-strong); background: var(--accent); color: #fff; font-size: 12px; font-weight: 750; }}
+    .server-priorities-page .table-footer-tools .export-button:hover,
+    .server-priorities-page .table-footer-tools .export-button:focus-visible {{ border-color: var(--accent-hover); background: var(--accent-hover); color: #fff; }}
+    .server-priorities-page .hlr-like-column-panel {{ width: min(420px, 88vw); max-height: min(430px, 70vh); padding: 10px; border-radius: var(--radius-card); gap: 8px; overflow: hidden; }}
+    .server-priorities-page .hlr-like-column-panel .column-settings-panel-actions {{ display: flex; align-items: center; justify-content: space-between; gap: 8px; }}
+    .server-priorities-page .hlr-like-column-panel .column-settings-list {{ display: grid; gap: 6px; max-height: min(340px, 56vh); overflow: auto; overscroll-behavior: contain; padding-right: 2px; }}
+    .server-priorities-page .hlr-like-column-panel .column-settings-row {{ display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 6px; padding: 6px; border: 1px solid var(--border); border-radius: var(--radius-small); background: var(--surface-muted); }}
+    .server-priorities-page .hlr-like-column-panel .column-settings-row label {{ display: flex; align-items: center; gap: 7px; min-width: 0; margin: 0; font-weight: 650; }}
+    .server-priorities-page .hlr-like-column-panel .column-order-button {{ min-width: 32px; padding: 3px 7px; box-shadow: none; }}
     .modal-form-card[open] > form.company-dialog, .company-dialog.company-dialog {{ position: fixed; left: 50%; top: 50%; z-index: 990; width: min(560px, calc(100vw - 48px)); max-width: calc(100vw - 48px); max-height: min(780px, calc(100vh - 48px)); margin: 0; padding: 0; transform: translate(-50%, -50%); display: grid; grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr) auto; gap: 0; overflow: hidden; border: 1px solid var(--border-strong); border-radius: 14px; background: #fff; color: var(--text); box-shadow: 0 22px 62px rgba(15, 23, 42, .22); box-sizing: border-box; }}
     .company-dialog-header {{ grid-column: 1 / -1; width: 100%; box-sizing: border-box; margin: 0; padding: 12px 20px 10px; border-bottom: 1px solid var(--border-strong); background: linear-gradient(180deg, #fff 0%, #f8fafc 100%); }}
     .company-dialog-header h2 {{ margin: 0; color: var(--text-strong); font-size: 17px; font-weight: 860; line-height: 1.16; }}
@@ -8687,12 +8706,13 @@ def server_priorities_page(repo: Repository, q: dict[str, str] | None = None) ->
   <h2>Сервер: {esc(server_names[server_id])}</h2>
   {table_card(table_html)}
 </section>""")
-    filters_html = f"""<form class="filter-grid" method="get" action="/admin/server-priorities"><label>ГЕО <select name="country_id">{options(repo, 'countries', selected=q.get('country_id'), empty='Все')}</select></label><label>Сервер <select name="server_id">{active_options(repo, 'servers', selected=q.get('server_id'), empty='Все')}</select></label><button>Найти</button></form>"""
+    filters_html = f"""<form class="filter-grid" method="get" action="/admin/server-priorities"><label>ГЕО <select name="country_id">{options(repo, 'countries', selected=q.get('country_id'), empty='Все')}</select></label><label>Сервер <select name="server_id">{active_options(repo, 'servers', selected=q.get('server_id'), empty='Все')}</select></label><button type="submit">Найти</button></form>"""
     body = f"""
-<h1>Администрирование → Приоритет по серверам</h1>
+<div class="server-priorities-page">
 {filter_card(filters_html, q, ('country_id', 'server_id'))}
 {''.join(blocks)}
-{table_footer(pagination_html, export_link('/admin/server-priorities', q) + column_settings('server_priorities', [('geo', 'GEO'), ('current_priority', 'Текущий приоритет'), ('previous_priority', 'Предыдущий приоритет')]))}"""
+{table_footer(pagination_html, column_settings('server_priorities', [('geo', 'GEO'), ('current_priority', 'Текущий приоритет'), ('previous_priority', 'Предыдущий приоритет')], hlr_style=True) + export_link('/admin/server-priorities', q, text=True))}
+</div>"""
     return page("Приоритет по серверам", body)
 
 
