@@ -3302,6 +3302,19 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     html[data-theme="tele-route-pro"] .spillover-checkbox:has(input:checked),
     html[data-theme="tele-route-pro"] label:has(input[name="review_required"]:checked),
     html[data-theme="tele-route-pro"] label:has(input[name="has_overflow"]:checked) {{ border-color: var(--warning); background: var(--warning-soft); color: #92400e; }}
+
+    /* Phones review filter compact override: keep the checkbox aligned with normal filter controls. */
+    .phones-page .filter-card .filter-grid .filter-review-control {{ display: flex; flex-direction: column; justify-content: flex-end; min-width: 0; margin: 0; padding: 0; }}
+    .phones-page .filter-card .filter-grid .filter-review-spacer {{ display: block; height: 15px; min-height: 0; margin: 0 0 4px; padding: 0; visibility: hidden; color: transparent; font-size: 12px; font-weight: 760; line-height: 15px; user-select: none; }}
+    .phones-page .filter-card .filter-grid label.filter-review-checkbox:has(input[name="review_required"]),
+    .phones-page .filter-card .filter-grid .filter-review-checkbox {{ box-sizing: border-box; width: 100%; height: 32px; min-height: 32px; max-height: 32px; display: inline-flex; align-items: center; gap: 7px; margin: 0; padding: 5px 8px; border: 1px solid var(--border-strong); border-radius: 7px; background: var(--input-bg, var(--surface)); color: var(--text); box-shadow: inset 0 1px 1px rgba(17, 24, 39, .025); font-size: 13px; font-weight: 760; line-height: 1.25; white-space: nowrap; }}
+    .phones-page .filter-card .filter-grid label.filter-review-checkbox:has(input[name="review_required"]:checked),
+    .phones-page .filter-card .filter-grid .filter-review-checkbox:has(input[name="review_required"]:checked) {{ border-color: var(--border-ink); background: #f1f5f9; color: var(--text-strong); }}
+    .phones-page .filter-card .filter-grid .filter-review-checkbox input[type="checkbox"],
+    html[data-theme="tele-route-pro"] .phones-page .filter-card .filter-grid label.filter-review-checkbox:has(input[name="review_required"]) input[type="checkbox"] {{ flex: 0 0 16px; width: 16px; height: 16px; min-width: 16px; min-height: 16px; margin: 0; padding: 0; }}
+    .phones-page .filter-card .filter-grid > button {{ border-color: #2563eb; background: #2563eb; color: #fff; }}
+    .phones-page .filter-card .filter-grid > button:hover {{ border-color: #1d4ed8; background: #1d4ed8; color: #fff; }}
+    .phones-page .filter-card .reset-filters {{ border-color: var(--border-strong); background: var(--surface-muted); color: var(--text); }}
     html[data-theme="tele-route-pro"] .scope-cards,
     html[data-theme="tele-route-pro"] .segmented-control,
     html[data-theme="tele-route-pro"] .tabs,
