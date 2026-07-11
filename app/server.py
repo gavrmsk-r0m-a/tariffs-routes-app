@@ -3037,6 +3037,42 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .routes-page .hlr-like-column-panel .column-settings-row {{ display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 6px; padding: 6px; border: 1px solid var(--border); border-radius: var(--radius-small); background: var(--surface-muted); }}
     .routes-page .hlr-like-column-panel .column-settings-row label {{ display: flex; align-items: center; gap: 7px; min-width: 0; margin: 0; font-weight: 650; }}
     .routes-page .hlr-like-column-panel .column-order-button {{ min-width: 32px; padding: 3px 7px; box-shadow: none; }}
+
+    /* Tariffs page UI: dedicated create modal and HLR/routes-style table actions. */
+    .tariffs-page .tariff-create-shell {{ width: auto; max-width: max-content; margin: 0 0 10px auto; border: 0; background: transparent; box-shadow: none; overflow: visible; }}
+    .tariffs-page .tariff-primary-summary {{ display: inline-flex; align-items: center; justify-content: center; width: max-content; min-height: 36px; box-sizing: border-box; margin: 0; padding: 8px 14px; border: 1px solid #2563eb !important; border-radius: var(--radius-control); background: #2563eb !important; color: #fff !important; box-shadow: 0 4px 12px rgba(37, 99, 235, .18); font-size: 13px; font-weight: 820; letter-spacing: .01em; text-transform: uppercase; transition: background-color 140ms ease, border-color 140ms ease, box-shadow 140ms ease, color 140ms ease; }}
+    .tariffs-page .tariff-primary-summary::after, .tariffs-page .tariff-create-shell[open] > .tariff-primary-summary::after {{ content: none !important; }}
+    .tariffs-page .tariff-primary-summary:hover {{ border-color: #1d4ed8 !important; background: #1d4ed8 !important; color: #fff !important; }}
+    .tariffs-page .tariff-primary-summary:focus-visible {{ outline: none; border-color: #1d4ed8 !important; background: #2563eb !important; color: #fff !important; box-shadow: 0 0 0 3px rgba(37, 99, 235, .22); }}
+    .tariffs-page .tariff-primary-summary:active, .tariffs-page .tariff-create-shell[open] > .tariff-primary-summary {{ border-color: #1e40af !important; background: #1e40af !important; color: #fff !important; }}
+    .tariffs-page .table-footer-tools {{ align-items: center; justify-content: flex-end; gap: 8px; }}
+    .tariffs-page .table-footer-tools .column-settings {{ order: 1; }}
+    .tariffs-page .table-footer-tools .export-button {{ order: 2; min-width: auto; width: auto; min-height: 31px; padding: 5px 11px; border-color: var(--accent-strong); background: var(--accent); color: #fff; font-size: 12px; font-weight: 750; }}
+    .tariffs-page .table-footer-tools .export-button:hover {{ border-color: var(--accent-hover); background: var(--accent-hover); color: #fff; }}
+    .tariffs-page .hlr-like-column-panel {{ width: min(420px, 88vw); max-height: min(430px, 70vh); padding: 10px; border-radius: var(--radius-card); gap: 8px; overflow: hidden; }}
+    .tariffs-page .hlr-like-column-panel .column-settings-panel-actions {{ display: flex; align-items: center; justify-content: space-between; gap: 8px; }}
+    .tariffs-page .hlr-like-column-panel .column-settings-list {{ display: grid; gap: 6px; max-height: min(340px, 56vh); overflow: auto; overscroll-behavior: contain; padding-right: 2px; }}
+    .tariffs-page .hlr-like-column-panel .column-settings-row {{ display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 6px; padding: 6px; border: 1px solid var(--border); border-radius: var(--radius-small); background: var(--surface-muted); }}
+    .tariffs-page .hlr-like-column-panel .column-settings-row label {{ display: flex; align-items: center; gap: 7px; min-width: 0; margin: 0; font-weight: 650; }}
+    .tariffs-page .hlr-like-column-panel .column-order-button {{ min-width: 32px; padding: 3px 7px; box-shadow: none; }}
+    .modal-form-card[open] > form.tariff-dialog, .tariff-dialog.tariff-dialog {{ position: fixed; left: 50%; top: 50%; z-index: 990; width: min(520px, calc(100vw - 48px)); max-width: calc(100vw - 48px); max-height: min(680px, calc(100vh - 48px)); margin: 0; padding: 0; transform: translate(-50%, -50%); display: grid; grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr) auto; gap: 0; overflow: hidden; border: 1px solid var(--border-strong); border-radius: 14px; background: #fff; color: var(--text); box-shadow: 0 22px 62px rgba(15, 23, 42, .22); box-sizing: border-box; }}
+    .tariff-dialog.tariff-dialog-page-form {{ position: relative; left: auto; top: auto; transform: none; z-index: auto; margin: 0 0 16px; }}
+    .tariff-dialog-header {{ grid-column: 1 / -1; width: 100%; box-sizing: border-box; margin: 0; padding: 12px 20px 10px; border-bottom: 1px solid var(--border-strong); background: linear-gradient(180deg, #fff 0%, #f8fafc 100%); }}
+    .tariff-dialog-header h2 {{ margin: 0; color: var(--text-strong); font-size: 17px; font-weight: 860; line-height: 1.16; }}
+    .tariff-dialog-body {{ min-height: 0; overflow-y: auto; overflow-x: hidden; scrollbar-gutter: stable; }}
+    .tariff-dialog-section {{ display: grid; gap: 8px; min-width: 0; margin: 0; padding: 10px 20px 12px; border: 0; border-bottom: 1px solid #e5edf7; background: #fff; }}
+    .tariff-dialog-section h3 {{ margin: 0; color: #1e3a5f; font-size: 11.5px; font-weight: 850; line-height: 1.15; letter-spacing: .03em; text-transform: uppercase; }}
+    .tariff-dialog-grid {{ display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px 12px; align-items: start; }}
+    .tariff-dialog label {{ display: block; min-width: 0; margin: 0; color: var(--text); font-size: 11.5px; font-weight: 740; line-height: 1.2; }}
+    .tariff-dialog input, .tariff-dialog select, .tariff-dialog textarea {{ display: block; width: 100%; min-height: 33px; box-sizing: border-box; margin-top: 3px; padding-top: 6px; padding-bottom: 6px; font-size: 13px; line-height: 1.25; }}
+    .tariff-dialog .tariff-dialog-full, .tariff-dialog .tariff-dialog-hint {{ grid-column: 1 / -1; }}
+    .tariff-dialog-hint {{ margin: 0; font-size: 12px; }}
+    .tariff-dialog-footer {{ display: flex; justify-content: flex-start; align-items: center; gap: 10px; grid-column: 1 / -1; width: 100%; box-sizing: border-box; margin: 0; padding: 10px 20px; border-top: 1px solid var(--border-strong); background: #eef5ff; }}
+    .tariff-dialog-footer button {{ min-height: 32px; padding-top: 6px; padding-bottom: 6px; }}
+    .tariff-dialog-footer .modal-save {{ order: 1; border-color: #2563eb; background: #2563eb; color: #fff; }}
+    .tariff-dialog-footer .modal-save:hover {{ border-color: #1d4ed8; background: #1d4ed8; color: #fff; }}
+    .tariff-dialog-footer .modal-cancel {{ order: 2; }}
+    @media (max-width: 720px) {{ .modal-form-card[open] > form.tariff-dialog, .tariff-dialog.tariff-dialog {{ width: calc(100vw - 18px); max-width: calc(100vw - 18px); max-height: calc(100vh - 18px); }} .tariff-dialog-grid {{ grid-template-columns: 1fr; }} .tariff-dialog-section, .tariff-dialog-header, .tariff-dialog-footer {{ padding-left: 16px; padding-right: 16px; }} }}
     .modal-form-card[open] > form.route-dialog, .route-dialog.route-dialog {{ position: fixed; left: 50%; top: 50%; z-index: 990; width: min(560px, calc(100vw - 48px)); max-width: calc(100vw - 48px); max-height: min(780px, calc(100vh - 48px)); margin: 0; padding: 0; transform: translate(-50%, -50%); display: grid; grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr) auto; gap: 0; overflow: hidden; border: 1px solid var(--border-strong); border-radius: 14px; background: #fff; color: var(--text); box-shadow: 0 22px 62px rgba(15, 23, 42, .22); box-sizing: border-box; }}
     .route-dialog.route-dialog-page-form {{ position: relative; left: auto; top: auto; transform: none; z-index: auto; margin: 0 0 16px; }}
     .route-dialog-header {{ grid-column: 1 / -1; align-self: stretch; width: 100%; max-width: none; box-sizing: border-box; margin: 0; padding: 12px 20px 10px; border-bottom: 1px solid var(--border-strong); background: linear-gradient(180deg, #fff 0%, #f8fafc 100%); }}
@@ -3105,6 +3141,15 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     html[data-theme="tele-route-pro"] .routes-page .route-primary-summary:focus-visible {{ border-color: #1d4ed8 !important; background: #2563eb !important; color: #fff !important; }}
     html[data-theme="tele-route-pro"] .routes-page .route-primary-summary:active, html[data-theme="tele-route-pro"] .routes-page .route-create-shell[open] > .route-primary-summary {{ border-color: #1e40af !important; background: #1e40af !important; color: #fff !important; }}
     html[data-theme="tele-route-pro"] .routes-page .route-primary-summary::after, html[data-theme="tele-route-pro"] .routes-page .route-create-shell[open] > .route-primary-summary::after {{ content: none !important; }}
+    html[data-theme="tele-route-pro"] .tariffs-page .table-footer-tools .export-button {{ width: auto; min-width: auto; padding: 5px 11px; border-color: var(--info); background: var(--info); color: #fff; }}
+    html[data-theme="tele-route-pro"] .tariffs-page .tariff-primary-summary {{ border-color: #2563eb !important; background: #2563eb !important; color: #fff !important; }}
+    html[data-theme="tele-route-pro"] .tariffs-page .tariff-primary-summary:hover {{ border-color: #1d4ed8 !important; background: #1d4ed8 !important; color: #fff !important; }}
+    html[data-theme="tele-route-pro"] .tariffs-page .tariff-primary-summary:focus-visible {{ border-color: #1d4ed8 !important; background: #2563eb !important; color: #fff !important; }}
+    html[data-theme="tele-route-pro"] .tariffs-page .tariff-primary-summary:active, html[data-theme="tele-route-pro"] .tariffs-page .tariff-create-shell[open] > .tariff-primary-summary {{ border-color: #1e40af !important; background: #1e40af !important; color: #fff !important; }}
+    html[data-theme="tele-route-pro"] .tariffs-page .tariff-primary-summary::after, html[data-theme="tele-route-pro"] .tariffs-page .tariff-create-shell[open] > .tariff-primary-summary::after {{ content: none !important; }}
+    html[data-theme="tele-route-pro"] .modal-form-card[open] > form.tariff-dialog, html[data-theme="tele-route-pro"] .tariff-dialog.tariff-dialog {{ gap: 0; padding: 0; }}
+    html[data-theme="tele-route-pro"] .tariff-dialog-header, html[data-theme="tele-route-pro"] .tariff-dialog-footer {{ grid-column: 1 / -1; width: 100%; max-width: none; box-sizing: border-box; margin: 0; }}
+    html[data-theme="tele-route-pro"] .tariff-dialog-footer {{ justify-content: flex-start; }}
     html[data-theme="tele-route-pro"] .modal-form-card[open] > form.route-dialog, html[data-theme="tele-route-pro"] .route-dialog.route-dialog {{ gap: 0; padding: 0; }}
     html[data-theme="tele-route-pro"] .route-dialog-header, html[data-theme="tele-route-pro"] .route-dialog-footer {{ grid-column: 1 / -1; width: 100%; max-width: none; box-sizing: border-box; margin: 0; }}
     html[data-theme="tele-route-pro"] .route-dialog-footer {{ justify-content: flex-start; }}
@@ -7258,23 +7303,34 @@ def tariffs_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
 <label>ГЕО <select name="country_id">{options(repo, 'countries', selected=q.get('country_id'), empty='Все')}</select></label>
 <label>Провайдер <select name="provider_id">{options(repo, 'providers', selected=q.get('provider_id'), empty='Все')}</select></label>
 <label>Статус <select name="status"><option value="all" {'selected' if q.get('status')=='all' else ''}>Все</option><option value="active" {'selected' if q.get('status','active')=='active' else ''}>Активные</option><option value="inactive" {'selected' if q.get('status')=='inactive' else ''}>Неактивные</option></select></label><button>Найти</button></form>"""
-    create_html = f"""<form class="form-grid" method="post" action="/tariffs/create">
-<label>ГЕО <span class="required">*</span><select name="country_id">{active_options(repo, 'countries')}</select></label>
-<label>Провайдер <span class="required">*</span><select name="provider_id">{active_options(repo, 'providers')}</select></label>
-<label>Префикс <select name="provider_prefix_id">{prefix_options(repo)}</select></label>
-<label>Валюта <span class="required">*</span><select name="currency_id">{active_options(repo, 'currencies', 'code')}</select></label>
-<label>Цена провайдера <span class="required">*</span><input name="price"></label>
-<label>Активный <span class="required">*</span><select name="is_current"><option value="1">Да</option><option value="0">Нет</option></select></label>
-<label>Комментарий <input name="comment"></label><p class="muted wide">Курс к EUR и дата курса берутся из Администрирование → Курсы валют.</p><button>Сохранить</button></form>"""
+    create_html = f"""<form class="tariff-dialog tariff-dialog-form" method="post" action="/tariffs/create">
+  <header class="tariff-dialog-header"><h2>Добавить тариф</h2></header>
+  <div class="tariff-dialog-body">
+    <section class="tariff-dialog-section"><h3>Основные параметры</h3><div class="tariff-dialog-grid">
+      <label>ГЕО <span class="required">*</span><select name="country_id">{active_options(repo, 'countries')}</select></label>
+      <label>Провайдер <span class="required">*</span><select name="provider_id">{active_options(repo, 'providers')}</select></label>
+      <label>Префикс <select name="provider_prefix_id">{prefix_options(repo)}</select></label>
+      <label>Активный <span class="required">*</span><select name="is_current"><option value="1">Да</option><option value="0">Нет</option></select></label>
+    </div></section>
+    <section class="tariff-dialog-section"><h3>Цена</h3><div class="tariff-dialog-grid">
+      <label>Валюта <span class="required">*</span><select name="currency_id">{active_options(repo, 'currencies', 'code')}</select></label>
+      <label>Цена провайдера <span class="required">*</span><input name="price"></label>
+    </div></section>
+    <section class="tariff-dialog-section"><h3>Описание</h3><div class="tariff-dialog-grid">
+      <label class="tariff-dialog-full">Комментарий <input name="comment"></label>
+      <p class="muted tariff-dialog-hint">Курс к EUR и дата курса берутся из Администрирование → Курсы валют.</p>
+    </div></section>
+  </div>
+  <footer class="tariff-dialog-footer"><button type="submit" class="modal-save">Сохранить</button><button type="button" class="modal-cancel" data-modal-close>Отмена</button></footer>
+</form>"""
     columns = [('history', 'Инфо'), ('actions', 'Действия'), ('geo', 'ГЕО'), ('provider', 'Провайдер'), ('prefix', 'Префикс'), ('provider_price', 'Цена провайдера'), ('eur_price', 'Цена EUR'), ('active', 'Активный'), ('comment', 'Комментарий')]
     table_html = f"{data_table('tariffs', columns, ''.join(rows))}"
     body = f"""
-<h1>Тарифы</h1>
 {filter_card(filters_html, q, ('country_id', 'provider_id', 'status'))}
-{form_card('+ Добавить тариф <span class="muted">Admin</span>', create_html) if can_write("tariffs") else ""}
+{form_card('+ Добавить тариф', create_html, extra_class='tariff-create-shell', summary_class='tariff-primary-summary') if can_write("tariffs") else ""}
 {table_card(table_html)}
-{table_footer(pagination_html, export_link('/tariffs', q) + column_settings('tariffs', columns))}"""
-    return page("Тарифы", table_page_container(body))
+{table_footer(pagination_html, column_settings('tariffs', columns, hlr_style=True) + export_link('/tariffs', q, text=True))}"""
+    return page("Тарифы", table_page_container(body, extra_class="tariffs-page"))
 
 
 def phones_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
@@ -8906,18 +8962,27 @@ def tariff_edit_page(repo: Repository, tariff_id: int) -> bytes:
     if tariff is None:
         return page("Тариф не найден", "<h1>Тариф не найден</h1>")
     prefix = tariff["prefix"] or "—"
-    body = f"""<h1>Редактировать тариф</h1><p><a href='/tariffs'>← Назад</a></p>
-<form method='post' action='/tariffs/{tariff_id}/update'>
+    body = f"""<p><a href='/tariffs'>← Назад</a></p>
+<form class='tariff-dialog tariff-dialog-form tariff-dialog-page-form' method='post' action='/tariffs/{tariff_id}/update'>
+<header class='tariff-dialog-header'><h2>Редактировать тариф</h2></header>
+<div class='tariff-dialog-body'>
+<section class='tariff-dialog-section'><h3>Основные параметры</h3><div class='tariff-dialog-grid'>
 <label>ГЕО <input value='{esc(tariff['country_name'])}' readonly></label>
 <label>Провайдер <input value='{esc(tariff['provider_name'])}' readonly></label>
 <label>Префикс <input value='{esc(prefix)}' readonly></label>
-<label>Цена провайдера <span class='required'>*</span><input name='price' value='{esc(tariff['price_in_provider_currency'])}'></label>
-<label>Валюта <span class='required'>*</span><select name='currency_id' id='tariff-currency' data-original-currency='{esc(tariff['provider_currency_id'])}'>{active_options(repo, 'currencies', 'code', selected=tariff['provider_currency_id'])}</select></label>
-<p class='muted wide' id='currency-warning' hidden>Вы меняете валюту тарифа. Проверьте, что цена указана в новой валюте.</p>
-<label>Комментарий <input name='comment' value='{esc(tariff['comment'])}'></label>
 <label>Активен <span class='required'>*</span><select name='is_current'><option value='1' {'selected' if tariff['is_current'] else ''}>Да</option><option value='0' {'selected' if not tariff['is_current'] else ''}>Нет</option></select></label>
-<p class='muted wide'>GEO, провайдер и префикс задают идентичность тарифа и не редактируются.</p>
-<button>Сохранить</button></form>
+</div></section>
+<section class='tariff-dialog-section'><h3>Цена</h3><div class='tariff-dialog-grid'>
+<label>Валюта <span class='required'>*</span><select name='currency_id' id='tariff-currency' data-original-currency='{esc(tariff['provider_currency_id'])}'>{active_options(repo, 'currencies', 'code', selected=tariff['provider_currency_id'])}</select></label>
+<label>Цена провайдера <span class='required'>*</span><input name='price' value='{esc(tariff['price_in_provider_currency'])}'></label>
+<p class='muted tariff-dialog-hint' id='currency-warning' hidden>Вы меняете валюту тарифа. Проверьте, что цена указана в новой валюте.</p>
+</div></section>
+<section class='tariff-dialog-section'><h3>Описание</h3><div class='tariff-dialog-grid'>
+<label class='tariff-dialog-full'>Комментарий <input name='comment' value='{esc(tariff['comment'])}'></label>
+<p class='muted tariff-dialog-hint'>GEO, провайдер и префикс задают идентичность тарифа и не редактируются.</p>
+</div></section>
+</div>
+<footer class='tariff-dialog-footer'><button type='submit' class='modal-save'>Сохранить</button><button type='button' class='modal-cancel' onclick="history.back()">Отмена</button></footer></form>
 <script>
 const currencySelect = document.getElementById('tariff-currency');
 const currencyWarning = document.getElementById('currency-warning');
@@ -8925,7 +8990,7 @@ function updateCurrencyWarning() {{ currencyWarning.hidden = currencySelect.valu
 currencySelect.addEventListener('change', updateCurrencyWarning);
 updateCurrencyWarning();
 </script>"""
-    return page("Редактировать тариф", body)
+    return page("Редактировать тариф", table_page_container(body, extra_class="tariffs-page"))
 
 def route_edit_page(repo: Repository, route_id: int) -> bytes:
     route = repo.conn.execute("SELECT r.*, c.name AS country_name FROM routes r JOIN countries c ON c.id = r.country_id WHERE r.id = ?", (route_id,)).fetchone()
