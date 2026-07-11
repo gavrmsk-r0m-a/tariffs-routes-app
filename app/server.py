@@ -1093,6 +1093,9 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .dictionary-add {{ margin: 0; box-shadow: var(--shadow-soft); }}
     .dictionary-add .form-grid {{ grid-template-columns: repeat(auto-fit, minmax(170px, 260px)); }}
     .dictionary-add input, .dictionary-add select {{ width: 100%; box-sizing: border-box; }}
+    .dictionary-add .dictionary-add-submit {{ background: #2563eb; border-color: #2563eb; color: #fff; }}
+    .dictionary-add .dictionary-add-submit:hover, .dictionary-add .dictionary-add-submit:focus-visible {{ background: #1d4ed8; border-color: #1d4ed8; color: #fff; }}
+    .dictionary-add .dictionary-add-submit:active {{ background: #1e40af; border-color: #1e40af; color: #fff; }}
     .inactive-row {{ color: var(--muted); background: var(--surface-strong); }}
     .status-badge {{ display: inline-flex; align-items: center; min-height: 22px; padding: 2px 7px; border: 1px solid var(--cyber); border-radius: 999px; background: var(--cyber-soft); color: var(--text-strong); font-size: 12px; font-weight: 720; white-space: nowrap; }}
 
@@ -9184,22 +9187,23 @@ def dictionaries_page(repo: Repository, q: dict[str, str] | None = None) -> byte
 </fieldset>"""
 
     def add_form(section: str) -> str:
+        submit = "<button class='dictionary-add-submit' type='submit'>Добавить</button>"
         if section == "countries":
-            return "<form class='form-grid' method='post' action='/admin/dictionaries/countries/create'><label>GEO <input name='name' placeholder='GEO'></label><label>Код <input name='code' placeholder='Код'></label><button>Добавить</button></form>"
+            return f"<form class='form-grid' method='post' action='/admin/dictionaries/countries/create'><label>GEO <input name='name' placeholder='Название страны' required></label><label>Код <input name='code' placeholder='Код' required></label>{submit}</form>"
         if section == "providers":
-            return f"<form class='form-grid' method='post' action='/admin/dictionaries/providers/create'><label>Провайдер <input name='name' placeholder='Название провайдера'></label><label>Валюта <select name='default_currency_id'><option value=''>—</option>{options(repo, 'currencies', 'code')}</select></label><label>Комментарий <input name='comment' placeholder='Комментарий'></label><button>Добавить</button></form>"
+            return f"<form class='form-grid' method='post' action='/admin/dictionaries/providers/create'><label>Провайдер <input name='name' placeholder='Название провайдера' required></label><label>Валюта <select name='default_currency_id' required><option value=''>—</option>{options(repo, 'currencies', 'code')}</select></label><label>Комментарий <input name='comment' placeholder='Комментарий' required></label>{submit}</form>"
         if section == "currencies":
-            return "<form class='form-grid' method='post' action='/admin/dictionaries/currencies/create'><label>Код <input name='code' placeholder='USD'></label><label>Название <input name='name' placeholder='Название'></label><button>Добавить</button></form>"
+            return f"<form class='form-grid' method='post' action='/admin/dictionaries/currencies/create'><label>Код <input name='code' placeholder='USD' required></label><label>Название <input name='name' placeholder='Название / комментарий' required></label>{submit}</form>"
         if section == "prefixes":
-            return f"<form class='form-grid' method='post' action='/admin/dictionaries/prefixes/create'><label>Провайдер <select name='provider_id'>{options(repo, 'providers')}</select></label><label>Префикс <input name='prefix' placeholder='0827 или пусто'></label><label>Комментарий <input name='name' placeholder='Комментарий'></label><button>Добавить</button></form>"
+            return f"<form class='form-grid' method='post' action='/admin/dictionaries/prefixes/create'><label>Провайдер <select name='provider_id' required><option value=''>—</option>{options(repo, 'providers')}</select></label><label>Префикс <input name='prefix' placeholder='0827' required></label><label>Комментарий <input name='name' placeholder='Комментарий' required></label>{submit}</form>"
         if section == "servers":
-            return "<form class='form-grid' method='post' action='/admin/dictionaries/servers/create'><label>Сервер <input name='name' placeholder='EU3'></label><label>Комментарий <input name='comment' placeholder='Комментарий'></label><button>Добавить</button></form>"
+            return f"<form class='form-grid' method='post' action='/admin/dictionaries/servers/create'><label>Сервер <input name='name' placeholder='EU3' required></label><label>Комментарий <input name='comment' placeholder='Комментарий' required></label>{submit}</form>"
         if section == "phone-types":
-            return "<form class='form-grid' method='post' action='/admin/dictionaries/phone-types/create'><label>Тип номера <input name='name' placeholder='Mobile'></label><label>Комментарий <input name='comment' placeholder='Комментарий'></label><button>Добавить</button></form>"
+            return f"<form class='form-grid' method='post' action='/admin/dictionaries/phone-types/create'><label>Тип номера <input name='name' placeholder='Mobile' required></label><label>Комментарий <input name='comment' placeholder='Комментарий' required></label>{submit}</form>"
         if section == "projects":
-            return "<form class='form-grid' method='post' action='/admin/dictionaries/projects/create'><label>Проект <input name='name' placeholder='Competitors'></label><label>Комментарий <input name='comment' placeholder='Комментарий'></label><button>Добавить</button></form>"
+            return f"<form class='form-grid' method='post' action='/admin/dictionaries/projects/create'><label>Проект <input name='name' placeholder='Название проекта' required></label><label>Комментарий <input name='comment' placeholder='Комментарий' required></label>{submit}</form>"
         if section == "phone-assignments":
-            return "<form class='form-grid' method='post' action='/admin/dictionaries/phone-assignments/create'><label>Назначение <input name='name' placeholder='Мониторинг'></label><label>Код <input name='code' placeholder='Код необязательно'></label><label>Комментарий <input name='comment' placeholder='Комментарий'></label><button>Добавить</button></form>"
+            return f"<form class='form-grid' method='post' action='/admin/dictionaries/phone-assignments/create'><label>Назначение <input name='name' placeholder='Назначение номера' required></label><label>Код <input name='code' placeholder='Код' required></label><label>Комментарий <input name='comment' placeholder='Комментарий' required></label>{submit}</form>"
         return ""
 
     count_queries = {
@@ -9466,6 +9470,30 @@ def send_provider_change_notification(repo: Repository, event_id: int) -> None:
     except Exception as exc:
         logger.error("Telegram provider-change notification failed: %s", exc)
 
+
+
+DICTIONARY_SECTION_RETURN_PATHS = {
+    "countries": "/admin/dictionaries?section=countries",
+    "providers": "/admin/dictionaries?section=providers",
+    "currencies": "/admin/dictionaries?section=currencies",
+    "prefixes": "/admin/dictionaries?section=prefixes",
+    "servers": "/admin/dictionaries?section=servers",
+    "phone-types": "/admin/dictionaries?section=phone-types",
+    "projects": "/admin/dictionaries?section=projects",
+    "phone-assignments": "/admin/dictionaries?section=phone-assignments",
+}
+
+def required_dictionary_text(data: dict[str, str], field: str, message: str) -> str:
+    value = (data.get(field) or "").strip()
+    if not value:
+        raise BusinessRuleError(message)
+    return value
+
+def required_dictionary_int(data: dict[str, str], field: str, message: str) -> int:
+    value = (data.get(field) or "").strip()
+    if not value:
+        raise BusinessRuleError(message)
+    return int(value)
 
 def handle_post(repo: Repository, path: str, data: dict[str, str]):
     actor_id = current_actor_id()
@@ -9765,32 +9793,47 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
         parts = path.strip("/").split("/")
         kind = parts[2]
         if kind == "countries":
-            repo.create_country(data["name"].strip(), data.get("code") or None)
+            name = required_dictionary_text(data, "name", "Заполните название GEO.")
+            code = required_dictionary_text(data, "code", "Заполните код GEO.")
+            repo.create_country(name, code)
         elif kind == "providers":
-            repo.create_provider(data["name"].strip(), default_currency_id=parse_int(data.get("default_currency_id")), comment=data.get("comment") or None)
+            name = required_dictionary_text(data, "name", "Заполните название провайдера.")
+            default_currency_id = required_dictionary_int(data, "default_currency_id", "Выберите валюту провайдера.")
+            comment = required_dictionary_text(data, "comment", "Заполните комментарий.")
+            repo.create_provider(name, default_currency_id=default_currency_id, comment=comment)
         elif kind == "currencies":
-            code = data["code"].strip().upper()
-            repo.create_currency(code, data.get("name") or code)
+            code = required_dictionary_text(data, "code", "Заполните код валюты.").upper()
+            name = required_dictionary_text(data, "name", "Заполните название валюты / комментарий.")
+            repo.create_currency(code, name)
         elif kind == "prefixes":
-            prefix = data.get("prefix") or None
-            prefix = normalize_real_prefix(prefix)
-            repo.create_prefix(int(data["provider_id"]), prefix, data.get("name") or None)
+            provider_id = required_dictionary_int(data, "provider_id", "Выберите провайдера префикса.")
+            raw_prefix = (data.get("prefix") or "").strip() or None
+            name = required_dictionary_text(data, "name", "Заполните комментарий.")
+            prefix = normalize_real_prefix(raw_prefix)
+            repo.create_prefix(provider_id, prefix, name)
         elif kind == "servers":
-            repo.create_server(data["name"].strip(), data.get("comment") or None)
+            name = required_dictionary_text(data, "name", "Заполните название сервера.")
+            comment = required_dictionary_text(data, "comment", "Заполните комментарий.")
+            repo.create_server(name, comment)
         elif kind == "phone-types":
-            repo.conn.execute("INSERT INTO phone_number_types(name, is_active, comment) VALUES (?, 1, ?)", (data["name"].strip(), data.get("comment")))
+            name = required_dictionary_text(data, "name", "Заполните тип номера.")
+            comment = required_dictionary_text(data, "comment", "Заполните комментарий.")
+            repo.conn.execute("INSERT INTO phone_number_types(name, is_active, comment) VALUES (?, 1, ?)", (name, comment))
             repo.conn.commit()
         elif kind == "projects":
-            repo.conn.execute("INSERT INTO projects(name, is_active, comment) VALUES (?, 1, ?)", (data["name"].strip(), data.get("comment")))
+            name = required_dictionary_text(data, "name", "Заполните название проекта.")
+            comment = required_dictionary_text(data, "comment", "Заполните комментарий.")
+            repo.conn.execute("INSERT INTO projects(name, is_active, comment) VALUES (?, 1, ?)", (name, comment))
             repo.conn.commit()
         elif kind == "phone-assignments":
-            name = data["name"].strip()
-            code = (data.get("code") or name).strip()
-            repo.conn.execute("INSERT INTO phone_assignment_types(code, name, is_active, comment) VALUES (?, ?, 1, ?)", (code, name, data.get("comment")))
+            name = required_dictionary_text(data, "name", "Заполните назначение номера.")
+            code = required_dictionary_text(data, "code", "Заполните код назначения номера.")
+            comment = required_dictionary_text(data, "comment", "Заполните комментарий.")
+            repo.conn.execute("INSERT INTO phone_assignment_types(code, name, is_active, comment) VALUES (?, ?, 1, ?)", (code, name, comment))
             repo.conn.commit()
         else:
             raise BusinessRuleError("Неизвестный справочник")
-        return "/admin/dictionaries"
+        return DICTIONARY_SECTION_RETURN_PATHS[kind]
     if path.startswith("/admin/dictionaries/") and path.endswith("/update"):
         parts = path.strip("/").split("/")
         kind = parts[2]
@@ -9894,6 +9937,9 @@ def error_return_path(path: str) -> str:
     if path.startswith("/admin/users/") or path == "/admin/users/create":
         return "/admin/users"
     if path.startswith("/admin/dictionaries/"):
+        parts = path.strip("/").split("/")
+        if len(parts) >= 3 and parts[2] in DICTIONARY_SECTION_RETURN_PATHS:
+            return DICTIONARY_SECTION_RETURN_PATHS[parts[2]]
         return "/admin/dictionaries"
     if path.startswith("/admin/company-routing-settings/") or path == "/admin/company-routing-settings/create":
         return "/admin/company-routing-settings"
@@ -9915,7 +9961,7 @@ def validation_error_page(return_path: str, message: str) -> bytes:
         "/admin/dictionaries": "Справочные значения",
         "/admin/company-routing-settings": "Схема маршрутизации кампаний",
     }
-    title = titles.get(return_path, "Ошибка")
+    title = titles.get(return_path, "Справочные значения" if return_path.startswith("/admin/dictionaries?section=") else "Ошибка")
     body = f"<div class='error'>{esc(message)}</div><h1>{esc(title)}</h1><p><a class='button' href='{esc(return_path)}'>Вернуться и исправить</a></p>"
     return page(title, body)
 
