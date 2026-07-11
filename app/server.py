@@ -7353,7 +7353,7 @@ def tariffs_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
       <label>Цена провайдера <span class="required">*</span><input name="price"></label>
     </div></section>
     <section class="tariff-dialog-section"><h3>Описание</h3><div class="tariff-dialog-grid">
-      <label class="tariff-dialog-full">Комментарий <input name="comment"></label>
+      <label class="tariff-dialog-full">Комментарий <textarea name="comment" rows="3"></textarea></label>
       <p class="muted tariff-dialog-hint">Курс к EUR и дата курса берутся из Администрирование → Курсы валют.</p>
     </div></section>
   </div>
@@ -7410,7 +7410,7 @@ def phones_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
       <label class="phone-dialog-full">Тариф <input name="tariff_label"></label>
     </div></section>
     <section class="phone-dialog-section"><h3>Описание</h3><div class="phone-dialog-grid">
-      <label class="phone-dialog-full">Комментарий <input name="comment"></label>
+      <label class="phone-dialog-full">Комментарий <textarea name="comment" rows="3"></textarea></label>
     </div></section>
   </div>
   <footer class="phone-dialog-footer"><button type="submit" class="modal-save">Сохранить</button><button type="button" class="modal-cancel" data-modal-close>Отмена</button></footer>
