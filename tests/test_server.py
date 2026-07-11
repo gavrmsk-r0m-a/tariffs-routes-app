@@ -104,6 +104,49 @@ class HlrDailyUsageTest(unittest.TestCase):
         self.assertEqual(usage["remaining_today"], 5)
         self.assertEqual(usage["last_check_count"], 0)
 
+    def test_hlr_daily_limit_uses_env_when_no_override(self):
+        with patch.dict(os.environ, {"HLR_DAILY_CHECK_LIMIT": "7"}, clear=False):
+            state = server.hlr_daily_limit_state()
+            usage = server.hlr_usage_with_limits()
+        self.assertEqual(state["daily_limit_effective"], 7)
+        self.assertEqual(state["daily_limit_source"], "env")
+        self.assertEqual(usage["daily_limit"], 7)
+        self.assertEqual(usage["remaining_today"], 7)
+
+    def test_hlr_daily_limit_uses_admin_override_and_reset_returns_to_env(self):
+        with patch.dict(os.environ, {"HLR_DAILY_CHECK_LIMIT": "7"}, clear=False):
+            server.save_hlr_daily_limit_override("9")
+            state = server.hlr_daily_limit_state()
+            self.assertEqual(state["daily_limit_effective"], 9)
+            self.assertEqual(state["daily_limit_source"], "admin_override")
+            self.assertEqual(state["daily_limit_env"], 7)
+            self.assertEqual(state["daily_limit_override"], 9)
+            server.reset_hlr_daily_limit_override()
+            reset_state = server.hlr_daily_limit_state()
+        self.assertEqual(reset_state["daily_limit_effective"], 7)
+        self.assertEqual(reset_state["daily_limit_source"], "env")
+        self.assertIsNone(reset_state["daily_limit_override"])
+
+    def test_hlr_daily_limit_rejects_invalid_override(self):
+        for value in ("", "0", "-1", "1.5", "abc", "100001"):
+            with self.subTest(value=value):
+                with self.assertRaises(server.BusinessRuleError) as ctx:
+                    server.save_hlr_daily_limit_override(value)
+                self.assertEqual(str(ctx.exception), server.HLR_DAILY_LIMIT_ERROR)
+        self.assertIsNone(server.hlr_daily_limit_state()["daily_limit_override"])
+
+    def test_hlr_daily_limit_enforcement_uses_effective_override(self):
+        server.hlr_record_daily_usage(2, None)
+        with patch.dict(os.environ, {"HLR_MODE": "production", "HLR_DAILY_CHECK_LIMIT": "5"}, clear=False), patch("app.server.hlr_real_api_check") as mocked_check:
+            server.save_hlr_daily_limit_override("2")
+            with self.assertRaises(server.BusinessRuleError) as ctx:
+                server.hlr_run_check("+48123456789")
+            usage = server.hlr_usage_with_limits()
+        self.assertEqual(str(ctx.exception), "Дневной лимит HLR исчерпан.")
+        mocked_check.assert_not_called()
+        self.assertEqual(usage["daily_limit"], 2)
+        self.assertEqual(usage["remaining_today"], 0)
+
 
 class HlrApiMappingTest(unittest.TestCase):
     def _row(self, raw):
@@ -248,6 +291,46 @@ class ServerSmokeTest(unittest.TestCase):
             conn.commit()
         finally:
             conn.close()
+
+
+    def test_hlr_daily_limit_endpoint_saves_reset_and_rejects_non_admin(self):
+        with patch.dict(os.environ, {"HLR_DAILY_CHECK_LIMIT": "11"}, clear=False):
+            captured, html = self.request("/hlr/config/daily-limit", method="POST", body=urlencode({"daily_limit_override": "13"}))
+            self.assertEqual(captured["status"], "200 OK")
+            self.assertIn("Дневной лимит HLR сохранён.", html)
+            self.assertIn("<dt>daily_limit_source</dt><dd>admin_override</dd>", html)
+            conn = server.connect(server.DB_PATH)
+            try:
+                value = conn.execute("SELECT value FROM app_settings WHERE key = ?", (server.HLR_DAILY_LIMIT_OVERRIDE_KEY,)).fetchone()["value"]
+            finally:
+                conn.close()
+            self.assertEqual(value, "13")
+
+            operator_cookie = self.user_cookie("duty")
+            captured, _html = self.request("/hlr/config/daily-limit", method="POST", body=urlencode({"daily_limit_override": "15"}), cookie=operator_cookie)
+            self.assertEqual(captured["status"], "403 Forbidden")
+            conn = server.connect(server.DB_PATH)
+            try:
+                value = conn.execute("SELECT value FROM app_settings WHERE key = ?", (server.HLR_DAILY_LIMIT_OVERRIDE_KEY,)).fetchone()["value"]
+            finally:
+                conn.close()
+            self.assertEqual(value, "13")
+
+            captured, html = self.request("/hlr/config/daily-limit/reset", method="POST")
+            self.assertEqual(captured["status"], "200 OK")
+            self.assertIn("Дневной лимит HLR сброшен к значению из env.", html)
+            self.assertIn("<dt>daily_limit_source</dt><dd>env</dd>", html)
+
+    def test_hlr_daily_limit_endpoint_rejects_invalid_value(self):
+        captured, html = self.request("/hlr/config/daily-limit", method="POST", body=urlencode({"daily_limit_override": "100001"}))
+        self.assertEqual(captured["status"], "400 Bad Request")
+        self.assertIn(server.HLR_DAILY_LIMIT_ERROR, html)
+        conn = server.connect(server.DB_PATH)
+        try:
+            row = conn.execute("SELECT value FROM app_settings WHERE key = ?", (server.HLR_DAILY_LIMIT_OVERRIDE_KEY,)).fetchone()
+        finally:
+            conn.close()
+        self.assertIsNone(row)
 
 
 
@@ -4025,7 +4108,10 @@ class HlrUiStateScriptTest(unittest.TestCase):
         self.assertIn("<dt>balance</dt><dd>unavailable</dd>", admin_content)
         self.assertIn("<dt>balance_status</dt><dd>unavailable</dd>", admin_content)
         self.assertIn("<dt>checked_today</dt><dd>0</dd>", admin_content)
-        self.assertIn("<dt>remaining_today</dt><dd>500</dd>", admin_content)
+        self.assertIn("<dt>remaining_today</dt><dd>2000</dd>", admin_content)
+        self.assertIn("<dt>daily_limit_source</dt><dd>fallback</dd>", admin_content)
+        self.assertIn("Дневной лимит HLR", admin_content)
+        self.assertIn("action='/hlr/config/daily-limit'", admin_content)
         self.assertNotIn("<button class='secondary hlr-balance-refresh' type='submit'>Обновить баланс</button>", admin_content)
         self.assertNotIn("data-hlr-help-tab", content)
         self.assertNotIn("Поля API</button>", content)
