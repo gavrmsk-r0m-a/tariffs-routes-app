@@ -1164,6 +1164,25 @@ class ServerSmokeTest(unittest.TestCase):
             self.assertEqual(captured["status"], "400 Bad Request")
             self.assertIn("Префикс должен быть реальным кодом", content)
 
+    def test_dictionary_create_requires_visible_fields_and_returns_active_section(self):
+        self.request("/routes")
+        cases = [
+            ("countries", {"name": "   ", "code": "	"}, "/admin/dictionaries?section=countries", "Заполните название GEO"),
+            ("providers", {"name": "NewTel", "default_currency_id": "", "comment": "comment"}, "/admin/dictionaries?section=providers", "Выберите валюту провайдера"),
+            ("currencies", {"code": " ", "name": "US Dollar"}, "/admin/dictionaries?section=currencies", "Заполните код валюты"),
+            ("prefixes", {"provider_id": "", "prefix": "0333", "name": "prefix"}, "/admin/dictionaries?section=prefixes", "Выберите провайдера префикса"),
+            ("servers", {"name": "EU9", "comment": "  "}, "/admin/dictionaries?section=servers", "Заполните комментарий"),
+            ("phone-types", {"name": " ", "comment": "comment"}, "/admin/dictionaries?section=phone-types", "Заполните тип номера"),
+            ("projects", {"name": "Project", "comment": "\n"}, "/admin/dictionaries?section=projects", "Заполните комментарий"),
+            ("phone-assignments", {"name": "Monitor", "code": " ", "comment": "comment"}, "/admin/dictionaries?section=phone-assignments", "Заполните код назначения номера"),
+        ]
+        for kind, body, return_path, message in cases:
+            with self.subTest(kind=kind):
+                captured, content = self.request(f"/admin/dictionaries/{kind}/create", method="POST", body=urlencode(body))
+                self.assertEqual(captured["status"], "400 Bad Request")
+                self.assertIn(message, content)
+                self.assertIn(f"href='{return_path}'", content)
+
     def test_routes_csv_export_respects_prefix_filter(self):
         prefix_id = self.route_prefix_id("0828")
         captured, content = self.request(f"/routes?prefix_id={prefix_id}&export=csv")
@@ -2385,11 +2404,11 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertNotIn("Добавить справочные значения", content)
         captured, _ = self.request("/admin/dictionaries/countries/create", method="POST", body=urlencode({"name": "Аргентина", "code": "ARG"}))
         self.assertEqual(captured["status"], "303 See Other")
-        captured, _ = self.request("/admin/dictionaries/providers/create", method="POST", body=urlencode({"name": "NewTel", "default_currency_id": ""}))
+        captured, _ = self.request("/admin/dictionaries/providers/create", method="POST", body=urlencode({"name": "NewTel", "default_currency_id": "1", "comment": "New provider"}))
         self.assertEqual(captured["status"], "303 See Other")
         captured, _ = self.request("/admin/dictionaries/currencies/create", method="POST", body=urlencode({"code": "USD", "name": "US Dollar"}))
         self.assertEqual(captured["status"], "303 See Other")
-        captured, _ = self.request("/admin/dictionaries/prefixes/create", method="POST", body=urlencode({"provider_id": "1", "prefix": "0333", "name": ""}))
+        captured, _ = self.request("/admin/dictionaries/prefixes/create", method="POST", body=urlencode({"provider_id": "1", "prefix": "0333", "name": "New prefix"}))
         self.assertEqual(captured["status"], "303 See Other")
         captured, content = self.request("/admin/dictionaries")
         self.assertIn("Аргентина", content)
@@ -2587,8 +2606,8 @@ class ServerSmokeTest(unittest.TestCase):
             self.assertNotIn(obsolete, content)
         self.assertLess(content.index("ГЛ"), content.index("АОН"))
         self.assertLess(content.index("АОН"), content.index("Scratchcards"))
-        self.request("/admin/dictionaries/projects/create", method="POST", body=urlencode({"name": "NewProject", "comment": ""}))
-        self.request("/admin/dictionaries/phone-assignments/create", method="POST", body=urlencode({"name": "Мониторинг", "code": "monitoring", "comment": ""}))
+        self.request("/admin/dictionaries/projects/create", method="POST", body=urlencode({"name": "NewProject", "comment": "Project comment"}))
+        self.request("/admin/dictionaries/phone-assignments/create", method="POST", body=urlencode({"name": "Мониторинг", "code": "monitoring", "comment": "Assignment comment"}))
         captured, content = self.request("/phones")
         self.assertEqual(captured["status"], "200 OK")
         for expected in ("Меж.деп.", "REP", "ИТМ", "Предоплата", "Юр.деп."):
