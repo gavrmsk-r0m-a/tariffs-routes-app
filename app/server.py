@@ -3094,10 +3094,10 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .companies-page .hlr-like-column-panel .column-order-button {{ min-width: 32px; padding: 3px 7px; box-shadow: none; }}
 
     /* Server priorities page UI: align filters, footer actions, and columns panel with HLR-style table pages. */
-    .server-priorities-page .filter-grid button[type="submit"] {{ border-color: var(--accent-strong); background: var(--accent); color: #fff; box-shadow: 0 4px 12px rgba(37, 99, 235, .18); }}
-    .server-priorities-page .filter-grid button[type="submit"]:hover,
-    .server-priorities-page .filter-grid button[type="submit"]:focus-visible {{ border-color: var(--accent-hover); background: var(--accent-hover); color: #fff; }}
-    .server-priorities-page .filter-grid button[type="submit"]:active {{ border-color: #1e40af; background: #1e40af; color: #fff; }}
+    .server-priorities-page .server-priorities-filter-submit {{ border-color: #2563eb !important; background: #2563eb !important; color: #fff !important; box-shadow: 0 4px 10px rgba(37, 99, 235, .16); font-weight: 750; }}
+    .server-priorities-page .server-priorities-filter-submit:hover {{ border-color: #1d4ed8 !important; background: #1d4ed8 !important; color: #fff !important; }}
+    .server-priorities-page .server-priorities-filter-submit:focus-visible {{ outline: none; border-color: #1d4ed8 !important; background: #2563eb !important; color: #fff !important; box-shadow: 0 0 0 3px rgba(37, 99, 235, .22); }}
+    .server-priorities-page .server-priorities-filter-submit:active {{ border-color: #1e40af !important; background: #1e40af !important; color: #fff !important; }}
     .server-priorities-page .filter-grid .reset-filters {{ background: var(--surface-muted); border-color: var(--border-strong); color: var(--text); box-shadow: none; }}
     .server-priorities-page .filter-grid .reset-filters:hover {{ background: var(--surface-strong); border-color: var(--border-strong); color: var(--text-strong); }}
     .server-priorities-page .table-footer-tools {{ align-items: center; justify-content: flex-end; gap: 8px; }}
@@ -8706,7 +8706,7 @@ def server_priorities_page(repo: Repository, q: dict[str, str] | None = None) ->
   <h2>Сервер: {esc(server_names[server_id])}</h2>
   {table_card(table_html)}
 </section>""")
-    filters_html = f"""<form class="filter-grid" method="get" action="/admin/server-priorities"><label>ГЕО <select name="country_id">{options(repo, 'countries', selected=q.get('country_id'), empty='Все')}</select></label><label>Сервер <select name="server_id">{active_options(repo, 'servers', selected=q.get('server_id'), empty='Все')}</select></label><button type="submit">Найти</button></form>"""
+    filters_html = f"""<form class="filter-grid" method="get" action="/admin/server-priorities"><label>ГЕО <select name="country_id">{options(repo, 'countries', selected=q.get('country_id'), empty='Все')}</select></label><label>Сервер <select name="server_id">{active_options(repo, 'servers', selected=q.get('server_id'), empty='Все')}</select></label><button class="server-priorities-filter-submit" type="submit">Найти</button></form>"""
     body = f"""
 <div class="server-priorities-page">
 {filter_card(filters_html, q, ('country_id', 'server_id'))}
