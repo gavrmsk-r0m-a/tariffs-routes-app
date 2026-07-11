@@ -3055,6 +3055,10 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .tariffs-page .tariff-primary-summary:hover {{ border-color: #1d4ed8 !important; background: #1d4ed8 !important; color: #fff !important; }}
     .tariffs-page .tariff-primary-summary:focus-visible {{ outline: none; border-color: #1d4ed8 !important; background: #2563eb !important; color: #fff !important; box-shadow: 0 0 0 3px rgba(37, 99, 235, .22); }}
     .tariffs-page .tariff-primary-summary:active, .tariffs-page .tariff-create-shell[open] > .tariff-primary-summary {{ border-color: #1e40af !important; background: #1e40af !important; color: #fff !important; }}
+    .tariffs-page .tariffs-filter-submit {{ background: #2563eb !important; border-color: #2563eb !important; color: #fff !important; }}
+    .tariffs-page .tariffs-filter-submit:hover {{ background: #1d4ed8 !important; border-color: #1d4ed8 !important; color: #fff !important; }}
+    .tariffs-page .tariffs-filter-submit:focus-visible {{ outline: none; background: #2563eb !important; border-color: #1d4ed8 !important; color: #fff !important; box-shadow: 0 0 0 3px rgba(37, 99, 235, .22); }}
+    .tariffs-page .tariffs-filter-submit:active {{ background: #1e40af !important; border-color: #1e40af !important; color: #fff !important; }}
     .tariffs-page .table-footer-tools {{ align-items: center; justify-content: flex-end; gap: 8px; }}
     .tariffs-page .table-footer-tools .column-settings {{ order: 1; }}
     .tariffs-page .table-footer-tools .export-button {{ order: 2; min-width: auto; width: auto; min-height: 31px; padding: 5px 11px; border-color: var(--accent-strong); background: var(--accent); color: #fff; font-size: 12px; font-weight: 750; }}
@@ -3121,6 +3125,29 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .server-priorities-page .hlr-like-column-panel .column-settings-row {{ display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 6px; padding: 6px; border: 1px solid var(--border); border-radius: var(--radius-small); background: var(--surface-muted); }}
     .server-priorities-page .hlr-like-column-panel .column-settings-row label {{ display: flex; align-items: center; gap: 7px; min-width: 0; margin: 0; font-weight: 650; }}
     .server-priorities-page .hlr-like-column-panel .column-order-button {{ min-width: 32px; padding: 3px 7px; box-shadow: none; }}
+
+    /* Company routing settings page: scoped UI polish for filter controls and HLR-like table actions. */
+    .company-routing-settings-page .company-routing-settings-intro {{ margin: 0 0 8px; font-size: 13px; line-height: 1.35; }}
+    .company-routing-settings-page .company-routing-history-control {{ display: flex; flex-direction: column; justify-content: flex-end; min-width: 0; margin: 0; padding: 0; }}
+    .company-routing-settings-page .company-routing-history-spacer {{ display: block; height: 15px; min-height: 0; margin: 0 0 4px; padding: 0; visibility: hidden; color: transparent; font-size: 12px; font-weight: 760; line-height: 15px; user-select: none; }}
+    .company-routing-settings-page .company-routing-history-checkbox {{ box-sizing: border-box; width: 100%; height: 32px; min-height: 32px; max-height: 32px; display: inline-flex; align-items: center; gap: 7px; margin: 0; padding: 5px 8px; border: 1px solid var(--border-strong); border-radius: 7px; background: var(--input-bg, var(--surface)); color: var(--text); box-shadow: inset 0 1px 1px rgba(17, 24, 39, .025); font-size: 13px; font-weight: 760; line-height: 1.25; white-space: nowrap; }}
+    .company-routing-settings-page .company-routing-history-checkbox:has(input[name="show_history"]:checked) {{ border-color: var(--border-ink); background: #f1f5f9; color: var(--text-strong); }}
+    .company-routing-settings-page .company-routing-history-checkbox input[type="checkbox"] {{ flex: 0 0 16px; width: 16px; height: 16px; min-width: 16px; min-height: 16px; margin: 0; padding: 0; accent-color: var(--accent); }}
+    .company-routing-settings-page .company-routing-filter-submit {{ background: #2563eb !important; border-color: #2563eb !important; color: #fff !important; }}
+    .company-routing-settings-page .company-routing-filter-submit:hover {{ background: #1d4ed8 !important; border-color: #1d4ed8 !important; color: #fff !important; }}
+    .company-routing-settings-page .company-routing-filter-submit:focus-visible {{ outline: none; background: #2563eb !important; border-color: #1d4ed8 !important; color: #fff !important; box-shadow: 0 0 0 3px rgba(37, 99, 235, .22); }}
+    .company-routing-settings-page .company-routing-filter-submit:active {{ background: #1e40af !important; border-color: #1e40af !important; color: #fff !important; }}
+    .company-routing-settings-page .filter-card .reset-filters {{ border-color: var(--border-strong); background: var(--surface-muted); color: var(--text); }}
+    .company-routing-settings-page .table-footer-tools {{ align-items: center; justify-content: flex-end; gap: 8px; }}
+    .company-routing-settings-page .table-footer-tools .column-settings {{ order: 1; }}
+    .company-routing-settings-page .table-footer-tools .export-button {{ order: 2; min-width: auto; width: auto; min-height: 31px; padding: 5px 11px; border-color: var(--accent-strong); background: var(--accent); color: #fff; font-size: 12px; font-weight: 750; }}
+    .company-routing-settings-page .table-footer-tools .export-button:hover {{ border-color: var(--accent-hover); background: var(--accent-hover); color: #fff; }}
+    .company-routing-settings-page .hlr-like-column-panel {{ width: min(420px, 88vw); max-height: min(430px, 70vh); padding: 10px; border-radius: var(--radius-card); gap: 8px; overflow: hidden; }}
+    .company-routing-settings-page .hlr-like-column-panel .column-settings-panel-actions {{ display: flex; align-items: center; justify-content: space-between; gap: 8px; }}
+    .company-routing-settings-page .hlr-like-column-panel .column-settings-list {{ display: grid; gap: 6px; max-height: min(340px, 56vh); overflow: auto; overscroll-behavior: contain; padding-right: 2px; }}
+    .company-routing-settings-page .hlr-like-column-panel .column-settings-row {{ display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 6px; padding: 6px; border: 1px solid var(--border); border-radius: var(--radius-small); background: var(--surface-muted); }}
+    .company-routing-settings-page .hlr-like-column-panel .column-settings-row label {{ display: flex; align-items: center; gap: 7px; min-width: 0; margin: 0; font-weight: 650; }}
+    .company-routing-settings-page .hlr-like-column-panel .column-order-button {{ min-width: 32px; padding: 3px 7px; box-shadow: none; }}
     .modal-form-card[open] > form.company-dialog, .company-dialog.company-dialog {{ position: fixed; left: 50%; top: 50%; z-index: 990; width: min(560px, calc(100vw - 48px)); max-width: calc(100vw - 48px); max-height: min(780px, calc(100vh - 48px)); margin: 0; padding: 0; transform: translate(-50%, -50%); display: grid; grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr) auto; gap: 0; overflow: hidden; border: 1px solid var(--border-strong); border-radius: 14px; background: #fff; color: var(--text); box-shadow: 0 22px 62px rgba(15, 23, 42, .22); box-sizing: border-box; }}
     .company-dialog-header {{ grid-column: 1 / -1; width: 100%; box-sizing: border-box; margin: 0; padding: 12px 20px 10px; border-bottom: 1px solid var(--border-strong); background: linear-gradient(180deg, #fff 0%, #f8fafc 100%); }}
     .company-dialog-header h2 {{ margin: 0; color: var(--text-strong); font-size: 17px; font-weight: 860; line-height: 1.16; }}
@@ -7418,7 +7445,7 @@ def tariffs_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
     filters_html = f"""<form class="filter-grid" method="get" action="/tariffs">
 <label>ГЕО <select name="country_id">{options(repo, 'countries', selected=q.get('country_id'), empty='Все')}</select></label>
 <label>Провайдер <select name="provider_id">{options(repo, 'providers', selected=q.get('provider_id'), empty='Все')}</select></label>
-<label>Статус <select name="status"><option value="all" {'selected' if q.get('status')=='all' else ''}>Все</option><option value="active" {'selected' if q.get('status','active')=='active' else ''}>Активные</option><option value="inactive" {'selected' if q.get('status')=='inactive' else ''}>Неактивные</option></select></label><button>Найти</button></form>"""
+<label>Статус <select name="status"><option value="all" {'selected' if q.get('status')=='all' else ''}>Все</option><option value="active" {'selected' if q.get('status','active')=='active' else ''}>Активные</option><option value="inactive" {'selected' if q.get('status')=='inactive' else ''}>Неактивные</option></select></label><button class="tariffs-filter-submit" type="submit">Найти</button></form>"""
     create_html = f"""<form class="tariff-dialog tariff-dialog-form" method="post" action="/tariffs/create">
   <header class="tariff-dialog-header"><h2>Добавить тариф</h2></header>
   <div class="tariff-dialog-body">
@@ -8863,17 +8890,16 @@ def company_routing_settings_page(repo: Repository, q: dict[str, str] | None = N
 <label>ID кампании <input name="company_id_external" value="{esc(q.get('company_id_external'))}"></label>
 <label>Режим маршрутизации <select name="routing_mode">{routing_mode_options(q.get('routing_mode'), empty='Все')}</select></label>
 <label>Активность <select name="is_active"><option value="" {'selected' if not q.get('is_active') else ''}>Все</option><option value="1" {'selected' if q.get('is_active')=='1' else ''}>Активна</option><option value="0" {'selected' if q.get('is_active')=='0' else ''}>Неактивна</option></select></label>
-<label class="checkbox-inline"><input type="checkbox" name="show_history" value="1" {'checked' if show_history else ''}> Показывать историю</label>
-<button>Найти</button></form>"""
+<span class="company-routing-history-control"><span class="company-routing-history-spacer" aria-hidden="true">Показывать историю</span><label class="checkbox-inline company-routing-history-checkbox"><input type="checkbox" name="show_history" value="1" {'checked' if show_history else ''}> Показывать историю</label></span>
+<button class="company-routing-filter-submit" type="submit">Найти</button></form>"""
     table_html = f"""{data_table('company_routing_settings', COMPANY_ROUTING_SETTINGS_COLUMN_LABELS, ''.join(rows))}"""
     body = f"""
-<h1>Администрирование → Схема маршрутизации кампаний</h1>
-<p class='muted'>Схема маршрутизации кампаний показывает текущие исключения из стандартных правил прозвона. Изменения маршрутизации выполняются через раздел ‘Смена провайдеров’.</p>
+<p class='muted company-routing-settings-intro'>Схема маршрутизации кампаний показывает текущие исключения из стандартных правил прозвона. Изменения маршрутизации выполняются через раздел ‘Смена провайдеров’.</p>
 {filter_card(filters_html, q, ('country_id', 'server_id', 'company_id_external', 'routing_mode', 'is_active', 'show_history'))}
 {table_card(table_html)}
-{table_footer(pagination_html, export_link('/admin/company-routing-settings', q) + column_settings('company_routing_settings', COMPANY_ROUTING_SETTINGS_COLUMN_LABELS))}
+{table_footer(pagination_html, column_settings('company_routing_settings', COMPANY_ROUTING_SETTINGS_COLUMN_LABELS, hlr_style=True) + export_link('/admin/company-routing-settings', q, text=True))}
 """
-    return page("Схема маршрутизации кампаний", body)
+    return page("Схема маршрутизации кампаний", table_page_container(body, extra_class="company-routing-settings-page"))
 
 
 def naming_rules_page(repo: Repository) -> bytes:
