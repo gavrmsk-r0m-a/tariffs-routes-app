@@ -3025,6 +3025,8 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .routes-page .route-create-shell > .form-summary {{ display: inline-flex; align-items: center; justify-content: center; width: max-content; min-height: 36px; padding: 8px 14px; border: 1px solid #2563eb; border-radius: var(--radius-control); background: #2563eb; color: #fff; box-shadow: 0 4px 12px rgba(37, 99, 235, .18); font-size: 13px; font-weight: 820; letter-spacing: .01em; text-transform: uppercase; }}
     .routes-page .route-create-shell > .form-summary::after, .routes-page .route-create-shell[open] > .form-summary::after {{ content: none; }}
     .routes-page .route-create-shell > .form-summary:hover {{ border-color: #1d4ed8; background: #1d4ed8; color: #fff; }}
+    .routes-page .route-create-shell > .form-summary:focus-visible {{ outline: none; border-color: #1d4ed8; background: #2563eb; color: #fff; box-shadow: 0 0 0 3px rgba(37, 99, 235, .22); }}
+    .routes-page .route-create-shell > .form-summary:active, .routes-page .route-create-shell[open] > .form-summary {{ border-color: #1e40af; background: #1e40af; color: #fff; }}
     .routes-page .table-footer-tools {{ align-items: center; justify-content: flex-end; gap: 8px; }}
     .routes-page .table-footer-tools .column-settings {{ order: 1; }}
     .routes-page .table-footer-tools .export-button {{ order: 2; min-width: auto; width: auto; min-height: 31px; padding: 5px 11px; border-color: var(--accent-strong); background: var(--accent); color: #fff; font-size: 12px; font-weight: 750; }}
@@ -3037,16 +3039,17 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .routes-page .hlr-like-column-panel .column-order-button {{ min-width: 32px; padding: 3px 7px; box-shadow: none; }}
     .modal-form-card[open] > form.route-dialog, .route-dialog.route-dialog {{ position: fixed; left: 50%; top: 50%; z-index: 990; width: min(590px, calc(100vw - 48px)); max-width: calc(100vw - 48px); max-height: min(780px, calc(100vh - 48px)); margin: 0; padding: 0; transform: translate(-50%, -50%); display: grid; grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr) auto; gap: 0; overflow: hidden; border: 1px solid var(--border-strong); border-radius: 14px; background: #fff; color: var(--text); box-shadow: 0 22px 62px rgba(15, 23, 42, .22); box-sizing: border-box; }}
     .route-dialog.route-dialog-page-form {{ position: relative; left: auto; top: auto; transform: none; z-index: auto; margin: 0 0 16px; }}
-    .route-dialog-header {{ padding: 15px 20px 13px; border-bottom: 1px solid var(--border-strong); background: linear-gradient(180deg, #fff 0%, #f8fafc 100%); }}
+    .route-dialog-header {{ align-self: stretch; width: 100%; box-sizing: border-box; padding: 15px 20px 13px; border-bottom: 1px solid var(--border-strong); background: linear-gradient(180deg, #fff 0%, #f8fafc 100%); }}
     .route-dialog-header h2 {{ margin: 0; color: var(--text-strong); font-size: 18px; font-weight: 860; line-height: 1.2; }}
     .route-dialog-body {{ min-height: 0; overflow-y: auto; overflow-x: hidden; scrollbar-gutter: stable; }}
     .route-dialog-section {{ display: grid; gap: 10px; min-width: 0; margin: 0; padding: 14px 20px 16px; border: 0; border-bottom: 1px solid #e5edf7; background: #fff; }}
     .route-dialog-section h3 {{ margin: 0; color: #1e3a5f; font-size: 12px; font-weight: 850; letter-spacing: .03em; text-transform: uppercase; }}
     .route-dialog-grid {{ display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 11px 12px; }}
     .route-dialog label {{ min-width: 0; margin: 0; color: var(--text); font-size: 12px; font-weight: 740; }}
-    .route-dialog input, .route-dialog select {{ width: 100%; min-height: 36px; box-sizing: border-box; }}
+    .route-dialog input, .route-dialog select, .route-dialog textarea {{ width: 100%; min-height: 36px; box-sizing: border-box; }}
+    .route-dialog textarea {{ min-height: 58px; resize: vertical; line-height: 1.35; }}
     .route-dialog .route-dialog-full {{ grid-column: 1 / -1; }}
-    .route-dialog-footer {{ display: flex; justify-content: flex-start; align-items: center; gap: 10px; grid-column: 1 / -1; width: 100%; box-sizing: border-box; margin: 0; padding: 14px 20px; border-top: 1px solid var(--border-strong); background: #eef5ff; }}
+    .route-dialog-footer {{ display: flex; justify-content: flex-start; align-items: center; gap: 10px; grid-column: 1 / -1; align-self: stretch; width: 100%; box-sizing: border-box; margin: 0; padding: 14px 20px; border-top: 1px solid var(--border-strong); background: #eef5ff; }}
     .route-dialog-footer .modal-save {{ order: 1; border-color: #2563eb; background: #2563eb; color: #fff; }}
     .route-dialog-footer .modal-save:hover {{ border-color: #1d4ed8; background: #1d4ed8; color: #fff; }}
     .route-dialog-footer .modal-cancel {{ order: 2; }}
@@ -7159,7 +7162,7 @@ def routes_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
     </div></section>
     <section class="route-dialog-section"><h3>Статус и описание</h3><div class="route-dialog-grid">
       <label>Статус <span class="required">*</span><select name="is_actual"><option value="1">Активный</option><option value="0">Неактивный</option></select></label>
-      <label class="route-dialog-full">Комментарий <input name="comment"></label>
+      <label class="route-dialog-full">Комментарий <textarea name="comment" rows="2"></textarea></label>
       <label class="route-dialog-full">Название маршрута <span class="required">*</span><input name="name" placeholder="Заполните обязательные поля для формирования названия"></label>
     </div></section>
   </div>
@@ -8937,7 +8940,7 @@ def route_edit_page(repo: Repository, route_id: int) -> bytes:
 <section class='route-dialog-section'><h3>Статус и описание</h3><div class='route-dialog-grid'>
 <label>Актуальный <select name='is_actual'><option value='1' {'selected' if route['is_actual'] else ''}>Активный</option><option value='0' {'selected' if not route['is_actual'] else ''}>Неактивный</option></select></label>
 <label>Приоритет <select name='priority_status'><option value='priority' {'selected' if route['priority_status']=='priority' else ''}>priority</option><option value='alternative' {'selected' if route['priority_status']=='alternative' else ''}>alternative</option><option value='unknown' {'selected' if route['priority_status']=='unknown' else ''}>unknown</option></select></label>
-<label class='route-dialog-full'>Комментарий <input name='comment' value='{esc(route['comment'])}'></label>
+<label class='route-dialog-full'>Комментарий <textarea name='comment' rows='2'>{esc(route['comment'])}</textarea></label>
 <label class='route-dialog-full'>Название маршрута <span class='required'>*</span><input name='name' value='{esc(route['name'])}' size='60'></label>
 </div></section>
 </div>
