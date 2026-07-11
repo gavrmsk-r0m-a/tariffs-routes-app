@@ -972,6 +972,7 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .filter-summary, .form-summary {{ min-height: 38px; display: flex; align-items: center; justify-content: space-between; }}
     .filter-summary::after, .form-summary::after {{ content: "Настроить"; color: var(--muted); font-size: 12px; font-weight: 650; }}
     details[open] > .filter-summary::after, details[open] > .form-summary::after {{ content: "Свернуть"; }}
+    .provider-changes-page .form-summary::after, .provider-changes-page details[open] > .form-summary::after {{ content: none; }}
     .filter-grid, .form-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, max-content)); gap: 10px 12px; align-items: end; padding: 14px; }}
     .filter-grid {{ display: flex; flex-wrap: wrap; gap: 10px; align-items: end; }}
     .filter-grid label, .form-grid label {{ min-width: 150px; }}
@@ -1009,6 +1010,8 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     @media (max-width: 1020px) {{ #routing-event-form, #routing-event-form[data-current-scope='campaign_setting'] {{ grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }} #routing-event-form[data-current-scope='campaign_setting'] .provider-change-campaign-grid, #routing-event-form[data-current-scope='campaign_setting'] .provider-change-campaign-lower-grid {{ grid-template-columns: repeat(2, minmax(0, 1fr)); overflow: visible; }} #routing-event-form .routing-provider-field, #routing-event-form .routing-reason-field, #routing-event-form .route-select-field, #routing-event-form .campaign-server-field, #routing-event-form .campaign-id-field, #routing-event-form .campaign-id-action-field, #routing-event-form .campaign-change-type-field, #routing-event-form .campaign-company-field {{ min-width: 0; }} }}
     @media (max-width: 720px) {{ .form-grid .route-select-field {{ grid-column: 1 / -1; width: 100%; min-width: 0; }} }}
     .filter-grid .checkbox-inline, .form-grid .checkbox-inline {{ min-width: auto; display: flex; align-items: center; gap: 5px; align-self: center; font-weight: 560; }}
+    .provider-changes-page .filter-grid .checkbox-inline {{ min-height: 34px; box-sizing: border-box; padding: 6px 10px; align-self: end; border: 1px solid var(--border-strong); border-radius: var(--radius-control); background: var(--input-bg, var(--surface)); white-space: nowrap; }}
+    .provider-changes-page .filter-grid .checkbox-inline input[type='checkbox'] {{ width: 16px; height: 16px; min-height: 16px; flex: 0 0 16px; margin: 0; accent-color: var(--accent); }}
     .important-checkbox, .form-grid .spillover-checkbox {{ min-width: 150px; min-height: 34px; display: inline-flex; align-items: center; gap: 8px; align-self: end; padding: 4px 0; font-weight: 720; white-space: nowrap; }}
     .important-checkbox input[type='checkbox'], .form-grid .spillover-checkbox input[type='checkbox'] {{ width: 22px; height: 22px; min-height: 22px; flex: 0 0 22px; margin: 0; border-color: var(--border-strong); accent-color: var(--accent); }}
     .form-grid .wide, .filter-grid .wide {{ grid-column: 1 / -1; }}
@@ -1027,7 +1030,8 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .column-settings summary {{ min-height: 28px; padding: 4px 9px; border: 1px solid var(--border-strong); border-radius: var(--radius-control); background: var(--surface); color: var(--accent-strong); font-size: 12px; font-weight: 720; list-style: none; box-shadow: 0 1px 0 rgba(34, 48, 42, 0.03); }}
     .column-settings summary::-webkit-details-marker {{ display: none; }}
     .column-settings[open] summary, .column-settings summary:hover {{ background: var(--surface-muted); border-color: var(--accent); }}
-    .column-settings-panel {{ position: absolute; right: 0; top: calc(100% + 6px); z-index: 30; display: grid; gap: 8px; min-width: 300px; max-height: 380px; overflow: auto; padding: 10px; border: 1px solid var(--border-strong); border-radius: var(--radius-control); background: #fff; box-shadow: var(--shadow-card); }}
+    .column-settings-panel {{ position: absolute; right: 0; top: calc(100% + 6px); z-index: 30; display: grid; gap: 8px; min-width: 300px; max-height: min(380px, 70vh); overflow: auto; overscroll-behavior: contain; padding: 10px; border: 1px solid var(--border-strong); border-radius: var(--radius-control); background: #fff; box-shadow: var(--shadow-card); }}
+    .column-settings-panel.open-up {{ top: auto; bottom: calc(100% + 6px); }}
     .column-settings-list {{ display: grid; gap: 4px; }}
     .column-settings-row {{ display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; min-height: 30px; padding: 3px 4px; border-radius: 8px; }}
     .column-settings-row:hover {{ background: var(--surface-muted); }}
@@ -1318,6 +1322,10 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .modal-save, .admin-edit-save {{ background: var(--accent-strong); border-color: var(--accent-strong); color: #fff; font-weight: 780; }}
     .modal-save:hover, .admin-edit-save:hover {{ background: var(--accent); border-color: var(--accent); color: #fff; }}
     .modal-cancel, .admin-edit-cancel {{ background: var(--surface); color: var(--text); border-color: var(--border-strong); }}
+    .provider-change-create-shell[open] > #routing-event-form {{ min-height: min(740px, calc(100vh - 48px)); grid-template-rows: auto auto minmax(0, 1fr) auto auto; align-content: start; }}
+    .provider-change-create-shell[open] > #routing-event-form [data-scope-content]:not([hidden]) {{ align-self: stretch; }}
+    .provider-change-create-shell[open] > #routing-event-form .provider-change-shell-hint {{ align-self: end; }}
+    .provider-change-create-shell[open] > #routing-event-form > button[type='submit'] {{ align-self: end; justify-self: end; }}
     .modal-cancel:hover, .admin-edit-cancel:hover {{ background: var(--warning-soft); color: var(--accent-strong); border-color: var(--warning-border); }}
     .modal-card input, .modal-card select, .modal-card textarea, .modal-form-card[open] input, .modal-form-card[open] select, .modal-form-card[open] textarea {{ width: 100%; box-sizing: border-box; background: var(--input-bg, var(--surface)); color: var(--text); border-color: var(--border-strong); }}
     html[data-theme="dark"] .modal-card, html[data-theme="dark"] .modal-form-card[open] > form, html[data-theme="dark"] .modal-form-card[open] > .modal-body {{ background: var(--surface); border-color: var(--border-strong); color: var(--text); }}
@@ -2179,6 +2187,11 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     html[data-theme="light-v2"] form button[type="submit"], html[data-theme="light-v2"] .hero-action, html[data-theme="light-v2"] .modal-save, html[data-theme="light-v2"] .admin-edit-save {{ background: var(--accent); border-color: var(--accent); color: #fff; box-shadow: 0 4px 10px rgba(15,118,110,.14); }}
     html[data-theme="light-v2"] .filter-grid button[type="submit"], html[data-theme="light-v2"] .filter-grid > button {{ background: var(--accent-soft); border-color: var(--accent-border); color: var(--accent-strong); box-shadow: none; }}
     html[data-theme="light-v2"] .filter-grid button[type="submit"]:hover, html[data-theme="light-v2"] .filter-grid > button:hover {{ background: var(--accent-soft); border-color: var(--accent); color: var(--accent-strong); }}
+    html[data-theme="light-v2"] .provider-changes-page .filter-grid button[type="submit"], html[data-theme="light-v2"] .provider-changes-page .filter-grid > button {{ background: var(--accent); border-color: var(--accent); color: #fff; box-shadow: 0 4px 10px rgba(15,118,110,.14); }}
+    html[data-theme="light-v2"] .provider-changes-page .filter-grid button[type="submit"]:hover, html[data-theme="light-v2"] .provider-changes-page .filter-grid > button:hover {{ background: var(--accent-strong); border-color: var(--accent-strong); color: #fff; }}
+    html[data-theme="light-v2"] .provider-changes-page .form-summary::after {{ content: none; }}
+    html[data-theme="light-v2"] .provider-changes-page .table-footer-tools .export-button {{ background: var(--accent); border-color: var(--accent); color: #fff; }}
+    html[data-theme="light-v2"] .provider-changes-page .table-footer-tools .export-button:hover {{ background: var(--accent-strong); border-color: var(--accent-strong); color: #fff; }}
     html[data-theme="light-v2"] .reset-filters, html[data-theme="light-v2"] .modal-cancel, html[data-theme="light-v2"] .admin-edit-cancel {{ background: var(--surface-muted); border-color: var(--border-strong); color: var(--text); box-shadow: none; }}
     html[data-theme="light-v2"] .reset-filters:hover, html[data-theme="light-v2"] .modal-cancel:hover, html[data-theme="light-v2"] .admin-edit-cancel:hover {{ background: var(--surface-strong); border-color: var(--border-strong); color: var(--text-strong); }}
     html[data-theme="light-v2"] .danger-action, html[data-theme="light-v2"] form[action$="/deactivate"] button, html[data-theme="light-v2"] button[onclick*="Удал"], html[data-theme="light-v2"] button[onclick*="Деактив"], html[data-theme="light-v2"] button[onclick*="Отключ"] {{ background: var(--danger-soft); border-color: var(--danger-border); color: var(--danger-strong); box-shadow: none; }}
@@ -3672,6 +3685,7 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
           }});
         }});
         renderPanel();
+        placePanel();
         if (persist) savePrefs();
       }}
       function renderPanel() {{
@@ -3708,6 +3722,21 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
         state.visible[key] = visible;
         applyState(true);
       }}
+      function placePanel() {{
+        const panel = settings.querySelector(".column-settings-panel");
+        const summary = settings.querySelector("summary");
+        if (!panel || !summary || !settings.open) return;
+        panel.classList.remove("open-up");
+        const buttonRect = summary.getBoundingClientRect();
+        const panelHeight = Math.min(panel.scrollHeight || 380, Math.round(window.innerHeight * 0.7));
+        const spaceBelow = window.innerHeight - buttonRect.bottom;
+        const spaceAbove = buttonRect.top;
+        if (spaceBelow < panelHeight + 12 && spaceAbove > spaceBelow) panel.classList.add("open-up");
+      }}
+      function closePanel() {{
+        settings.open = false;
+        settings.querySelector(".column-settings-panel")?.classList.remove("open-up");
+      }}
       function addResizeHandles() {{
         tables.forEach((table) => table.querySelectorAll("th[data-col]").forEach((th) => {{
           const key = th.dataset.col;
@@ -3740,6 +3769,16 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
           th.appendChild(handle);
         }}));
       }}
+      settings.addEventListener("toggle", () => {{ if (settings.open) window.requestAnimationFrame(placePanel); }});
+      settings.addEventListener("click", (event) => {{ if (event.target.closest(".column-settings-panel")) event.stopPropagation(); }});
+      document.addEventListener("click", (event) => {{
+        if (settings.open && !settings.contains(event.target)) closePanel();
+      }});
+      document.addEventListener("keydown", (event) => {{
+        if (event.key === "Escape" && settings.open) closePanel();
+      }});
+      window.addEventListener("resize", placePanel);
+      window.addEventListener("scroll", placePanel, true);
       settings.addEventListener("change", (event) => {{
         const checkbox = event.target.closest("[data-col-toggle]");
         if (checkbox) setVisible(checkbox.dataset.colToggle, checkbox.checked);
@@ -8169,17 +8208,16 @@ def provider_changes_page(repo: Repository, q: dict[str, str] | None = None, for
 <label>Сервер <select name='server_id'>{options(repo, 'servers', selected=q.get('server_id'), empty='Все')}</select></label>
 <label>Кампания ID <input name='campaign_id' value='{esc(q.get('campaign_id'))}'></label>
 <label>Провайдер <select name='provider_id'>{options(repo, 'providers', selected=q.get('provider_id'), empty='Все')}</select></label>
-<label class='checkbox-inline'><input type='checkbox' name='include_inactive' value='1' {'checked' if q.get('include_inactive') == '1' else ''}> Показывать архив/неактивные</label>
-<button>Найти</button></form>"""
+<label class='checkbox-inline'><input type='checkbox' name='include_inactive' value='1' {'checked' if q.get('include_inactive') == '1' else ''}> <span>Показывать архив</span></label>
+<button type='submit'>Найти</button></form>"""
     journal_html = f"{data_table('provider_changes', [('event_at', 'Дата события'), ('scope', 'Область применения'), ('geo', 'GEO'), ('server', 'Сервер'), ('campaign', 'Кампания'), ('details', 'Детали'), ('comment', 'Комментарий'), ('reason', 'Причина'), ('actions', 'Действия')], ''.join(rows))}"
     body = f"""
-<h1>Смена провайдеров</h1>
 {routing_event_form(repo, form_data, form_error) if can_write("provider_changes") else ""}
 {filter_card(filters_html, q, ('date_from', 'date_to', 'country_id', 'apply_scope', 'server_id', 'campaign_id', 'provider_id', 'include_inactive'))}
 {f"<div class='notice ok'>{esc(q.get('notice'))}</div>" if q.get('notice') else ""}
 {f"<div class='notice error'>{esc(filter_error)}</div>" if filter_error else ""}
 {table_card(journal_html, title='Журнал событий', extra_class='journal-card')}
-{table_footer(pagination_html, export_link('/provider-changes', q) + column_settings('provider_changes', [('event_at', 'Дата события'), ('scope', 'Область применения'), ('geo', 'GEO'), ('server', 'Сервер'), ('campaign', 'Кампания'), ('details', 'Детали'), ('comment', 'Комментарий'), ('reason', 'Причина'), ('actions', 'Действия')]))}
+{table_footer(pagination_html, column_settings('provider_changes', [('event_at', 'Дата события'), ('scope', 'Область применения'), ('geo', 'GEO'), ('server', 'Сервер'), ('campaign', 'Кампания'), ('details', 'Детали'), ('comment', 'Комментарий'), ('reason', 'Причина'), ('actions', 'Действия')]) + export_link('/provider-changes', q))}
 """
     return page("Смена провайдеров", table_page_container(body, extra_class="provider-changes-page"))
 
