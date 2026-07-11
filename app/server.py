@@ -3074,6 +3074,41 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .phones-page .hlr-like-column-panel .column-settings-row {{ display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 6px; padding: 6px; border: 1px solid var(--border); border-radius: var(--radius-small); background: var(--surface-muted); }}
     .phones-page .hlr-like-column-panel .column-settings-row label {{ display: flex; align-items: center; gap: 7px; min-width: 0; margin: 0; font-weight: 650; }}
     .phones-page .hlr-like-column-panel .column-order-button {{ min-width: 32px; padding: 3px 7px; box-shadow: none; }}
+    /* Companies page UI: align campaign create modal and table actions with HLR/routes/tariffs/phones. */
+    .companies-page .company-create-shell {{ width: auto; max-width: max-content; margin: 0 0 10px auto; border: 0; background: transparent; box-shadow: none; overflow: visible; }}
+    .companies-page .company-primary-summary {{ display: inline-flex; align-items: center; justify-content: center; width: max-content; min-height: 36px; box-sizing: border-box; margin: 0; padding: 8px 14px; border: 1px solid #2563eb !important; border-radius: var(--radius-control); background: #2563eb !important; color: #fff !important; box-shadow: 0 4px 12px rgba(37, 99, 235, .18); font-size: 13px; font-weight: 820; letter-spacing: .01em; text-transform: uppercase; transition: background-color 140ms ease, border-color 140ms ease, box-shadow 140ms ease, color 140ms ease; }}
+    .companies-page .company-primary-summary::after, .companies-page .company-create-shell[open] > .company-primary-summary::after {{ content: none !important; }}
+    .companies-page .company-primary-summary:hover {{ border-color: #1d4ed8 !important; background: #1d4ed8 !important; color: #fff !important; }}
+    .companies-page .company-primary-summary:focus-visible {{ outline: none; border-color: #1d4ed8 !important; background: #2563eb !important; color: #fff !important; box-shadow: 0 0 0 3px rgba(37, 99, 235, .22); }}
+    .companies-page .company-primary-summary:active, .companies-page .company-create-shell[open] > .company-primary-summary {{ border-color: #1e40af !important; background: #1e40af !important; color: #fff !important; }}
+    .companies-page .table-footer-tools {{ align-items: center; justify-content: flex-end; gap: 8px; }}
+    .companies-page .table-footer-tools a[href='/calling-companies/history'] {{ order: 1; }}
+    .companies-page .table-footer-tools .column-settings {{ order: 2; }}
+    .companies-page .table-footer-tools .export-button {{ order: 3; min-width: auto; width: auto; min-height: 31px; padding: 5px 11px; border-color: var(--accent-strong); background: var(--accent); color: #fff; font-size: 12px; font-weight: 750; }}
+    .companies-page .table-footer-tools .export-button:hover {{ border-color: var(--accent-hover); background: var(--accent-hover); color: #fff; }}
+    .companies-page .hlr-like-column-panel {{ width: min(420px, 88vw); max-height: min(430px, 70vh); padding: 10px; border-radius: var(--radius-card); gap: 8px; overflow: hidden; }}
+    .companies-page .hlr-like-column-panel .column-settings-panel-actions {{ display: flex; align-items: center; justify-content: space-between; gap: 8px; }}
+    .companies-page .hlr-like-column-panel .column-settings-list {{ display: grid; gap: 6px; max-height: min(340px, 56vh); overflow: auto; overscroll-behavior: contain; padding-right: 2px; }}
+    .companies-page .hlr-like-column-panel .column-settings-row {{ display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 6px; padding: 6px; border: 1px solid var(--border); border-radius: var(--radius-small); background: var(--surface-muted); }}
+    .companies-page .hlr-like-column-panel .column-settings-row label {{ display: flex; align-items: center; gap: 7px; min-width: 0; margin: 0; font-weight: 650; }}
+    .companies-page .hlr-like-column-panel .column-order-button {{ min-width: 32px; padding: 3px 7px; box-shadow: none; }}
+    .modal-form-card[open] > form.company-dialog, .company-dialog.company-dialog {{ position: fixed; left: 50%; top: 50%; z-index: 990; width: min(560px, calc(100vw - 48px)); max-width: calc(100vw - 48px); max-height: min(780px, calc(100vh - 48px)); margin: 0; padding: 0; transform: translate(-50%, -50%); display: grid; grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr) auto; gap: 0; overflow: hidden; border: 1px solid var(--border-strong); border-radius: 14px; background: #fff; color: var(--text); box-shadow: 0 22px 62px rgba(15, 23, 42, .22); box-sizing: border-box; }}
+    .company-dialog-header {{ grid-column: 1 / -1; width: 100%; box-sizing: border-box; margin: 0; padding: 12px 20px 10px; border-bottom: 1px solid var(--border-strong); background: linear-gradient(180deg, #fff 0%, #f8fafc 100%); }}
+    .company-dialog-header h2 {{ margin: 0; color: var(--text-strong); font-size: 17px; font-weight: 860; line-height: 1.16; }}
+    .company-dialog-body {{ min-height: 0; overflow-y: auto; overflow-x: hidden; scrollbar-gutter: stable; }}
+    .company-dialog-section {{ display: grid; gap: 8px; min-width: 0; margin: 0; padding: 10px 20px 12px; border: 0; border-bottom: 1px solid #e5edf7; background: #fff; }}
+    .company-dialog-section h3 {{ margin: 0; color: #1e3a5f; font-size: 11.5px; font-weight: 850; line-height: 1.15; letter-spacing: .03em; text-transform: uppercase; }}
+    .company-dialog-grid {{ display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px 12px; align-items: start; }}
+    .company-dialog label {{ display: block; min-width: 0; margin: 0; color: var(--text); font-size: 11.5px; font-weight: 740; line-height: 1.2; }}
+    .company-dialog input, .company-dialog select, .company-dialog textarea {{ display: block; width: 100%; min-height: 33px; box-sizing: border-box; margin-top: 3px; padding-top: 6px; padding-bottom: 6px; font-size: 13px; line-height: 1.25; }}
+    .company-dialog textarea {{ min-height: 96px; resize: vertical; line-height: 1.35; }}
+    .company-dialog .company-dialog-full {{ grid-column: 1 / -1; }}
+    .company-dialog-footer {{ display: flex; justify-content: flex-start; align-items: center; gap: 10px; grid-column: 1 / -1; width: 100%; box-sizing: border-box; margin: 0; padding: 10px 20px; border-top: 1px solid var(--border-strong); background: #eef5ff; }}
+    .company-dialog-footer button {{ min-height: 32px; padding-top: 6px; padding-bottom: 6px; }}
+    .company-dialog-footer .modal-save {{ order: 1; border-color: #2563eb; background: #2563eb; color: #fff; }}
+    .company-dialog-footer .modal-save:hover {{ border-color: #1d4ed8; background: #1d4ed8; color: #fff; }}
+    .company-dialog-footer .modal-cancel {{ order: 2; }}
+    @media (max-width: 720px) {{ .modal-form-card[open] > form.company-dialog, .company-dialog.company-dialog {{ width: calc(100vw - 18px); max-width: calc(100vw - 18px); max-height: calc(100vh - 18px); }} .company-dialog-grid {{ grid-template-columns: 1fr; }} .company-dialog-section, .company-dialog-header, .company-dialog-footer {{ padding-left: 16px; padding-right: 16px; }} }}
     .modal-form-card[open] > form.phone-dialog, .phone-dialog.phone-dialog {{ position: fixed; left: 50%; top: 50%; z-index: 990; width: min(560px, calc(100vw - 48px)); max-width: calc(100vw - 48px); max-height: min(780px, calc(100vh - 48px)); margin: 0; padding: 0; transform: translate(-50%, -50%); display: grid; grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr) auto; gap: 0; overflow: hidden; border: 1px solid var(--border-strong); border-radius: 14px; background: #fff; color: var(--text); box-shadow: 0 22px 62px rgba(15, 23, 42, .22); box-sizing: border-box; }}
     .phone-dialog-header {{ grid-column: 1 / -1; width: 100%; box-sizing: border-box; margin: 0; padding: 12px 20px 10px; border-bottom: 1px solid var(--border-strong); background: linear-gradient(180deg, #fff 0%, #f8fafc 100%); }}
     .phone-dialog-header h2 {{ margin: 0; color: var(--text-strong); font-size: 17px; font-weight: 860; line-height: 1.16; }}
@@ -3189,6 +3224,9 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     html[data-theme="tele-route-pro"] .modal-form-card[open] > form.route-dialog, html[data-theme="tele-route-pro"] .route-dialog.route-dialog {{ gap: 0; padding: 0; }}
     html[data-theme="tele-route-pro"] .route-dialog-header, html[data-theme="tele-route-pro"] .route-dialog-footer {{ grid-column: 1 / -1; width: 100%; max-width: none; box-sizing: border-box; margin: 0; }}
     html[data-theme="tele-route-pro"] .route-dialog-footer {{ justify-content: flex-start; }}
+    html[data-theme="tele-route-pro"] .modal-form-card[open] > form.company-dialog, html[data-theme="tele-route-pro"] .company-dialog.company-dialog {{ gap: 0; padding: 0; }}
+    html[data-theme="tele-route-pro"] .company-dialog-header, html[data-theme="tele-route-pro"] .company-dialog-footer {{ grid-column: 1 / -1; width: 100%; max-width: none; box-sizing: border-box; margin: 0; }}
+    html[data-theme="tele-route-pro"] .company-dialog-footer {{ justify-content: flex-start; }}
     html[data-theme="tele-route-pro"] .modal-cancel,
     html[data-theme="tele-route-pro"] .admin-edit-cancel {{ border-color: var(--border-strong); background: #fff; color: #334155; }}
     html[data-theme="tele-route-pro"] .modal-cancel:hover,
@@ -3441,7 +3479,7 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     }});
     function enhanceModalForm(form, closeCallback) {{
       if (!form || form.dataset.modalEnhanced === "1") return;
-      if (form.classList.contains("route-dialog-form") || form.classList.contains("tariff-dialog-form") || form.classList.contains("phone-dialog-form")) {{
+      if (form.classList.contains("route-dialog-form") || form.classList.contains("tariff-dialog-form") || form.classList.contains("phone-dialog-form") || form.classList.contains("company-dialog-form")) {{
         form.dataset.modalEnhanced = "1";
         form.querySelectorAll("[data-modal-close]").forEach((button) => button.addEventListener("click", closeCallback));
         return;
@@ -7438,15 +7476,35 @@ def companies_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
         rows.append(f"<tr><td data-col='server'>{esc(cc['server_name'])}</td><td data-col='geo'>{esc(cc['country_name'])}</td>{clamp_cell('company_name', esc(cc['company_name']), cc['company_name'], selectable=True)}<td data-col='company_id' class='selectable-cell'>{selectable_text(esc(cc['company_id_external']), cc['company_id_external'])}</td><td data-col='lines'>{esc(cc['line_count'])}</td><td data-col='dial_sets'>{esc(cc['dial_set_count'])}</td><td data-col='autorotation'>{'Да' if cc['current_has_autorotation'] else 'Нет'}</td><td data-col='retry_interval'>{esc(cc['retry_interval_seconds'])}</td><td data-col='active'>{'Активна' if cc['is_active'] else 'Неактивна'}</td>{clamp_cell('comment', esc(cc['comment']), cc['comment'], classes='comment-cell')}<td data-col='history' class='history-cell'>{history}</td><td data-col='actions'>{actions}</td></tr>")
     filters_html = f"""<form class="filter-grid" method="get" action="/companies">
 <label>Сервер <select name="server_id">{options(repo, 'servers', selected=q.get('server_id'), empty='Все')}</select></label><label>ГЕО <select name="country_id">{options(repo, 'countries', selected=q.get('country_id'), empty='Все')}</select></label><label>Название кампании <input name="company" value="{esc(q.get('company'))}"></label><label>ID кампании <input name="external_id" value="{esc(q.get('external_id'))}"></label><label>Авторотация <select name="has_autorotation"><option value="">Все</option><option value="1" {'selected' if q.get('has_autorotation')=='1' else ''}>Да</option><option value="0" {'selected' if q.get('has_autorotation')=='0' else ''}>Нет</option></select></label><label>Активность <select name="is_active"><option value="">Все</option><option value="1" {'selected' if q.get('is_active')=='1' else ''}>Активна</option><option value="0" {'selected' if q.get('is_active')=='0' else ''}>Неактивна</option></select></label><button>Найти</button></form>"""
-    create_html = f"""<form class="form-grid" method="post" action="/companies/create"><label>Сервер <span class="required">*</span><select name="server_id">{active_options(repo, 'servers')}</select></label><label>ГЕО <span class="required">*</span><select name="country_id">{active_options(repo, 'countries')}</select></label><label>ID кампании <span class="required">*</span><input name="company_id_external"></label><label>Название кампании <span class="required">*</span><input name="company_name"></label><label>Количество линий <span class="required">*</span><input name="line_count" value="0"></label><label>Количество наборов <span class="required">*</span><input name="dial_set_count" value="0"></label><label>Авторотация <span class="required">*</span><select name="has_autorotation"><option value="1">Да</option><option value="0">Нет</option></select></label><label>Интервал дозвона, сек. <span class="required">*</span><input name="retry_interval_seconds" value="0"></label><label>Активна <span class="required">*</span><select name="is_active"><option value="1">Да</option><option value="0">Нет</option></select></label><label>Комментарий <input name="comment"></label><button>Сохранить</button></form>"""
+    create_html = f"""<form class="company-dialog company-dialog-form" method="post" action="/companies/create">
+  <header class="company-dialog-header"><h2>Добавить кампанию</h2></header>
+  <div class="company-dialog-body">
+    <section class="company-dialog-section"><h3>Основные параметры</h3><div class="company-dialog-grid">
+      <label>Сервер <span class="required">*</span><select name="server_id">{active_options(repo, 'servers')}</select></label>
+      <label>ГЕО <span class="required">*</span><select name="country_id">{active_options(repo, 'countries')}</select></label>
+      <label>ID кампании <span class="required">*</span><input name="company_id_external"></label>
+      <label>Название кампании <span class="required">*</span><input name="company_name"></label>
+    </div></section>
+    <section class="company-dialog-section"><h3>Настройки прозвона</h3><div class="company-dialog-grid">
+      <label>Количество линий <span class="required">*</span><input name="line_count" value="0"></label>
+      <label>Количество наборов <span class="required">*</span><input name="dial_set_count" value="0"></label>
+      <label>Авторотация <span class="required">*</span><select name="has_autorotation"><option value="1">Да</option><option value="0">Нет</option></select></label>
+      <label>Интервал дозвона, сек. <span class="required">*</span><input name="retry_interval_seconds" value="0"></label>
+      <label>Активна <span class="required">*</span><select name="is_active"><option value="1">Да</option><option value="0">Нет</option></select></label>
+    </div></section>
+    <section class="company-dialog-section"><h3>Описание</h3><div class="company-dialog-grid">
+      <label class="company-dialog-full">Комментарий <textarea name="comment" rows="5"></textarea></label>
+    </div></section>
+  </div>
+  <footer class="company-dialog-footer"><button type="submit" class="modal-save">Сохранить</button><button type="button" class="modal-cancel" data-modal-close>Отмена</button></footer>
+</form>"""
     table_html = f"{data_table('companies', [('server', 'Сервер'), ('geo', 'ГЕО'), ('company_name', 'Название кампании'), ('company_id', 'ID кампании'), ('lines', 'Количество линий'), ('dial_sets', 'Количество наборов'), ('autorotation', 'Авторотация'), ('retry_interval', 'Интервал между попытками дозвона (сек.)'), ('active', 'Активна'), ('comment', 'Комментарий'), ('history', 'Ист.'), ('actions', 'Действия')], ''.join(rows))}"
     body = f"""
-<h1>Кампании прозвона</h1>
 {filter_card(filters_html, q, ('server_id', 'country_id', 'company', 'external_id', 'has_autorotation', 'is_active'))}
-{form_card('+ Добавить кампанию <span class="muted">Admin</span>', create_html) if can_write("companies") else ""}
+{form_card('+ Добавить кампанию', create_html, extra_class='company-create-shell', summary_class='company-primary-summary') if can_write("companies") else ""}
 {table_card(table_html)}
-{table_footer(pagination_html, export_link('/companies', q) + "<a class='button table-utility-button' href='/calling-companies/history'>Журнал событий</a>" + column_settings('companies', [('server', 'Сервер'), ('geo', 'ГЕО'), ('company_name', 'Название кампании'), ('company_id', 'ID кампании'), ('lines', 'Количество линий'), ('dial_sets', 'Количество наборов'), ('autorotation', 'Авторотация'), ('retry_interval', 'Интервал дозвона'), ('active', 'Активна'), ('comment', 'Комментарий'), ('actions', 'Действия')]))}"""
-    return page("Кампании прозвона", table_page_container(body))
+{table_footer(pagination_html, "<a class='button table-utility-button' href='/calling-companies/history'>Журнал событий</a>" + column_settings('companies', [('server', 'Сервер'), ('geo', 'ГЕО'), ('company_name', 'Название кампании'), ('company_id', 'ID кампании'), ('lines', 'Количество линий'), ('dial_sets', 'Количество наборов'), ('autorotation', 'Авторотация'), ('retry_interval', 'Интервал дозвона'), ('active', 'Активна'), ('comment', 'Комментарий'), ('actions', 'Действия')], hlr_style=True) + export_link('/companies', q, text=True))}"""
+    return page("Кампании прозвона", table_page_container(body, extra_class="companies-page"))
 
 def routing_reason_options(selected: str | None = None, scope: str = "campaign_setting") -> str:
     reasons = Repository.ROUTING_EVENT_REASONS_BY_SCOPE.get(scope, Repository.ROUTING_EVENT_REASONS)
