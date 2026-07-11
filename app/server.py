@@ -1108,6 +1108,14 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .hlr-counter-line, .hlr-input-hint {{ margin: 0; }}
     .hlr-input-hint {{ align-self: end; line-height: inherit; }}
     .hlr-input-actions {{ display: flex; align-items: center; gap: 8px; flex-wrap: wrap; align-self: end; }}
+    .hlr-daily-limit-admin {{ display: grid; gap: 8px; padding: 12px; border-bottom: 1px solid var(--border); }}
+    .hlr-daily-limit-title {{ margin: 0; font-weight: 820; }}
+    .hlr-daily-limit-form {{ display: flex; align-items: end; gap: 8px; flex-wrap: wrap; }}
+    .hlr-daily-limit-form label {{ display: grid; gap: 4px; font-weight: 720; }}
+    .hlr-daily-limit-form input {{ width: 130px; }}
+    .hlr-daily-limit-meta {{ display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin: 0; }}
+    .hlr-daily-limit-meta span {{ display: block; color: var(--muted); font-size: 12px; font-weight: 720; }}
+    .hlr-daily-limit-meta strong {{ display: block; color: var(--text-strong); }}
     .hlr-progress {{ display: none; align-items: center; flex: 1 1 320px; min-width: min(320px, 100%); max-width: calc(100% - 8px); min-height: 36px; }}
     .hlr-progress.is-active {{ display: inline-flex; }}
     .hlr-progress-track {{ position: relative; display: block; width: 100%; height: 30px; overflow: hidden; border: 1px solid var(--border); border-radius: var(--radius-small); background: var(--surface-muted); box-shadow: inset 0 1px 2px color-mix(in srgb, var(--text-strong) 10%, transparent); }}
@@ -3908,7 +3916,7 @@ def section_for_write_path(path: str) -> str | None:
         return "phones"
     if path.startswith("/companies/") or path == "/companies/create":
         return "companies"
-    if path in {"/hlr/check", "/hlr/export.csv", "/hlr/balance"}:
+    if path in {"/hlr/check", "/hlr/export.csv", "/hlr/balance", "/hlr/config/daily-limit", "/hlr/config/daily-limit/reset"}:
         return "hlr"
     if path.startswith("/admin/server-priorities/"):
         return "admin_server_priorities"
@@ -4895,6 +4903,102 @@ def hlr_int_env(name: str, default: int) -> int:
         return default
 
 
+def hlr_env_daily_limit() -> tuple[int, str]:
+    raw = os.environ.get("HLR_DAILY_CHECK_LIMIT")
+    if raw not in (None, ""):
+        try:
+            value = int(raw)
+            if value > 0:
+                return value, "env"
+        except ValueError:
+            pass
+    return 2000, "fallback"
+
+
+def app_setting_value(key: str) -> str | None:
+    repo = _REQUEST_CONTEXT.get("repo")
+    if repo is None:
+        return None
+    row = repo.conn.execute("SELECT value FROM app_settings WHERE key = ?", (key,)).fetchone()
+    if row is None or row["value"] in (None, ""):
+        return None
+    return str(row["value"])
+
+
+def set_app_setting_value(key: str, value: str, updated_by: int | None = None) -> None:
+    repo = _REQUEST_CONTEXT.get("repo")
+    if repo is None:
+        raise BusinessRuleError("Хранилище настроек недоступно.")
+    repo.conn.execute(
+        """
+        INSERT INTO app_settings(key, value, updated_at, updated_by)
+        VALUES (?, ?, CURRENT_TIMESTAMP, ?)
+        ON CONFLICT(key) DO UPDATE SET
+            value = excluded.value,
+            updated_at = excluded.updated_at,
+            updated_by = excluded.updated_by
+        """,
+        (key, value, updated_by),
+    )
+    repo.conn.commit()
+
+
+def delete_app_setting_value(key: str) -> None:
+    repo = _REQUEST_CONTEXT.get("repo")
+    if repo is None:
+        raise BusinessRuleError("Хранилище настроек недоступно.")
+    repo.conn.execute("DELETE FROM app_settings WHERE key = ?", (key,))
+    repo.conn.commit()
+
+
+HLR_DAILY_LIMIT_OVERRIDE_KEY = "hlr_daily_limit_override"
+HLR_DAILY_LIMIT_MIN = 1
+HLR_DAILY_LIMIT_MAX = 100000
+HLR_DAILY_LIMIT_ERROR = "Дневной лимит должен быть целым числом от 1 до 100000."
+
+
+def hlr_daily_limit_state() -> dict[str, object]:
+    env_limit, env_source = hlr_env_daily_limit()
+    override_raw = app_setting_value(HLR_DAILY_LIMIT_OVERRIDE_KEY)
+    override_value = None
+    if override_raw not in (None, ""):
+        try:
+            parsed = int(str(override_raw))
+            if HLR_DAILY_LIMIT_MIN <= parsed <= HLR_DAILY_LIMIT_MAX:
+                override_value = parsed
+        except ValueError:
+            override_value = None
+    effective = override_value if override_value is not None else env_limit
+    source = "admin_override" if override_value is not None else env_source
+    return {
+        "daily_limit_effective": effective,
+        "daily_limit_source": source,
+        "daily_limit_env": env_limit,
+        "daily_limit_env_source": env_source,
+        "daily_limit_override": override_value,
+    }
+
+
+def validate_hlr_daily_limit_override(value: object) -> int:
+    text = str(value or "").strip()
+    if not re.fullmatch(r"\d+", text):
+        raise BusinessRuleError(HLR_DAILY_LIMIT_ERROR)
+    parsed = int(text)
+    if parsed < HLR_DAILY_LIMIT_MIN or parsed > HLR_DAILY_LIMIT_MAX:
+        raise BusinessRuleError(HLR_DAILY_LIMIT_ERROR)
+    return parsed
+
+
+def save_hlr_daily_limit_override(value: object) -> None:
+    parsed = validate_hlr_daily_limit_override(value)
+    actor_id = int(_REQUEST_CONTEXT.get("current_user_id") or 0) or None
+    set_app_setting_value(HLR_DAILY_LIMIT_OVERRIDE_KEY, str(parsed), actor_id)
+
+
+def reset_hlr_daily_limit_override() -> None:
+    delete_app_setting_value(HLR_DAILY_LIMIT_OVERRIDE_KEY)
+
+
 def hlr_config() -> dict[str, object]:
     return {
         "mode": (os.environ.get("HLR_MODE") or "demo").strip().lower(),
@@ -4904,7 +5008,7 @@ def hlr_config() -> dict[str, object]:
         "balance_url": os.environ.get("HLR_BALANCE_URL") or os.environ.get("HLR_API_BALANCE_URL") or "",
         "timeout_ms": hlr_int_env("HLR_TIMEOUT_MS", 30000),
         "concurrency": hlr_int_env("HLR_CONCURRENCY", 1),
-        "daily_limit": hlr_int_env("HLR_DAILY_CHECK_LIMIT", 500),
+        "daily_limit": hlr_daily_limit_state()["daily_limit_effective"],
     }
 
 
@@ -4942,6 +5046,7 @@ def hlr_safe_config_summary() -> dict[str, object]:
         "timeout_ms": config["timeout_ms"],
         "concurrency": config["concurrency"],
         "daily_limit": config["daily_limit"],
+        **hlr_daily_limit_state(),
         "dotenv_loaded": "yes" if DOTENV_LOADED else ("no" if DOTENV_SOURCE_KEYS else "unknown"),
         "config_source": hlr_config_source("HLR_MODE"),
     }
@@ -6050,9 +6155,42 @@ def hlr_balance_config_rows(balance: dict[str, object]) -> list[tuple[str, objec
     ]
 
 
+def hlr_daily_limit_config_control_html() -> str:
+    state = hlr_daily_limit_state()
+    is_admin = current_role_key() == "admin"
+    override = state.get("daily_limit_override")
+    override_text = hlr_format_metric(override)
+    input_value = override if override is not None else state["daily_limit_effective"]
+    action_html = ""
+    if is_admin:
+        reset_html = ""
+        if override is not None:
+            reset_html = "<form method='post' action='/hlr/config/daily-limit/reset'><button class='secondary' type='submit'>Сбросить к env</button></form>"
+        action_html = f"""
+        <div class='hlr-daily-limit-form'>
+          <form method='post' action='/hlr/config/daily-limit' class='hlr-daily-limit-form'>
+            <label>Лимит <input name='daily_limit_override' type='number' min='{HLR_DAILY_LIMIT_MIN}' max='{HLR_DAILY_LIMIT_MAX}' step='1' value='{esc(str(input_value))}' required></label>
+            <button type='submit'>Сохранить</button>
+          </form>
+          {reset_html}
+        </div>
+        """
+    else:
+        action_html = f"<p class='muted'>Текущий лимит: <strong>{esc(str(state['daily_limit_effective']))}</strong>. Редактирование доступно только админу.</p>"
+    return f"""
+    <section class='hlr-daily-limit-admin' aria-label='Дневной лимит HLR'>
+      <p class='hlr-daily-limit-title'>Дневной лимит HLR</p>
+      {action_html}
+      <div class='hlr-daily-limit-meta'>
+        <div><span>Источник</span><strong>{esc(str(state['daily_limit_source']))}</strong></div>
+        <div><span>Значение из env</span><strong>{esc(str(state['daily_limit_env']))}</strong></div>
+        <div><span>Override</span><strong>{esc(override_text)}</strong></div>
+      </div>
+    </section>
+    """
+
+
 def hlr_config_diagnostics_html(balance: dict[str, object] | None = None) -> str:
-    if current_role_key() != "admin":
-        return ""
     summary = hlr_safe_config_summary()
     balance_state = balance or hlr_balance_empty_state()
     warning = ""
@@ -6068,6 +6206,10 @@ def hlr_config_diagnostics_html(balance: dict[str, object] | None = None) -> str
         ("timeout_ms", summary["timeout_ms"]),
         ("concurrency", summary["concurrency"]),
         ("daily_limit", summary["daily_limit"]),
+        ("daily_limit_effective", summary["daily_limit_effective"]),
+        ("daily_limit_source", summary["daily_limit_source"]),
+        ("daily_limit_env", summary["daily_limit_env"]),
+        ("daily_limit_override", hlr_format_metric(summary["daily_limit_override"])),
         ("checked_today", usage.get("checked_today", 0)),
         ("remaining_today", hlr_format_metric(usage.get("remaining_today"))),
         ("credits_spent_today", hlr_format_metric(usage.get("credits_spent_today"))),
@@ -6079,7 +6221,7 @@ def hlr_config_diagnostics_html(balance: dict[str, object] | None = None) -> str
         ("config_source", summary["config_source"]),
     ] + hlr_balance_config_rows(balance_state)
     body = "".join(f"<dt>{esc(label)}</dt><dd>{esc(str(value))}</dd>" for label, value in rows)
-    return f"<details class='card hlr-api-fields' id='hlr-config-details'><summary>HLR config</summary>{warning}<dl class='hlr-detail-list' id='hlr-config-balance-fields'>{body}</dl></details>"
+    return f"<details class='card hlr-api-fields' id='hlr-config-details'><summary>HLR config</summary>{warning}{hlr_daily_limit_config_control_html()}<dl class='hlr-detail-list' id='hlr-config-balance-fields'>{body}</dl></details>"
 
 
 def hlr_api_fields_html(results: list[dict[str, object]], is_demo_mode: bool) -> str:
@@ -6111,7 +6253,7 @@ def hlr_help_html() -> str:
     field_rows = "".join(f"<div class='hlr-help-row'><span>{esc(label)}</span><span class='hlr-help-info' title='{esc(tip)}' aria-label='{esc(tip)}'>ⓘ</span></div>" for label, tip in api_fields)
     return f"""<section class='hlr-help-card' aria-label='Справка HLR'><h3>Поля таблицы/API</h3><div class='hlr-help-list'>{field_rows}</div></section>"""
 
-def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = None, summary: dict[str, int] | None = None, error: str | None = None, balance: dict[str, object] | None = None) -> bytes:
+def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = None, summary: dict[str, int] | None = None, error: str | None = None, balance: dict[str, object] | None = None, notice_message: str | None = None, notice_type: str = "success") -> bytes:
     results = results or []
     config = hlr_config()
     is_demo_mode = config["mode"] in {"demo", ""}
@@ -6121,7 +6263,13 @@ def hlr_page(input_text: str = "", results: list[dict[str, object]] | None = Non
     daily_limit = int(usage_state.get("daily_limit") or 0)
     remaining_today = int(usage_state.get("remaining_today") or 0)
     export_results_json = esc(json.dumps(results, ensure_ascii=False))
-    notice = f"<div class='flash error'>{esc(error)}</div>" if error else ""
+    if error:
+        notice = f"<div class='flash error'>{esc(error)}</div>"
+    elif notice_message:
+        notice_class = "error" if notice_type == "error" else "ok"
+        notice = f"<div class='flash {notice_class}'>{esc(notice_message)}</div>"
+    else:
+        notice = ""
     demo_badge = "<span class='badge'>Demo mode</span><span class='muted hlr-demo-note'>Результаты сгенерированы для проверки интерфейса. Реальный HLR API не вызывался.</span>" if is_demo_mode else ""
     export_form = f"<form method='post' action='/hlr/export.csv' id='hlr-export-form'><input type='hidden' name='results_json' value='{export_results_json}'><input type='hidden' name='selected_statuses_json' value='[]'><input type='hidden' name='show_all_statuses' value='1'><button type='submit' {'disabled' if not export_allowed else ''}>Экспорт CSV</button></form>"
     body = f"""
@@ -9318,6 +9466,22 @@ def app(environ, start_response):
             parsed = {key: values[-1] for key, values in parse_qs(raw_body, keep_blank_values=True).items()}
             parsed["_raw"] = raw_body
             require_permission("write", section_for_write_path(path))
+            if path == "/hlr/config/daily-limit":
+                if current_role_key() != "admin":
+                    raise ForbiddenError()
+                try:
+                    save_hlr_daily_limit_override(parsed.get("daily_limit_override", ""))
+                    start_response("200 OK", html_headers())
+                    return [hlr_page(notice_message="Дневной лимит HLR сохранён.")]
+                except BusinessRuleError as exc:
+                    start_response("400 Bad Request", html_headers())
+                    return [hlr_page(error=user_error(exc))]
+            if path == "/hlr/config/daily-limit/reset":
+                if current_role_key() != "admin":
+                    raise ForbiddenError()
+                reset_hlr_daily_limit_override()
+                start_response("200 OK", html_headers())
+                return [hlr_page(notice_message="Дневной лимит HLR сброшен к значению из env.")]
             if path == "/hlr/check":
                 try:
                     results, summary = hlr_run_check(parsed.get("numbers", ""))
