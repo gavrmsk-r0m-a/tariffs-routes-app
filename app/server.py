@@ -1384,6 +1384,12 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .modal-card form label, .modal-card form fieldset, .modal-form-card[open] > form label, .modal-form-card[open] > form fieldset {{ min-width: 0; }}
     .modal-card form .wide, .modal-card form p, .modal-card form fieldset, .modal-form-card[open] > form .wide, .modal-form-card[open] > form p, .modal-form-card[open] > form fieldset {{ grid-column: 1 / -1; }}
     .modal-card[data-remote-modal] {{ position: fixed; z-index: 990; display: block; visibility: visible; opacity: 1; background: var(--surface); }}
+    .remote-edit-overlay {{ content: ""; position: fixed; inset: 0; z-index: 9000; background: rgba(15, 23, 42, 0.48); }}
+    .remote-edit-card {{ position: fixed; left: 50%; top: 50%; z-index: 9010; width: min(1040px, calc(100vw - 32px)); max-height: calc(100vh - 48px); overflow: auto; scrollbar-gutter: stable; transform: translate(-50%, -50%); margin: 0; padding: 20px; border: 1px solid var(--border-strong); border-radius: 18px; background: var(--surface); color: var(--text); box-shadow: 0 28px 90px rgba(0,0,0,.32); box-sizing: border-box; display: block; visibility: visible; opacity: 1; }}
+    .remote-edit-card form {{ display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }}
+    .remote-edit-card form label, .remote-edit-card form fieldset {{ min-width: 0; }}
+    .remote-edit-card form .wide, .remote-edit-card form p, .remote-edit-card form fieldset {{ grid-column: 1 / -1; }}
+    .remote-edit-card h2 {{ margin: 0 0 4px; color: var(--text-strong); }}
     .modal-card h2 {{ margin: 0 0 4px; color: var(--text-strong); }}
     .modal-description {{ margin: 0 0 16px; color: var(--muted); }}
     .modal-actions {{ grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; padding-top: 12px; border-top: 1px solid var(--border); }}
@@ -1395,7 +1401,7 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .provider-change-create-shell[open] > #routing-event-form .provider-change-shell-hint {{ align-self: end; }}
     .provider-change-create-shell[open] > #routing-event-form > button[type='submit'] {{ align-self: end; justify-self: end; }}
     .modal-cancel:hover, .admin-edit-cancel:hover {{ background: var(--warning-soft); color: var(--accent-strong); border-color: var(--warning-border); }}
-    .modal-card input, .modal-card select, .modal-card textarea, .modal-form-card[open] input, .modal-form-card[open] select, .modal-form-card[open] textarea {{ width: 100%; box-sizing: border-box; background: var(--input-bg, var(--surface)); color: var(--text); border-color: var(--border-strong); }}
+    .modal-card input, .modal-card select, .modal-card textarea, .modal-form-card[open] input, .modal-form-card[open] select, .modal-form-card[open] textarea, .remote-edit-card input, .remote-edit-card select, .remote-edit-card textarea {{ width: 100%; box-sizing: border-box; background: var(--input-bg, var(--surface)); color: var(--text); border-color: var(--border-strong); }}
     html[data-theme="dark"] .modal-card, html[data-theme="dark"] .modal-form-card[open] > form, html[data-theme="dark"] .modal-form-card[open] > .modal-body {{ background: var(--surface); border-color: var(--border-strong); color: var(--text); }}
     html[data-theme="dark"] .modal-overlay, html[data-theme="dark"] .modal-form-card[open]::before {{ background: rgba(0, 0, 0, 0.55); }}
     .modal-form-card[open] > form.currency-rate-form {{ width: min(760px, calc(100vw - 32px)); grid-template-columns: minmax(220px, .85fr) minmax(320px, 1.15fr); align-items: end; }}
@@ -1404,7 +1410,7 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .currency-rate-prefix, .currency-rate-suffix {{ color: var(--muted); font-size: 13px; font-weight: 700; }}
     .currency-rate-actions {{ margin-top: 8px; }}
     @media (max-width: 720px) {{ .modal-form-card[open] > form.currency-rate-form {{ grid-template-columns: 1fr; }} .currency-rate-inline {{ grid-template-columns: 1fr; align-items: stretch; white-space: normal; }} }}
-    @media (max-width: 720px) {{ .modal-card form, .modal-form-card[open] > form {{ grid-template-columns: 1fr; }} .modal-card, .modal-form-card[open] > form, .modal-form-card[open] > .modal-body {{ width: calc(100vw - 18px); max-height: calc(100vh - 18px); padding: 14px; }} }}
+    @media (max-width: 720px) {{ .modal-card form, .modal-form-card[open] > form, .remote-edit-card form {{ grid-template-columns: 1fr; }} .modal-card, .modal-form-card[open] > form, .modal-form-card[open] > .modal-body, .remote-edit-card {{ width: calc(100vw - 18px); max-height: calc(100vh - 18px); padding: 14px; }} }}
     .danger-action, form[action$="/deactivate"] button {{ min-height: 28px; min-width: auto; padding: 4px 8px; color: var(--danger-strong, var(--danger)); border-color: var(--danger); background: var(--danger-soft); font-size: 12px; font-weight: 720; box-shadow: none; }}
     .danger-action:hover, form[action$="/deactivate"] button:hover {{ background: color-mix(in srgb, var(--danger-soft) 78%, var(--surface)); border-color: var(--danger); color: var(--danger); }}
     html[data-theme="mvp"] .side-link:hover, html[data-theme="mvp"] .admin-link:hover, html[data-theme="terminal-paper"] .side-link:hover, html[data-theme="terminal-paper"] .admin-link:hover {{ background: color-mix(in srgb, var(--surface) 78%, transparent); border-color: var(--border); color: var(--text-strong); }}
@@ -3904,21 +3910,34 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
       if (href.includes("/admin/users/")) return "Редактировать пользователя";
       return "Редактировать";
     }}
+    function closeRemoteEditDetails() {{
+      document.querySelectorAll("details.edit-details[open]").forEach((details) => {{
+        details.removeAttribute("open");
+      }});
+    }}
     function closeRemoteModal() {{
-      document.querySelectorAll(".modal-overlay, .modal-card[data-remote-modal]").forEach((node) => node.remove());
+      document.querySelectorAll(".modal-overlay, .modal-card[data-remote-modal], .remote-edit-overlay, .remote-edit-card").forEach((node) => node.remove());
+    }}
+    function cleanupRemoteEditModal() {{
+      closeRemoteEditDetails();
+      closeRemoteModal();
     }}
     document.addEventListener("click", async (event) => {{
-      const link = event.target.closest("a.edit-action");
+      const link = event.target.closest("a.edit-action[data-remote-edit='1'][href*='/edit'], a.edit-action[href*='/edit'][data-remote-edit='1']");
       if (!link || !link.href) return;
       event.preventDefault();
-      closeRemoteModal();
+      event.stopPropagation();
+      cleanupRemoteEditModal();
+      const fallbackToFullPage = () => {{
+        cleanupRemoteEditModal();
+        window.location.href = link.href;
+      }};
       try {{
         const modalUrl = new URL(link.href, window.location.href);
         modalUrl.searchParams.set("modal", "1");
         const response = await fetch(modalUrl.toString(), {{ headers: {{ "X-Requested-With": "fetch" }} }});
         if (!response.ok) {{
-          closeRemoteModal();
-          window.location.href = link.href;
+          fallbackToFullPage();
           return;
         }}
         const text = await response.text();
@@ -3926,14 +3945,11 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
         const modalReady = doc.querySelector("[data-modal-ready='1']");
         const form = doc.querySelector("form[action*='/update']");
         if (!form) {{
-          closeRemoteModal();
-          window.location.href = link.href;
+          fallbackToFullPage();
           return;
         }}
-        const overlay = document.createElement("div");
-        overlay.className = "modal-overlay";
         const card = document.createElement("section");
-        card.className = "modal-card";
+        card.className = "remote-edit-card";
         card.dataset.remoteModal = "1";
         if (!modalReady) {{
           card.innerHTML = `<h2>${{titleFromEditHref(link.getAttribute("href") || "")}}</h2><p class="modal-description">Поля и сохранение работают как раньше.</p>`;
@@ -3944,37 +3960,43 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
         }}
         const importedForm = card.querySelector("form[action*='/update']");
         if (!importedForm || !card.textContent.trim()) {{
-          closeRemoteModal();
-          window.location.href = link.href;
+          fallbackToFullPage();
           return;
         }}
         try {{
           enhanceModalForm(importedForm, closeRemoteModal);
           if (!card.querySelector("form[action*='/update']") || !card.textContent.trim()) {{
-            closeRemoteModal();
-            window.location.href = link.href;
+            fallbackToFullPage();
             return;
           }}
+          const overlay = document.createElement("div");
+          overlay.className = "remote-edit-overlay";
+          overlay.dataset.remoteModal = "1";
           overlay.addEventListener("click", closeRemoteModal);
           document.body.appendChild(overlay);
           document.body.appendChild(card);
+          if (!card.querySelector("form[action*='/update']") || !card.textContent.trim()) {{
+            fallbackToFullPage();
+            return;
+          }}
           Array.from(doc.querySelectorAll("script")).forEach((script) => {{
             if (!script.src && script.textContent.trim()) {{
               const next = document.createElement("script");
-              next.textContent = `(function(){{\n${{script.textContent}}\n}})();`;
+              next.textContent = `(function(){{
+${{script.textContent}}
+}})();`;
               card.appendChild(next);
             }}
           }});
         }} catch (modalError) {{
-          closeRemoteModal();
-          window.location.href = link.href;
+          fallbackToFullPage();
         }}
       }} catch (error) {{
-        window.location.href = link.href;
+        fallbackToFullPage();
       }}
     }});
     document.addEventListener("keydown", (event) => {{
-      if (event.key === "Escape" && document.querySelector(".modal-card[data-remote-modal]")) {{
+      if (event.key === "Escape" && document.querySelector(".remote-edit-card[data-remote-modal]")) {{
         closeRemoteModal();
         event.preventDefault();
       }}
@@ -7622,7 +7644,7 @@ def routes_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
         prefix = route["prefix"] or "—"
         numbers_label = "RND провайдера" if route["cli_source_type"] == "rnd" else f'{route["phone_count"]} номеров'
         numbers = f'<div class="route-numbers-cell"><span class="route-numbers-label">{numbers_label}</span><a class="button route-numbers-action" href="/routes/{route["id"]}/numbers">Показать номера</a></div>'
-        edit = f"<a class='button edit-action' href='/routes/{route['id']}/edit' title='Редактировать' aria-label='Редактировать' data-tooltip='Редактировать'>Редактировать</a>" if can_write("routes") else ""
+        edit = f"<a class='button edit-action' href='/routes/{route['id']}/edit' data-remote-edit='1' title='Редактировать' aria-label='Редактировать' data-tooltip='Редактировать'>Редактировать</a>" if can_write("routes") else ""
         history = history_icon_link(f"/routes/{route['id']}/history")
         rows.append(f"<tr><td data-col='geo'>{esc(route['country_name'])}</td>{clamp_cell('route', esc(route['name']), route['name'], extra_attrs="data-copy-column='route-name'", classes='route-name-cell', selectable=True)}<td data-col='provider'>{esc(route['provider_name'])}</td><td data-col='prefix'>{esc(prefix)}</td><td data-col='actual'>{'Да' if route['is_actual'] else 'Нет'}</td>{clamp_cell('aon_pool', esc(route['aon_pool'] or '—'), route['aon_pool'] or '—')}{clamp_cell('comment', esc(route['comment']), route['comment'], classes='comment-cell')}<td data-col='numbers'>{numbers}</td><td data-col='history' class='history-cell'>{history}</td><td data-col='actions' class='actions'>{edit}</td></tr>")
     filters_html = f"""<form class="filter-grid" method="get" action="/routes">
@@ -7727,7 +7749,7 @@ def tariffs_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
     rows = []
     for t in records:
         prefix = t["prefix"] or "—"
-        actions = f"<a class='button edit-action' href='/tariffs/{t['id']}/edit' title='Редактировать' aria-label='Редактировать' data-tooltip='Редактировать'>Редактировать</a>" if can_write("tariffs") else ""
+        actions = f"<a class='button edit-action' href='/tariffs/{t['id']}/edit' data-remote-edit='1' title='Редактировать' aria-label='Редактировать' data-tooltip='Редактировать'>Редактировать</a>" if can_write("tariffs") else ""
         history = history_icon_link(f"/tariffs/{t['id']}/history")
         rows.append(f"""<tr><td data-col='history' class='history-cell'>{history}</td><td data-col='actions' class='actions'>{actions}</td><td data-col='geo'>{esc(t['country_name'])}</td><td data-col='provider'>{esc(t['provider_name'])}</td><td data-col='prefix'>{esc(prefix)}</td><td data-col='provider_price'>{esc(t['price_in_provider_currency'])} {esc(t['currency_code'])}</td><td data-col='eur_price'>{esc(t['eur_price'])} EUR</td><td data-col='active'>{'Да' if t['is_current'] else 'Нет'}</td>{clamp_cell('comment', esc(t['comment']), t['comment'], classes='comment-cell')}</tr>""")
     filters_html = f"""<form class="filter-grid" method="get" action="/tariffs">
