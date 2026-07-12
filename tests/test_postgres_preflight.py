@@ -86,6 +86,49 @@ class PostgresPreflightTests(unittest.TestCase):
         self.assertNotIn("import psycopg", source)
         self.assertNotIn("from psycopg", source)
 
+    def test_preflight_handles_table_without_id(self):
+        db_path, schema_path = self.make_db(
+            "CREATE TABLE app_settings (key TEXT PRIMARY KEY, value TEXT, updated_at TEXT)",
+            [("INSERT INTO app_settings VALUES (?, ?, ?)", ("site_name", "TeleRoute", "2026-01-01 10:00:00"))],
+        )
+        report = postgres_preflight.run_preflight(db_path, schema_path)
+        self.assertTrue(any(r.check == "table_inventory" and r.table == "app_settings" and "no id column" in r.message for r in report.results))
+
+    def test_id_readiness_skips_table_without_id(self):
+        db_path, schema_path = self.make_db(
+            "CREATE TABLE app_settings (key TEXT PRIMARY KEY, value TEXT)",
+            [("INSERT INTO app_settings VALUES (?, ?)", ("site_name", "TeleRoute"))],
+        )
+        report = postgres_preflight.run_preflight(db_path, schema_path)
+        id_results = [r for r in report.results if r.check == "id_sequence_readiness" and r.table == "app_settings"]
+        self.assertEqual(len(id_results), 1)
+        self.assertEqual(id_results[0].level, "info")
+        self.assertIn("has no id column", id_results[0].message)
+        self.assertFalse(any(r.check == "id_sequence_readiness" and r.table == "app_settings" and r.column == "id" for r in report.results))
+
+    def test_duplicate_samples_use_business_key_when_no_id(self):
+        db_path, schema_path = self.make_db(
+            "CREATE TABLE user_permissions (user_id INTEGER, section_key TEXT)",
+            [
+                ("INSERT INTO user_permissions VALUES (?, ?)", (1, "routes")),
+                ("INSERT INTO user_permissions VALUES (?, ?)", (1, "routes")),
+            ],
+        )
+        report = postgres_preflight.run_preflight(db_path, schema_path)
+        duplicate = next(r for r in report.results if r.check == "duplicate_business_key" and r.table == "user_permissions")
+        self.assertEqual(duplicate.sample_rows[0]["user_id"], "1")
+        self.assertEqual(duplicate.sample_rows[0]["section_key"], "routes")
+        self.assertNotIn("ids", duplicate.sample_rows[0])
+
+    def test_preflight_realistic_schema_no_id_join_table(self):
+        db_path, schema_path = self.make_db(
+            "CREATE TABLE route_phone_numbers (route_id INTEGER, phone_number_id INTEGER, PRIMARY KEY (route_id, phone_number_id)) WITHOUT ROWID",
+            [("INSERT INTO route_phone_numbers VALUES (?, ?)", (10, 20))],
+        )
+        report = postgres_preflight.run_preflight(db_path, schema_path)
+        self.assertTrue(any(r.check == "id_sequence_readiness" and r.table == "route_phone_numbers" and r.level == "info" for r in report.results))
+        self.assertFalse(any(r.level == "error" for r in report.results))
+
 
 if __name__ == "__main__":
     unittest.main()
