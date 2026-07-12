@@ -1502,6 +1502,89 @@ class Repository:
             "source": rate["source"],
         }
 
+    def recalculate_current_tariffs_for_currency_rate(
+        self,
+        currency_rate_id: int,
+        changed_by: int | None,
+    ) -> list[dict]:
+        rate = self.get_currency_rate(currency_rate_id)
+        if rate is None:
+            raise BusinessRuleError("Курс валюты не найден")
+        tariffs = self.conn.execute(
+            """
+            SELECT t.*, c.name AS country_name, p.name AS provider_name, pp.prefix AS prefix, cur.code AS currency_code
+            FROM tariffs t
+            JOIN countries c ON c.id = t.country_id
+            JOIN providers p ON p.id = t.provider_id
+            LEFT JOIN provider_prefixes pp ON pp.id = t.provider_prefix_id
+            JOIN currencies cur ON cur.id = t.provider_currency_id
+            WHERE t.provider_currency_id = ? AND t.is_current = 1
+            ORDER BY t.id
+            """,
+            (rate["currency_id"],),
+        ).fetchall()
+        recalculated: list[dict] = []
+        new_rate_value = validate_currency_rate(rate["rate_to_eur"])
+        for tariff in tariffs:
+            old_values = {
+                "currency_rate_id": tariff["currency_rate_id"],
+                "conversion_rate_to_eur": str(tariff["conversion_rate_to_eur"]),
+                "conversion_rate_date": str(tariff["conversion_rate_date"]),
+                "eur_price": str(tariff["eur_price"]),
+            }
+            new_eur_price = eur_price(tariff["price_in_provider_currency"], new_rate_value)
+            self.conn.execute(
+                """
+                UPDATE tariffs
+                SET conversion_rate_to_eur = ?, conversion_rate_date = ?, currency_rate_id = ?,
+                    eur_price = ?, updated_by = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+                """,
+                (str(new_rate_value), rate["rate_date"], currency_rate_id, str(new_eur_price), changed_by, tariff["id"]),
+            )
+            updated = self.get_tariff(int(tariff["id"]))
+            if updated is None:
+                raise BusinessRuleError("Тариф не найден после пересчёта")
+            details = (
+                f"Пересчёт тарифа из-за обновления курса {rate['currency_code']} к EUR: "
+                f"{_clean_number_label(tariff['conversion_rate_to_eur'])} → {_clean_number_label(new_rate_value)}. "
+                f"EUR price: {_clean_number_label(tariff['eur_price'])} → {_clean_number_label(new_eur_price)}. "
+                f"currency_rate_id: {tariff['currency_rate_id'] or '—'} → {currency_rate_id}."
+            )
+            self._insert_tariff_history(
+                updated,
+                changed_by if changed_by is not None else int(updated["created_by"]),
+                "tariff.currency_rate_recalculated",
+                details,
+                old_currency_id=tariff["provider_currency_id"],
+                old_price=tariff["price_in_provider_currency"],
+                old_rate=tariff["conversion_rate_to_eur"],
+                old_rate_date=tariff["conversion_rate_date"],
+                old_eur_price=tariff["eur_price"],
+            )
+            new_values = {
+                "currency_rate_id": currency_rate_id,
+                "conversion_rate_to_eur": str(new_rate_value),
+                "conversion_rate_date": str(rate["rate_date"]),
+                "eur_price": str(new_eur_price),
+            }
+            summary = (
+                f"Тариф пересчитан из-за обновления курса {rate['currency_code']} к EUR: "
+                f"{_clean_number_label(tariff['eur_price'])} EUR → {_clean_number_label(new_eur_price)} EUR."
+            )
+            self._change_log(
+                "tariff",
+                int(tariff["id"]),
+                "tariff.currency_rate_recalculated",
+                changed_by,
+                old_values=old_values,
+                new_values=new_values,
+                summary=summary,
+                source="ui",
+            )
+            recalculated.append({"tariff_id": int(tariff["id"]), "old_values": old_values, "new_values": new_values})
+        return recalculated
+
     def log_currency_rate_change(
         self,
         currency_rate_id: int,
@@ -1511,13 +1594,23 @@ class Repository:
         new_rate: sqlite3.Row,
         changed_by: int | None,
         source: str = "ui",
+        recalculated_active_tariffs_count: int | None = None,
     ) -> None:
         old_values = self._currency_rate_log_values(old_rate, currency_code) if old_rate is not None else None
         new_values = self._currency_rate_log_values(new_rate, currency_code)
-        if old_rate is not None:
-            summary = f"Курс {currency_code} к EUR обновлён вручную: {old_values['rate_to_eur']} → {new_values['rate_to_eur']}"
+        if recalculated_active_tariffs_count is not None:
+            new_values["recalculated_active_tariffs_count"] = int(recalculated_active_tariffs_count)
+            suffix = (
+                f" Активных тарифов пересчитано: {recalculated_active_tariffs_count}."
+                if recalculated_active_tariffs_count
+                else " Активных тарифов для пересчёта нет."
+            )
         else:
-            summary = f"Курс {currency_code} к EUR добавлен вручную: {new_values['rate_to_eur']}"
+            suffix = ""
+        if old_rate is not None:
+            summary = f"Курс {currency_code} к EUR обновлён вручную: {old_values['rate_to_eur']} → {new_values['rate_to_eur']}.{suffix}"
+        else:
+            summary = f"Курс {currency_code} к EUR добавлен вручную: {new_values['rate_to_eur']}.{suffix}"
         self._change_log(
             "currency_rate",
             currency_rate_id,

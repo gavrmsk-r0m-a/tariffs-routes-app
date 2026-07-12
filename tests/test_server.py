@@ -5,6 +5,7 @@ import os
 import re
 import tempfile
 import unittest
+from decimal import Decimal
 from unittest.mock import patch
 from urllib.parse import urlencode
 
@@ -2475,7 +2476,8 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertEqual(log["change_type"], "currency_rate.manual_created")
         self.assertIsNotNone(log["changed_by"])
         self.assertEqual(log["source"], "ui")
-        self.assertEqual(log["summary"], "Курс USDT к EUR обновлён вручную: 1.01 → 500")
+        self.assertIn("Курс USDT к EUR обновлён вручную: 1.01 → 500", log["summary"])
+        self.assertIn("Активных тариф", log["summary"])
         old_values = json.loads(log["old_values"])
         new_values = json.loads(log["new_values"])
         self.assertEqual(old_values["currency_code"], "USDT")
@@ -2483,6 +2485,61 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertEqual(new_values["currency_code"], "USDT")
         self.assertEqual(new_values["rate_to_eur"], "500")
         self.assertEqual(log["entity_id"], new_values["currency_rate_id"])
+
+
+    def test_currency_rate_upsert_recalculates_active_tariffs(self):
+        self.request("/tariffs")
+        conn = server.connect(server.DB_PATH)
+        try:
+            tariff = conn.execute("SELECT id, price_in_provider_currency FROM tariffs WHERE provider_currency_id = 2 AND is_current = 1 LIMIT 1").fetchone()
+            self.assertIsNotNone(tariff)
+            tariff_id = tariff["id"]
+        finally:
+            conn.close()
+
+        self.request("/admin/currency-rates/upsert", method="POST", body=urlencode({"currency_id": "2", "rate_to_eur": "300"}))
+
+        conn = server.connect(server.DB_PATH)
+        try:
+            row = conn.execute("SELECT eur_price, conversion_rate_to_eur, currency_rate_id FROM tariffs WHERE id = ?", (tariff_id,)).fetchone()
+            rate = conn.execute("SELECT id FROM currency_rates WHERE currency_id = 2 ORDER BY id DESC LIMIT 1").fetchone()
+            tariff_log = conn.execute("SELECT COUNT(*) FROM change_log WHERE entity_type = 'tariff' AND entity_id = ? AND change_type = 'tariff.currency_rate_recalculated'", (tariff_id,)).fetchone()[0]
+        finally:
+            conn.close()
+        self.assertEqual(str(row["conversion_rate_to_eur"]), "300")
+        self.assertEqual(row["currency_rate_id"], rate["id"])
+        self.assertEqual(Decimal(str(row["eur_price"])), Decimal(str(tariff["price_in_provider_currency"])) * Decimal("300"))
+        self.assertEqual(tariff_log, 1)
+        captured, content = self.request("/tariffs")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn(f"{row['eur_price']} EUR", content)
+
+    def test_currency_rate_invalid_value_does_not_recalculate_tariffs(self):
+        self.request("/tariffs")
+        conn = server.connect(server.DB_PATH)
+        try:
+            before_tariff = conn.execute("SELECT id, eur_price, conversion_rate_to_eur, currency_rate_id FROM tariffs WHERE provider_currency_id = 2 AND is_current = 1 LIMIT 1").fetchone()
+            before_history = conn.execute("SELECT COUNT(*) FROM tariff_change_history").fetchone()[0]
+            before_tariff_logs = conn.execute("SELECT COUNT(*) FROM change_log WHERE entity_type = 'tariff'").fetchone()[0]
+        finally:
+            conn.close()
+
+        captured, content = self.request("/admin/currency-rates/upsert", method="POST", body=urlencode({"currency_id": "2", "rate_to_eur": "abc"}))
+        self.assertEqual(captured["status"], "400 Bad Request")
+        self.assertIn("Ошибка", content)
+
+        conn = server.connect(server.DB_PATH)
+        try:
+            after_tariff = conn.execute("SELECT eur_price, conversion_rate_to_eur, currency_rate_id FROM tariffs WHERE id = ?", (before_tariff["id"],)).fetchone()
+            after_history = conn.execute("SELECT COUNT(*) FROM tariff_change_history").fetchone()[0]
+            after_tariff_logs = conn.execute("SELECT COUNT(*) FROM change_log WHERE entity_type = 'tariff'").fetchone()[0]
+        finally:
+            conn.close()
+        self.assertEqual(str(after_tariff["eur_price"]), str(before_tariff["eur_price"]))
+        self.assertEqual(str(after_tariff["conversion_rate_to_eur"]), str(before_tariff["conversion_rate_to_eur"]))
+        self.assertEqual(after_tariff["currency_rate_id"], before_tariff["currency_rate_id"])
+        self.assertEqual(after_history, before_history)
+        self.assertEqual(after_tariff_logs, before_tariff_logs)
 
     def test_currency_rate_invalid_value_does_not_write_change_log(self):
         self.request("/tariffs")
