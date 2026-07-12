@@ -9777,6 +9777,7 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
             new_rate = repo.get_currency_rate(int(new_rate_id))
             if new_rate is None:
                 raise BusinessRuleError("Курс валюты не найден после создания")
+            recalculated_tariffs = repo.recalculate_current_tariffs_for_currency_rate(int(new_rate_id), actor_id)
             repo.log_currency_rate_change(
                 currency_rate_id=int(new_rate_id),
                 currency_id=currency_id,
@@ -9785,6 +9786,7 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
                 new_rate=new_rate,
                 changed_by=actor_id,
                 source="ui",
+                recalculated_active_tariffs_count=len(recalculated_tariffs),
             )
             repo.conn.commit()
         except Exception:

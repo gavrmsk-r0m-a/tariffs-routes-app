@@ -86,6 +86,89 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
         ).fetchone()["count"]
         self.assertEqual(count_after_invalid, 2)
 
+
+    def test_currency_rate_recalculates_current_tariffs(self):
+        usdt_id = self.repo.create_currency("USDT", "Tether", "₮")
+        first_rate_id = self.repo.create_currency_rate(usdt_id, "500", "2026-07-10", self.admin_id)
+        tariff_id = self.repo.create_tariff(
+            country_id=self.country_id, provider_id=self.provider_id, provider_currency_id=usdt_id,
+            price_in_provider_currency="3", conversion_rate_to_eur="500", conversion_rate_date="2026-07-10",
+            currency_rate_id=first_rate_id, created_by=self.admin_id,
+        )
+        new_rate_id = self.repo.create_currency_rate(usdt_id, "300", "2026-07-11", self.admin_id, commit=False)
+
+        recalculated = self.repo.recalculate_current_tariffs_for_currency_rate(new_rate_id, self.admin_id)
+
+        self.assertEqual(len(recalculated), 1)
+        tariff = self.conn.execute("SELECT * FROM tariffs WHERE id = ?", (tariff_id,)).fetchone()
+        self.assertEqual(str(tariff["eur_price"]), "900")
+        self.assertEqual(tariff["currency_rate_id"], new_rate_id)
+        self.assertEqual(str(tariff["conversion_rate_to_eur"]), "300")
+        self.assertEqual(tariff["conversion_rate_date"], "2026-07-11")
+
+    def test_currency_rate_recalculation_skips_inactive_tariffs(self):
+        usdt_id = self.repo.create_currency("USDT", "Tether", "₮")
+        first_rate_id = self.repo.create_currency_rate(usdt_id, "500", "2026-07-10", self.admin_id)
+        tariff_id = self.repo.create_tariff(
+            country_id=self.country_id, provider_id=self.provider_id, provider_currency_id=usdt_id,
+            price_in_provider_currency="3", conversion_rate_to_eur="500", conversion_rate_date="2026-07-10",
+            currency_rate_id=first_rate_id, created_by=self.admin_id,
+        )
+        self.repo.set_tariff_active(tariff_id, is_current=False, changed_by=self.admin_id)
+        before = self.conn.execute("SELECT * FROM tariffs WHERE id = ?", (tariff_id,)).fetchone()
+        new_rate_id = self.repo.create_currency_rate(usdt_id, "300", "2026-07-11", self.admin_id, commit=False)
+
+        recalculated = self.repo.recalculate_current_tariffs_for_currency_rate(new_rate_id, self.admin_id)
+
+        self.assertEqual(recalculated, [])
+        after = self.conn.execute("SELECT * FROM tariffs WHERE id = ?", (tariff_id,)).fetchone()
+        self.assertEqual(str(after["eur_price"]), str(before["eur_price"]))
+        self.assertEqual(after["currency_rate_id"], before["currency_rate_id"])
+        self.assertEqual(str(after["conversion_rate_to_eur"]), str(before["conversion_rate_to_eur"]))
+
+    def test_currency_rate_recalculation_writes_tariff_history(self):
+        usdt_id = self.repo.create_currency("USDT", "Tether", "₮")
+        first_rate_id = self.repo.create_currency_rate(usdt_id, "500", "2026-07-10", self.admin_id)
+        tariff_id = self.repo.create_tariff(
+            country_id=self.country_id, provider_id=self.provider_id, provider_currency_id=usdt_id,
+            price_in_provider_currency="3", conversion_rate_to_eur="500", conversion_rate_date="2026-07-10",
+            currency_rate_id=first_rate_id, created_by=self.admin_id,
+        )
+        new_rate_id = self.repo.create_currency_rate(usdt_id, "300", "2026-07-11", self.admin_id, commit=False)
+
+        self.repo.recalculate_current_tariffs_for_currency_rate(new_rate_id, self.admin_id)
+
+        history = self.conn.execute("SELECT * FROM tariff_change_history WHERE tariff_id = ? ORDER BY id DESC LIMIT 1", (tariff_id,)).fetchone()
+        self.assertEqual(history["reason"], "tariff.currency_rate_recalculated")
+        self.assertEqual(str(history["old_conversion_rate_to_eur"]), "500")
+        self.assertEqual(str(history["new_conversion_rate_to_eur"]), "300")
+        self.assertEqual(str(history["old_eur_price"]), "1500")
+        self.assertEqual(str(history["new_eur_price"]), "900")
+        self.assertIn("currency_rate_id", history["comment"])
+
+    def test_currency_rate_recalculation_writes_change_log(self):
+        usdt_id = self.repo.create_currency("USDT", "Tether", "₮")
+        old_rate_id = self.repo.create_currency_rate(usdt_id, "500", "2026-07-10", self.admin_id)
+        self.repo.create_tariff(
+            country_id=self.country_id, provider_id=self.provider_id, provider_currency_id=usdt_id,
+            price_in_provider_currency="3", conversion_rate_to_eur="500", conversion_rate_date="2026-07-10",
+            currency_rate_id=old_rate_id, created_by=self.admin_id,
+        )
+        old_rate = self.repo.get_currency_rate(old_rate_id)
+        new_rate_id = self.repo.create_currency_rate(usdt_id, "300", "2026-07-11", self.admin_id, commit=False)
+        new_rate = self.repo.get_currency_rate(new_rate_id)
+        recalculated = self.repo.recalculate_current_tariffs_for_currency_rate(new_rate_id, self.admin_id)
+        self.repo.log_currency_rate_change(new_rate_id, usdt_id, "USDT", old_rate, new_rate, self.admin_id, recalculated_active_tariffs_count=len(recalculated))
+
+        currency_log = self.conn.execute("SELECT * FROM change_log WHERE entity_type = 'currency_rate' ORDER BY id DESC LIMIT 1").fetchone()
+        tariff_log = self.conn.execute("SELECT * FROM change_log WHERE entity_type = 'tariff' AND change_type = 'tariff.currency_rate_recalculated' ORDER BY id DESC LIMIT 1").fetchone()
+        self.assertEqual(json.loads(currency_log["new_values"])["recalculated_active_tariffs_count"], 1)
+        self.assertIn("Активных тарифов пересчитано: 1", currency_log["summary"])
+        self.assertIsNotNone(tariff_log)
+        self.assertEqual(json.loads(tariff_log["old_values"])["currency_rate_id"], old_rate_id)
+        self.assertEqual(json.loads(tariff_log["new_values"])["currency_rate_id"], new_rate_id)
+        self.assertEqual(Decimal(json.loads(tariff_log["new_values"])["eur_price"]), Decimal("900"))
+
     def test_dictionary_rename_without_updating_linked_records_keeps_phone_snapshots(self):
         phone_id = self.create_phone(number="393331234570")
         before = self.repo.list_phone_numbers({"number_like": "393331234570"})[0]
