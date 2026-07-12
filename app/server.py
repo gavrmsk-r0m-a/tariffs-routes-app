@@ -9759,15 +9759,37 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
         raise BusinessRuleError("События смены провайдеров нельзя деактивировать")
     if path in {"/admin/currency-rates/create", "/admin/currency-rates/upsert"}:
         currency_id = int(data["currency_id"])
+        currency = repo.conn.execute("SELECT code FROM currencies WHERE id = ?", (currency_id,)).fetchone()
+        if currency is None:
+            raise BusinessRuleError("Валюта не найдена")
+        old_rate = repo.latest_currency_rate(currency_id)
         today = datetime.now().strftime("%Y-%m-%d")
-        repo.create_currency_rate(
-            currency_id=currency_id,
-            rate_to_eur=data.get("rate_to_eur"),
-            rate_date=today,
-            updated_by=actor_id,
-            source="manual",
-            comment=data.get("comment"),
-        )
+        try:
+            new_rate_id = repo.create_currency_rate(
+                currency_id=currency_id,
+                rate_to_eur=data.get("rate_to_eur"),
+                rate_date=today,
+                updated_by=actor_id,
+                source="manual",
+                comment=data.get("comment"),
+                commit=False,
+            )
+            new_rate = repo.get_currency_rate(int(new_rate_id))
+            if new_rate is None:
+                raise BusinessRuleError("Курс валюты не найден после создания")
+            repo.log_currency_rate_change(
+                currency_rate_id=int(new_rate_id),
+                currency_id=currency_id,
+                currency_code=currency["code"],
+                old_rate=old_rate,
+                new_rate=new_rate,
+                changed_by=actor_id,
+                source="ui",
+            )
+            repo.conn.commit()
+        except Exception:
+            repo.conn.rollback()
+            raise
         return "/admin/currency-rates"
     if path == "/admin/change-reasons/create":
         repo.create_change_reason(data["name"], created_by=actor_id, comment=data.get("comment"), is_active=data.get("is_active") == "1"); return "/admin/change-reasons"
