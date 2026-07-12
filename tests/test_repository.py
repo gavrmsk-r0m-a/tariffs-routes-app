@@ -56,6 +56,36 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
         )
 
 
+    def test_create_currency_rate_is_append_only(self):
+        usd_id = self.repo.create_currency("USD", "US Dollar", "$")
+
+        first_id = self.repo.create_currency_rate(usd_id, "0.91", "2026-07-10", self.admin_id)
+        second_id = self.repo.create_currency_rate(usd_id, "0.92", "2026-07-10", self.admin_id)
+
+        rows = self.conn.execute(
+            "SELECT id, rate_to_eur FROM currency_rates WHERE currency_id = ? ORDER BY id",
+            (usd_id,),
+        ).fetchall()
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(rows[0]["id"], first_id)
+        self.assertEqual(str(rows[0]["rate_to_eur"]), "0.91")
+        self.assertEqual(rows[1]["id"], second_id)
+        self.assertEqual(str(rows[1]["rate_to_eur"]), "0.92")
+        latest = self.repo.latest_currency_rate(usd_id)
+        self.assertEqual(latest["id"], second_id)
+        self.assertEqual(str(latest["rate_to_eur"]), "0.92")
+
+        for invalid in ("", "0", "-1", "abc"):
+            with self.subTest(invalid=invalid):
+                with self.assertRaises(BusinessRuleError):
+                    self.repo.create_currency_rate(usd_id, invalid, "2026-07-10", self.admin_id)
+
+        count_after_invalid = self.conn.execute(
+            "SELECT COUNT(*) AS count FROM currency_rates WHERE currency_id = ?",
+            (usd_id,),
+        ).fetchone()["count"]
+        self.assertEqual(count_after_invalid, 2)
+
     def test_dictionary_rename_without_updating_linked_records_keeps_phone_snapshots(self):
         phone_id = self.create_phone(number="393331234570")
         before = self.repo.list_phone_numbers({"number_like": "393331234570"})[0]

@@ -9760,12 +9760,15 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
     if path in {"/admin/currency-rates/create", "/admin/currency-rates/upsert"}:
         currency_id = int(data["currency_id"])
         today = datetime.now().strftime("%Y-%m-%d")
-        existing = repo.conn.execute("SELECT id FROM currency_rates WHERE currency_id = ? ORDER BY rate_date DESC, created_at DESC, id DESC LIMIT 1", (currency_id,)).fetchone()
-        if existing:
-            repo.conn.execute("UPDATE currency_rates SET rate_to_eur = ?, rate_date = ?, updated_by = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (data["rate_to_eur"], today, actor_id, existing["id"]))
-        else:
-            repo.conn.execute("INSERT INTO currency_rates(currency_id, rate_to_eur, rate_date, updated_by, source) VALUES (?, ?, ?, ?, 'manual')", (currency_id, data["rate_to_eur"], today, actor_id))
-        repo.conn.commit(); return "/admin/currency-rates"
+        repo.create_currency_rate(
+            currency_id=currency_id,
+            rate_to_eur=data.get("rate_to_eur"),
+            rate_date=today,
+            updated_by=actor_id,
+            source="manual",
+            comment=data.get("comment"),
+        )
+        return "/admin/currency-rates"
     if path == "/admin/change-reasons/create":
         repo.create_change_reason(data["name"], created_by=actor_id, comment=data.get("comment"), is_active=data.get("is_active") == "1"); return "/admin/change-reasons"
     if path.startswith("/admin/change-reasons/") and path.endswith("/update"):
