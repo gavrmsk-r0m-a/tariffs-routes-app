@@ -2911,7 +2911,7 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertNotIn("href='/tariffs'", content)
 
 
-    def test_route_edit_modal_accepts_query_marker(self):
+    def test_route_edit_modal_returns_visible_partial(self):
         route_id = self._create_route_for_concurrency("Route Modal Query Partial")
 
         captured, content = self.request(f"/routes/{route_id}/edit?modal=1")
@@ -2920,15 +2920,37 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertIn("data-modal-ready='1'", content)
         self.assertIn("<form class='route-dialog route-dialog-form'", content)
         self.assertIn("name='expected_updated_at'", content)
+        self.assertIn("data-modal-close", content)
         self.assertNotIn("<!doctype html>", content)
+        self.assertNotIn("class='breadcrumbs'", content)
+        self.assertNotIn("Номера маршрута / АОНы", content)
 
-    def test_route_remote_modal_js_does_not_leave_empty_card(self):
+    def test_remote_edit_modal_js_uses_remote_edit_classes(self):
         captured, content = self.request("/routes")
 
         self.assertEqual(captured["status"], "200 OK")
         self.assertIn('modalUrl.searchParams.set("modal", "1")', content)
+        self.assertIn('overlay.className = "remote-edit-overlay"', content)
+        self.assertIn('card.className = "remote-edit-card"', content)
+        self.assertIn(".remote-edit-overlay", content)
+        self.assertIn(".remote-edit-card", content)
+
+    def test_remote_edit_modal_js_closes_open_edit_details(self):
+        captured, content = self.request("/routes")
+
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn('document.querySelectorAll("details.edit-details[open]")', content)
+        self.assertIn('details.removeAttribute("open")', content)
+        self.assertIn("cleanupRemoteEditModal();", content)
+
+    def test_remote_edit_modal_js_has_overlay_cleanup_fallback(self):
+        captured, content = self.request("/routes")
+
+        self.assertEqual(captured["status"], "200 OK")
         self.assertIn("if (!form)", content)
-        self.assertIn("closeRemoteModal();", content)
+        self.assertIn("fallbackToFullPage();", content)
+        self.assertIn("cleanupRemoteEditModal();", content)
+        self.assertIn("window.location.href = link.href", content)
         self.assertIn("!card.textContent.trim()", content)
 
     def test_route_edit_with_current_token_succeeds(self):
