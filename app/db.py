@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import os
 import sqlite3
 import threading
+from dataclasses import dataclass
 from app.repository import hash_password
 from pathlib import Path
 
@@ -10,6 +12,34 @@ SCHEMA_PATH = Path(__file__).resolve().parent / "schema.sql"
 DEFAULT_DB_PATH = ROOT / "mvp.sqlite3"
 SQLITE_TIMEOUT_SECONDS = 5
 SQLITE_BUSY_TIMEOUT_MS = 5000
+SUPPORTED_DB_BACKENDS = {"sqlite", "postgres", "postgresql"}
+POSTGRES_NOT_IMPLEMENTED_MESSAGE = "PostgreSQL backend is not implemented yet"
+
+
+@dataclass(frozen=True)
+class DbConfig:
+    backend: str
+    sqlite_path: Path
+    database_url: str | None = None
+
+
+def load_db_config(environ: dict[str, str] | None = None) -> DbConfig:
+    env = os.environ if environ is None else environ
+    backend = (env.get("DB_BACKEND") or "sqlite").strip().lower()
+    if backend not in SUPPORTED_DB_BACKENDS:
+        raise ValueError(f"Unsupported DB_BACKEND: {backend}")
+    sqlite_path = Path(env.get("SQLITE_DB_PATH") or env.get("MVP_DB_PATH") or DEFAULT_DB_PATH)
+    database_url = env.get("DATABASE_URL") or None
+    return DbConfig(backend=backend, sqlite_path=sqlite_path, database_url=database_url)
+
+
+def connect_database(config: DbConfig) -> sqlite3.Connection:
+    if config.backend == "sqlite":
+        return connect(config.sqlite_path)
+    if config.backend in {"postgres", "postgresql"}:
+        raise NotImplementedError(POSTGRES_NOT_IMPLEMENTED_MESSAGE)
+    raise ValueError(f"Unsupported DB_BACKEND: {config.backend}")
+
 
 _INIT_LOCK = threading.Lock()
 _INITIALIZED_DB_KEYS: set[str] = set()
