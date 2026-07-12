@@ -92,6 +92,35 @@ def columns(conn: sqlite3.Connection, table: str) -> dict[str, sqlite3.Row]:
         return {}
 
 
+def get_table_columns(conn: sqlite3.Connection, table_name: str) -> set[str]:
+    """Return SQLite column names for table_name using PRAGMA table_info."""
+    return set(columns(conn, table_name))
+
+
+def table_has_column(conn: sqlite3.Connection, table_name: str, column_name: str) -> bool:
+    return column_name in get_table_columns(conn, table_name)
+
+
+def table_has_rowid(conn: sqlite3.Connection, table: str) -> bool:
+    try:
+        conn.execute(f"SELECT rowid FROM {quote_ident(table)} LIMIT 0")
+        return True
+    except sqlite3.DatabaseError:
+        return False
+
+
+def sample_identifier_columns(conn: sqlite3.Connection, table: str, business_cols: Iterable[str] = ()) -> tuple[list[str], bool]:
+    table_cols = get_table_columns(conn, table)
+    if "id" in table_cols:
+        return ["id"], False
+    usable_business_cols = [c for c in business_cols if c in table_cols]
+    if usable_business_cols:
+        return usable_business_cols, False
+    if table_has_rowid(conn, table):
+        return ["rowid"], True
+    return [], False
+
+
 def table_exists(tables: set[str], table: str) -> bool:
     return table in tables
 
@@ -112,11 +141,11 @@ def safe_value(column: str, value: Any) -> Any:
 
 
 def fetch_samples(conn: sqlite3.Connection, table: str, where: str, params: tuple = (), cols: Iterable[str] = ("id",)) -> list[dict[str, Any]]:
-    table_cols = columns(conn, table)
-    select_cols = [c for c in cols if c in table_cols]
+    select_cols, uses_rowid = sample_identifier_columns(conn, table, cols)
     if not select_cols:
-        select_cols = ["rowid"]
-    sql = f"SELECT {', '.join(quote_ident(c) for c in select_cols)} FROM {quote_ident(table)} WHERE {where} LIMIT {MAX_SAMPLES}"
+        return []
+    select_exprs = ["rowid AS rowid" if uses_rowid and c == "rowid" else quote_ident(c) for c in select_cols]
+    sql = f"SELECT {', '.join(select_exprs)} FROM {quote_ident(table)} WHERE {where} LIMIT {MAX_SAMPLES}"
     samples = []
     for row in conn.execute(sql, params):
         samples.append({k: safe_value(k, row[k]) for k in row.keys()})
@@ -133,6 +162,9 @@ def check_inventory(conn, report, pg_tables):
         report.add("warning", "table_inventory", "PostgreSQL draft tables are not present in SQLite runtime schema", sample_rows=[{"table": t} for t in missing_sqlite], count=len(missing_sqlite))
     ignored = [r["name"] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'sqlite_%'")]
     report.add("info", "table_inventory", f"SQLite tables: {len(st)}; PostgreSQL draft tables: {len(pg_tables)}; ignored internal: {len(ignored)}", count=len(st))
+    for table in sorted(st):
+        if not table_has_column(conn, table, "id"):
+            report.add("info", "table_inventory", f"{table} has no id column; using business-key samples where available", table)
     return st
 
 
@@ -149,7 +181,7 @@ def check_foreign_keys(conn, report, tables):
         sql = f"SELECT COUNT(*) c FROM {quote_ident(table)} t LEFT JOIN {quote_ident(parent)} p ON t.{quote_ident(col)}=p.id WHERE t.{quote_ident(col)} IS NOT NULL AND p.id IS NULL"
         count = conn.execute(sql).fetchone()["c"]
         if count:
-            samples = fetch_samples(conn, table, f"{quote_ident(col)} IS NOT NULL AND NOT EXISTS (SELECT 1 FROM {quote_ident(parent)} p WHERE p.id={quote_ident(table)}.{quote_ident(col)})", cols=("id", col))
+            samples = fetch_samples(conn, table, f"{quote_ident(col)} IS NOT NULL AND NOT EXISTS (SELECT 1 FROM {quote_ident(parent)} p WHERE p.id={quote_ident(table)}.{quote_ident(col)})", cols=(col,))
             report.add("error", "orphan_fk", f"{table}.{col} references missing {parent}.id", table, col, samples, count)
 
 
@@ -161,7 +193,8 @@ def check_duplicates(conn, report, tables):
             continue
         exprs = [quote_ident(c) for c in cols]
         sql_where = f"WHERE {where}" if where else ""
-        sql = f"SELECT {', '.join(exprs)}, COUNT(*) c, GROUP_CONCAT(id) ids FROM {quote_ident(table)} {sql_where} GROUP BY {', '.join(exprs)} HAVING COUNT(*) > 1 LIMIT {MAX_SAMPLES}"
+        id_expr = ", GROUP_CONCAT(id) ids" if "id" in tc else ""
+        sql = f"SELECT {', '.join(exprs)}, COUNT(*) c{id_expr} FROM {quote_ident(table)} {sql_where} GROUP BY {', '.join(exprs)} HAVING COUNT(*) > 1 LIMIT {MAX_SAMPLES}"
         rows = conn.execute(sql).fetchall()
         if rows:
             report.add("error", "duplicate_business_key", f"Duplicate future unique key on {table}({', '.join(cols)})", table, ",".join(cols), [{k: safe_value(k, r[k]) for k in r.keys()} for r in rows], len(rows))
@@ -204,17 +237,21 @@ def check_temporal(conn, report, table, col, notnull, date_only):
     fmt = ["%Y-%m-%d"] if date_only else ["%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%dT%H:%M", "%Y-%m-%dT%H:%M:%S"]
     bad = []
     empty = []
-    for r in conn.execute(f"SELECT id, {quote_ident(col)} v FROM {quote_ident(table)} WHERE {quote_ident(col)} IS NOT NULL LIMIT 100000"):
+    id_cols, uses_rowid = sample_identifier_columns(conn, table, (col,))
+    select_exprs = ["rowid AS rowid" if uses_rowid and c == "rowid" else quote_ident(c) for c in id_cols]
+    select_sql = ", ".join(select_exprs + [f"{quote_ident(col)} v"])
+    for r in conn.execute(f"SELECT {select_sql} FROM {quote_ident(table)} WHERE {quote_ident(col)} IS NOT NULL LIMIT 100000"):
+        sample = {k: safe_value(k, r[k]) for k in r.keys() if k != "v"}
         v = str(r["v"])
         if v == "":
-            empty.append({"id": r["id"], col: ""}); continue
+            empty.append({**sample, col: ""}); continue
         try:
             if date_only and re.match(r"^\d{4}-\d{2}-\d{2}[ T]", v):
                 raise ValueError
             if not any(_try_dt(v, f) for f in fmt):
                 raise ValueError
         except ValueError:
-            bad.append({"id": r["id"], col: safe_value(col, v)})
+            bad.append({**sample, col: safe_value(col, v)})
     rows = (empty + bad)[:MAX_SAMPLES]
     if rows:
         report.add("error" if notnull else "warning", "date_values" if date_only else "timestamp_values", f"Invalid {'date' if date_only else 'timestamp'} values in {table}.{col}", table, col, rows, len(empty)+len(bad))
@@ -227,25 +264,33 @@ def _try_dt(v, fmt):
 
 def check_numeric(conn, report, table, col):
     bad=[]
-    for r in conn.execute(f"SELECT id, {quote_ident(col)} v FROM {quote_ident(table)} WHERE {quote_ident(col)} IS NOT NULL LIMIT 100000"):
+    id_cols, uses_rowid = sample_identifier_columns(conn, table, (col,))
+    select_exprs = ["rowid AS rowid" if uses_rowid and c == "rowid" else quote_ident(c) for c in id_cols]
+    select_sql = ", ".join(select_exprs + [f"{quote_ident(col)} v"])
+    for r in conn.execute(f"SELECT {select_sql} FROM {quote_ident(table)} WHERE {quote_ident(col)} IS NOT NULL LIMIT 100000"):
+        sample = {k: safe_value(k, r[k]) for k in r.keys() if k != "v"}
         v=str(r["v"])
         try:
             if "," in v: raise InvalidOperation
             d=Decimal(v)
             if not d.is_finite() or len(d.as_tuple().digits) > 38: raise InvalidOperation
         except (InvalidOperation, ValueError):
-            bad.append({"id": r["id"], col: safe_value(col, v)})
+            bad.append({**sample, col: safe_value(col, v)})
     if bad:
         report.add("error", "numeric_values", f"Invalid numeric values in {table}.{col}", table, col, bad[:MAX_SAMPLES], len(bad))
 
 
 def check_json(conn, report, table, col, level):
     bad=[]
-    for r in conn.execute(f"SELECT id, {quote_ident(col)} v FROM {quote_ident(table)} WHERE {quote_ident(col)} IS NOT NULL AND trim({quote_ident(col)}) <> '' LIMIT 100000"):
+    id_cols, uses_rowid = sample_identifier_columns(conn, table, (col,))
+    select_exprs = ["rowid AS rowid" if uses_rowid and c == "rowid" else quote_ident(c) for c in id_cols]
+    select_sql = ", ".join(select_exprs + [f"{quote_ident(col)} v"])
+    for r in conn.execute(f"SELECT {select_sql} FROM {quote_ident(table)} WHERE {quote_ident(col)} IS NOT NULL AND trim({quote_ident(col)}) <> '' LIMIT 100000"):
+        sample = {k: safe_value(k, r[k]) for k in r.keys() if k != "v"}
         try:
             json.loads(r["v"])
         except (TypeError, json.JSONDecodeError):
-            bad.append({"id": r["id"], col: safe_value(col, r["v"])})
+            bad.append({**sample, col: safe_value(col, r["v"])})
     if bad:
         report.add(level, "json_values", f"Invalid JSON in {table}.{col}", table, col, bad[:MAX_SAMPLES], len(bad))
 
@@ -254,6 +299,7 @@ def check_ids(conn, report, tables):
     for table in sorted(tables):
         tc = columns(conn, table)
         if "id" not in tc:
+            report.add("info", "id_sequence_readiness", f"{table} has no id column; identity reset not needed or requires manual review", table)
             continue
         r = conn.execute(f"SELECT COUNT(*) row_count, MIN(id) min_id, MAX(id) max_id, SUM(CASE WHEN id IS NULL THEN 1 ELSE 0 END) null_ids, SUM(CASE WHEN id <= 0 THEN 1 ELSE 0 END) nonpositive_ids FROM {quote_ident(table)}").fetchone()
         report.add("info", "id_sequence_readiness", f"{table}: rows={r['row_count']}, min_id={r['min_id']}, max_id={r['max_id']}", table, "id", [dict(r)], r["row_count"])
