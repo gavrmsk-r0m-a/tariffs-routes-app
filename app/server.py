@@ -3912,11 +3912,20 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
       event.preventDefault();
       closeRemoteModal();
       try {{
-        const response = await fetch(link.href, {{ headers: {{ "X-Requested-With": "fetch" }} }});
+        const modalUrl = new URL(link.href, window.location.href);
+        modalUrl.searchParams.set("modal", "1");
+        const response = await fetch(modalUrl.toString(), {{ headers: {{ "X-Requested-With": "fetch" }} }});
+        if (!response.ok) {{
+          closeRemoteModal();
+          window.location.href = link.href;
+          return;
+        }}
         const text = await response.text();
         const doc = new DOMParser().parseFromString(text, "text/html");
+        const modalReady = doc.querySelector("[data-modal-ready='1']");
         const form = doc.querySelector("form[action*='/update']");
-        if (!response.ok || !form) {{
+        if (!form) {{
+          closeRemoteModal();
           window.location.href = link.href;
           return;
         }}
@@ -3925,22 +3934,33 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
         const card = document.createElement("section");
         card.className = "modal-card";
         card.dataset.remoteModal = "1";
-        if (!(link.getAttribute("href") || "").includes("/routes/")) {{
+        const importedContent = document.importNode(modalReady || form, true);
+        if (!modalReady) {{
           card.innerHTML = `<h2>${{titleFromEditHref(link.getAttribute("href") || "")}}</h2><p class="modal-description">Поля и сохранение работают как раньше.</p>`;
         }}
-        const importedForm = document.importNode(form, true);
-        card.appendChild(importedForm);
+        card.appendChild(importedContent);
+        const importedForm = card.querySelector("form[action*='/update']") || (importedContent.matches && importedContent.matches("form[action*='/update']") ? importedContent : null);
+        if (!importedForm || !card.textContent.trim()) {{
+          closeRemoteModal();
+          window.location.href = link.href;
+          return;
+        }}
         document.body.appendChild(overlay);
         document.body.appendChild(card);
-        Array.from(doc.querySelectorAll("script")).forEach((script) => {{
-          if (!script.src && script.textContent.trim()) {{
-            const next = document.createElement("script");
-            next.textContent = script.textContent;
-            card.appendChild(next);
-          }}
-        }});
-        enhanceModalForm(importedForm, closeRemoteModal);
-        overlay.addEventListener("click", closeRemoteModal);
+        try {{
+          Array.from(doc.querySelectorAll("script")).forEach((script) => {{
+            if (!script.src && script.textContent.trim()) {{
+              const next = document.createElement("script");
+              next.textContent = script.textContent;
+              card.appendChild(next);
+            }}
+          }});
+          enhanceModalForm(importedForm, closeRemoteModal);
+          overlay.addEventListener("click", closeRemoteModal);
+        }} catch (modalError) {{
+          closeRemoteModal();
+          window.location.href = link.href;
+        }}
       }} catch (error) {{
         window.location.href = link.href;
       }}
@@ -9441,13 +9461,10 @@ def yes_no(value: object) -> str:
     return "1" if str(value) in {"1", "True", "true"} else "0"
 
 
-def tariff_edit_page(repo: Repository, tariff_id: int) -> bytes:
-    tariff = repo.get_tariff(tariff_id)
-    if tariff is None:
-        return page("Тариф не найден", "<h1>Тариф не найден</h1>")
+def tariff_edit_form(repo: Repository, tariff_id: int, tariff: sqlite3.Row, *, modal: bool = False) -> str:
     prefix = tariff["prefix"] or "—"
-    body = f"""<p><a href='/tariffs'>← Назад</a></p>
-<form class='tariff-dialog tariff-dialog-form tariff-dialog-page-form' method='post' action='/tariffs/{tariff_id}/update'>
+    cancel = "<button type='button' class='modal-cancel' data-modal-close>Отмена</button>" if modal else "<a class='button modal-cancel' href='/tariffs'>Отмена</a>"
+    return f"""<form class='tariff-dialog tariff-dialog-form{' tariff-dialog-page-form' if not modal else ''}' method='post' action='/tariffs/{tariff_id}/update'>
 <header class='tariff-dialog-header'><h2>Редактировать тариф</h2></header>
 <div class='tariff-dialog-body'>
 <section class='tariff-dialog-section'><h3>Основные параметры</h3><div class='tariff-dialog-grid'>
@@ -9466,14 +9483,30 @@ def tariff_edit_page(repo: Repository, tariff_id: int) -> bytes:
 <p class='muted tariff-dialog-hint'>GEO, провайдер и префикс задают идентичность тарифа и не редактируются.</p>
 </div></section>
 </div>
-<footer class='tariff-dialog-footer'><button type='submit' class='modal-save'>Сохранить</button><button type='button' class='modal-cancel' onclick="history.back()">Отмена</button></footer></form>
-<script>
+<footer class='tariff-dialog-footer'><button type='submit' class='modal-save'>Сохранить</button>{cancel}</footer></form>"""
+
+
+def tariff_currency_script() -> str:
+    return """<script>
 const currencySelect = document.getElementById('tariff-currency');
 const currencyWarning = document.getElementById('currency-warning');
-function updateCurrencyWarning() {{ currencyWarning.hidden = currencySelect.value === currencySelect.dataset.originalCurrency; }}
-currencySelect.addEventListener('change', updateCurrencyWarning);
+function updateCurrencyWarning() { if (currencySelect && currencyWarning) currencyWarning.hidden = currencySelect.value === currencySelect.dataset.originalCurrency; }
+if (currencySelect) currencySelect.addEventListener('change', updateCurrencyWarning);
 updateCurrencyWarning();
 </script>"""
+
+
+def tariff_edit_page(repo: Repository, tariff_id: int) -> bytes:
+    tariff = repo.get_tariff(tariff_id)
+    if tariff is None:
+        return page("Тариф не найден", "<h1>Тариф не найден</h1>")
+    is_modal = _REQUEST_CONTEXT.get("is_modal_request") is True
+    form_html = tariff_edit_form(repo, tariff_id, tariff, modal=is_modal)
+    if is_modal:
+        return (f"<div data-modal-ready='1'>{form_html}</div>" + tariff_currency_script()).encode("utf-8")
+    body = f"""<p><a href='/tariffs'>← Назад</a></p>
+{form_html}
+{tariff_currency_script()}"""
     return page("Редактировать тариф", table_page_container(body, extra_class="tariffs-page"))
 
 def route_edit_form(repo: Repository, route_id: int, route: sqlite3.Row, *, modal: bool = False) -> str:
@@ -9509,10 +9542,10 @@ def route_edit_page(repo: Repository, route_id: int) -> bytes:
     route = repo.conn.execute("SELECT r.*, c.name AS country_name FROM routes r JOIN countries c ON c.id = r.country_id WHERE r.id = ?", (route_id,)).fetchone()
     if route is None:
         return page("Маршрут не найден", "<h1>Маршрут не найден</h1>")
-    is_modal = _REQUEST_CONTEXT.get("is_fetch") is True
+    is_modal = _REQUEST_CONTEXT.get("is_modal_request") is True
     form_html = route_edit_form(repo, route_id, route, modal=is_modal)
     if is_modal:
-        return (form_html + route_aon_script()).encode("utf-8")
+        return (f"<div data-modal-ready='1'>{form_html}</div>" + route_aon_script()).encode("utf-8")
     body = f"""<h1>Редактировать маршрут</h1><p><a href='/routes'>← Назад</a></p>
 {form_html}
 {route_aon_script()}
@@ -10177,6 +10210,7 @@ def app(environ, start_response):
         "path": path,
         "filter_state": filter_state,
         "is_fetch": environ.get("HTTP_X_REQUESTED_WITH") == "fetch",
+        "is_modal_request": environ.get("HTTP_X_REQUESTED_WITH") == "fetch" or q.get("modal") == "1" or q.get("partial") == "1",
     })
     try:
         if path == "/logout":
