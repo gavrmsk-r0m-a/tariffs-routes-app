@@ -104,21 +104,34 @@ Suggested PR size:
 
 Scope:
 
-- Convert insert/update Repository paths.
-- Replace `cursor.lastrowid` with adapter `insert_returning_id()`.
-- Convert selected `commit=True` methods to adapter transaction conventions.
-- Add tests for insert ID return and rollback behavior on SQLite.
+- Start a small write-path compatibility batch for low-risk Repository create methods only.
+- Replace selected `cursor.lastrowid` flows with `prepare_insert_returning_id()` and `extract_inserted_id()`.
+- Use adapter placeholders and boolean conversion only inside the selected methods.
+- Add tests for inserted ID return and persisted SQLite rows.
 
 Focus areas:
 
-- entity create methods;
-- route/phone/tariff mutations;
-- user/admin mutations;
-- methods that currently combine insert + history rows.
+- simple dictionary create methods;
+- entity creates without complex transactions, recalculation, Telegram, HLR, optimistic concurrency, import flows, or route/tariff/currency side effects.
 
 Non-goals:
 
-- No importer/server direct SQL mass migration in this stage unless needed by a converted Repository method.
+- No PostgreSQL runtime backend.
+- No PostgreSQL connection.
+- No runtime psycopg import or dependency.
+- No mass Repository rewrite.
+- No importer/server direct SQL cleanup in this stage.
+- No routes, tariffs, currency recalculation, HLR, user permissions, import, or Telegram write-path changes.
+
+### Stage 16 small write-path status
+
+- Started the small write-path batch in `Repository` only.
+- Applied insert-id abstraction to selected low-risk create methods with `prepare_insert_returning_id()` and `extract_inserted_id()`.
+- Kept SQLite behavior as `lastrowid`-compatible; SQLite SQL remains without `RETURNING`.
+- Used adapter boolean storage for selected `is_active` writes while preserving SQLite `1`/`0` values.
+- PostgreSQL runtime remains disabled; no PostgreSQL connection is created.
+- No mass Repository rewrite was performed.
+- SQLite remains the operational backend.
 
 ## Stage 17 — `server.py` / `importer.py` direct SQL cleanup
 
