@@ -1162,7 +1162,7 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
 
     def test_valid_phone_statuses_are_simplified_set(self):
         table_sql = self.conn.execute("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'phone_numbers'").fetchone()["sql"]
-        self.assertIn("'used', 'free', 'problem', 'unknown'", table_sql)
+        self.assertIn("'used', 'unused', 'free', 'problem', 'unknown'", table_sql)
         self.assertNotIn("'reserved'", table_sql)
         self.assertNotIn("'blocked'", table_sql)
         self.assertNotIn("'disabled'", table_sql)
