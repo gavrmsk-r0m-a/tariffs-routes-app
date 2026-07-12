@@ -10,6 +10,7 @@ import logging
 import os
 import re
 import sqlite3
+from dataclasses import replace
 from datetime import date, datetime
 from http.cookies import SimpleCookie
 from pathlib import Path
@@ -18,7 +19,7 @@ from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
 from wsgiref.simple_server import make_server
 
-from app.db import DEFAULT_DB_PATH, DEFAULT_PHONE_ASSIGNMENTS, DEFAULT_PROJECTS, connect, ensure_db_initialized, init_db
+from app.db import DEFAULT_PHONE_ASSIGNMENTS, DEFAULT_PROJECTS, connect, connect_database, ensure_db_initialized, init_db, load_db_config
 from app.importer import apply_import, preview_import
 from app.repository import BusinessRuleError, COMPANY_CHANGE_LABELS, ROUTING_SCOPE_LABELS, Repository, normalize_phone_status, normalize_provider_name, normalize_real_prefix, validate_phone_number
 from app.telegram import notify_provider_change_created
@@ -82,7 +83,8 @@ def load_dotenv_if_present(path: str | Path | None = None) -> None:
 
 load_dotenv_if_present()
 
-DB_PATH = Path(os.environ.get("MVP_DB_PATH", DEFAULT_DB_PATH))
+DB_CONFIG = load_db_config()
+DB_PATH = DB_CONFIG.sqlite_path
 ADMIN_ID = 1
 CURRENT_USER_COOKIE = "mvp_auth"
 FILTER_STATE_COOKIE = "mvp_filter_state"
@@ -10192,7 +10194,7 @@ def user_error(exc: Exception) -> str:
 
 
 def app(environ, start_response):
-    conn = connect(DB_PATH)
+    conn = connect_database(replace(DB_CONFIG, sqlite_path=DB_PATH))
     ensure_db_initialized(conn, DB_PATH)
     repo = Repository(conn)
     ensure_seed(repo)
