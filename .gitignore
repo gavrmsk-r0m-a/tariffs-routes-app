@@ -3,8 +3,23 @@
 .env.*
 !.env.example
 
-# Database
+# Database files and local persistent runtime data
+*.sqlite
 *.sqlite3
+*.db
+*.sqlite3-wal
+*.sqlite3-shm
+*.db-wal
+*.db-shm
+*.backup*.sqlite3
+*.dump
+*.sql.dump
+preflight_report.json
+migration_report.json
+/data/
+/.data/
+/backups/
+/logs/
 
 # Python cache
 __pycache__/
