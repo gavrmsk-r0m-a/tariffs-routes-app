@@ -47,19 +47,22 @@ A future `app/db_adapter.py` or equivalent module should expose:
 
 Scope:
 
-- Add adapter module and tests for SQLite behavior only.
-- Keep `connect_database()` returning a SQLite-backed object compatible with current callers or expose adapter while retaining old API.
-- Add placeholder abstraction (`?` vs `%s`) and dynamic placeholder helper.
-- Add `insert_returning_id` helper, tested on SQLite.
-- Add row normalization tests using SQLite rows.
-- Add backend-neutral transaction context wrapper.
-- Add backend-neutral error classification shape without importing psycopg.
-- Preserve current `DB_BACKEND=postgres` `NotImplementedError` behavior.
+- Add `app/db_adapter.py` as a backend-neutral helper module without enabling PostgreSQL runtime mode.
+- Add backend normalization for `sqlite`, `postgres`, and the `postgresql` alias.
+- Add placeholder helpers for SQLite `?` and PostgreSQL `%s`, including dynamic placeholder lists.
+- Add a safe dynamic `IN` clause helper backed by strict simple/qualified identifier validation.
+- Add inserted-id helpers for SQLite `cursor.lastrowid` and future PostgreSQL `RETURNING id` flows.
+- Add row normalization helpers for mapping-style rows and SQLite rows.
+- Add strict boolean conversion helpers for SQLite integer booleans and PostgreSQL native booleans.
+- Keep `db_errors` as the canonical exception classification surface; the adapter only documents that boundary.
+- Leave transaction behavior in `Repository.transaction` for now; Stage 16+ can unify it if needed.
+- Preserve current SQLite runtime behavior and keep PostgreSQL runtime disabled.
 
 Non-goals:
 
 - No Repository mass rewrite.
 - No PostgreSQL connection.
+- No runtime psycopg dependency.
 - No schema changes.
 - No UI changes.
 
@@ -67,7 +70,7 @@ Suggested PR size:
 
 - New adapter module.
 - Focused tests.
-- Minimal `app/db.py` integration only if needed for compatibility.
+- Documentation note only; no `app/db.py` integration unless needed for compatibility.
 
 ## Stage 15 — Repository SQL compatibility batch 1
 
