@@ -5518,38 +5518,23 @@ def hlr_env_daily_limit() -> tuple[int, str]:
 
 def app_setting_value(key: str) -> str | None:
     repo = _REQUEST_CONTEXT.get("repo")
-    if repo is None:
+    if not isinstance(repo, Repository):
         return None
-    row = repo.conn.execute("SELECT value FROM app_settings WHERE key = ?", (key,)).fetchone()
-    if row is None or row["value"] in (None, ""):
-        return None
-    return str(row["value"])
+    return repo.get_app_setting_value(key)
 
 
 def set_app_setting_value(key: str, value: str, updated_by: int | None = None) -> None:
     repo = _REQUEST_CONTEXT.get("repo")
-    if repo is None:
+    if not isinstance(repo, Repository):
         raise BusinessRuleError("Хранилище настроек недоступно.")
-    repo.conn.execute(
-        """
-        INSERT INTO app_settings(key, value, updated_at, updated_by)
-        VALUES (?, ?, CURRENT_TIMESTAMP, ?)
-        ON CONFLICT(key) DO UPDATE SET
-            value = excluded.value,
-            updated_at = excluded.updated_at,
-            updated_by = excluded.updated_by
-        """,
-        (key, value, updated_by),
-    )
-    repo.conn.commit()
+    repo.set_app_setting_value(key, value, updated_by)
 
 
 def delete_app_setting_value(key: str) -> None:
     repo = _REQUEST_CONTEXT.get("repo")
-    if repo is None:
+    if not isinstance(repo, Repository):
         raise BusinessRuleError("Хранилище настроек недоступно.")
-    repo.conn.execute("DELETE FROM app_settings WHERE key = ?", (key,))
-    repo.conn.commit()
+    repo.delete_app_setting_value(key)
 
 
 HLR_DAILY_LIMIT_OVERRIDE_KEY = "hlr_daily_limit_override"
@@ -5593,11 +5578,17 @@ def validate_hlr_daily_limit_override(value: object) -> int:
 def save_hlr_daily_limit_override(value: object) -> None:
     parsed = validate_hlr_daily_limit_override(value)
     actor_id = int(_REQUEST_CONTEXT.get("current_user_id") or 0) or None
-    set_app_setting_value(HLR_DAILY_LIMIT_OVERRIDE_KEY, str(parsed), actor_id)
+    repo = current_repo()
+    if repo is None:
+        raise BusinessRuleError("Хранилище настроек недоступно.")
+    repo.set_hlr_limit_override(parsed, actor_id)
 
 
 def reset_hlr_daily_limit_override() -> None:
-    delete_app_setting_value(HLR_DAILY_LIMIT_OVERRIDE_KEY)
+    repo = current_repo()
+    if repo is None:
+        raise BusinessRuleError("Хранилище настроек недоступно.")
+    repo.set_hlr_limit_override(None)
 
 
 def hlr_config() -> dict[str, object]:
@@ -6625,19 +6616,7 @@ def hlr_daily_usage() -> dict[str, object]:
     if repo is None:
         return hlr_empty_usage()
     usage_date = hlr_today_key()
-    row = repo.conn.execute("SELECT * FROM hlr_daily_usage WHERE usage_date = ?", (usage_date,)).fetchone()
-    if row is None:
-        return hlr_empty_usage()
-    return {
-        "date": row["usage_date"],
-        "usage_date": row["usage_date"],
-        "usage_source": "database",
-        "checked_today": int(row["checked_count"] or 0),
-        "credits_spent_today": row["credits_spent"],
-        "last_check_count": int(row["last_check_count"] or 0),
-        "last_check_credits": row["last_check_credits"],
-        "updated_at": row["updated_at"],
-    }
+    return repo.get_hlr_daily_usage(usage_date)
 
 
 def hlr_sum_credits(rows: list[dict[str, object]]) -> object | None:
@@ -6663,30 +6642,7 @@ def hlr_record_daily_usage(checked_count: int, credits_spent: object | None) -> 
         return hlr_daily_usage()
     usage_date = hlr_today_key()
     now = datetime.now().strftime("%Y-%m-%d %H:%M")
-    existing = repo.conn.execute("SELECT checked_count, credits_spent FROM hlr_daily_usage WHERE usage_date = ?", (usage_date,)).fetchone()
-    previous_checked = int(existing["checked_count"] or 0) if existing else 0
-    previous_credits = existing["credits_spent"] if existing else None
-    if credits_spent is None:
-        next_credits = previous_credits
-    else:
-        next_credits = float(previous_credits or 0) + float(credits_spent)
-        if float(next_credits).is_integer():
-            next_credits = int(next_credits)
-    repo.conn.execute(
-        """
-        INSERT INTO hlr_daily_usage(usage_date, checked_count, credits_spent, last_check_count, last_check_credits, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?)
-        ON CONFLICT(usage_date) DO UPDATE SET
-            checked_count = excluded.checked_count,
-            credits_spent = excluded.credits_spent,
-            last_check_count = excluded.last_check_count,
-            last_check_credits = excluded.last_check_credits,
-            updated_at = excluded.updated_at
-        """,
-        (usage_date, previous_checked + checked_count, next_credits, checked_count, credits_spent, now),
-    )
-    repo.conn.commit()
-    return hlr_daily_usage()
+    return repo.upsert_hlr_daily_usage(usage_date, checked_count, credits_spent, now)
 
 
 def hlr_usage_with_limits() -> dict[str, object]:

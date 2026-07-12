@@ -1974,5 +1974,68 @@ class RoutingEventsRepositoryTest(unittest.TestCase):
         self.assertIn("Sancom", snapshot)
 
 
+class RepositoryHlrUsageConfigTest(unittest.TestCase):
+    def setUp(self):
+        self.conn = sqlite3.connect(":memory:")
+        self.conn.row_factory = sqlite3.Row
+        self.conn.execute("PRAGMA foreign_keys = ON")
+        init_db(self.conn)
+        self.repo = Repository(self.conn)
+
+    def tearDown(self):
+        self.conn.close()
+
+    def test_get_hlr_daily_usage_returns_zero_when_missing(self):
+        usage = self.repo.get_hlr_daily_usage("2026-07-12")
+
+        self.assertEqual(usage["usage_date"], "2026-07-12")
+        self.assertEqual(usage["checked_today"], 0)
+        self.assertIsNone(usage["credits_spent_today"])
+        self.assertEqual(usage["last_check_count"], 0)
+        self.assertIsNone(usage["last_check_credits"])
+        self.assertIsNone(usage["updated_at"])
+
+    def test_upsert_hlr_daily_usage_inserts_new_day(self):
+        usage = self.repo.upsert_hlr_daily_usage("2026-07-12", 3, 1.5, "2026-07-12 10:30")
+
+        self.assertEqual(usage["checked_today"], 3)
+        self.assertEqual(float(usage["credits_spent_today"]), 1.5)
+        self.assertEqual(usage["last_check_count"], 3)
+        self.assertEqual(float(usage["last_check_credits"]), 1.5)
+        self.assertEqual(usage["updated_at"], "2026-07-12 10:30")
+
+    def test_upsert_hlr_daily_usage_updates_existing_day(self):
+        self.repo.upsert_hlr_daily_usage("2026-07-12", 3, 1, "2026-07-12 10:30")
+
+        usage = self.repo.upsert_hlr_daily_usage("2026-07-12", 2, 0.5, "2026-07-12 11:00")
+
+        rows = self.conn.execute("SELECT * FROM hlr_daily_usage WHERE usage_date = ?", ("2026-07-12",)).fetchall()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(usage["checked_today"], 5)
+        self.assertEqual(float(usage["credits_spent_today"]), 1.5)
+        self.assertEqual(usage["last_check_count"], 2)
+        self.assertEqual(float(usage["last_check_credits"]), 0.5)
+        self.assertEqual(usage["updated_at"], "2026-07-12 11:00")
+
+    def test_get_hlr_limit_override_returns_current_value(self):
+        self.repo.set_hlr_limit_override(1000)
+
+        self.assertEqual(self.repo.get_hlr_limit_override(), "1000")
+
+    def test_set_hlr_limit_override_updates_existing_value(self):
+        self.repo.set_hlr_limit_override(1000)
+        self.repo.set_hlr_limit_override(2000)
+
+        rows = self.conn.execute("SELECT value FROM app_settings WHERE key = ?", ("hlr_daily_limit_override",)).fetchall()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["value"], "2000")
+
+    def test_set_hlr_limit_override_can_clear_value(self):
+        self.repo.set_hlr_limit_override(1000)
+
+        self.repo.set_hlr_limit_override(None)
+
+        self.assertIsNone(self.repo.get_hlr_limit_override())
+
 if __name__ == "__main__":
     unittest.main()

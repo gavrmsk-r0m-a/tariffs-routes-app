@@ -425,6 +425,108 @@ class Repository:
         return user if ok else None
 
 
+
+    def get_app_setting_value(self, key: str) -> str | None:
+        row = self.conn.execute("SELECT value FROM app_settings WHERE key = ?", (key,)).fetchone()
+        if row is None or row["value"] in (None, ""):
+            return None
+        return str(row["value"])
+
+    def set_app_setting_value(self, key: str, value: str | None, updated_by: int | None = None, *, commit: bool = True) -> None:
+        try:
+            self.conn.execute(
+                """
+                INSERT INTO app_settings(key, value, updated_at, updated_by)
+                VALUES (?, ?, CURRENT_TIMESTAMP, ?)
+                ON CONFLICT(key) DO UPDATE SET
+                    value = excluded.value,
+                    updated_at = excluded.updated_at,
+                    updated_by = excluded.updated_by
+                """,
+                (key, value, updated_by),
+            )
+            if commit:
+                self.conn.commit()
+        except Exception:
+            if commit:
+                self.conn.rollback()
+            raise
+
+    def delete_app_setting_value(self, key: str, *, commit: bool = True) -> None:
+        try:
+            self.conn.execute("DELETE FROM app_settings WHERE key = ?", (key,))
+            if commit:
+                self.conn.commit()
+        except Exception:
+            if commit:
+                self.conn.rollback()
+            raise
+
+    def get_hlr_daily_usage(self, usage_date: str) -> dict[str, object]:
+        row = self.conn.execute("SELECT * FROM hlr_daily_usage WHERE usage_date = ?", (usage_date,)).fetchone()
+        if row is None:
+            return {
+                "date": usage_date,
+                "usage_date": usage_date,
+                "usage_source": "database",
+                "checked_today": 0,
+                "credits_spent_today": None,
+                "last_check_count": 0,
+                "last_check_credits": None,
+                "updated_at": None,
+            }
+        return {
+            "date": row["usage_date"],
+            "usage_date": row["usage_date"],
+            "usage_source": "database",
+            "checked_today": int(row["checked_count"] or 0),
+            "credits_spent_today": row["credits_spent"],
+            "last_check_count": int(row["last_check_count"] or 0),
+            "last_check_credits": row["last_check_credits"],
+            "updated_at": row["updated_at"],
+        }
+
+    def upsert_hlr_daily_usage(self, usage_date: str, checked_count_delta: int, credits_delta: object | None = None, last_check_at: str | None = None, *, commit: bool = True) -> dict[str, object]:
+        try:
+            existing = self.conn.execute("SELECT checked_count, credits_spent FROM hlr_daily_usage WHERE usage_date = ?", (usage_date,)).fetchone()
+            previous_checked = int(existing["checked_count"] or 0) if existing else 0
+            previous_credits = existing["credits_spent"] if existing else None
+            if credits_delta is None:
+                next_credits = previous_credits
+            else:
+                next_credits = float(previous_credits or 0) + float(credits_delta)
+                if float(next_credits).is_integer():
+                    next_credits = int(next_credits)
+            self.conn.execute(
+                """
+                INSERT INTO hlr_daily_usage(usage_date, checked_count, credits_spent, last_check_count, last_check_credits, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(usage_date) DO UPDATE SET
+                    checked_count = excluded.checked_count,
+                    credits_spent = excluded.credits_spent,
+                    last_check_count = excluded.last_check_count,
+                    last_check_credits = excluded.last_check_credits,
+                    updated_at = excluded.updated_at
+                """,
+                (usage_date, previous_checked + checked_count_delta, next_credits, checked_count_delta, credits_delta, last_check_at or datetime.now().strftime("%Y-%m-%d %H:%M")),
+            )
+            if commit:
+                self.conn.commit()
+        except Exception:
+            if commit:
+                self.conn.rollback()
+            raise
+        return self.get_hlr_daily_usage(usage_date)
+
+    def get_hlr_limit_override(self) -> str | None:
+        return self.get_app_setting_value("hlr_daily_limit_override")
+
+    def set_hlr_limit_override(self, value: object | None, updated_by: int | None = None, *, commit: bool = True) -> None:
+        if value in (None, ""):
+            self.delete_app_setting_value("hlr_daily_limit_override", commit=commit)
+            return
+        self.set_app_setting_value("hlr_daily_limit_override", str(value), updated_by, commit=commit)
+
     def get_user_section_permission(self, user_id: int, section_key: str) -> sqlite3.Row | None:
         return self.conn.execute(
             """
