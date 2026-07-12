@@ -235,7 +235,7 @@ class ServerSmokeTest(unittest.TestCase):
         server.DB_PATH = self.old_path
         os.unlink(self.tmp.name)
 
-    def request(self, path, method="GET", body="", cookie="", auto_login=True):
+    def request(self, path, method="GET", body="", cookie="", auto_login=True, headers=None):
         captured = {}
 
         def start_response(status, headers):
@@ -252,6 +252,8 @@ class ServerSmokeTest(unittest.TestCase):
             "CONTENT_LENGTH": str(len(body.encode("utf-8"))),
             "wsgi.input": io.BytesIO(body.encode("utf-8")),
         }
+        for name, value in (headers or {}).items():
+            environ[name] = value
         if cookie:
             environ["HTTP_COOKIE"] = cookie
         elif auto_login and path not in ("/login", "/logout"):
@@ -2816,6 +2818,50 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertIn("name='expected_updated_at'", content)
         self.assertIn("type='hidden'", content)
 
+    def test_route_edit_modal_does_not_render_full_page_inside_modal(self):
+        route_id = self._create_route_for_concurrency("Route Modal Partial")
+
+        captured, content = self.request(f"/routes/{route_id}/edit", headers={"HTTP_X_REQUESTED_WITH": "fetch"})
+
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("<form class='route-dialog route-dialog-form'", content)
+        self.assertIn("name='expected_updated_at'", content)
+        self.assertEqual(content.count("Редактировать маршрут"), 1)
+        self.assertNotIn("<!doctype html>", content)
+        self.assertNotIn("class='breadcrumbs'", content)
+        self.assertNotIn("← Назад", content)
+        self.assertNotIn("Номера маршрута / АОНы", content)
+
+    def test_route_edit_full_page_still_renders_correctly(self):
+        route_id = self._create_route_for_concurrency("Route Full Page")
+
+        captured, content = self.request(f"/routes/{route_id}/edit")
+
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("<!doctype html>", content)
+        self.assertIn("<h1>Редактировать маршрут</h1>", content)
+        self.assertIn("Номера маршрута / АОНы", content)
+        self.assertIn("name='expected_updated_at'", content)
+
+    def test_route_edit_cancel_from_full_page_returns_to_routes(self):
+        route_id = self._create_route_for_concurrency("Route Full Cancel")
+
+        captured, content = self.request(f"/routes/{route_id}/edit")
+
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("class='button modal-cancel' href='/routes'>Отмена</a>", content)
+        self.assertNotIn("history.back()", content)
+
+    def test_route_edit_cancel_from_modal_closes_modal_or_stays_on_routes(self):
+        route_id = self._create_route_for_concurrency("Route Modal Cancel")
+
+        captured, content = self.request(f"/routes/{route_id}/edit", headers={"HTTP_X_REQUESTED_WITH": "fetch"})
+
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("class='modal-cancel' data-modal-close>Отмена</button>", content)
+        self.assertNotIn("history.back()", content)
+        self.assertNotIn("href='/tariffs'", content)
+
     def test_route_edit_with_current_token_succeeds(self):
         route_id = self._create_route_for_concurrency("Route Token Current")
         conn = server.connect(server.DB_PATH)
@@ -2860,6 +2906,22 @@ class ServerSmokeTest(unittest.TestCase):
             self.assertEqual(current["comment"], "fresh route ui")
         finally:
             conn.close()
+
+    def test_route_stale_error_return_opens_actual_edit_page(self):
+        route_id = self._create_route_for_concurrency("Route Stale Return")
+        conn = server.connect(server.DB_PATH)
+        try:
+            repo = server.Repository(conn)
+            stale_token = conn.execute("SELECT updated_at FROM routes WHERE id = ?", (route_id,)).fetchone()["updated_at"]
+            repo.update_route(route_id, name="Route Stale Return Fresh", provider_id=1, provider_prefix_id=None, comment="fresh route ui", is_actual=True, priority_status="unknown", updated_by=1, cli_source_type="pool", cli_source_label="Route Stale Return", aon_pool="pool", rnd_type=None, rnd_pool_owner=None, expected_updated_at=stale_token)
+        finally:
+            conn.close()
+        update = urlencode({"provider_id": "1", "provider_prefix_id": "", "cli_source_type": "pool", "cli_source_label": "Route Stale Return", "aon_pool": "pool", "rnd_type": "", "rnd_pool_owner": "", "is_actual": "1", "priority_status": "unknown", "comment": "stale route ui", "name": "Route Stale Return User A", "expected_updated_at": stale_token})
+
+        captured, content = self.request(f"/routes/{route_id}/update", method="POST", body=update)
+
+        self.assertEqual(captured["status"], "400 Bad Request")
+        self.assertIn(f"href='/routes/{route_id}/edit'", content)
 
     def test_route_edit_stale_token_does_not_create_history(self):
         route_id = self._create_route_for_concurrency("Route Token History")
