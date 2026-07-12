@@ -9500,6 +9500,7 @@ def tariff_edit_form(repo: Repository, tariff_id: int, tariff: sqlite3.Row, *, m
     prefix = tariff["prefix"] or "—"
     cancel = "<button type='button' class='modal-cancel' data-modal-close>Отмена</button>" if modal else "<a class='button modal-cancel' href='/tariffs'>Отмена</a>"
     return f"""<form class='tariff-dialog tariff-dialog-form{' tariff-dialog-page-form' if not modal else ''}' method='post' action='/tariffs/{tariff_id}/update'>
+<input type='hidden' name='expected_updated_at' value='{esc(tariff['updated_at'])}'>
 <header class='tariff-dialog-header'><h2>Редактировать тариф</h2></header>
 <div class='tariff-dialog-body'>
 <section class='tariff-dialog-section'><h3>Основные параметры</h3><div class='tariff-dialog-grid'>
@@ -9863,7 +9864,7 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
         rate = repo.latest_currency_rate(currency_id)
         if rate is None:
             raise BusinessRuleError("Для выбранной валюты нет курса к EUR. Добавьте курс в Администрирование → Курсы валют")
-        repo.update_tariff(tariff_id, provider_currency_id=currency_id, price_in_provider_currency=data["price"], conversion_rate_to_eur=rate["rate_to_eur"], conversion_rate_date=rate["rate_date"], currency_rate_id=rate["id"], comment=data.get("comment"), updated_by=actor_id, is_current=data.get("is_current") == "1")
+        repo.update_tariff(tariff_id, provider_currency_id=currency_id, price_in_provider_currency=data["price"], conversion_rate_to_eur=rate["rate_to_eur"], conversion_rate_date=rate["rate_date"], currency_rate_id=rate["id"], comment=data.get("comment"), updated_by=actor_id, is_current=data.get("is_current") == "1", expected_updated_at=data.get("expected_updated_at") or None)
         return f"/tariffs/{tariff_id}/edit"
     if path.startswith("/tariffs/") and (path.endswith("/deactivate") or path.endswith("/activate")):
         raise BusinessRuleError("Активность тарифа изменяется только через форму редактирования")

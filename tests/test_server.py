@@ -517,6 +517,124 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertIn("class='button modal-cancel' href='/tariffs'>Отмена</a>", content)
         self.assertNotIn("history.back()", content)
 
+
+    def _create_tariff_for_concurrency(self, price="2.5"):
+        self.request("/tariffs")
+        conn = server.connect(server.DB_PATH)
+        try:
+            repo = server.Repository(conn)
+            admin_id = conn.execute("SELECT id FROM users WHERE username = 'admin'").fetchone()["id"]
+            country_id = conn.execute("SELECT id FROM countries LIMIT 1").fetchone()["id"]
+            provider_id = conn.execute("SELECT id FROM providers LIMIT 1").fetchone()["id"]
+            currency_id = conn.execute("SELECT id FROM currencies WHERE code = 'EUR' LIMIT 1").fetchone()["id"]
+            prefix_id = repo.create_prefix(provider_id, f"77{conn.execute('SELECT COUNT(*) FROM tariffs').fetchone()[0]}")
+            return repo.create_tariff(country_id=country_id, provider_id=provider_id, provider_prefix_id=prefix_id, provider_currency_id=currency_id, price_in_provider_currency=price, conversion_rate_to_eur="1", conversion_rate_date="2026-06-22", created_by=admin_id)
+        finally:
+            conn.close()
+
+    def test_tariff_edit_form_includes_concurrency_token(self):
+        tariff_id = self._create_tariff_for_concurrency()
+
+        captured, content = self.request(f"/tariffs/{tariff_id}/edit")
+
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("name='expected_updated_at'", content)
+        self.assertIn("type='hidden'", content)
+
+    def test_tariff_edit_modal_includes_concurrency_token(self):
+        tariff_id = self._create_tariff_for_concurrency()
+
+        captured, content = self.request(f"/tariffs/{tariff_id}/edit?modal=1")
+
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("data-modal-ready='1'", content)
+        self.assertIn("name='expected_updated_at'", content)
+        self.assertIn("type='hidden'", content)
+        self.assertNotIn("<!doctype html>", content)
+        self.assertNotIn("table-page-container", content)
+
+    def test_tariff_edit_with_current_token_succeeds(self):
+        tariff_id = self._create_tariff_for_concurrency()
+        conn = server.connect(server.DB_PATH)
+        try:
+            row = conn.execute("SELECT provider_currency_id, updated_at FROM tariffs WHERE id = ?", (tariff_id,)).fetchone()
+            currency_id, token = row["provider_currency_id"], row["updated_at"]
+        finally:
+            conn.close()
+        body = urlencode({"price": "2.9", "currency_id": str(currency_id), "comment": "current tariff ui", "is_current": "1", "expected_updated_at": token})
+
+        captured, _content = self.request(f"/tariffs/{tariff_id}/update", method="POST", body=body)
+
+        self.assertEqual(captured["status"], "303 See Other")
+        conn = server.connect(server.DB_PATH)
+        try:
+            row = conn.execute("SELECT price_in_provider_currency, comment, is_current FROM tariffs WHERE id = ?", (tariff_id,)).fetchone()
+            self.assertEqual(str(row["price_in_provider_currency"]), "2.9")
+            self.assertEqual(row["comment"], "current tariff ui")
+            self.assertEqual(row["is_current"], 1)
+        finally:
+            conn.close()
+
+    def test_tariff_edit_with_stale_token_shows_user_friendly_error(self):
+        tariff_id = self._create_tariff_for_concurrency()
+        conn = server.connect(server.DB_PATH)
+        try:
+            repo = server.Repository(conn)
+            row = conn.execute("SELECT provider_currency_id, updated_at FROM tariffs WHERE id = ?", (tariff_id,)).fetchone()
+            currency_id, stale_token = row["provider_currency_id"], row["updated_at"]
+            repo.update_tariff(tariff_id, provider_currency_id=currency_id, price_in_provider_currency="2.6", conversion_rate_to_eur="1", conversion_rate_date="2026-06-22", currency_rate_id=None, comment="fresh tariff ui", updated_by=1, expected_updated_at=stale_token)
+        finally:
+            conn.close()
+        body = urlencode({"price": "9.9", "currency_id": str(currency_id), "comment": "stale tariff ui", "is_current": "1", "expected_updated_at": stale_token})
+
+        captured, content = self.request(f"/tariffs/{tariff_id}/update", method="POST", body=body)
+
+        self.assertEqual(captured["status"], "400 Bad Request")
+        self.assertIn("Запись была изменена другим пользователем", content)
+        self.assertNotIn("sqlite", content.lower())
+        self.assertNotIn("traceback", content.lower())
+        conn = server.connect(server.DB_PATH)
+        try:
+            current = conn.execute("SELECT price_in_provider_currency, comment FROM tariffs WHERE id = ?", (tariff_id,)).fetchone()
+            self.assertEqual(str(current["price_in_provider_currency"]), "2.6")
+            self.assertEqual(current["comment"], "fresh tariff ui")
+        finally:
+            conn.close()
+
+    def test_tariff_edit_stale_token_does_not_create_history(self):
+        tariff_id = self._create_tariff_for_concurrency()
+        conn = server.connect(server.DB_PATH)
+        try:
+            repo = server.Repository(conn)
+            row = conn.execute("SELECT provider_currency_id, updated_at FROM tariffs WHERE id = ?", (tariff_id,)).fetchone()
+            currency_id, stale_token = row["provider_currency_id"], row["updated_at"]
+            repo.update_tariff(tariff_id, provider_currency_id=currency_id, price_in_provider_currency="2.6", conversion_rate_to_eur="1", conversion_rate_date="2026-06-22", currency_rate_id=None, comment="fresh history ui", updated_by=1, expected_updated_at=stale_token)
+            before_history = conn.execute("SELECT COUNT(*) FROM tariff_change_history WHERE tariff_id = ?", (tariff_id,)).fetchone()[0]
+        finally:
+            conn.close()
+        body = urlencode({"price": "9.9", "currency_id": str(currency_id), "comment": "stale history ui", "is_current": "1", "expected_updated_at": stale_token})
+
+        captured, _content = self.request(f"/tariffs/{tariff_id}/update", method="POST", body=body)
+
+        self.assertEqual(captured["status"], "400 Bad Request")
+        conn = server.connect(server.DB_PATH)
+        try:
+            after_history = conn.execute("SELECT COUNT(*) FROM tariff_change_history WHERE tariff_id = ?", (tariff_id,)).fetchone()[0]
+            self.assertEqual(after_history, before_history)
+        finally:
+            conn.close()
+
+    def test_tariff_modal_still_renders_after_concurrency_token(self):
+        tariff_id = self._create_tariff_for_concurrency()
+
+        captured, content = self.request(f"/tariffs/{tariff_id}/edit?modal=1")
+
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("tariff-dialog-form", content)
+        self.assertIn("data-modal-close", content)
+        self.assertNotIn("history.back()", content)
+        self.assertNotIn("<!doctype html>", content)
+
     def test_tariffs_table_has_no_one_click_activation_actions(self):
         captured, content = self.request("/tariffs?status=all")
         self.assertEqual(captured["status"], "200 OK")

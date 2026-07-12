@@ -572,6 +572,75 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
         ))
         self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM tariff_change_history WHERE tariff_id = ?", (tariff_id,)).fetchone()[0], history_count)
 
+
+    def test_tariff_update_succeeds_with_current_token(self):
+        tariff_id = self._create_tariff("2.5")
+        token = self.conn.execute("SELECT updated_at FROM tariffs WHERE id = ?", (tariff_id,)).fetchone()["updated_at"]
+
+        self.repo.update_tariff(
+            tariff_id, provider_currency_id=self.currency_id, price_in_provider_currency="2.7",
+            conversion_rate_to_eur="1", conversion_rate_date="2026-06-22", currency_rate_id=None,
+            comment="current token", updated_by=self.admin_id, expected_updated_at=token,
+        )
+
+        row = self.conn.execute("SELECT price_in_provider_currency, comment FROM tariffs WHERE id = ?", (tariff_id,)).fetchone()
+        self.assertEqual(str(row["price_in_provider_currency"]), "2.7")
+        self.assertEqual(row["comment"], "current token")
+
+    def test_tariff_update_rejects_stale_token(self):
+        tariff_id = self._create_tariff("2.5")
+        stale_token = self.conn.execute("SELECT updated_at FROM tariffs WHERE id = ?", (tariff_id,)).fetchone()["updated_at"]
+        self.repo.update_tariff(
+            tariff_id, provider_currency_id=self.currency_id, price_in_provider_currency="2.6",
+            conversion_rate_to_eur="1", conversion_rate_date="2026-06-22", currency_rate_id=None,
+            comment="fresh user b", updated_by=self.admin_id, expected_updated_at=stale_token,
+        )
+
+        with self.assertRaisesRegex(ConcurrencyConflict, "Запись была изменена другим пользователем"):
+            self.repo.update_tariff(
+                tariff_id, provider_currency_id=self.currency_id, price_in_provider_currency="9.9",
+                conversion_rate_to_eur="1", conversion_rate_date="2026-06-22", currency_rate_id=None,
+                comment="stale user a", updated_by=self.admin_id, expected_updated_at=stale_token,
+            )
+
+        row = self.conn.execute("SELECT price_in_provider_currency, comment FROM tariffs WHERE id = ?", (tariff_id,)).fetchone()
+        self.assertEqual(str(row["price_in_provider_currency"]), "2.6")
+        self.assertEqual(row["comment"], "fresh user b")
+
+    def test_tariff_update_stale_token_does_not_write_history_or_change_log(self):
+        tariff_id = self._create_tariff("2.5")
+        stale_token = self.conn.execute("SELECT updated_at FROM tariffs WHERE id = ?", (tariff_id,)).fetchone()["updated_at"]
+        self.repo.update_tariff(
+            tariff_id, provider_currency_id=self.currency_id, price_in_provider_currency="2.6",
+            conversion_rate_to_eur="1", conversion_rate_date="2026-06-22", currency_rate_id=None,
+            comment="fresh history", updated_by=self.admin_id, expected_updated_at=stale_token,
+        )
+        before_history = self.conn.execute("SELECT COUNT(*) FROM tariff_change_history WHERE tariff_id = ?", (tariff_id,)).fetchone()[0]
+        before_log = self.conn.execute("SELECT COUNT(*) FROM change_log WHERE entity_type = 'tariff' AND entity_id = ?", (tariff_id,)).fetchone()[0]
+
+        with self.assertRaises(ConcurrencyConflict):
+            self.repo.update_tariff(
+                tariff_id, provider_currency_id=self.currency_id, price_in_provider_currency="9.9",
+                conversion_rate_to_eur="1", conversion_rate_date="2026-06-22", currency_rate_id=None,
+                comment="stale history", updated_by=self.admin_id, expected_updated_at=stale_token,
+            )
+
+        self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM tariff_change_history WHERE tariff_id = ?", (tariff_id,)).fetchone()[0], before_history)
+        self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM change_log WHERE entity_type = 'tariff' AND entity_id = ?", (tariff_id,)).fetchone()[0], before_log)
+
+    def test_tariff_update_without_token_preserves_existing_internal_behavior(self):
+        tariff_id = self._create_tariff("2.5")
+
+        self.repo.update_tariff(
+            tariff_id, provider_currency_id=self.currency_id, price_in_provider_currency="2.8",
+            conversion_rate_to_eur="1", conversion_rate_date="2026-06-22", currency_rate_id=None,
+            comment="without token", updated_by=self.admin_id,
+        )
+
+        row = self.conn.execute("SELECT price_in_provider_currency, comment FROM tariffs WHERE id = ?", (tariff_id,)).fetchone()
+        self.assertEqual(str(row["price_in_provider_currency"]), "2.8")
+        self.assertEqual(row["comment"], "without token")
+
     def test_existing_admin_password_is_not_overwritten_by_fallback(self):
         conn = sqlite3.connect(":memory:")
         conn.row_factory = sqlite3.Row
