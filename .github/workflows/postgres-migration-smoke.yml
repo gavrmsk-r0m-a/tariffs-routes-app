@@ -1,0 +1,83 @@
+name: PostgreSQL Migration Smoke
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - scripts/migrate_sqlite_to_postgres.py
+      - scripts/postgres_preflight.py
+      - scripts/create_migration_demo_sqlite.py
+      - docs/postgres/schema.postgres.sql
+      - docs/postgres/schema_decisions.md
+      - app/schema.sql
+      - app/db.py
+      - tests/test_sqlite_to_postgres_migration.py
+      - tests/test_postgres_preflight.py
+      - tests/test_postgres_schema_draft.py
+      - tests/test_migration_demo_sqlite.py
+      - .github/workflows/postgres-migration-smoke.yml
+
+jobs:
+  postgres-migration-smoke:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: teleroute_migration_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then python -m pip install -r requirements.txt; fi
+          python -m pip install "psycopg[binary]"
+
+      - name: Run focused migration tests
+        run: |
+          python -m unittest tests.test_postgres_preflight
+          python -m unittest tests.test_postgres_schema_draft
+          python -m unittest tests.test_sqlite_to_postgres_migration
+          python -m unittest tests.test_migration_demo_sqlite
+
+      - name: Create demo SQLite database
+        run: python scripts/create_migration_demo_sqlite.py --output "$RUNNER_TEMP/migration_demo.sqlite3"
+
+      - name: Run PostgreSQL preflight on demo SQLite
+        run: |
+          python scripts/postgres_preflight.py \
+            --db "$RUNNER_TEMP/migration_demo.sqlite3" \
+            --schema docs/postgres/schema.postgres.sql
+
+      - name: Run SQLite to PostgreSQL migration dry-run
+        run: |
+          python scripts/migrate_sqlite_to_postgres.py \
+            --sqlite-db "$RUNNER_TEMP/migration_demo.sqlite3" \
+            --schema docs/postgres/schema.postgres.sql \
+            --dry-run
+
+      - name: Run SQLite to PostgreSQL migration apply
+        run: |
+          python scripts/migrate_sqlite_to_postgres.py \
+            --sqlite-db "$RUNNER_TEMP/migration_demo.sqlite3" \
+            --postgres-url "postgresql://postgres:postgres@localhost:5432/teleroute_migration_test" \
+            --schema docs/postgres/schema.postgres.sql \
+            --apply --yes --create-schema
