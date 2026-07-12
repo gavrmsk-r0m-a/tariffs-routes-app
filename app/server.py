@@ -1383,6 +1383,7 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .modal-card form, .modal-form-card[open] > form {{ display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }}
     .modal-card form label, .modal-card form fieldset, .modal-form-card[open] > form label, .modal-form-card[open] > form fieldset {{ min-width: 0; }}
     .modal-card form .wide, .modal-card form p, .modal-card form fieldset, .modal-form-card[open] > form .wide, .modal-form-card[open] > form p, .modal-form-card[open] > form fieldset {{ grid-column: 1 / -1; }}
+    .modal-card[data-remote-modal] {{ position: fixed; z-index: 990; display: block; visibility: visible; opacity: 1; background: var(--surface); }}
     .modal-card h2 {{ margin: 0 0 4px; color: var(--text-strong); }}
     .modal-description {{ margin: 0 0 16px; color: var(--muted); }}
     .modal-actions {{ grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; padding-top: 12px; border-top: 1px solid var(--border); }}
@@ -3934,29 +3935,36 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
         const card = document.createElement("section");
         card.className = "modal-card";
         card.dataset.remoteModal = "1";
-        const importedContent = document.importNode(modalReady || form, true);
         if (!modalReady) {{
           card.innerHTML = `<h2>${{titleFromEditHref(link.getAttribute("href") || "")}}</h2><p class="modal-description">Поля и сохранение работают как раньше.</p>`;
+          card.appendChild(document.importNode(form, true));
+        }} else {{
+          const importedPartial = document.importNode(modalReady, true);
+          Array.from(importedPartial.childNodes).forEach((node) => card.appendChild(node));
         }}
-        card.appendChild(importedContent);
-        const importedForm = card.querySelector("form[action*='/update']") || (importedContent.matches && importedContent.matches("form[action*='/update']") ? importedContent : null);
+        const importedForm = card.querySelector("form[action*='/update']");
         if (!importedForm || !card.textContent.trim()) {{
           closeRemoteModal();
           window.location.href = link.href;
           return;
         }}
-        document.body.appendChild(overlay);
-        document.body.appendChild(card);
         try {{
+          enhanceModalForm(importedForm, closeRemoteModal);
+          if (!card.querySelector("form[action*='/update']") || !card.textContent.trim()) {{
+            closeRemoteModal();
+            window.location.href = link.href;
+            return;
+          }}
+          overlay.addEventListener("click", closeRemoteModal);
+          document.body.appendChild(overlay);
+          document.body.appendChild(card);
           Array.from(doc.querySelectorAll("script")).forEach((script) => {{
             if (!script.src && script.textContent.trim()) {{
               const next = document.createElement("script");
-              next.textContent = script.textContent;
+              next.textContent = `(function(){{\n${{script.textContent}}\n}})();`;
               card.appendChild(next);
             }}
           }});
-          enhanceModalForm(importedForm, closeRemoteModal);
-          overlay.addEventListener("click", closeRemoteModal);
         }} catch (modalError) {{
           closeRemoteModal();
           window.location.href = link.href;
