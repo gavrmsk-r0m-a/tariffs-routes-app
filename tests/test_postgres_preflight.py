@@ -80,6 +80,45 @@ class PostgresPreflightTests(unittest.TestCase):
         self.assertNotIn("abc123secret", preview)
         self.assertIn("***MASKED***", preview)
 
+
+    def test_rate_date_is_checked_as_date_not_numeric(self):
+        db_path, schema_path = self.make_db(
+            "CREATE TABLE currency_rates (id INTEGER PRIMARY KEY, rate_date TEXT NOT NULL, rate_to_eur TEXT)",
+            [("INSERT INTO currency_rates VALUES (?, ?, ?)", (1, "2026-07-12", "1.25"))],
+        )
+        report = postgres_preflight.run_preflight(db_path, schema_path)
+        self.assertFalse(any(r.check == "numeric_values" and r.table == "currency_rates" and r.column == "rate_date" for r in report.results))
+        self.assertFalse(any(r.check == "date_values" and r.table == "currency_rates" and r.column == "rate_date" for r in report.results))
+
+    def test_conversion_rate_date_is_checked_as_date_not_numeric(self):
+        db_path, schema_path = self.make_db(
+            """
+            CREATE TABLE tariffs (id INTEGER PRIMARY KEY, conversion_rate_date TEXT NOT NULL);
+            CREATE TABLE tariff_change_history (id INTEGER PRIMARY KEY, old_conversion_rate_date TEXT, new_conversion_rate_date TEXT NOT NULL);
+            """,
+            [
+                ("INSERT INTO tariffs VALUES (?, ?)", (1, "2026-07-02")),
+                ("INSERT INTO tariff_change_history VALUES (?, ?, ?)", (1, "2026-06-07", "2026-07-12")),
+            ],
+        )
+        report = postgres_preflight.run_preflight(db_path, schema_path)
+        date_columns = {"conversion_rate_date", "old_conversion_rate_date", "new_conversion_rate_date"}
+        self.assertFalse(any(r.check == "numeric_values" and r.column in date_columns for r in report.results))
+        self.assertFalse(any(r.check == "date_values" and r.column in date_columns for r in report.results))
+
+    def test_route_history_plain_text_is_allowed_when_target_text(self):
+        db_path, schema_path = self.make_db(
+            "CREATE TABLE route_history (id INTEGER PRIMARY KEY, route_id INTEGER, new_value TEXT)",
+            [("INSERT INTO route_history VALUES (?, ?, ?)", (1, 10, "Мексика/Sancom/Demo_0827@"))],
+        )
+        report = postgres_preflight.run_preflight(db_path, schema_path)
+        self.assertFalse(any(r.check == "json_values" and r.table == "route_history" and r.column == "new_value" for r in report.results))
+
+    def test_demo_data_state_is_in_postgres_schema_or_explicitly_ignored(self):
+        schema = (Path(__file__).resolve().parents[1] / "docs" / "postgres" / "schema.postgres.sql").read_text(encoding="utf-8")
+        decisions = (Path(__file__).resolve().parents[1] / "docs" / "postgres" / "schema_decisions.md").read_text(encoding="utf-8")
+        self.assertTrue("CREATE TABLE IF NOT EXISTS demo_data_state" in schema or "demo_data_state" in decisions and "ignored" in decisions.lower())
+
     def test_preflight_has_no_postgres_dependency(self):
         source = Path(postgres_preflight.__file__).read_text(encoding="utf-8")
         self.assertNotIn("psycopg", source)

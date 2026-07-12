@@ -5,7 +5,7 @@
 - Created `docs/postgres/schema.postgres.sql` as a PostgreSQL DDL draft derived from the current `app/schema.sql`.
 - Runtime code was not changed: no PostgreSQL backend, no `psycopg`, no SQLAlchemy/Alembic, no migration script, and no application switch.
 - The current SQLite schema remains the runtime source for the application.
-- The draft includes the tables currently declared in `app/schema.sql` plus lightweight-migration tables found in `app/db.py`, including operational tables, dictionaries/reference tables, HLR usage, `app_settings`, import jobs, Telegram settings, route naming rules, change reasons, and `api_tokens`.
+- The draft includes the tables currently declared in `app/schema.sql` plus lightweight-migration/runtime support tables found in `app/db.py` and `app/server.py`, including operational tables, dictionaries/reference tables, HLR usage, `app_settings`, `demo_data_state`, import jobs, Telegram settings, route naming rules, change reasons, and `api_tokens`.
 - SQLite data-fix `UPDATE` statements at the end of `app/schema.sql` were intentionally not copied because this stage is DDL-only and must not seed or mutate data.
 
 ## 2. Type decisions
@@ -126,6 +126,7 @@
 - `import_jobs.summary` and `error_report`: drafted as `JSONB`; confirm no legacy plain text exists.
 - `routing_events.snapshot_json`: drafted as `JSONB`; validate all stored values.
 - `hlr_daily_usage` and `app_settings`: created by lightweight migrations rather than `app/schema.sql`; included in the draft, but final ownership should be decided before migration.
+- `demo_data_state`: runtime support table created by seed/demo logic in `app/server.py`; included in the draft so preflight inventory matches runtime. Production seed/demo behavior must be separately gated with `ENABLE_DEMO_DATA` before any PostgreSQL cutover.
 - `routing_event_servers.id`: SQLite schema uses `INTEGER PRIMARY KEY` without `AUTOINCREMENT`; PostgreSQL draft uses identity for consistency, but this should be reviewed before final migration.
 - `valid_from`/`valid_to`: drafted as `TIMESTAMPTZ`; confirm no date-only semantics are expected.
 - Case-insensitive uniqueness: current schema does not declare `COLLATE NOCASE`; if application behavior expects case-insensitive uniqueness for names/codes, add functional indexes such as `lower(name)` in a later decision.
