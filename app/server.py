@@ -20,6 +20,7 @@ from urllib.error import HTTPError, URLError
 from wsgiref.simple_server import make_server
 
 from app.db import DEFAULT_PHONE_ASSIGNMENTS, DEFAULT_PROJECTS, connect, connect_database, ensure_db_initialized, init_db, load_db_config
+from app.db_errors import UNKNOWN_DATABASE_ERROR, UNIQUE_VIOLATION, map_database_error
 from app.importer import apply_import, preview_import
 from app.repository import BusinessRuleError, COMPANY_CHANGE_LABELS, ROUTING_SCOPE_LABELS, Repository, normalize_phone_status, normalize_provider_name, normalize_real_prefix, validate_phone_number
 from app.telegram import notify_provider_change_created
@@ -10172,19 +10173,25 @@ def validation_error_page(return_path: str, message: str) -> bytes:
 
 def user_error(exc: Exception) -> str:
     text = str(exc)
-    if isinstance(exc, sqlite3.IntegrityError):
-        if "routes.country_id, routes.name" in text or "UNIQUE constraint failed: routes.country_id, routes.name" in text:
+    db_error = map_database_error(exc, backend=DB_CONFIG.backend)
+    if db_error.kind == UNIQUE_VIOLATION:
+        table = db_error.table
+        columns = db_error.columns
+        raw_message = db_error.raw_message
+        if table == "routes" and columns == ("country_id", "name"):
             return "Маршрут уже существует"
-        if "phone_numbers.normalized_number" in text:
+        if table == "phone_numbers" and "normalized_number" in columns:
             return "Номер уже существует"
-        if "calling_companies" in text:
+        if table == "calling_companies" or "calling_companies" in raw_message:
             return "Кампания с таким ID уже существует"
-        if "tariffs" in text:
+        if table == "tariffs" or "tariffs" in raw_message:
             return "Активный тариф с такой связкой ГЕО + провайдер + префикс уже существует"
-        if "providers.normalized_name" in text:
+        if table == "providers" and "normalized_name" in columns:
             return "Провайдер уже существует"
-        if "countries.name" in text:
+        if table == "countries" and "name" in columns:
             return "ГЕО уже существует"
+        return "Нарушено ограничение уникальности или обязательности данных"
+    if db_error.kind != UNKNOWN_DATABASE_ERROR and isinstance(exc, sqlite3.IntegrityError):
         return "Нарушено ограничение уникальности или обязательности данных"
     return text
 
