@@ -28,7 +28,13 @@ def load_db_config(environ: dict[str, str] | None = None) -> DbConfig:
     backend = (env.get("DB_BACKEND") or "sqlite").strip().lower()
     if backend not in SUPPORTED_DB_BACKENDS:
         raise ValueError(f"Unsupported DB_BACKEND: {backend}")
-    sqlite_path = Path(env.get("SQLITE_DB_PATH") or env.get("MVP_DB_PATH") or DEFAULT_DB_PATH)
+    sqlite_path_value = env.get("SQLITE_DB_PATH") or env.get("MVP_DB_PATH")
+    if sqlite_path_value:
+        sqlite_path = Path(sqlite_path_value)
+    elif env.get("APP_DATA_DIR"):
+        sqlite_path = Path(env["APP_DATA_DIR"]) / "mvp.sqlite3"
+    else:
+        sqlite_path = DEFAULT_DB_PATH
     database_url = env.get("DATABASE_URL") or None
     return DbConfig(backend=backend, sqlite_path=sqlite_path, database_url=database_url)
 
