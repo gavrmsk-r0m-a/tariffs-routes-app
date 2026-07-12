@@ -2598,14 +2598,30 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     html[data-theme="light-v2"] .sidebar .side-link-disabled:hover .nav-icon {{ color: #9AA4AD !important; }}
     html[data-theme="light-v2"] .user-icon,
     html[data-theme="light-v2"] .user-icon .material-symbols-rounded {{ color: #FFFFFF !important; }}
+    html[data-theme="light-v2"] .sidebar .side-nav {{
+      padding-right: 8px;
+      scrollbar-gutter: stable;
+    }}
+    html[data-theme="light-v2"] .sidebar .side-link,
+    html[data-theme="light-v2"] .sidebar .admin-link {{
+      width: 100%;
+      max-width: 100%;
+      margin: 0;
+      box-sizing: border-box;
+    }}
+    html[data-theme="light-v2"] .sidebar .admin-toggle {{ justify-content: flex-start; }}
+    html[data-theme="light-v2"] .sidebar .admin-toggle::after {{ margin-left: auto; }}
     html[data-theme="light-v2"] .sidebar .admin-tree {{
       display: none;
+      width: 100%;
+      max-width: 100%;
       margin: 4px 0 0 0;
       padding: 0 0 0 14px;
       border: 0;
       border-left: 1px solid var(--border-strong);
       background: transparent;
       gap: 4px;
+      box-sizing: border-box;
     }}
     html[data-theme="light-v2"] .sidebar .admin-tree.open {{ display: grid; }}
     html[data-theme="light-v2"] .filter-card,
