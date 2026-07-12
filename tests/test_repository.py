@@ -787,6 +787,107 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
         self.assertIn("Приоритет: Неизвестно → Приоритетный", payload["details"])
 
 
+    def test_route_update_succeeds_with_current_token(self):
+        token = self.conn.execute("SELECT updated_at FROM routes WHERE id = ?", (self.route_id,)).fetchone()["updated_at"]
+
+        self.repo.update_route(
+            self.route_id,
+            name="Италия/Miatel/Pool_Token_OK@",
+            provider_id=self.provider_id,
+            provider_prefix_id=None,
+            comment="updated with current token",
+            is_actual=True,
+            priority_status="unknown",
+            updated_by=self.admin_id,
+            expected_updated_at=token,
+        )
+
+        updated = self.conn.execute("SELECT name, comment FROM routes WHERE id = ?", (self.route_id,)).fetchone()
+        self.assertEqual(updated["name"], "Италия/Miatel/Pool_Token_OK@")
+        self.assertEqual(updated["comment"], "updated with current token")
+
+    def test_route_update_rejects_stale_token(self):
+        stale_token = self.conn.execute("SELECT updated_at FROM routes WHERE id = ?", (self.route_id,)).fetchone()["updated_at"]
+        self.repo.update_route(
+            self.route_id,
+            name="Италия/Miatel/User_B_Fresh@",
+            provider_id=self.provider_id,
+            provider_prefix_id=None,
+            comment="fresh route change",
+            is_actual=True,
+            priority_status="unknown",
+            updated_by=self.admin_id,
+            expected_updated_at=stale_token,
+        )
+
+        with self.assertRaisesRegex(ConcurrencyConflict, "Запись была изменена другим пользователем"):
+            self.repo.update_route(
+                self.route_id,
+                name="Италия/Miatel/User_A_Stale@",
+                provider_id=self.provider_id,
+                provider_prefix_id=None,
+                comment="stale route change",
+                is_actual=True,
+                priority_status="unknown",
+                updated_by=self.admin_id,
+                expected_updated_at=stale_token,
+            )
+
+        current = self.conn.execute("SELECT name, comment FROM routes WHERE id = ?", (self.route_id,)).fetchone()
+        self.assertEqual(current["name"], "Италия/Miatel/User_B_Fresh@")
+        self.assertEqual(current["comment"], "fresh route change")
+
+    def test_route_update_stale_token_does_not_write_history(self):
+        stale_token = self.conn.execute("SELECT updated_at FROM routes WHERE id = ?", (self.route_id,)).fetchone()["updated_at"]
+        before_count = self.conn.execute("SELECT COUNT(*) AS count FROM route_history WHERE route_id = ?", (self.route_id,)).fetchone()["count"]
+        self.repo.update_route(
+            self.route_id,
+            name="Италия/Miatel/History_User_B@",
+            provider_id=self.provider_id,
+            provider_prefix_id=None,
+            comment="fresh history change",
+            is_actual=True,
+            priority_status="unknown",
+            updated_by=self.admin_id,
+            expected_updated_at=stale_token,
+        )
+        after_fresh_count = self.conn.execute("SELECT COUNT(*) AS count FROM route_history WHERE route_id = ?", (self.route_id,)).fetchone()["count"]
+
+        with self.assertRaises(ConcurrencyConflict):
+            self.repo.update_route(
+                self.route_id,
+                name="Италия/Miatel/History_User_A@",
+                provider_id=self.provider_id,
+                provider_prefix_id=None,
+                comment="stale history change",
+                is_actual=True,
+                priority_status="unknown",
+                updated_by=self.admin_id,
+                expected_updated_at=stale_token,
+            )
+
+        after_stale_count = self.conn.execute("SELECT COUNT(*) AS count FROM route_history WHERE route_id = ?", (self.route_id,)).fetchone()["count"]
+        self.assertEqual(after_fresh_count, before_count + 1)
+        self.assertEqual(after_stale_count, after_fresh_count)
+
+    def test_route_update_without_token_preserves_existing_internal_behavior(self):
+        self.repo.update_route(
+            self.route_id,
+            name="Италия/Miatel/No_Token@",
+            provider_id=self.provider_id,
+            provider_prefix_id=None,
+            comment="updated without token",
+            is_actual=False,
+            priority_status="alternative",
+            updated_by=self.admin_id,
+        )
+
+        updated = self.conn.execute("SELECT name, comment, is_actual, priority_status FROM routes WHERE id = ?", (self.route_id,)).fetchone()
+        self.assertEqual(updated["name"], "Италия/Miatel/No_Token@")
+        self.assertEqual(updated["comment"], "updated without token")
+        self.assertEqual(updated["is_actual"], 0)
+        self.assertEqual(updated["priority_status"], "alternative")
+
     def test_route_long_comment_history_is_truncated(self):
         old_comment = "Старый " + "комментарий " * 20
         new_comment = "Новый " + "комментарий " * 20

@@ -1437,6 +1437,8 @@ class Repository:
         aon_pool: str | None = None,
         rnd_type: str | None = None,
         rnd_pool_owner: str | None = None,
+        expected_updated_at: str | None = None,
+        commit: bool = True,
     ) -> None:
         existing = self.conn.execute("SELECT * FROM routes WHERE id = ?", (route_id,)).fetchone()
         if existing is None:
@@ -1445,10 +1447,40 @@ class Repository:
         final_provider_id = provider_id if provider_id is not None else int(existing["provider_id"])
         final_cli_source_type = cli_source_type if cli_source_type is not None else existing["cli_source_type"]
         final_cli_source_label = cli_source_label if cli_source_label is not None else existing["cli_source_label"]
-        self.conn.execute(
-            "UPDATE routes SET name = ?, provider_id = ?, provider_prefix_id = ?, cli_source_type = ?, cli_source_label = ?, aon_pool = ?, rnd_type = ?, rnd_pool_owner = ?, comment = ?, is_actual = ?, priority_status = ?, updated_by = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-            (name, final_provider_id, provider_prefix_id, final_cli_source_type, final_cli_source_label, aon_pool, rnd_type, rnd_pool_owner, comment, 1 if is_actual else 0, priority_status, updated_by, route_id),
+        update_params = [
+            name,
+            final_provider_id,
+            provider_prefix_id,
+            final_cli_source_type,
+            final_cli_source_label,
+            aon_pool,
+            rnd_type,
+            rnd_pool_owner,
+            comment,
+            1 if is_actual else 0,
+            priority_status,
+            updated_by,
+            route_id,
+        ]
+        token_clause = ""
+        if expected_updated_at is not None:
+            token_clause = " AND updated_at = ?"
+            update_params.append(expected_updated_at)
+        cur = self.conn.execute(
+            f"""
+            UPDATE routes
+            SET name = ?, provider_id = ?, provider_prefix_id = ?, cli_source_type = ?, cli_source_label = ?,
+                aon_pool = ?, rnd_type = ?, rnd_pool_owner = ?, comment = ?, is_actual = ?,
+                priority_status = ?, updated_by = ?,
+                updated_at = STRFTIME('%Y-%m-%d %H:%M:%f', MAX(julianday('now'), julianday(updated_at) + (1.0 / 86400000.0)))
+            WHERE id = ?{token_clause}
+            """,
+            tuple(update_params),
         )
+        if cur.rowcount == 0:
+            if self.conn.execute("SELECT 1 FROM routes WHERE id = ?", (route_id,)).fetchone() is None:
+                raise BusinessRuleError("Route not found")
+            raise ConcurrencyConflict("Запись была изменена другим пользователем. Обновите страницу и повторите действие.")
         new_values = {**old_values, "name": name, "provider_id": final_provider_id, "provider_prefix_id": provider_prefix_id, "cli_source_type": final_cli_source_type, "cli_source_label": final_cli_source_label, "aon_pool": aon_pool, "rnd_type": rnd_type, "rnd_pool_owner": rnd_pool_owner, "comment": comment, "is_actual": 1 if is_actual else 0, "priority_status": priority_status}
         changes = self._route_field_changes(old_values, new_values)
         if changes:
@@ -1457,7 +1489,8 @@ class Repository:
                 "INSERT INTO route_history(route_id, action, changed_by, field_name, old_value, new_value, comment) VALUES (?, 'updated', ?, 'changes', ?, ?, ?)",
                 (route_id, updated_by, json.dumps({"changes": changes}, ensure_ascii=False), json.dumps(payload, ensure_ascii=False), comment),
             )
-        self.conn.commit()
+        if commit:
+            self.conn.commit()
 
     def find_tariff_by_identity(self, country_id: int, provider_id: int, provider_prefix_id: int | None) -> sqlite3.Row | None:
         return self.conn.execute(

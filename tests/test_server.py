@@ -2796,6 +2796,95 @@ class ServerSmokeTest(unittest.TestCase):
         finally:
             conn.close()
 
+    def _create_route_for_concurrency(self, name):
+        conn = server.connect(server.DB_PATH)
+        try:
+            server.init_db(conn)
+            repo = server.Repository(conn)
+            server.ensure_seed(repo)
+            admin_id = conn.execute("SELECT id FROM users WHERE username = 'admin'").fetchone()["id"]
+            return repo.create_route(country_id=1, provider_id=1, name=name, cli_source_type="pool", cli_source_label=name, created_by=admin_id)
+        finally:
+            conn.close()
+
+    def test_route_edit_form_includes_concurrency_token(self):
+        route_id = self._create_route_for_concurrency("Route Token Form")
+
+        captured, content = self.request(f"/routes/{route_id}/edit")
+
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("name='expected_updated_at'", content)
+        self.assertIn("type='hidden'", content)
+
+    def test_route_edit_with_current_token_succeeds(self):
+        route_id = self._create_route_for_concurrency("Route Token Current")
+        conn = server.connect(server.DB_PATH)
+        try:
+            token = conn.execute("SELECT updated_at FROM routes WHERE id = ?", (route_id,)).fetchone()["updated_at"]
+        finally:
+            conn.close()
+        update = urlencode({"provider_id": "1", "provider_prefix_id": "", "cli_source_type": "pool", "cli_source_label": "Route Token Current", "aon_pool": "pool", "rnd_type": "", "rnd_pool_owner": "", "is_actual": "1", "priority_status": "unknown", "comment": "current route ui", "name": "Route Token Current Updated", "expected_updated_at": token})
+
+        captured, _ = self.request(f"/routes/{route_id}/update", method="POST", body=update)
+
+        self.assertEqual(captured["status"], "303 See Other")
+        conn = server.connect(server.DB_PATH)
+        try:
+            updated = conn.execute("SELECT name, comment FROM routes WHERE id = ?", (route_id,)).fetchone()
+            self.assertEqual(updated["name"], "Route Token Current Updated")
+            self.assertEqual(updated["comment"], "current route ui")
+        finally:
+            conn.close()
+
+    def test_route_edit_with_stale_token_shows_user_friendly_error(self):
+        route_id = self._create_route_for_concurrency("Route Token Stale")
+        conn = server.connect(server.DB_PATH)
+        try:
+            repo = server.Repository(conn)
+            stale_token = conn.execute("SELECT updated_at FROM routes WHERE id = ?", (route_id,)).fetchone()["updated_at"]
+            repo.update_route(route_id, name="Route Token User B Fresh", provider_id=1, provider_prefix_id=None, comment="fresh route ui", is_actual=True, priority_status="unknown", updated_by=1, cli_source_type="pool", cli_source_label="Route Token Stale", aon_pool="pool", rnd_type=None, rnd_pool_owner=None, expected_updated_at=stale_token)
+        finally:
+            conn.close()
+        update = urlencode({"provider_id": "1", "provider_prefix_id": "", "cli_source_type": "pool", "cli_source_label": "Route Token Stale", "aon_pool": "pool", "rnd_type": "", "rnd_pool_owner": "", "is_actual": "1", "priority_status": "unknown", "comment": "stale route ui", "name": "Route Token User A Stale", "expected_updated_at": stale_token})
+
+        captured, content = self.request(f"/routes/{route_id}/update", method="POST", body=update)
+
+        self.assertEqual(captured["status"], "400 Bad Request")
+        self.assertIn("Запись была изменена другим пользователем", content)
+        self.assertNotIn("sqlite", content.lower())
+        self.assertNotIn("traceback", content.lower())
+        conn = server.connect(server.DB_PATH)
+        try:
+            current = conn.execute("SELECT name, comment FROM routes WHERE id = ?", (route_id,)).fetchone()
+            self.assertEqual(current["name"], "Route Token User B Fresh")
+            self.assertEqual(current["comment"], "fresh route ui")
+        finally:
+            conn.close()
+
+    def test_route_edit_stale_token_does_not_create_history(self):
+        route_id = self._create_route_for_concurrency("Route Token History")
+        conn = server.connect(server.DB_PATH)
+        try:
+            repo = server.Repository(conn)
+            stale_token = conn.execute("SELECT updated_at FROM routes WHERE id = ?", (route_id,)).fetchone()["updated_at"]
+            before_count = conn.execute("SELECT COUNT(*) AS count FROM route_history WHERE route_id = ?", (route_id,)).fetchone()["count"]
+            repo.update_route(route_id, name="Route Token History Fresh", provider_id=1, provider_prefix_id=None, comment="fresh history ui", is_actual=True, priority_status="unknown", updated_by=1, cli_source_type="pool", cli_source_label="Route Token History", aon_pool="pool", rnd_type=None, rnd_pool_owner=None, expected_updated_at=stale_token)
+            after_fresh_count = conn.execute("SELECT COUNT(*) AS count FROM route_history WHERE route_id = ?", (route_id,)).fetchone()["count"]
+        finally:
+            conn.close()
+        update = urlencode({"provider_id": "1", "provider_prefix_id": "", "cli_source_type": "pool", "cli_source_label": "Route Token History", "aon_pool": "pool", "rnd_type": "", "rnd_pool_owner": "", "is_actual": "1", "priority_status": "unknown", "comment": "stale history ui", "name": "Route Token History Stale", "expected_updated_at": stale_token})
+
+        captured, _ = self.request(f"/routes/{route_id}/update", method="POST", body=update)
+
+        self.assertEqual(captured["status"], "400 Bad Request")
+        conn = server.connect(server.DB_PATH)
+        try:
+            after_stale_count = conn.execute("SELECT COUNT(*) AS count FROM route_history WHERE route_id = ?", (route_id,)).fetchone()["count"]
+            self.assertEqual(after_fresh_count, before_count + 1)
+            self.assertEqual(after_stale_count, after_fresh_count)
+        finally:
+            conn.close()
+
     def test_global_calling_company_journal_searches_old_names(self):
         body = urlencode({"server_id": "1", "country_id": "1", "company_id_external": "history-search-id", "company_name": "HistoryOld", "line_count": "1", "dial_set_count": "2", "has_autorotation": "0", "retry_interval_seconds": "30", "is_active": "1", "comment": "old comment"})
         self.request("/companies/create", method="POST", body=body)
