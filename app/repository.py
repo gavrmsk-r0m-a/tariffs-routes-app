@@ -11,7 +11,16 @@ from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
-from app.db_adapter import build_in_clause, normalize_backend_name, placeholder, row_to_dict, rows_to_dicts
+from app.db_adapter import (
+    build_in_clause,
+    extract_inserted_id,
+    normalize_backend_name,
+    placeholder,
+    prepare_insert_returning_id,
+    row_to_dict,
+    rows_to_dicts,
+    to_db_bool,
+)
 
 PHONE_RE = re.compile(r"^[1-9][0-9]{6,20}$")
 VALID_PHONE_STATUSES = {"used", "unused", "free", "problem", "unknown"}
@@ -613,12 +622,15 @@ class Repository:
         self.conn.commit()
 
     def create_country(self, name: str, code: str | None = None) -> int:
-        cur = self.conn.execute(
-            "INSERT INTO countries(name, code, is_active) VALUES (?, ?, 1)",
-            (name, code),
+        p = placeholder(self.backend)
+        sql = prepare_insert_returning_id(
+            f"INSERT INTO countries(name, code, is_active) VALUES ({p}, {p}, {p})",
+            self.backend,
         )
+        cur = self.conn.execute(sql, (name, code, to_db_bool(True, self.backend)))
+        country_id = extract_inserted_id(cur, self.backend)
         self.conn.commit()
-        return int(cur.lastrowid)
+        return country_id
 
     def create_currency(self, code: str, name: str, symbol: str | None = None) -> int:
         cur = self.conn.execute(
@@ -635,15 +647,21 @@ class Repository:
         default_currency_id: int | None = None,
         comment: str | None = None,
     ) -> int:
-        cur = self.conn.execute(
-            """
+        p = placeholder(self.backend)
+        sql = prepare_insert_returning_id(
+            f"""
             INSERT INTO providers(name, normalized_name, provider_type, default_currency_id, is_active, comment)
-            VALUES (?, ?, ?, ?, 1, ?)
+            VALUES ({p}, {p}, {p}, {p}, {p}, {p})
             """,
-            (name, normalize_provider_name(name), provider_type, default_currency_id, comment),
+            self.backend,
         )
+        cur = self.conn.execute(
+            sql,
+            (name, normalize_provider_name(name), provider_type, default_currency_id, to_db_bool(True, self.backend), comment),
+        )
+        provider_id = extract_inserted_id(cur, self.backend)
         self.conn.commit()
-        return int(cur.lastrowid)
+        return provider_id
 
     def create_prefix(self, provider_id: int, prefix: str | None, name: str | None = None) -> int:
         prefix = normalize_real_prefix(prefix)
@@ -1018,12 +1036,15 @@ class Repository:
         self.conn.commit()
 
     def create_server(self, name: str, comment: str | None = None) -> int:
-        cur = self.conn.execute(
-            "INSERT INTO servers(name, comment, is_active) VALUES (?, ?, 1)",
-            (name, comment),
+        p = placeholder(self.backend)
+        sql = prepare_insert_returning_id(
+            f"INSERT INTO servers(name, comment, is_active) VALUES ({p}, {p}, {p})",
+            self.backend,
         )
+        cur = self.conn.execute(sql, (name, comment, to_db_bool(True, self.backend)))
+        server_id = extract_inserted_id(cur, self.backend)
         self.conn.commit()
-        return int(cur.lastrowid)
+        return server_id
 
 
     def get_phone_number(self, phone_id: int) -> sqlite3.Row | None:
@@ -3483,11 +3504,13 @@ class Repository:
         return rows_to_dicts(self.conn.execute("SELECT * FROM change_reasons WHERE is_active = 1 ORDER BY name"))
 
     def create_change_reason(self, name: str, created_by: int | None = None, comment: str | None = None, is_active: bool = True) -> int:
-        cur = self.conn.execute(
-            "INSERT INTO change_reasons(name, description, is_active) VALUES (?, ?, ?)",
-            (name.strip(), comment, 1 if is_active else 0),
+        p = placeholder(self.backend)
+        sql = prepare_insert_returning_id(
+            f"INSERT INTO change_reasons(name, description, is_active) VALUES ({p}, {p}, {p})",
+            self.backend,
         )
-        reason_id = int(cur.lastrowid)
+        cur = self.conn.execute(sql, (name.strip(), comment, to_db_bool(is_active, self.backend)))
+        reason_id = extract_inserted_id(cur, self.backend)
         self._change_log("change_reason", reason_id, "change_reason.created", created_by, new_values={"name": name.strip()})
         self.conn.commit()
         return reason_id
