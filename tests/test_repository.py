@@ -4,7 +4,7 @@ import unittest
 from decimal import Decimal
 
 from app.db import init_db, run_lightweight_migrations
-from app.repository import hash_password, verify_password, BusinessRuleError, Repository, _values_equal
+from app.repository import hash_password, verify_password, BusinessRuleError, ConcurrencyConflict, Repository, _values_equal
 
 
 class RepositoryBusinessRulesTest(unittest.TestCase):
@@ -1139,6 +1139,113 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
         self.assertIn("Количество наборов: 5 → 7", changed["new_value"])
         self.assertIn("Интервал, сек.: 30 → 45", changed["new_value"])
         self.assertIn("Комментарий: initial → new comment", changed["new_value"])
+
+
+    def test_calling_company_update_succeeds_with_current_token(self):
+        server_id = self.repo.create_server("EU-token-ok")
+        company_id = self.repo.create_calling_company(
+            server_id=server_id,
+            country_id=self.country_id,
+            company_name="Token OK",
+            company_id_external="token-ok",
+            has_autorotation=False,
+            created_by=self.admin_id,
+        )
+        token = self.repo.get_calling_company(company_id)["updated_at"]
+
+        self.repo.update_calling_company(
+            company_id,
+            server_id=server_id,
+            country_id=self.country_id,
+            company_name="Token OK Updated",
+            line_count=3,
+            dial_set_count=4,
+            has_autorotation=False,
+            retry_interval_seconds=5,
+            is_active=True,
+            comment="updated with token",
+            updated_by=self.admin_id,
+            expected_updated_at=token,
+        )
+
+        updated = self.repo.get_calling_company(company_id)
+        self.assertEqual(updated["company_name"], "Token OK Updated")
+        self.assertEqual(updated["line_count"], 3)
+
+    def test_calling_company_update_rejects_stale_token(self):
+        server_id = self.repo.create_server("EU-token-stale")
+        company_id = self.repo.create_calling_company(
+            server_id=server_id,
+            country_id=self.country_id,
+            company_name="Token Original",
+            company_id_external="token-stale",
+            has_autorotation=False,
+            created_by=self.admin_id,
+        )
+        stale_token = self.repo.get_calling_company(company_id)["updated_at"]
+        self.repo.update_calling_company(
+            company_id,
+            server_id=server_id,
+            country_id=self.country_id,
+            company_name="User B Fresh",
+            line_count=7,
+            dial_set_count=8,
+            has_autorotation=False,
+            retry_interval_seconds=9,
+            is_active=True,
+            comment="fresh change",
+            updated_by=self.admin_id,
+            expected_updated_at=stale_token,
+        )
+
+        with self.assertRaisesRegex(ConcurrencyConflict, "Запись была изменена другим пользователем"):
+            self.repo.update_calling_company(
+                company_id,
+                server_id=server_id,
+                country_id=self.country_id,
+                company_name="User A Stale",
+                line_count=1,
+                dial_set_count=1,
+                has_autorotation=False,
+                retry_interval_seconds=1,
+                is_active=True,
+                comment="stale change",
+                updated_by=self.admin_id,
+                expected_updated_at=stale_token,
+            )
+
+        current = self.repo.get_calling_company(company_id)
+        self.assertEqual(current["company_name"], "User B Fresh")
+        self.assertEqual(current["comment"], "fresh change")
+
+    def test_calling_company_update_without_token_preserves_existing_internal_behavior(self):
+        server_id = self.repo.create_server("EU-no-token")
+        company_id = self.repo.create_calling_company(
+            server_id=server_id,
+            country_id=self.country_id,
+            company_name="No Token Original",
+            company_id_external="no-token",
+            has_autorotation=False,
+            created_by=self.admin_id,
+        )
+
+        self.repo.update_calling_company(
+            company_id,
+            server_id=server_id,
+            country_id=self.country_id,
+            company_name="No Token Updated",
+            line_count=2,
+            dial_set_count=3,
+            has_autorotation=False,
+            retry_interval_seconds=4,
+            is_active=True,
+            comment="legacy caller",
+            updated_by=self.admin_id,
+        )
+
+        updated = self.repo.get_calling_company(company_id)
+        self.assertEqual(updated["company_name"], "No Token Updated")
+        self.assertEqual(updated["comment"], "legacy caller")
 
     def test_calling_company_creation_autorotation_creates_routing_source_of_truth(self):
         server_id = self.repo.create_server("IT-auto")

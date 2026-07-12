@@ -2731,6 +2731,71 @@ class ServerSmokeTest(unittest.TestCase):
         finally:
             conn.close()
 
+
+    def test_calling_company_edit_form_includes_concurrency_token(self):
+        body = urlencode({"server_id": "1", "country_id": "1", "company_id_external": "token-form", "company_name": "Token Form", "line_count": "1", "dial_set_count": "2", "has_autorotation": "0", "retry_interval_seconds": "30", "is_active": "1", "comment": ""})
+        self.request("/companies/create", method="POST", body=body)
+        conn = server.connect(server.DB_PATH)
+        try:
+            company_id = conn.execute("SELECT id FROM calling_companies WHERE company_id_external = 'token-form'").fetchone()["id"]
+        finally:
+            conn.close()
+
+        captured, content = self.request(f"/companies/{company_id}/edit")
+
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("name='expected_updated_at'", content)
+        self.assertIn("type='hidden'", content)
+
+    def test_calling_company_edit_with_current_token_succeeds(self):
+        body = urlencode({"server_id": "1", "country_id": "1", "company_id_external": "token-current", "company_name": "Token Current", "line_count": "1", "dial_set_count": "2", "has_autorotation": "0", "retry_interval_seconds": "30", "is_active": "1", "comment": ""})
+        self.request("/companies/create", method="POST", body=body)
+        conn = server.connect(server.DB_PATH)
+        try:
+            row = conn.execute("SELECT id, updated_at FROM calling_companies WHERE company_id_external = 'token-current'").fetchone()
+            company_id, token = row["id"], row["updated_at"]
+        finally:
+            conn.close()
+        update = urlencode({"server_id": "1", "country_id": "1", "company_name": "Token Current Updated", "line_count": "5", "dial_set_count": "6", "retry_interval_seconds": "45", "is_active": "1", "comment": "current", "expected_updated_at": token})
+
+        captured, _ = self.request(f"/companies/{company_id}/update", method="POST", body=update)
+
+        self.assertEqual(captured["status"], "303 See Other")
+        conn = server.connect(server.DB_PATH)
+        try:
+            updated = conn.execute("SELECT company_name, comment FROM calling_companies WHERE id = ?", (company_id,)).fetchone()
+            self.assertEqual(updated["company_name"], "Token Current Updated")
+            self.assertEqual(updated["comment"], "current")
+        finally:
+            conn.close()
+
+    def test_calling_company_edit_with_stale_token_shows_user_friendly_error(self):
+        body = urlencode({"server_id": "1", "country_id": "1", "company_id_external": "token-stale-ui", "company_name": "Token UI Original", "line_count": "1", "dial_set_count": "2", "has_autorotation": "0", "retry_interval_seconds": "30", "is_active": "1", "comment": ""})
+        self.request("/companies/create", method="POST", body=body)
+        conn = server.connect(server.DB_PATH)
+        try:
+            repo = server.Repository(conn)
+            row = conn.execute("SELECT id, updated_at FROM calling_companies WHERE company_id_external = 'token-stale-ui'").fetchone()
+            company_id, stale_token = row["id"], row["updated_at"]
+            repo.update_calling_company(company_id, server_id=1, country_id=1, company_name="User B UI Fresh", line_count=7, dial_set_count=8, has_autorotation=False, retry_interval_seconds=9, is_active=True, comment="fresh ui", updated_by=1, expected_updated_at=stale_token)
+        finally:
+            conn.close()
+        update = urlencode({"server_id": "1", "country_id": "1", "company_name": "User A UI Stale", "line_count": "1", "dial_set_count": "1", "retry_interval_seconds": "1", "is_active": "1", "comment": "stale ui", "expected_updated_at": stale_token})
+
+        captured, content = self.request(f"/companies/{company_id}/update", method="POST", body=update)
+
+        self.assertEqual(captured["status"], "400 Bad Request")
+        self.assertIn("Запись была изменена другим пользователем", content)
+        self.assertNotIn("sqlite", content.lower())
+        self.assertNotIn("traceback", content.lower())
+        conn = server.connect(server.DB_PATH)
+        try:
+            current = conn.execute("SELECT company_name, comment FROM calling_companies WHERE id = ?", (company_id,)).fetchone()
+            self.assertEqual(current["company_name"], "User B UI Fresh")
+            self.assertEqual(current["comment"], "fresh ui")
+        finally:
+            conn.close()
+
     def test_global_calling_company_journal_searches_old_names(self):
         body = urlencode({"server_id": "1", "country_id": "1", "company_id_external": "history-search-id", "company_name": "HistoryOld", "line_count": "1", "dial_set_count": "2", "has_autorotation": "0", "retry_interval_seconds": "30", "is_active": "1", "comment": "old comment"})
         self.request("/companies/create", method="POST", body=body)
