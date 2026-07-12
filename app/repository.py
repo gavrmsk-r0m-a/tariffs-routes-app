@@ -1623,10 +1623,12 @@ class Repository:
             (tariff["id"], changed_by, tariff["country_id"], tariff["country_name"], tariff["provider_id"], tariff["provider_name"], tariff["provider_prefix_id"], tariff["prefix"], old_currency_id, tariff["provider_currency_id"], old_price, tariff["price_in_provider_currency"], old_rate, tariff["conversion_rate_to_eur"], old_rate_date, tariff["conversion_rate_date"], old_eur_price, tariff["eur_price"], reason, details),
         )
 
-    def update_tariff(self, tariff_id: int, *, provider_currency_id: int, price_in_provider_currency: str, conversion_rate_to_eur: str, conversion_rate_date: str, currency_rate_id: int | None, comment: str | None, updated_by: int, is_current: bool | None = None) -> bool:
+    def update_tariff(self, tariff_id: int, *, provider_currency_id: int, price_in_provider_currency: str, conversion_rate_to_eur: str, conversion_rate_date: str, currency_rate_id: int | None, comment: str | None, updated_by: int, is_current: bool | None = None, expected_updated_at: str | None = None) -> bool:
         old = self.get_tariff(tariff_id)
         if old is None:
             raise BusinessRuleError("Тариф не найден")
+        if expected_updated_at is not None and old["updated_at"] != expected_updated_at:
+            raise ConcurrencyConflict("Запись была изменена другим пользователем. Обновите страницу и повторите действие.")
         price_value = validate_tariff_price(price_in_provider_currency)
         price_eur = eur_price(price_value, conversion_rate_to_eur)
         requested_current = bool(old["is_current"]) if is_current is None else bool(is_current)
@@ -1643,10 +1645,26 @@ class Repository:
             changes.append(f"Активность: {'Да' if old['is_current'] else 'Нет'} → {'Да' if requested_current else 'Нет'}")
         if not changes:
             return False
-        self.conn.execute(
-            """UPDATE tariffs SET provider_currency_id = ?, price_in_provider_currency = ?, conversion_rate_to_eur = ?, conversion_rate_date = ?, currency_rate_id = ?, eur_price = ?, comment = ?, is_current = ?, updated_by = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?""",
-            (provider_currency_id, str(price_value), str(conversion_rate_to_eur), conversion_rate_date, currency_rate_id, str(price_eur), comment, 1 if requested_current else 0, updated_by, tariff_id),
+        update_params = [provider_currency_id, str(price_value), str(conversion_rate_to_eur), conversion_rate_date, currency_rate_id, str(price_eur), comment, 1 if requested_current else 0, updated_by, tariff_id]
+        token_clause = ""
+        if expected_updated_at is not None:
+            token_clause = " AND updated_at = ?"
+            update_params.append(expected_updated_at)
+        cur = self.conn.execute(
+            f"""
+            UPDATE tariffs
+            SET provider_currency_id = ?, price_in_provider_currency = ?, conversion_rate_to_eur = ?,
+                conversion_rate_date = ?, currency_rate_id = ?, eur_price = ?, comment = ?,
+                is_current = ?, updated_by = ?,
+                updated_at = STRFTIME('%Y-%m-%d %H:%M:%f', MAX(julianday('now'), julianday(updated_at) + (1.0 / 86400000.0)))
+            WHERE id = ?{token_clause}
+            """,
+            tuple(update_params),
         )
+        if cur.rowcount == 0:
+            if self.conn.execute("SELECT 1 FROM tariffs WHERE id = ?", (tariff_id,)).fetchone() is None:
+                raise BusinessRuleError("Тариф не найден")
+            raise ConcurrencyConflict("Запись была изменена другим пользователем. Обновите страницу и повторите действие.")
         new = self.get_tariff(tariff_id)
         status_changed = bool(old["is_current"]) != requested_current
         reason = "tariff.changed"
