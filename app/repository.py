@@ -1466,6 +1466,8 @@ class Repository:
         updated_by: int | None,
         source: str = "manual",
         comment: str | None = None,
+        *,
+        commit: bool = True,
     ) -> sqlite3.Row | int:
         rate_value = validate_currency_rate(rate_to_eur)
         cur = self.conn.execute(
@@ -1475,8 +1477,57 @@ class Repository:
             """,
             (currency_id, str(rate_value), rate_date, updated_by, source, comment),
         )
-        self.conn.commit()
+        if commit:
+            self.conn.commit()
         return cur.lastrowid
+
+    def get_currency_rate(self, currency_rate_id: int) -> sqlite3.Row | None:
+        return self.conn.execute(
+            """
+            SELECT cr.*, c.code AS currency_code
+            FROM currency_rates cr
+            JOIN currencies c ON c.id = cr.currency_id
+            WHERE cr.id = ?
+            """,
+            (currency_rate_id,),
+        ).fetchone()
+
+    def _currency_rate_log_values(self, rate: sqlite3.Row, currency_code: str) -> dict:
+        return {
+            "currency_id": int(rate["currency_id"]),
+            "currency_code": currency_code,
+            "currency_rate_id": int(rate["id"]),
+            "rate_to_eur": str(rate["rate_to_eur"]),
+            "rate_date": str(rate["rate_date"]),
+            "source": rate["source"],
+        }
+
+    def log_currency_rate_change(
+        self,
+        currency_rate_id: int,
+        currency_id: int,
+        currency_code: str,
+        old_rate: sqlite3.Row | None,
+        new_rate: sqlite3.Row,
+        changed_by: int | None,
+        source: str = "ui",
+    ) -> None:
+        old_values = self._currency_rate_log_values(old_rate, currency_code) if old_rate is not None else None
+        new_values = self._currency_rate_log_values(new_rate, currency_code)
+        if old_rate is not None:
+            summary = f"Курс {currency_code} к EUR обновлён вручную: {old_values['rate_to_eur']} → {new_values['rate_to_eur']}"
+        else:
+            summary = f"Курс {currency_code} к EUR добавлен вручную: {new_values['rate_to_eur']}"
+        self._change_log(
+            "currency_rate",
+            currency_rate_id,
+            "currency_rate.manual_created",
+            changed_by,
+            old_values=old_values,
+            new_values=new_values,
+            summary=summary,
+            source=source,
+        )
 
     def latest_currency_rate(self, currency_id: int) -> sqlite3.Row | None:
         return self.conn.execute(
@@ -3087,11 +3138,12 @@ class Repository:
         old_values: dict | None = None,
         new_values: dict | None = None,
         summary: str | None = None,
+        source: str = "ui",
     ) -> None:
         self.conn.execute(
             """
             INSERT INTO change_log(entity_type, entity_id, change_type, changed_by, old_values, new_values, summary, source)
-            VALUES (?, ?, ?, ?, ?, ?, ?, 'ui')
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 entity_type,
@@ -3101,5 +3153,6 @@ class Repository:
                 json.dumps(old_values, ensure_ascii=False) if old_values is not None else None,
                 json.dumps(new_values, ensure_ascii=False) if new_values is not None else None,
                 summary,
+                source,
             ),
         )

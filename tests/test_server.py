@@ -1,4 +1,5 @@
 import csv
+import json
 import io
 import os
 import re
@@ -2451,6 +2452,59 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertEqual(captured["status"], "200 OK")
         self.assertIn("0.92", content)
         self.assertNotIn("0.91", content)
+
+    def test_currency_rate_upsert_writes_change_log(self):
+        self.request("/tariffs")
+        self.request("/admin/currency-rates/upsert", method="POST", body=urlencode({"currency_id": "2", "rate_to_eur": "1.01"}))
+        self.request("/admin/currency-rates/upsert", method="POST", body=urlencode({"currency_id": "2", "rate_to_eur": "500"}))
+
+        conn = server.connect(server.DB_PATH)
+        try:
+            log = conn.execute(
+                """
+                SELECT * FROM change_log
+                WHERE entity_type = 'currency_rate'
+                ORDER BY id DESC
+                LIMIT 1
+                """
+            ).fetchone()
+        finally:
+            conn.close()
+
+        self.assertIsNotNone(log)
+        self.assertEqual(log["change_type"], "currency_rate.manual_created")
+        self.assertIsNotNone(log["changed_by"])
+        self.assertEqual(log["source"], "ui")
+        self.assertEqual(log["summary"], "Курс USDT к EUR обновлён вручную: 1.01 → 500")
+        old_values = json.loads(log["old_values"])
+        new_values = json.loads(log["new_values"])
+        self.assertEqual(old_values["currency_code"], "USDT")
+        self.assertEqual(old_values["rate_to_eur"], "1.01")
+        self.assertEqual(new_values["currency_code"], "USDT")
+        self.assertEqual(new_values["rate_to_eur"], "500")
+        self.assertEqual(log["entity_id"], new_values["currency_rate_id"])
+
+    def test_currency_rate_invalid_value_does_not_write_change_log(self):
+        self.request("/tariffs")
+        conn = server.connect(server.DB_PATH)
+        try:
+            before_rates = conn.execute("SELECT COUNT(*) FROM currency_rates").fetchone()[0]
+            before_logs = conn.execute("SELECT COUNT(*) FROM change_log WHERE entity_type = 'currency_rate'").fetchone()[0]
+        finally:
+            conn.close()
+
+        captured, content = self.request("/admin/currency-rates/upsert", method="POST", body=urlencode({"currency_id": "2", "rate_to_eur": "0"}))
+        self.assertEqual(captured["status"], "400 Bad Request")
+        self.assertIn("Ошибка", content)
+
+        conn = server.connect(server.DB_PATH)
+        try:
+            after_rates = conn.execute("SELECT COUNT(*) FROM currency_rates").fetchone()[0]
+            after_logs = conn.execute("SELECT COUNT(*) FROM change_log WHERE entity_type = 'currency_rate'").fetchone()[0]
+        finally:
+            conn.close()
+        self.assertEqual(after_rates, before_rates)
+        self.assertEqual(after_logs, before_logs)
 
     def test_change_reason_can_be_deactivated_and_hidden_from_provider_change_form(self):
         self.request("/routes")
