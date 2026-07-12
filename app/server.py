@@ -1623,6 +1623,49 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
       border-color: #d5ddff !important;
     }}
 
+    html[data-theme="light-v2"] .side-nav {{
+      padding-right: 4px;
+    }}
+
+    html[data-theme="light-v2"] .side-link {{
+      padding-right: 10px;
+    }}
+
+    html[data-theme="light-v2"] .side-link.active {{
+      margin-right: 4px;
+    }}
+
+    html[data-theme="light-v2"] .sidebar-collapsed .side-nav {{
+      justify-items: center;
+      padding-right: 0;
+    }}
+
+    html[data-theme="light-v2"] .sidebar-collapsed .side-link,
+    html[data-theme="light-v2"] .sidebar-collapsed .side-link-disabled {{
+      width: var(--sidebar-item-height);
+      min-width: var(--sidebar-item-height);
+      max-width: var(--sidebar-item-height);
+      padding: 0;
+      margin-right: 0;
+      justify-content: center !important;
+      justify-self: center;
+      border-radius: 12px;
+      box-sizing: border-box;
+    }}
+
+    html[data-theme="light-v2"] .sidebar-collapsed .side-link.active {{
+      width: var(--sidebar-item-height);
+      min-width: var(--sidebar-item-height);
+      max-width: var(--sidebar-item-height);
+      background: var(--accent-soft) !important;
+      border-color: var(--accent-border) !important;
+      box-shadow: none;
+    }}
+
+    html[data-theme="light-v2"] .sidebar-collapsed .side-link .nav-icon {{
+      margin: 0;
+    }}
+
     td[data-col="actions"] {{
       text-align: center !important;
       vertical-align: middle !important;
