@@ -295,6 +295,18 @@ class ServerSmokeTest(unittest.TestCase):
             conn.close()
 
 
+    def test_hlr_page_renders_usage_panel_after_repository_refactor(self):
+        with patch.dict(os.environ, {"HLR_DAILY_CHECK_LIMIT": "11"}, clear=False):
+            captured, html = self.request("/hlr")
+
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("<h3 class='hlr-usage-title'>HLR usage</h3>", html)
+        self.assertIn("<span class='hlr-usage-label'>Осталось сегодня</span>", html)
+        self.assertIn("<span class='hlr-usage-label'>Проверено сегодня</span>", html)
+        self.assertIn("<span class='hlr-usage-label'>Последняя проверка</span>", html)
+        self.assertIn("<dt>daily_limit</dt><dd>11</dd>", html)
+
+
     def test_hlr_daily_limit_endpoint_saves_reset_and_rejects_non_admin(self):
         with patch.dict(os.environ, {"HLR_DAILY_CHECK_LIMIT": "11"}, clear=False):
             captured, html = self.request("/hlr/config/daily-limit", method="POST", body=urlencode({"daily_limit_override": "13"}))
