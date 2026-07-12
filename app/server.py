@@ -3925,7 +3925,9 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
         const card = document.createElement("section");
         card.className = "modal-card";
         card.dataset.remoteModal = "1";
-        card.innerHTML = `<h2>${{titleFromEditHref(link.getAttribute("href") || "")}}</h2><p class="modal-description">Поля и сохранение работают как раньше.</p>`;
+        if (!(link.getAttribute("href") || "").includes("/routes/")) {{
+          card.innerHTML = `<h2>${{titleFromEditHref(link.getAttribute("href") || "")}}</h2><p class="modal-description">Поля и сохранение работают как раньше.</p>`;
+        }}
         const importedForm = document.importNode(form, true);
         card.appendChild(importedForm);
         document.body.appendChild(overlay);
@@ -9474,12 +9476,9 @@ updateCurrencyWarning();
 </script>"""
     return page("Редактировать тариф", table_page_container(body, extra_class="tariffs-page"))
 
-def route_edit_page(repo: Repository, route_id: int) -> bytes:
-    route = repo.conn.execute("SELECT r.*, c.name AS country_name FROM routes r JOIN countries c ON c.id = r.country_id WHERE r.id = ?", (route_id,)).fetchone()
-    if route is None:
-        return page("Маршрут не найден", "<h1>Маршрут не найден</h1>")
-    body = f"""<h1>Редактировать маршрут</h1><p><a href='/routes'>← Назад</a></p>
-<form class='route-dialog route-dialog-form route-dialog-page-form' method='post' action='/routes/{route_id}/update' data-country-name='{esc(route['country_name']) if 'country_name' in route.keys() else ''}'>
+def route_edit_form(repo: Repository, route_id: int, route: sqlite3.Row, *, modal: bool = False) -> str:
+    cancel = "<button type='button' class='modal-cancel' data-modal-close>Отмена</button>" if modal else "<a class='button modal-cancel' href='/routes'>Отмена</a>"
+    return f"""<form class='route-dialog route-dialog-form{' route-dialog-page-form' if not modal else ''}' method='post' action='/routes/{route_id}/update' data-country-name='{esc(route['country_name']) if 'country_name' in route.keys() else ''}'>
 <input type='hidden' name='expected_updated_at' value='{esc(route['updated_at'])}'>
 <header class='route-dialog-header'><h2>Редактировать маршрут</h2></header>
 <div class='route-dialog-body'>
@@ -9503,7 +9502,19 @@ def route_edit_page(repo: Repository, route_id: int) -> bytes:
 <label class='route-dialog-full'>Название маршрута <span class='required'>*</span><input name='name' value='{esc(route['name'])}' size='60'></label>
 </div></section>
 </div>
-<footer class='route-dialog-footer'><button type='submit' class='modal-save'>Сохранить</button><button type='button' class='modal-cancel' onclick="history.back()">Отмена</button></footer></form>
+<footer class='route-dialog-footer'><button type='submit' class='modal-save'>Сохранить</button>{cancel}</footer></form>"""
+
+
+def route_edit_page(repo: Repository, route_id: int) -> bytes:
+    route = repo.conn.execute("SELECT r.*, c.name AS country_name FROM routes r JOIN countries c ON c.id = r.country_id WHERE r.id = ?", (route_id,)).fetchone()
+    if route is None:
+        return page("Маршрут не найден", "<h1>Маршрут не найден</h1>")
+    is_modal = _REQUEST_CONTEXT.get("is_fetch") is True
+    form_html = route_edit_form(repo, route_id, route, modal=is_modal)
+    if is_modal:
+        return (form_html + route_aon_script()).encode("utf-8")
+    body = f"""<h1>Редактировать маршрут</h1><p><a href='/routes'>← Назад</a></p>
+{form_html}
 {route_aon_script()}
 <div class='card'><h2>Номера маршрута / АОНы</h2><p>Управление купленными номерами доступно для каждого маршрута, даже если номеров пока нет.</p><p><a class='button' href='/routes/{route_id}/numbers/manage'>Номера маршрута / АОНы</a></p></div>"""
     return page("Редактировать маршрут", body)
@@ -10165,6 +10176,7 @@ def app(environ, start_response):
         "redirect_to": current_request_path(environ),
         "path": path,
         "filter_state": filter_state,
+        "is_fetch": environ.get("HTTP_X_REQUESTED_WITH") == "fetch",
     })
     try:
         if path == "/logout":
