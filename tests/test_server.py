@@ -2432,11 +2432,21 @@ class ServerSmokeTest(unittest.TestCase):
                 self.assertEqual(captured["status"], "200 OK")
                 self.assertIn(marker, content)
 
-    def test_currency_rate_upsert_updates_latest_row(self):
+    def test_currency_rate_upsert_creates_historical_rows_and_shows_latest(self):
         self.request("/tariffs")
         body = urlencode({"currency_id": "2", "rate_to_eur": "0.91"})
         self.request("/admin/currency-rates/upsert", method="POST", body=body)
         self.request("/admin/currency-rates/upsert", method="POST", body=urlencode({"currency_id": "2", "rate_to_eur": "0.92"}))
+
+        conn = server.connect(server.DB_PATH)
+        try:
+            rows = conn.execute("SELECT rate_to_eur FROM currency_rates WHERE currency_id = 2 ORDER BY id").fetchall()
+            latest = server.Repository(conn).latest_currency_rate(2)
+        finally:
+            conn.close()
+        self.assertEqual([str(row["rate_to_eur"]) for row in rows[-2:]], ["0.91", "0.92"])
+        self.assertEqual(str(latest["rate_to_eur"]), "0.92")
+
         captured, content = self.request("/admin/currency-rates")
         self.assertEqual(captured["status"], "200 OK")
         self.assertIn("0.92", content)

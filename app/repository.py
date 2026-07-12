@@ -216,6 +216,23 @@ def validate_tariff_price(price: object) -> Decimal:
     return value
 
 
+
+
+def validate_currency_rate(rate_to_eur: object) -> Decimal:
+    text = "" if rate_to_eur is None else str(rate_to_eur).strip()
+    if text == "":
+        raise BusinessRuleError("Курс обязателен")
+    normalized = text.replace(",", ".")
+    try:
+        value = Decimal(normalized)
+    except InvalidOperation as exc:
+        raise BusinessRuleError("Курс должен быть числом") from exc
+    if not value.is_finite():
+        raise BusinessRuleError("Курс должен быть числом")
+    if value <= 0:
+        raise BusinessRuleError("Курс должен быть больше 0")
+    return value
+
 def eur_price(price: str | Decimal, rate: str | Decimal) -> Decimal:
     value = Decimal(str(price)) * Decimal(str(rate))
     return value.quantize(Decimal("0.000001"), rounding=ROUND_HALF_UP)
@@ -1439,6 +1456,27 @@ class Repository:
             """,
             (tariff_id,),
         ))
+
+
+    def create_currency_rate(
+        self,
+        currency_id: int,
+        rate_to_eur: str | Decimal | float,
+        rate_date: str,
+        updated_by: int | None,
+        source: str = "manual",
+        comment: str | None = None,
+    ) -> sqlite3.Row | int:
+        rate_value = validate_currency_rate(rate_to_eur)
+        cur = self.conn.execute(
+            """
+            INSERT INTO currency_rates(currency_id, rate_to_eur, rate_date, updated_by, source, comment)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (currency_id, str(rate_value), rate_date, updated_by, source, comment),
+        )
+        self.conn.commit()
+        return cur.lastrowid
 
     def latest_currency_rate(self, currency_id: int) -> sqlite3.Row | None:
         return self.conn.execute(
