@@ -17,6 +17,20 @@ from typing import Any, Iterable
 MAX_SAMPLES = 5
 SENSITIVE_RE = re.compile(r"(password|passwd|token|secret|api[_-]?key|api[_-]?secret|salt|hash)", re.I)
 PHONE_RE = re.compile(r"^\+?\d{7,21}$")
+DATE_ONLY_COLUMN_NAMES = {
+    "rate_date",
+    "conversion_rate_date",
+    "usage_date",
+    "price_before_conversion_rate_date",
+    "price_after_conversion_rate_date",
+    "old_conversion_rate_date",
+    "new_conversion_rate_date",
+}
+
+
+def is_date_only_column(column: str) -> bool:
+    """Return True for columns that should be validated as DATE, not numeric."""
+    return column in DATE_ONLY_COLUMN_NAMES or column.endswith("_date")
 
 
 @dataclass
@@ -206,8 +220,8 @@ def check_duplicates(conn, report, tables):
 
 def check_boolean_timestamp_date_numeric_json_empty(conn, report, tables):
     timestamp_names = {"created_at","updated_at","changed_at","event_at","valid_from","valid_to","last_check_at","deactivated_at","started_at","finished_at","telegram_sent_at","added_at","removed_at"}
-    date_names = {"rate_date","conversion_rate_date","usage_date","price_before_conversion_rate_date","price_after_conversion_rate_date","old_conversion_rate_date","new_conversion_rate_date"}
-    json_targets = {("change_log","old_values"):"error",("change_log","new_values"):"error",("routing_events","snapshot_json"):"error",("import_jobs","preview_data"):"error",("import_jobs","summary"):"error",("import_jobs","error_report"):"error",("route_phone_number_history","old_values"):"warning",("route_phone_number_history","new_values"):"warning",("route_history","old_value"):"warning",("route_history","new_value"):"warning",("phone_number_history","old_value"):"warning",("phone_number_history","new_value"):"warning"}
+    date_names = DATE_ONLY_COLUMN_NAMES
+    json_targets = {("change_log","old_values"):"error",("change_log","new_values"):"error",("routing_events","snapshot_json"):"error",("import_jobs","preview_data"):"error",("import_jobs","summary"):"error",("import_jobs","error_report"):"error"}
     required = {("users","username"), ("countries","name"), ("providers","name"), ("currencies","code"), ("routes","name"), ("phone_numbers","number"), ("phone_numbers","normalized_number"), ("calling_companies","company_id_external"), ("calling_companies","company_name"), ("servers","name"), ("projects","name"), ("projects","code")}
     for table in sorted(tables):
         tc = columns(conn, table)
@@ -221,16 +235,17 @@ def check_boolean_timestamp_date_numeric_json_empty(conn, report, tables):
                     report.add("error" if notnull else "warning", "boolean_values", f"Invalid boolean-target values in {table}.{col}", table, col, fetch_samples(conn, table, f"{qcol} IS NOT NULL AND {qcol} NOT IN (0,1)", cols=("id", col)), count)
             if col in timestamp_names:
                 check_temporal(conn, report, table, col, notnull, False)
-            if col in date_names or (col.endswith("_date") and col not in timestamp_names):
+            is_date_only = col in date_names or (is_date_only_column(col) and col not in timestamp_names)
+            if is_date_only:
                 check_temporal(conn, report, table, col, notnull, True)
-            if any(x in col for x in ("price","cost","rate","fee","credits")):
+            if not is_date_only and any(x in col for x in ("price","cost","rate","fee","credits")):
                 check_numeric(conn, report, table, col)
             if (table, col) in json_targets:
                 check_json(conn, report, table, col, json_targets[(table,col)])
             if (table, col) in required or (notnull and meta["type"].upper().startswith("TEXT")):
                 count = conn.execute(f"SELECT COUNT(*) c FROM {quote_ident(table)} WHERE {qcol} IS NOT NULL AND trim({qcol}) = ''").fetchone()["c"]
                 if count:
-                    report.add("error" if (table,col) in required else "warning", "required_empty", f"Empty string in required/business field {table}.{col}", table, col, fetch_samples(conn, table, f"{qcol} IS NOT NULL AND trim({qcol}) = ''", cols=("id", col)), count)
+                    report.add("error" if (table,col) in required else "warning", "required_empty", f"Data cleanup blocker: empty string in required/business field {table}.{col}", table, col, fetch_samples(conn, table, f"{qcol} IS NOT NULL AND trim({qcol}) = ''", cols=("id", col)), count)
 
 
 def check_temporal(conn, report, table, col, notnull, date_only):
