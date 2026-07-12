@@ -469,6 +469,54 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertIn("Вы меняете валюту тарифа", content)
 
 
+
+    def test_tariff_edit_modal_does_not_render_full_page_inside_modal(self):
+        self.request("/tariffs")
+        conn = server.connect(server.DB_PATH)
+        try:
+            tariff_id = conn.execute("SELECT id FROM tariffs LIMIT 1").fetchone()["id"]
+        finally:
+            conn.close()
+
+        captured, content = self.request(f"/tariffs/{tariff_id}/edit?modal=1")
+
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("data-modal-ready='1'", content)
+        self.assertIn("<form class='tariff-dialog tariff-dialog-form'", content)
+        self.assertEqual(content.count("Редактировать тариф"), 1)
+        self.assertNotIn("<!doctype html>", content)
+        self.assertNotIn("class='breadcrumbs'", content)
+        self.assertNotIn("table-page-container", content)
+        self.assertNotIn("← Назад", content)
+
+    def test_tariff_edit_modal_cancel_uses_data_modal_close(self):
+        self.request("/tariffs")
+        conn = server.connect(server.DB_PATH)
+        try:
+            tariff_id = conn.execute("SELECT id FROM tariffs LIMIT 1").fetchone()["id"]
+        finally:
+            conn.close()
+
+        captured, content = self.request(f"/tariffs/{tariff_id}/edit?modal=1")
+
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("class='modal-cancel' data-modal-close>Отмена</button>", content)
+        self.assertNotIn("history.back()", content)
+
+    def test_tariff_edit_full_page_cancel_returns_to_tariffs(self):
+        self.request("/tariffs")
+        conn = server.connect(server.DB_PATH)
+        try:
+            tariff_id = conn.execute("SELECT id FROM tariffs LIMIT 1").fetchone()["id"]
+        finally:
+            conn.close()
+
+        captured, content = self.request(f"/tariffs/{tariff_id}/edit")
+
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("class='button modal-cancel' href='/tariffs'>Отмена</a>", content)
+        self.assertNotIn("history.back()", content)
+
     def test_tariffs_table_has_no_one_click_activation_actions(self):
         captured, content = self.request("/tariffs?status=all")
         self.assertEqual(captured["status"], "200 OK")
@@ -2861,6 +2909,27 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertIn("class='modal-cancel' data-modal-close>Отмена</button>", content)
         self.assertNotIn("history.back()", content)
         self.assertNotIn("href='/tariffs'", content)
+
+
+    def test_route_edit_modal_accepts_query_marker(self):
+        route_id = self._create_route_for_concurrency("Route Modal Query Partial")
+
+        captured, content = self.request(f"/routes/{route_id}/edit?modal=1")
+
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("data-modal-ready='1'", content)
+        self.assertIn("<form class='route-dialog route-dialog-form'", content)
+        self.assertIn("name='expected_updated_at'", content)
+        self.assertNotIn("<!doctype html>", content)
+
+    def test_route_remote_modal_js_does_not_leave_empty_card(self):
+        captured, content = self.request("/routes")
+
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn('modalUrl.searchParams.set("modal", "1")', content)
+        self.assertIn("if (!form)", content)
+        self.assertIn("closeRemoteModal();", content)
+        self.assertIn("!card.textContent.trim()", content)
 
     def test_route_edit_with_current_token_succeeds(self):
         route_id = self._create_route_for_concurrency("Route Token Current")
