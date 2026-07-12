@@ -2935,6 +2935,17 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertIn(".remote-edit-overlay", content)
         self.assertIn(".remote-edit-card", content)
 
+    def test_remote_edit_css_excludes_dialog_forms_from_generic_grid(self):
+        captured, content = self.request("/routes")
+
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn(".remote-edit-card form:not(.route-dialog-form):not(.tariff-dialog-form):not(.phone-dialog-form):not(.company-dialog-form)", content)
+        self.assertIn(".remote-edit-card .route-dialog.route-dialog", content)
+        self.assertIn(".remote-edit-card .tariff-dialog.tariff-dialog", content)
+        self.assertIn(".remote-edit-card .route-dialog-form", content)
+        self.assertIn(".remote-edit-card .tariff-dialog-form", content)
+        self.assertIn("grid-template-rows: auto minmax(0, 1fr) auto", content)
+
     def test_remote_edit_modal_js_closes_open_edit_details(self):
         captured, content = self.request("/routes")
 

@@ -1385,8 +1385,8 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .modal-card form .wide, .modal-card form p, .modal-card form fieldset, .modal-form-card[open] > form .wide, .modal-form-card[open] > form p, .modal-form-card[open] > form fieldset {{ grid-column: 1 / -1; }}
     .modal-card[data-remote-modal] {{ position: fixed; z-index: 990; display: block; visibility: visible; opacity: 1; background: var(--surface); }}
     .remote-edit-overlay {{ content: ""; position: fixed; inset: 0; z-index: 9000; background: rgba(15, 23, 42, 0.48); }}
-    .remote-edit-card {{ position: fixed; left: 50%; top: 50%; z-index: 9010; width: min(1040px, calc(100vw - 32px)); max-height: calc(100vh - 48px); overflow: auto; scrollbar-gutter: stable; transform: translate(-50%, -50%); margin: 0; padding: 20px; border: 1px solid var(--border-strong); border-radius: 18px; background: var(--surface); color: var(--text); box-shadow: 0 28px 90px rgba(0,0,0,.32); box-sizing: border-box; display: block; visibility: visible; opacity: 1; }}
-    .remote-edit-card form {{ display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }}
+    .remote-edit-card {{ position: fixed; left: 50%; top: 50%; z-index: 9010; width: fit-content; max-width: calc(100vw - 48px); max-height: calc(100vh - 48px); overflow: auto; scrollbar-gutter: stable; transform: translate(-50%, -50%); margin: 0; padding: 0; border: 1px solid var(--border-strong); border-radius: 18px; background: var(--surface); color: var(--text); box-shadow: 0 28px 90px rgba(0,0,0,.32); box-sizing: border-box; display: block; visibility: visible; opacity: 1; }}
+    .remote-edit-card form:not(.route-dialog-form):not(.tariff-dialog-form):not(.phone-dialog-form):not(.company-dialog-form) {{ display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; padding: 20px; }}
     .remote-edit-card form label, .remote-edit-card form fieldset {{ min-width: 0; }}
     .remote-edit-card form .wide, .remote-edit-card form p, .remote-edit-card form fieldset {{ grid-column: 1 / -1; }}
     .remote-edit-card h2 {{ margin: 0 0 4px; color: var(--text-strong); }}
@@ -1410,7 +1410,7 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .currency-rate-prefix, .currency-rate-suffix {{ color: var(--muted); font-size: 13px; font-weight: 700; }}
     .currency-rate-actions {{ margin-top: 8px; }}
     @media (max-width: 720px) {{ .modal-form-card[open] > form.currency-rate-form {{ grid-template-columns: 1fr; }} .currency-rate-inline {{ grid-template-columns: 1fr; align-items: stretch; white-space: normal; }} }}
-    @media (max-width: 720px) {{ .modal-card form, .modal-form-card[open] > form, .remote-edit-card form {{ grid-template-columns: 1fr; }} .modal-card, .modal-form-card[open] > form, .modal-form-card[open] > .modal-body, .remote-edit-card {{ width: calc(100vw - 18px); max-height: calc(100vh - 18px); padding: 14px; }} }}
+    @media (max-width: 720px) {{ .modal-card form, .modal-form-card[open] > form, .remote-edit-card form:not(.route-dialog-form):not(.tariff-dialog-form):not(.phone-dialog-form):not(.company-dialog-form) {{ grid-template-columns: 1fr; }} .modal-card, .modal-form-card[open] > form, .modal-form-card[open] > .modal-body, .remote-edit-card {{ width: calc(100vw - 18px); max-width: calc(100vw - 18px); max-height: calc(100vh - 18px); }} .remote-edit-card form:not(.route-dialog-form):not(.tariff-dialog-form):not(.phone-dialog-form):not(.company-dialog-form) {{ padding: 14px; }} }}
     .danger-action, form[action$="/deactivate"] button {{ min-height: 28px; min-width: auto; padding: 4px 8px; color: var(--danger-strong, var(--danger)); border-color: var(--danger); background: var(--danger-soft); font-size: 12px; font-weight: 720; box-shadow: none; }}
     .danger-action:hover, form[action$="/deactivate"] button:hover {{ background: color-mix(in srgb, var(--danger-soft) 78%, var(--surface)); border-color: var(--danger); color: var(--danger); }}
     html[data-theme="mvp"] .side-link:hover, html[data-theme="mvp"] .admin-link:hover, html[data-theme="terminal-paper"] .side-link:hover, html[data-theme="terminal-paper"] .admin-link:hover {{ background: color-mix(in srgb, var(--surface) 78%, transparent); border-color: var(--border); color: var(--text-strong); }}
@@ -3455,6 +3455,11 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .route-dialog-footer .modal-save:hover {{ border-color: #1d4ed8; background: #1d4ed8; color: #fff; }}
     .route-dialog-footer .modal-cancel {{ order: 2; }}
     @media (max-width: 720px) {{ .modal-form-card[open] > form.route-dialog, .route-dialog.route-dialog {{ width: calc(100vw - 18px); max-width: calc(100vw - 18px); max-height: calc(100vh - 18px); }} .route-dialog-grid {{ grid-template-columns: 1fr; }} .route-dialog-section, .route-dialog-header, .route-dialog-footer {{ padding-left: 16px; padding-right: 16px; }} }}
+
+    .remote-edit-card .tariff-dialog.tariff-dialog, .remote-edit-card .route-dialog.route-dialog {{ position: relative; left: auto; top: auto; z-index: auto; transform: none; margin: 0; border: 0; border-radius: 18px; box-shadow: none; max-height: calc(100vh - 48px); }}
+    .remote-edit-card .tariff-dialog.tariff-dialog {{ width: min(620px, calc(100vw - 48px)); }}
+    .remote-edit-card .route-dialog.route-dialog {{ width: min(680px, calc(100vw - 48px)); }}
+    .remote-edit-card .tariff-dialog-form, .remote-edit-card .route-dialog-form {{ display: grid; grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr) auto; gap: 0; overflow: hidden; padding: 0; }}
 
     .modal-form-card[open] > form.naming-dialog, .naming-dialog.naming-dialog,
     .modal-form-card[open] > form.reason-dialog, .reason-dialog.reason-dialog {{ position: fixed; left: 50%; top: 50%; z-index: 990; width: min(720px, calc(100vw - 48px)); max-width: calc(100vw - 48px); max-height: min(620px, calc(100vh - 48px)); margin: 0; padding: 0; transform: translate(-50%, -50%); display: grid; grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr) auto; gap: 0; overflow: hidden; border: 1px solid var(--border-strong); border-radius: 14px; background: #fff; color: var(--text); box-shadow: 0 22px 62px rgba(15, 23, 42, .22); box-sizing: border-box; }}
