@@ -11,6 +11,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
+from app.db_adapter import build_in_clause, normalize_backend_name, placeholder, row_to_dict, rows_to_dicts
+
 PHONE_RE = re.compile(r"^[1-9][0-9]{6,20}$")
 VALID_PHONE_STATUSES = {"used", "unused", "free", "problem", "unknown"}
 
@@ -265,8 +267,9 @@ def query_filters(filters: dict | None, mapping: dict[str, str]) -> tuple[str, l
 
 
 class Repository:
-    def __init__(self, conn: sqlite3.Connection):
+    def __init__(self, conn: sqlite3.Connection, backend: str = "sqlite"):
         self.conn = conn
+        self.backend = normalize_backend_name(backend)
         self.conn.create_function("search_text_matches", 2, search_text_matches)
 
     @contextmanager
@@ -3433,8 +3436,51 @@ class Repository:
         )
         self.conn.commit()
 
-    def list_active_change_reasons(self) -> list[sqlite3.Row]:
-        return list(self.conn.execute("SELECT * FROM change_reasons WHERE is_active = 1 ORDER BY name"))
+    def list_countries(self) -> list[dict]:
+        return rows_to_dicts(self.conn.execute("SELECT * FROM countries ORDER BY name"))
+
+    def get_country(self, country_id: int) -> dict | None:
+        p = placeholder(self.backend)
+        row = self.conn.execute(f"SELECT * FROM countries WHERE id = {p}", (country_id,)).fetchone()
+        return row_to_dict(row)
+
+    def list_countries_by_ids(self, country_ids: list[int]) -> list[dict]:
+        clause, params = build_in_clause("id", country_ids, self.backend)
+        return rows_to_dicts(
+            self.conn.execute(
+                f"SELECT * FROM countries WHERE {clause} ORDER BY name",
+                params,
+            )
+        )
+
+    def list_currencies(self) -> list[dict]:
+        return rows_to_dicts(self.conn.execute("SELECT * FROM currencies ORDER BY code"))
+
+    def list_providers(self) -> list[dict]:
+        return rows_to_dicts(self.conn.execute("SELECT * FROM providers ORDER BY name"))
+
+    def list_projects(self) -> list[dict]:
+        return rows_to_dicts(self.conn.execute("SELECT * FROM projects ORDER BY sort_order, name"))
+
+    def list_servers(self) -> list[dict]:
+        return rows_to_dicts(self.conn.execute("SELECT * FROM servers ORDER BY name"))
+
+    def list_phone_number_types(self) -> list[dict]:
+        return rows_to_dicts(self.conn.execute("SELECT * FROM phone_number_types ORDER BY name"))
+
+    def list_phone_assignment_types(self) -> list[dict]:
+        return rows_to_dicts(self.conn.execute("SELECT * FROM phone_assignment_types ORDER BY sort_order, name"))
+
+    def list_provider_prefixes(self, provider_id: int | None = None) -> list[dict]:
+        p = placeholder(self.backend)
+        if provider_id is None:
+            rows = self.conn.execute("SELECT * FROM provider_prefixes ORDER BY prefix")
+        else:
+            rows = self.conn.execute(f"SELECT * FROM provider_prefixes WHERE provider_id = {p} ORDER BY prefix", (provider_id,))
+        return rows_to_dicts(rows)
+
+    def list_active_change_reasons(self) -> list[dict]:
+        return rows_to_dicts(self.conn.execute("SELECT * FROM change_reasons WHERE is_active = 1 ORDER BY name"))
 
     def create_change_reason(self, name: str, created_by: int | None = None, comment: str | None = None, is_active: bool = True) -> int:
         cur = self.conn.execute(

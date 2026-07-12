@@ -92,6 +92,14 @@ Suggested PR size:
 - 5-10 low-risk read methods.
 - Tests only around changed methods.
 
+### Stage 15 batch 1 status
+
+- Started Repository read-only adapter usage in a small low-risk dictionary/read batch.
+- Converted only dictionary/list lookup methods and simple parameterized reads.
+- No insert/update/delete paths were converted.
+- PostgreSQL runtime remains disabled; no PostgreSQL connection is created.
+- SQLite remains the operational backend.
+
 ## Stage 16 — Repository SQL compatibility batch 2
 
 Scope:
