@@ -183,6 +183,10 @@ class BusinessRuleError(ValueError):
     """Raised when a confirmed MVP business rule is violated."""
 
 
+class ConcurrencyConflict(BusinessRuleError):
+    """Raised when an optimistic concurrency token no longer matches."""
+
+
 @dataclass(frozen=True)
 class PhoneLinkResult:
     route_phone_number_id: int
@@ -935,7 +939,22 @@ class Repository:
             (company_id,),
         ).fetchone()
 
-    def update_calling_company(self, company_id: int, *, server_id: int, country_id: int, company_name: str, line_count: int, dial_set_count: int, has_autorotation: bool, retry_interval_seconds: int, is_active: bool, comment: str | None, updated_by: int) -> None:
+    def update_calling_company(
+        self,
+        company_id: int,
+        *,
+        server_id: int,
+        country_id: int,
+        company_name: str,
+        line_count: int,
+        dial_set_count: int,
+        has_autorotation: bool,
+        retry_interval_seconds: int,
+        is_active: bool,
+        comment: str | None,
+        updated_by: int,
+        expected_updated_at: str | None = None,
+    ) -> None:
         old = self.conn.execute("SELECT * FROM calling_companies WHERE id = ?", (company_id,)).fetchone()
         if old is None:
             raise BusinessRuleError("Calling company not found")
@@ -955,8 +974,25 @@ class Repository:
             change = _company_history_change(label, old_value, new_value, kind)
             if change:
                 changes.append(change)
-        self.conn.execute("""UPDATE calling_companies SET server_id = ?, country_id = ?, company_name = ?, line_count = ?, dial_set_count = ?, retry_interval_seconds = ?, is_active = ?, comment = ?, updated_by = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?""",
-                          (server_id, country_id, company_name, int(line_count), int(dial_set_count), int(retry_interval_seconds), 1 if is_active else 0, comment, updated_by, company_id))
+        update_params = [server_id, country_id, company_name, int(line_count), int(dial_set_count), int(retry_interval_seconds), 1 if is_active else 0, comment, updated_by, company_id]
+        token_clause = ""
+        if expected_updated_at is not None:
+            token_clause = " AND updated_at = ?"
+            update_params.append(expected_updated_at)
+        cur = self.conn.execute(
+            f"""
+            UPDATE calling_companies
+            SET server_id = ?, country_id = ?, company_name = ?, line_count = ?, dial_set_count = ?,
+                retry_interval_seconds = ?, is_active = ?, comment = ?, updated_by = ?,
+                updated_at = STRFTIME('%Y-%m-%d %H:%M:%f', 'now')
+            WHERE id = ?{token_clause}
+            """,
+            tuple(update_params),
+        )
+        if cur.rowcount == 0:
+            if self.conn.execute("SELECT 1 FROM calling_companies WHERE id = ?", (company_id,)).fetchone() is None:
+                raise BusinessRuleError("Calling company not found")
+            raise ConcurrencyConflict("Запись была изменена другим пользователем. Обновите страницу и повторите действие.")
         if changes:
             only_active = len(changes) == 1 and changes[0].startswith("Активна:")
             if only_active and int(old["is_active"] or 0) == 0 and is_active:

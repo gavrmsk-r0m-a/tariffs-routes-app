@@ -9552,6 +9552,7 @@ def company_edit_page(repo: Repository, company_id: int) -> bytes:
         return page("Кампания не найдена", "<h1>Кампания не найдена</h1>")
     body = f"""<h1>Редактировать кампанию</h1><p><a href='/companies'>← Назад</a></p>
 <form method='post' action='/companies/{company_id}/update'>
+<input type='hidden' name='expected_updated_at' value='{esc(cc['updated_at'])}'>
 <label>ID кампании <input value='{esc(cc['company_id_external'])}' readonly></label>
 <label>Сервер <span class='required'>*</span><select name='server_id'>{active_options(repo, 'servers', selected=cc['server_id'])}</select></label>
 <label>ГЕО <span class='required'>*</span><select name='country_id'>{active_options(repo, 'countries', selected=cc['country_id'])}</select></label>
@@ -9792,7 +9793,7 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
     if path.startswith("/companies/") and path.endswith("/update"):
         company_id = int(path.strip("/").split("/")[1])
         existing = repo.get_calling_company(company_id)
-        repo.update_calling_company(company_id, server_id=int(data["server_id"]), country_id=int(data["country_id"]), company_name=data["company_name"], line_count=int(data.get("line_count") or 0), dial_set_count=int(data.get("dial_set_count") or 0), has_autorotation=bool(existing["has_autorotation"]) if existing else False, retry_interval_seconds=int(data.get("retry_interval_seconds") or 0), is_active=data.get("is_active") == "1", comment=data.get("comment"), updated_by=actor_id)
+        repo.update_calling_company(company_id, server_id=int(data["server_id"]), country_id=int(data["country_id"]), company_name=data["company_name"], line_count=int(data.get("line_count") or 0), dial_set_count=int(data.get("dial_set_count") or 0), has_autorotation=bool(existing["has_autorotation"]) if existing else False, retry_interval_seconds=int(data.get("retry_interval_seconds") or 0), is_active=data.get("is_active") == "1", comment=data.get("comment"), updated_by=actor_id, expected_updated_at=data.get("expected_updated_at") or None)
         return "/companies"
     if path == "/provider-changes/create":
         apply_scope = data.get("apply_scope")
