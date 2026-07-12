@@ -2760,6 +2760,22 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
       box-sizing: border-box;
     }}
     html[data-theme="light-v2"] .sidebar .admin-tree.open {{ display: grid; }}
+    html[data-theme="light-v2"] .sidebar-collapsed .sidebar .admin-tree,
+    html[data-theme="light-v2"] .sidebar-collapsed .sidebar .admin-tree.open,
+    html[data-theme="light-v2"] .sidebar-collapsed .sidebar .admin-link,
+    html[data-theme="light-v2"] .sidebar-collapsed .sidebar .admin-link span {{
+      display: none !important;
+      width: 0 !important;
+      min-width: 0 !important;
+      max-width: 0 !important;
+      height: 0 !important;
+      min-height: 0 !important;
+      max-height: 0 !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      border: 0 !important;
+      overflow: hidden !important;
+    }}
     html[data-theme="light-v2"] .filter-card,
     html[data-theme="light-v2"] .table-page-container > .form-card,
     html[data-theme="light-v2"] .dictionary-add {{ border: 1px solid var(--border-strong); border-radius: var(--radius-card); background: #FFFFFF; box-shadow: 0 1px 2px rgba(11,17,23,.06); margin: 8px 0 10px; overflow: hidden; }}
@@ -3789,12 +3805,21 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
         button.title = sidebarAction;
       }});
     }}
+    function closeAdminSubmenus() {{
+      document.querySelectorAll(".admin-toggle[aria-controls]").forEach((button) => {{
+        button.setAttribute("aria-expanded", "false");
+        const target = document.getElementById(button.getAttribute("aria-controls"));
+        if (target) target.classList.remove("open");
+      }});
+    }}
+    if (savedSidebar) closeAdminSubmenus();
     updateSidebarToggleLabels(savedSidebar);
     document.querySelectorAll("[data-sidebar-toggle]").forEach((button) => {{
       button.addEventListener("click", () => {{
         if (!shell) return;
         const collapsed = !shell.classList.contains("sidebar-collapsed");
         shell.classList.toggle("sidebar-collapsed", collapsed);
+        if (collapsed) closeAdminSubmenus();
         localStorage.setItem("mvp-sidebar-collapsed", collapsed ? "true" : "false");
         updateSidebarToggleLabels(collapsed);
       }});
