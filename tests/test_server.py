@@ -671,6 +671,94 @@ class ServerSmokeTest(unittest.TestCase):
         captured, _ = self.request("/login", method="POST", body=body)
         self.assertEqual(captured["status"], "303 See Other")
 
+
+    def test_admin_can_create_user_with_permissions(self):
+        body = urlencode({
+            "username": "permuser",
+            "display_name": "Perm User",
+            "role_key": "operator",
+            "password": "test123",
+            "password_confirm": "test123",
+            "perm__routes__read": "1",
+            "perm__routes__export": "1",
+            "perm__tariffs__read": "1",
+            "perm__tariffs__write": "1",
+        })
+
+        captured, _ = self.request("/admin/users/create", method="POST", body=body)
+
+        self.assertEqual(captured["status"], "303 See Other")
+        conn = server.connect(server.DB_PATH)
+        try:
+            user_id = conn.execute("SELECT id FROM users WHERE username = 'permuser'").fetchone()["id"]
+            routes = conn.execute("SELECT can_read, can_write, can_export FROM user_permissions WHERE user_id = ? AND section_key = 'routes'", (user_id,)).fetchone()
+            tariffs = conn.execute("SELECT can_read, can_write, can_export FROM user_permissions WHERE user_id = ? AND section_key = 'tariffs'", (user_id,)).fetchone()
+        finally:
+            conn.close()
+        self.assertEqual(dict(routes), {"can_read": 1, "can_write": 0, "can_export": 1})
+        self.assertEqual(dict(tariffs), {"can_read": 1, "can_write": 1, "can_export": 0})
+
+        captured, content = self.request("/admin/users")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("Perm User", content)
+        self.assertIn("name='perm__routes__read' value='1' checked", content)
+        self.assertIn("name='perm__routes__export' value='1' checked", content)
+        self.assertIn("name='perm__tariffs__write' value='1' checked", content)
+
+    def test_admin_can_edit_user_permissions(self):
+        conn = server.connect(server.DB_PATH)
+        try:
+            server.init_db(conn)
+            user_id = server.Repository(conn).create_user("editperm", "operator", "Edit Permissions", password="old123")
+        finally:
+            conn.close()
+
+        body = urlencode({
+            "username": "editperm",
+            "display_name": "Edit Permissions",
+            "role_key": "operator",
+            "is_active": "1",
+            "perm__routes__read": "1",
+            "perm__routes__write": "1",
+        })
+        captured, _ = self.request(f"/admin/users/{user_id}/update", method="POST", body=body)
+
+        self.assertEqual(captured["status"], "303 See Other")
+        conn = server.connect(server.DB_PATH)
+        try:
+            rows = conn.execute("SELECT can_read, can_write, can_export FROM user_permissions WHERE user_id = ? AND section_key = 'routes'", (user_id,)).fetchall()
+        finally:
+            conn.close()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(dict(rows[0]), {"can_read": 1, "can_write": 1, "can_export": 0})
+
+        captured, content = self.request("/admin/users")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("name='perm__routes__read' value='1' checked", content)
+        self.assertIn("name='perm__routes__write' value='1' checked", content)
+
+    def test_duplicate_username_update_returns_user_friendly_error(self):
+        conn = server.connect(server.DB_PATH)
+        try:
+            server.init_db(conn)
+            repo = server.Repository(conn)
+            first_id = repo.create_user("firstdup", "operator", "First Duplicate", password="old123")
+            repo.create_user("seconddup", "operator", "Second Duplicate", password="old123")
+        finally:
+            conn.close()
+
+        body = urlencode({
+            "username": "seconddup",
+            "display_name": "First Duplicate",
+            "role_key": "operator",
+            "is_active": "1",
+        })
+        captured, content = self.request(f"/admin/users/{first_id}/update", method="POST", body=body)
+
+        self.assertEqual(captured["status"], "400 Bad Request")
+        self.assertIn("Нарушено ограничение уникальности или обязательности данных", content)
+        self.assertNotIn("UNIQUE constraint failed", content)
+
     def test_password_confirmation_mismatch_blocks_user_creation(self):
         body = urlencode({
             "username": "operator3",
