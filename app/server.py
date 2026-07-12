@@ -9480,6 +9480,7 @@ def route_edit_page(repo: Repository, route_id: int) -> bytes:
         return page("Маршрут не найден", "<h1>Маршрут не найден</h1>")
     body = f"""<h1>Редактировать маршрут</h1><p><a href='/routes'>← Назад</a></p>
 <form class='route-dialog route-dialog-form route-dialog-page-form' method='post' action='/routes/{route_id}/update' data-country-name='{esc(route['country_name']) if 'country_name' in route.keys() else ''}'>
+<input type='hidden' name='expected_updated_at' value='{esc(route['updated_at'])}'>
 <header class='route-dialog-header'><h2>Редактировать маршрут</h2></header>
 <div class='route-dialog-body'>
 <section class='route-dialog-section'><h3>Основные параметры</h3><div class='route-dialog-grid'>
@@ -9705,7 +9706,7 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
             if key not in aon_data:
                 aon_data[key] = route_existing[key] or ""
         cli_source_type, cli_source_label, aon_pool, rnd_type, rnd_pool_owner = normalize_route_aon_fields(aon_data)
-        repo.update_route(route_id, name=name, provider_id=provider_id, provider_prefix_id=prefix_id, cli_source_type=cli_source_type, cli_source_label=cli_source_label, aon_pool=aon_pool, rnd_type=rnd_type, rnd_pool_owner=rnd_pool_owner, comment=data.get("comment"), is_actual=data.get("is_actual") == "1", priority_status=data.get("priority_status") or "unknown", updated_by=actor_id)
+        repo.update_route(route_id, name=name, provider_id=provider_id, provider_prefix_id=prefix_id, cli_source_type=cli_source_type, cli_source_label=cli_source_label, aon_pool=aon_pool, rnd_type=rnd_type, rnd_pool_owner=rnd_pool_owner, comment=data.get("comment"), is_actual=data.get("is_actual") == "1", priority_status=data.get("priority_status") or "unknown", updated_by=actor_id, expected_updated_at=data.get("expected_updated_at") or None)
         return "/routes"
     if path.startswith("/routes/") and path.endswith("/numbers/add"):
         route_id = int(path.strip("/").split("/")[1])
