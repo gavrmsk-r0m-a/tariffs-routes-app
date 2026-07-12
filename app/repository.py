@@ -6,6 +6,7 @@ import os
 import re
 import sqlite3
 import json
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
@@ -263,6 +264,16 @@ class Repository:
     def __init__(self, conn: sqlite3.Connection):
         self.conn = conn
         self.conn.create_function("search_text_matches", 2, search_text_matches)
+
+    @contextmanager
+    def transaction(self):
+        try:
+            yield
+        except Exception:
+            self.conn.rollback()
+            raise
+        else:
+            self.conn.commit()
 
     def _user_columns(self) -> set[str]:
         return {row[1] for row in self.conn.execute("PRAGMA table_info(users)")}

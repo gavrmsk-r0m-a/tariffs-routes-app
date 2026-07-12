@@ -56,6 +56,46 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
         )
 
 
+
+    def test_repository_transaction_commits_on_success(self):
+        usd_id = self.repo.create_currency("USD", "US Dollar", "$")
+
+        with self.repo.transaction():
+            rate_id = self.repo.create_currency_rate(
+                usd_id,
+                "0.91",
+                "2026-07-10",
+                self.admin_id,
+                commit=False,
+            )
+
+        row = self.conn.execute(
+            "SELECT id, rate_to_eur FROM currency_rates WHERE id = ?",
+            (rate_id,),
+        ).fetchone()
+        self.assertIsNotNone(row)
+        self.assertEqual(str(row["rate_to_eur"]), "0.91")
+
+    def test_repository_transaction_rolls_back_on_error(self):
+        usd_id = self.repo.create_currency("USD", "US Dollar", "$")
+
+        with self.assertRaises(RuntimeError):
+            with self.repo.transaction():
+                self.repo.create_currency_rate(
+                    usd_id,
+                    "0.91",
+                    "2026-07-10",
+                    self.admin_id,
+                    commit=False,
+                )
+                raise RuntimeError("force rollback")
+
+        count = self.conn.execute(
+            "SELECT COUNT(*) AS count FROM currency_rates WHERE currency_id = ?",
+            (usd_id,),
+        ).fetchone()["count"]
+        self.assertEqual(count, 0)
+
     def test_create_currency_rate_is_append_only(self):
         usd_id = self.repo.create_currency("USD", "US Dollar", "$")
 

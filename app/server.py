@@ -9941,9 +9941,9 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
         currency = repo.conn.execute("SELECT code FROM currencies WHERE id = ?", (currency_id,)).fetchone()
         if currency is None:
             raise BusinessRuleError("Валюта не найдена")
-        old_rate = repo.latest_currency_rate(currency_id)
         today = datetime.now().strftime("%Y-%m-%d")
-        try:
+        with repo.transaction():
+            old_rate = repo.latest_currency_rate(currency_id)
             new_rate_id = repo.create_currency_rate(
                 currency_id=currency_id,
                 rate_to_eur=data.get("rate_to_eur"),
@@ -9967,10 +9967,6 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
                 source="ui",
                 recalculated_active_tariffs_count=len(recalculated_tariffs),
             )
-            repo.conn.commit()
-        except Exception:
-            repo.conn.rollback()
-            raise
         return "/admin/currency-rates"
     if path == "/admin/change-reasons/create":
         repo.create_change_reason(data["name"], created_by=actor_id, comment=data.get("comment"), is_active=data.get("is_active") == "1"); return "/admin/change-reasons"
