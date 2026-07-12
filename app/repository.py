@@ -424,6 +424,54 @@ class Repository:
             ok = False
         return user if ok else None
 
+
+    def get_user_section_permission(self, user_id: int, section_key: str) -> sqlite3.Row | None:
+        return self.conn.execute(
+            """
+            SELECT can_read, can_write, can_export
+            FROM user_permissions
+            WHERE user_id = ? AND section_key = ?
+            """,
+            (user_id, section_key),
+        ).fetchone()
+
+    def get_user_permissions(self, user_id: int) -> dict[str, sqlite3.Row]:
+        return {
+            row["section_key"]: row
+            for row in self.conn.execute(
+                """
+                SELECT section_key, can_read, can_write, can_export
+                FROM user_permissions
+                WHERE user_id = ?
+                """,
+                (user_id,),
+            )
+        }
+
+    def set_user_permissions(self, user_id: int, permissions: dict[str, dict[str, object]], *, commit: bool = True) -> None:
+        try:
+            for section_key, values in permissions.items():
+                can_read_value = 1 if values.get("can_read") else 0
+                can_write_value = 1 if values.get("can_write") else 0
+                can_export_value = 1 if values.get("can_export") else 0
+                self.conn.execute(
+                    """
+                    INSERT INTO user_permissions(user_id, section_key, can_read, can_write, can_export)
+                    VALUES (?, ?, ?, ?, ?)
+                    ON CONFLICT(user_id, section_key) DO UPDATE SET
+                        can_read = excluded.can_read,
+                        can_write = excluded.can_write,
+                        can_export = excluded.can_export
+                    """,
+                    (user_id, section_key, can_read_value, can_write_value, can_export_value),
+                )
+            if commit:
+                self.conn.commit()
+        except Exception:
+            if commit:
+                self.conn.rollback()
+            raise
+
     def update_user_password(self, user_id: int, password: str, *, must_change_password: bool = False) -> None:
         columns = self._user_columns()
         if not {"password_hash", "password_salt"}.issubset(columns):

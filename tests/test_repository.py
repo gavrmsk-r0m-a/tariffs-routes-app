@@ -57,6 +57,64 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
 
 
 
+
+    def test_get_user_permissions_returns_existing_permissions(self):
+        user_id = self.repo.create_user("permissions-user", "operator", "Permissions User")
+        self.conn.execute(
+            "INSERT INTO user_permissions(user_id, section_key, can_read, can_write, can_export) VALUES (?, ?, ?, ?, ?)",
+            (user_id, "routes", 1, 0, 1),
+        )
+        self.conn.execute(
+            "INSERT INTO user_permissions(user_id, section_key, can_read, can_write, can_export) VALUES (?, ?, ?, ?, ?)",
+            (user_id, "tariffs", 1, 1, 0),
+        )
+        self.conn.commit()
+
+        permissions = self.repo.get_user_permissions(user_id)
+
+        self.assertEqual(permissions["routes"]["can_read"], 1)
+        self.assertEqual(permissions["routes"]["can_write"], 0)
+        self.assertEqual(permissions["routes"]["can_export"], 1)
+        self.assertEqual(permissions["tariffs"]["can_read"], 1)
+        self.assertEqual(permissions["tariffs"]["can_write"], 1)
+        self.assertEqual(permissions["tariffs"]["can_export"], 0)
+
+    def test_set_user_permissions_inserts_permissions(self):
+        user_id = self.repo.create_user("insert-permissions", "operator", "Insert Permissions")
+
+        self.repo.set_user_permissions(user_id, {"routes": {"can_read": True, "can_write": False, "can_export": True}})
+
+        row = self.conn.execute(
+            "SELECT can_read, can_write, can_export FROM user_permissions WHERE user_id = ? AND section_key = ?",
+            (user_id, "routes"),
+        ).fetchone()
+        self.assertIsNotNone(row)
+        self.assertEqual(dict(row), {"can_read": 1, "can_write": 0, "can_export": 1})
+
+    def test_set_user_permissions_updates_existing_permissions(self):
+        user_id = self.repo.create_user("update-permissions", "operator", "Update Permissions")
+        self.repo.set_user_permissions(user_id, {"routes": {"can_read": True, "can_write": False, "can_export": False}})
+
+        self.repo.set_user_permissions(user_id, {"routes": {"can_read": True, "can_write": True, "can_export": False}})
+
+        rows = self.conn.execute(
+            "SELECT can_read, can_write, can_export FROM user_permissions WHERE user_id = ? AND section_key = ?",
+            (user_id, "routes"),
+        ).fetchall()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(dict(rows[0]), {"can_read": 1, "can_write": 1, "can_export": 0})
+
+    def test_set_user_permissions_preserves_current_checkbox_semantics(self):
+        user_id = self.repo.create_user("checkbox-permissions", "operator", "Checkbox Permissions")
+
+        self.repo.set_user_permissions(user_id, {"routes": {"can_read": True}})
+
+        row = self.conn.execute(
+            "SELECT can_read, can_write, can_export FROM user_permissions WHERE user_id = ? AND section_key = ?",
+            (user_id, "routes"),
+        ).fetchone()
+        self.assertEqual(dict(row), {"can_read": 1, "can_write": 0, "can_export": 0})
+
     def test_repository_transaction_commits_on_success(self):
         usd_id = self.repo.create_currency("USD", "US Dollar", "$")
 

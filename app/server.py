@@ -348,10 +348,7 @@ def explicit_user_permissions(user_id: int, section: str) -> sqlite3.Row | None:
     repo = _REQUEST_CONTEXT.get("repo")
     if not user_id or not isinstance(repo, Repository):
         return None
-    return repo.conn.execute(
-        "SELECT can_read, can_write, can_export FROM user_permissions WHERE user_id = ? AND section_key = ?",
-        (user_id, normalize_section_key(section)),
-    ).fetchone()
+    return repo.get_user_section_permission(user_id, normalize_section_key(section))
 
 
 def has_permission(user, section_key: str, action: str) -> bool:
@@ -8869,9 +8866,7 @@ def role_options(selected: str | None = None) -> str:
 
 
 def permission_matrix_form(repo: Repository, user_id: int | None = None) -> str:
-    existing = {}
-    if user_id is not None:
-        existing = {row["section_key"]: row for row in repo.conn.execute("SELECT section_key, can_read, can_write, can_export FROM user_permissions WHERE user_id = ?", (user_id,))}
+    existing = repo.get_user_permissions(user_id) if user_id is not None else {}
     rows = []
     for section in SECTION_REGISTRY:
         key = section["section_key"]
@@ -8887,24 +8882,20 @@ def permission_matrix_form(repo: Repository, user_id: int | None = None) -> str:
     return f"<fieldset><legend>Права доступа</legend><table><thead><tr><th>Раздел</th><th>Чтение</th><th>Запись</th><th>Экспорт</th></tr></thead><tbody>{''.join(rows)}</tbody></table><p class='muted'>Если явные права не сохранены, применяются права роли по умолчанию.</p></fieldset>"
 
 
-def save_user_permissions(repo: Repository, user_id: int, data: dict[str, str]) -> None:
+def user_permissions_from_form(data: dict[str, str]) -> dict[str, dict[str, bool]]:
+    permissions = {}
     for section in SECTION_REGISTRY:
         key = section["section_key"]
-        can_read_value = 1 if data.get(f"perm__{key}__read") == "1" else 0
-        can_write_value = 1 if data.get(f"perm__{key}__write") == "1" else 0
-        can_export_value = 1 if section["supports_export"] and data.get(f"perm__{key}__export") == "1" else 0
-        repo.conn.execute(
-            """
-            INSERT INTO user_permissions(user_id, section_key, can_read, can_write, can_export)
-            VALUES (?, ?, ?, ?, ?)
-            ON CONFLICT(user_id, section_key) DO UPDATE SET
-                can_read = excluded.can_read,
-                can_write = excluded.can_write,
-                can_export = excluded.can_export
-            """,
-            (user_id, key, can_read_value, can_write_value, can_export_value),
-        )
-    repo.conn.commit()
+        permissions[key] = {
+            "can_read": data.get(f"perm__{key}__read") == "1",
+            "can_write": data.get(f"perm__{key}__write") == "1",
+            "can_export": section["supports_export"] and data.get(f"perm__{key}__export") == "1",
+        }
+    return permissions
+
+
+def save_user_permissions(repo: Repository, user_id: int, data: dict[str, str]) -> None:
+    repo.set_user_permissions(user_id, user_permissions_from_form(data))
 
 def users_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
     q = q or {}
