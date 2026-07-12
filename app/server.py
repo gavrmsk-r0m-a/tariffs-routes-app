@@ -1623,47 +1623,140 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
       border-color: #d5ddff !important;
     }}
 
+    /* Light 2.0 sidebar geometry fix: scoped to avoid changing dark/other themes. */
+    html[data-theme="light-v2"] .sidebar {{
+      overflow: visible;
+      z-index: 300;
+    }}
+
+    html[data-theme="light-v2"] .sidebar-head {{
+      grid-template-columns: minmax(0, 1fr) 40px;
+      gap: 8px;
+      align-items: center;
+    }}
+
+    html[data-theme="light-v2"] .sidebar-collapse {{
+      justify-self: center;
+      width: 36px;
+      min-width: 36px;
+      max-width: 36px;
+      height: 36px;
+      min-height: 36px;
+      margin: 0;
+    }}
+
     html[data-theme="light-v2"] .side-nav {{
-      padding-right: 4px;
+      --sidebar-item-height: 40px;
+      --sidebar-collapsed-item-size: 42px;
+      gap: 6px;
+      padding: 0;
+      overflow-x: visible;
+      scrollbar-gutter: auto;
     }}
 
     html[data-theme="light-v2"] .side-link {{
-      padding-right: 10px;
+      box-sizing: border-box;
+      width: 100%;
+      justify-content: flex-start;
+      gap: var(--sidebar-item-gap);
+      margin: 0;
+      padding-left: 12px;
+      padding-right: 12px;
+      border-radius: 12px;
     }}
 
-    html[data-theme="light-v2"] .side-link.active {{
-      margin-right: 4px;
+    html[data-theme="light-v2"] .admin-toggle::after {{
+      margin-left: auto;
+      font-size: 14px;
+    }}
+
+    html[data-theme="light-v2"] .side-link.active,
+    html[data-theme="light-v2"] .side-link:hover {{
+      box-shadow: none;
+    }}
+
+    html[data-theme="light-v2"] .admin-tree {{
+      margin: 4px 0 0;
+      padding: 6px;
+      border-radius: 12px;
+    }}
+
+    html[data-theme="light-v2"] .admin-link {{
+      box-sizing: border-box;
+      display: flex;
+      width: 100%;
+      align-items: center;
+      gap: 8px;
+      min-height: 34px;
+      padding: 7px 10px;
+      border-radius: 10px;
+    }}
+
+    html[data-theme="light-v2"] .sidebar-collapsed .sidebar {{
+      padding-left: 8px;
+      padding-right: 8px;
+      overflow: visible;
+    }}
+
+    html[data-theme="light-v2"] .sidebar-collapsed .sidebar-head {{
+      grid-template-columns: 1fr;
+      justify-items: center;
     }}
 
     html[data-theme="light-v2"] .sidebar-collapsed .side-nav {{
       justify-items: center;
-      padding-right: 0;
+      overflow: visible;
+      padding: 0;
     }}
 
     html[data-theme="light-v2"] .sidebar-collapsed .side-link,
     html[data-theme="light-v2"] .sidebar-collapsed .side-link-disabled {{
-      width: var(--sidebar-item-height);
-      min-width: var(--sidebar-item-height);
-      max-width: var(--sidebar-item-height);
+      width: var(--sidebar-collapsed-item-size);
+      min-width: var(--sidebar-collapsed-item-size);
+      max-width: var(--sidebar-collapsed-item-size);
+      height: var(--sidebar-collapsed-item-size);
+      min-height: var(--sidebar-collapsed-item-size);
+      max-height: var(--sidebar-collapsed-item-size);
       padding: 0;
+      justify-content: center;
+      align-items: center;
+      gap: 0;
+      border-radius: 13px;
+      line-height: 1;
+    }}
+
+    html[data-theme="light-v2"] .sidebar-collapsed .side-link .nav-icon,
+    html[data-theme="light-v2"] .sidebar-collapsed .side-link-disabled .nav-icon {{
+      width: 24px;
+      height: 24px;
+      min-width: 24px;
+      flex-basis: 24px;
+      margin: 0;
+    }}
+
+    html[data-theme="light-v2"] .sidebar-collapsed .admin-toggle::after {{
+      content: none;
+      display: none;
+    }}
+
+    html[data-theme="light-v2"] .sidebar-collapsed [data-tooltip] {{
+      position: relative;
+      z-index: 310;
+    }}
+
+    html[data-theme="light-v2"] .sidebar-collapsed [data-tooltip]:hover::after {{
+      z-index: 20000;
+      left: calc(100% + 12px);
+    }}
+
+    html[data-theme="light-v2"] .side-link.active {{
       margin-right: 0;
-      justify-content: center !important;
-      justify-self: center;
-      border-radius: 12px;
-      box-sizing: border-box;
     }}
 
     html[data-theme="light-v2"] .sidebar-collapsed .side-link.active {{
-      width: var(--sidebar-item-height);
-      min-width: var(--sidebar-item-height);
-      max-width: var(--sidebar-item-height);
       background: var(--accent-soft) !important;
       border-color: var(--accent-border) !important;
       box-shadow: none;
-    }}
-
-    html[data-theme="light-v2"] .sidebar-collapsed .side-link .nav-icon {{
-      margin: 0;
     }}
 
     td[data-col="actions"] {{
