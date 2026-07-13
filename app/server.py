@@ -9393,21 +9393,12 @@ def dictionaries_page(repo: Repository, q: dict[str, str] | None = None) -> byte
             return f"<form class='form-grid' method='post' action='/admin/dictionaries/phone-assignments/create'><label>Назначение <input name='name' placeholder='Назначение номера' required></label><label>Код <input name='code' placeholder='Код' required></label><label>Комментарий <input name='comment' placeholder='Комментарий' required></label>{submit}</form>"
         return ""
 
-    count_queries = {
-        "countries": "SELECT COUNT(*) FROM countries",
-        "providers": "SELECT COUNT(*) FROM providers",
-        "currencies": "SELECT COUNT(*) FROM currencies",
-        "prefixes": "SELECT COUNT(*) FROM provider_prefixes",
-        "servers": "SELECT COUNT(*) FROM servers",
-        "phone-types": "SELECT COUNT(*) FROM phone_number_types",
-        "projects": "SELECT COUNT(*) FROM projects",
-        "phone-assignments": "SELECT COUNT(*) FROM phone_assignment_types",
-    }
+    dictionary_counts = repo.dictionary_counts()
 
     cards = []
     for section, title in sections:
         active = " active" if section == active_section else ""
-        count = repo.conn.execute(count_queries[section]).fetchone()[0]
+        count = dictionary_counts[section]
         cards.append(f"""
 <a class='dictionary-card{active}' href='/admin/dictionaries?section={section}' aria-current='{'page' if section == active_section else 'false'}'>
   <span class='dictionary-card-title'>{esc(title)}</span>
@@ -9428,16 +9419,12 @@ def dictionaries_page(repo: Repository, q: dict[str, str] | None = None) -> byte
             rows.append(f"""<tr{row_class(row)}><td>{esc(row['name'])}</td><td><span class='status-badge'>{active_label(row['is_active'])}</span></td><td>{esc(row['comment'])}</td><td data-col='actions'><details class='edit-details'><summary title='Редактировать' aria-label='Редактировать'>Редактировать</summary><form method='post' action='/admin/dictionaries/providers/{row['id']}/update'>{edit_field('Название провайдера', f"<input name='name' value='{esc(row['name'])}'>")}{edit_field('Валюта провайдера', f"<select name='default_currency_id'><option value=''>—</option>{options(repo, 'currencies', 'code', selected=row['default_currency_id'])}</select>")}{edit_field('Комментарий', f"<input name='comment' value='{esc(row['comment'])}' placeholder='Комментарий'>")}{edit_field('Статус', active_select(row['is_active']))}{rename_policy_block('providers', row['id'])}<button>Сохранить</button></form></details></td></tr>""")
     elif active_section == "currencies":
         headers = ["Код валюты", "Активен", "Комментарий", "Действия"]
-        source = list(repo.conn.execute("SELECT * FROM currencies ORDER BY code"))
+        source = repo.list_currencies()
         for row in source:
             rows.append(f"""<tr{row_class(row)}><td>{esc(row['code'])}</td><td><span class='status-badge'>{active_label(row['is_active'])}</span></td><td>{esc(row['name'])}</td><td data-col='actions'><details class='edit-details'><summary title='Редактировать' aria-label='Редактировать'>Редактировать</summary><form method='post' action='/admin/dictionaries/currencies/{row['id']}/update'>{edit_field('Код валюты', f"<input name='code' value='{esc(row['code'])}'>")}{edit_field('Название валюты / комментарий', f"<input name='name' value='{esc(row['name'])}' placeholder='Комментарий'>")}{edit_field('Статус', active_select(row['is_active']))}{rename_policy_block('currencies', row['id'])}<button>Сохранить</button></form></details></td></tr>""")
     elif active_section == "prefixes":
         headers = ["Префикс", "Провайдер", "Активен", "Комментарий", "Действия"]
-        source = list(repo.conn.execute("""
-            SELECT pp.*, p.name AS provider_name
-            FROM provider_prefixes pp JOIN providers p ON p.id = pp.provider_id
-            ORDER BY p.name, COALESCE(pp.prefix, '')
-        """))
+        source = repo.list_provider_prefixes_with_provider()
         for row in source:
             rows.append(f"""<tr{row_class(row)}><td>{esc(row['prefix'] or 'Без префикса')}</td><td>{esc(row['provider_name'])}</td><td><span class='status-badge'>{active_label(row['is_active'])}</span></td><td>{esc(row['name'])}</td><td data-col='actions'><details class='edit-details'><summary title='Редактировать' aria-label='Редактировать'>Редактировать</summary><form method='post' action='/admin/dictionaries/prefixes/{row['id']}/update'>{edit_field('Провайдер префикса', f"<select name='provider_id'>{options(repo, 'providers', selected=row['provider_id'])}</select>")}{edit_field('Префикс', f"<input name='prefix' value='{esc(row['prefix'])}' placeholder='Без префикса или цифры'>")}{edit_field('Комментарий', f"<input name='name' value='{esc(row['name'])}' placeholder='Комментарий'>")}{edit_field('Статус', active_select(row['is_active']))}{rename_policy_block('prefixes', row['id'])}<button>Сохранить</button></form></details></td></tr>""")
     elif active_section == "servers":
@@ -9452,12 +9439,12 @@ def dictionaries_page(repo: Repository, q: dict[str, str] | None = None) -> byte
             rows.append(f"""<tr{row_class(row)}><td>{esc(row['name'])}</td><td><span class='status-badge'>{active_label(row['is_active'])}</span></td><td>{esc(row['comment'])}</td><td data-col='actions'><details class='edit-details'><summary title='Редактировать' aria-label='Редактировать'>Редактировать</summary><form method='post' action='/admin/dictionaries/phone-types/{row['id']}/update'>{edit_field('Тип номера', f"<input name='name' value='{esc(row['name'])}'>")}{edit_field('Комментарий', f"<input name='comment' value='{esc(row['comment'])}' placeholder='Комментарий'>")}{edit_field('Статус', active_select(row['is_active']))}{rename_policy_block('phone-types', row['id'])}<button>Сохранить</button></form></details></td></tr>""")
     elif active_section == "projects":
         headers = ["Название проекта", "Активен", "Комментарий", "Действия"]
-        source = list(repo.conn.execute("SELECT * FROM projects ORDER BY sort_order, name"))
+        source = repo.list_projects()
         for row in source:
             rows.append(f"""<tr{row_class(row)}><td>{esc(row['name'])}</td><td><span class='status-badge'>{active_label(row['is_active'])}</span></td><td>{esc(row['comment'])}</td><td data-col='actions'><details class='edit-details'><summary title='Редактировать' aria-label='Редактировать'>Редактировать</summary><form method='post' action='/admin/dictionaries/projects/{row['id']}/update'>{edit_field('Название проекта', f"<input name='name' value='{esc(row['name'])}'>")}{edit_field('Комментарий', f"<input name='comment' value='{esc(row['comment'])}' placeholder='Комментарий'>")}{edit_field('Статус', active_select(row['is_active']))}{rename_policy_block('projects', row['id'])}<button>Сохранить</button></form></details></td></tr>""")
     else:
         headers = ["Назначение", "Активен", "Комментарий", "Действия"]
-        source = list(repo.conn.execute("SELECT * FROM phone_assignment_types ORDER BY sort_order, name"))
+        source = repo.list_phone_assignment_types()
         for row in source:
             rows.append(f"""<tr{row_class(row)}><td>{esc(row['name'])}</td><td><span class='status-badge'>{active_label(row['is_active'])}</span></td><td>{esc(row['comment'])}</td><td data-col='actions'><details class='edit-details'><summary title='Редактировать' aria-label='Редактировать'>Редактировать</summary><form method='post' action='/admin/dictionaries/phone-assignments/{row['id']}/update'>{edit_field('Назначение номера', f"<input name='name' value='{esc(row['name'])}'>")}{edit_field('Код / системное значение', f"<input name='code' value='{esc(row['code'])}' readonly>")}{edit_field('Комментарий', f"<input name='comment' value='{esc(row['comment'])}' placeholder='Комментарий'>")}{edit_field('Статус', active_select(row['is_active']))}{rename_policy_block('phone-assignments', row['id'])}<button>Сохранить</button></form></details></td></tr>""")
 

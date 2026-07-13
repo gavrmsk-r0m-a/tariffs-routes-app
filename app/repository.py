@@ -3500,6 +3500,30 @@ class Repository:
             rows = self.conn.execute(f"SELECT * FROM provider_prefixes WHERE provider_id = {p} ORDER BY prefix", (provider_id,))
         return rows_to_dicts(rows)
 
+    def list_provider_prefixes_with_provider(self) -> list[dict]:
+        return rows_to_dicts(
+            self.conn.execute(
+                """
+                SELECT pp.*, p.name AS provider_name
+                FROM provider_prefixes pp JOIN providers p ON p.id = pp.provider_id
+                ORDER BY p.name, COALESCE(pp.prefix, '')
+                """
+            )
+        )
+
+    def dictionary_counts(self) -> dict[str, int]:
+        count_queries = {
+            "countries": "SELECT COUNT(*) FROM countries",
+            "providers": "SELECT COUNT(*) FROM providers",
+            "currencies": "SELECT COUNT(*) FROM currencies",
+            "prefixes": "SELECT COUNT(*) FROM provider_prefixes",
+            "servers": "SELECT COUNT(*) FROM servers",
+            "phone-types": "SELECT COUNT(*) FROM phone_number_types",
+            "projects": "SELECT COUNT(*) FROM projects",
+            "phone-assignments": "SELECT COUNT(*) FROM phone_assignment_types",
+        }
+        return {key: int(self.conn.execute(sql).fetchone()[0]) for key, sql in count_queries.items()}
+
     def list_providers_with_currency(self) -> list[dict]:
         return rows_to_dicts(
             self.conn.execute(

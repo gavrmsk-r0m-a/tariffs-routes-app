@@ -3338,6 +3338,21 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertEqual(captured["status"], "200 OK")
         self.assertIn("Причины смены провайдера", content)
 
+    def test_stage18_dictionary_lookup_sections_still_render(self):
+        self.request("/routes")
+        for section, expected, row_label in (
+            ("currencies", "Справочник: Валюта", "EUR"),
+            ("prefixes", "Справочник: Префикс", "DemoTel"),
+            ("projects", "Справочник: Проект", "Меж.деп."),
+            ("phone-assignments", "Справочник: Назначение номера", "ГЛ"),
+        ):
+            with self.subTest(section=section):
+                captured, content = self.request(f"/admin/dictionaries?section={section}")
+                self.assertEqual(captured["status"], "200 OK")
+                self.assertIn(expected, content)
+                self.assertIn("Всего записей:", content)
+                self.assertIn(row_label, content)
+
 
     def test_server_priorities_show_all_active_server_blocks_empty_rows_and_route_details(self):
         self.request("/routes")

@@ -162,7 +162,33 @@ Non-goals:
 - PostgreSQL runtime remains disabled; no PostgreSQL connection is created.
 - SQLite remains the operational backend.
 
-## Stage 18 — PostgreSQL runtime smoke in CI
+## Stage 18 — Direct SQL cleanup batch 2
+
+Scope:
+
+- Continue direct SQL cleanup outside `Repository` with another small, low-risk batch.
+- Limit changes to read-only `app/server.py` dictionary/lookup sections.
+- Prefer projects, phone assignment types, provider prefixes, currencies, and simple admin dictionary render/count reads.
+- Defer `app/importer.py` unless an obvious safe read-only lookup is covered by tests.
+
+Non-goals/status:
+
+- No PostgreSQL runtime backend; PostgreSQL runtime remains disabled.
+- No runtime psycopg import or psycopg dependency.
+- No routes, tariffs, currency recalculation, HLR, Telegram, import parsing, or optimistic concurrency changes.
+- No UI behavior changes.
+- SQLite remains the operational backend.
+
+### Stage 18 batch 2 status
+
+- Continued direct SQL cleanup in `app/server.py` for read-only admin dictionary/lookup rendering.
+- Moved dictionary counts plus currencies, provider prefixes with provider labels, projects, and phone assignment type reads behind Repository methods.
+- Left `app/importer.py` unchanged; importer cleanup remains deferred.
+- Did not touch routes, tariffs, currency recalculation, or HLR flows.
+- PostgreSQL runtime remains disabled; no PostgreSQL connection is created.
+- SQLite remains the operational backend.
+
+## Stage 19 — PostgreSQL runtime smoke in CI
 
 Scope:
 

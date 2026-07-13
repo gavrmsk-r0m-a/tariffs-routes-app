@@ -45,6 +45,7 @@ class RepositoryAdapterReadMethodsTest(unittest.TestCase):
             "list_phone_number_types",
             "list_phone_assignment_types",
             "list_provider_prefixes",
+            "list_provider_prefixes_with_provider",
             "list_change_reasons",
             "list_active_change_reasons",
         ]
@@ -70,6 +71,14 @@ class RepositoryAdapterReadMethodsTest(unittest.TestCase):
         self.assertTrue(any(row["code"] == "gl" for row in self.repo.list_phone_assignment_types()))
         self.assertTrue(any(row["name"] == "Меж.деп." for row in self.repo.list_projects()))
         self.assertEqual(self.repo.list_provider_prefixes(self.provider_id)[0]["prefix"], "43")
+        prefix_with_provider = self.repo.list_provider_prefixes_with_provider()[0]
+        self.assertEqual(prefix_with_provider["prefix"], "43")
+        self.assertEqual(prefix_with_provider["provider_name"], "AdapterTel")
+        counts = self.repo.dictionary_counts()
+        self.assertGreaterEqual(counts["currencies"], 1)
+        self.assertGreaterEqual(counts["prefixes"], 1)
+        self.assertGreaterEqual(counts["projects"], 1)
+        self.assertGreaterEqual(counts["phone-assignments"], 1)
 
     def test_read_method_with_parameter_uses_backend_placeholder(self):
         row = self.repo.get_country(self.country_id)
