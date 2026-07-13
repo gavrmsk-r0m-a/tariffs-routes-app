@@ -3293,6 +3293,23 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertIn("<th>Название</th><th>Активен</th><th>Комментарий</th><th>Действия</th>", content)
         self.assertNotIn("Справочник: GEO", content)
 
+    def test_stage17_changed_dictionary_sections_still_render(self):
+        self.request("/routes")
+        for section, expected in (
+            ("countries", "Справочник: GEO"),
+            ("providers", "Справочник: Провайдер"),
+            ("servers", "Справочник: Сервер"),
+            ("phone-types", "Справочник: Тип номера"),
+        ):
+            with self.subTest(section=section):
+                captured, content = self.request(f"/admin/dictionaries?section={section}")
+                self.assertEqual(captured["status"], "200 OK")
+                self.assertIn(expected, content)
+                self.assertIn("Всего записей:", content)
+
+        captured, content = self.request("/admin/change-reasons")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("Причины смены провайдера", content)
 
 
     def test_server_priorities_show_all_active_server_blocks_empty_rows_and_route_details(self):

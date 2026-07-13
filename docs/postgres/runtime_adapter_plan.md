@@ -137,23 +137,30 @@ Non-goals:
 
 Scope:
 
-- Move remaining direct SQL mutations from `app/server.py` into Repository or adapter-backed service methods.
-- Move importer persistence operations behind Repository/adapter helpers while leaving CSV parsing and validation behavior unchanged.
-- Replace `INSERT OR IGNORE` with backend-neutral upsert helper.
-- Replace direct `sqlite3.IntegrityError` catches with backend-neutral error mapping.
-
-Priority order:
-
-1. Direct mutations with commits.
-2. Direct inserts using SQLite-only syntax.
-3. Dynamic `IN` placeholder generation.
-4. Read-only helper queries used by templates.
+- Start direct SQL cleanup outside `Repository` with small, low-risk batches only.
+- Prefer `app/server.py` dictionary/lookup reads and simple dictionary create flows that can call existing or narrowly added Repository methods.
+- Touch `app/importer.py` only for obvious read-only lookups; otherwise defer importer cleanup to a later stage.
+- Keep SQLite behavior and UI output unchanged while moving selected SQL behind Repository boundaries.
 
 Non-goals:
 
+- No mass rewrite of `server.py` or `importer.py`.
+- No routes, tariffs, currency recalculation, HLR, Telegram, optimistic concurrency, or import business-flow changes.
+- No PostgreSQL runtime backend, PostgreSQL connection, runtime psycopg import, or psycopg dependency.
+- No schema changes.
 - No UI redesign.
 - No HLR API/data pipeline rewrite.
 - No frontend-rendered HLR tables.
+
+### Stage 17 batch 1 status
+
+- Started direct SQL cleanup outside `Repository` with a small low-risk server-side dictionary/lookup batch.
+- Moved selected `app/server.py` dictionary reads for change reasons, countries, providers with currency labels, servers, and phone number types to Repository methods.
+- Added only narrow read-only Repository helpers where needed.
+- Left `app/importer.py` unchanged; importer cleanup remains deferred.
+- Did not touch routes, tariffs, currency recalculation, or HLR flows.
+- PostgreSQL runtime remains disabled; no PostgreSQL connection is created.
+- SQLite remains the operational backend.
 
 ## Stage 18 — PostgreSQL runtime smoke in CI
 

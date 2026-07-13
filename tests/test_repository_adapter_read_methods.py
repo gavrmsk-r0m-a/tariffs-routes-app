@@ -39,11 +39,13 @@ class RepositoryAdapterReadMethodsTest(unittest.TestCase):
             "list_countries",
             "list_currencies",
             "list_providers",
+            "list_providers_with_currency",
             "list_projects",
             "list_servers",
             "list_phone_number_types",
             "list_phone_assignment_types",
             "list_provider_prefixes",
+            "list_change_reasons",
             "list_active_change_reasons",
         ]
 
@@ -59,7 +61,11 @@ class RepositoryAdapterReadMethodsTest(unittest.TestCase):
         self.assertEqual(self.repo.list_countries()[0]["name"], "Австрия")
         self.assertEqual(self.repo.list_currencies()[0]["code"], "EUR")
         self.assertEqual(self.repo.list_providers()[0]["name"], "AdapterTel")
+        provider_with_currency = self.repo.list_providers_with_currency()[0]
+        self.assertEqual(provider_with_currency["name"], "AdapterTel")
+        self.assertEqual(provider_with_currency["currency_code"], "EUR")
         self.assertTrue(any(row["name"] == "adapter-server" for row in self.repo.list_servers()))
+        self.assertTrue(any(row["name"] == "Adapter reason" for row in self.repo.list_change_reasons()))
         self.assertTrue(any(row["name"] == "Adapter reason" for row in self.repo.list_active_change_reasons()))
         self.assertTrue(any(row["code"] == "gl" for row in self.repo.list_phone_assignment_types()))
         self.assertTrue(any(row["name"] == "Меж.деп." for row in self.repo.list_projects()))
