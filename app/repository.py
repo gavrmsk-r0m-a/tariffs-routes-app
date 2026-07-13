@@ -3500,6 +3500,21 @@ class Repository:
             rows = self.conn.execute(f"SELECT * FROM provider_prefixes WHERE provider_id = {p} ORDER BY prefix", (provider_id,))
         return rows_to_dicts(rows)
 
+    def list_providers_with_currency(self) -> list[dict]:
+        return rows_to_dicts(
+            self.conn.execute(
+                """
+                SELECT p.*, c.code AS currency_code
+                FROM providers p
+                LEFT JOIN currencies c ON c.id = p.default_currency_id
+                ORDER BY p.name
+                """
+            )
+        )
+
+    def list_change_reasons(self) -> list[dict]:
+        return rows_to_dicts(self.conn.execute("SELECT * FROM change_reasons ORDER BY is_active DESC, name"))
+
     def list_active_change_reasons(self) -> list[dict]:
         return rows_to_dicts(self.conn.execute("SELECT * FROM change_reasons WHERE is_active = 1 ORDER BY name"))
 
