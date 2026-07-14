@@ -3474,6 +3474,44 @@ class Repository:
             )
         )
 
+    def get_country_by_name(self, name: str) -> dict | None:
+        p = placeholder(self.backend)
+        row = self.conn.execute(f"SELECT id, name, code, is_active FROM countries WHERE name = {p}", (name,)).fetchone()
+        return row_to_dict(row)
+
+    def get_provider_by_normalized_name(self, normalized_name: str) -> dict | None:
+        p = placeholder(self.backend)
+        row = self.conn.execute(f"SELECT id, name, normalized_name, is_active FROM providers WHERE normalized_name = {p}", (normalized_name,)).fetchone()
+        return row_to_dict(row)
+
+    def get_currency_by_code(self, code: str) -> dict | None:
+        p = placeholder(self.backend)
+        row = self.conn.execute(f"SELECT id, code, name, is_active FROM currencies WHERE code = {p}", (code,)).fetchone()
+        return row_to_dict(row)
+
+    def get_project_by_name(self, name: str) -> dict | None:
+        p = placeholder(self.backend)
+        row = self.conn.execute(f"SELECT id, name, is_active FROM projects WHERE name = {p}", (name,)).fetchone()
+        return row_to_dict(row)
+
+    def get_phone_number_type_by_name(self, name: str) -> dict | None:
+        p = placeholder(self.backend)
+        row = self.conn.execute(f"SELECT id, name, is_active FROM phone_number_types WHERE name = {p}", (name,)).fetchone()
+        return row_to_dict(row)
+
+    def get_phone_assignment_type_by_code_or_name(self, value: str) -> dict | None:
+        p = placeholder(self.backend)
+        row = self.conn.execute(
+            f"SELECT id, code, name, is_active FROM phone_assignment_types WHERE code = {p} OR name = {p}",
+            (value, value),
+        ).fetchone()
+        return row_to_dict(row)
+
+    def get_server_by_name(self, name: str) -> dict | None:
+        p = placeholder(self.backend)
+        row = self.conn.execute(f"SELECT id, name, is_active FROM servers WHERE name = {p}", (name,)).fetchone()
+        return row_to_dict(row)
+
     def list_currencies(self) -> list[dict]:
         return rows_to_dicts(self.conn.execute("SELECT * FROM currencies ORDER BY code"))
 
