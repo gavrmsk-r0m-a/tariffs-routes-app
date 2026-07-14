@@ -115,6 +115,62 @@ class ImporterTest(unittest.TestCase):
         with self.assertRaisesRegex(BusinessRuleError, "Режим замены раздела временно отключён"):
             apply_import(self.conn, "phone_numbers", "country,number\nИталия,393331239005\n", user_id=self.admin_id, mode="replace_section")
 
+    def test_importer_exists_cleanup_preserves_route_update_preview_and_summary(self):
+        country_id = self.repo.create_country("Испания")
+        provider_id = self.conn.execute("SELECT id FROM providers WHERE name = ?", ("Miatel",)).fetchone()["id"]
+        self.repo.create_route(country_id=country_id, provider_id=provider_id, name="Spain Route", cli_source_type="other", cli_source_label="OTHER", created_by=self.admin_id)
+        csv_text = "country,name,provider,comment\nИспания,Spain Route,Miatel,Updated comment\n"
+
+        preview = preview_import(self.conn, "routes", csv_text)
+        result = apply_import(self.conn, "routes", csv_text, user_id=self.admin_id)
+
+        self.assertEqual((preview.total_rows, preview.duplicate_rows, preview.new_rows, preview.error_rows), (1, 1, 0, 0))
+        self.assertEqual((result.created_rows, result.updated_rows, result.skipped_rows), (0, 1, 0))
+        self.assertEqual(preview.rows[0]["status"], "duplicate_in_db")
+        self.assertEqual(preview.rows[0]["action"], "update")
+        self.assertEqual(self.conn.execute("SELECT comment FROM routes WHERE name = 'Spain Route'").fetchone()["comment"], "Updated comment")
+
+    def test_importer_exists_cleanup_preserves_phone_update_preview_and_summary(self):
+        create_csv = "country,provider,project,number,assignment_type,Итоговый статус,comment\nИталия,Miatel,Alpha,393331239020,gl,Используется,Initial\n"
+        apply_import(self.conn, "phone_numbers", create_csv, user_id=self.admin_id)
+        update_csv = "country,provider,project,number,assignment_type,Итоговый статус,comment\nИталия,Miatel,Alpha,393331239020,gl,Используется,Updated\n"
+
+        preview = preview_import(self.conn, "phone_numbers", update_csv)
+        result = apply_import(self.conn, "phone_numbers", update_csv, user_id=self.admin_id)
+
+        self.assertEqual((preview.total_rows, preview.duplicate_rows, preview.new_rows, preview.error_rows), (1, 1, 0, 0))
+        self.assertEqual((result.created_rows, result.updated_rows, result.skipped_rows, result.error_rows), (0, 1, 0, 0))
+        self.assertEqual(preview.rows[0]["message"], "Строка обновит существующий номер. ('393331239020',)")
+        self.assertEqual(self.conn.execute("SELECT comment FROM phone_numbers WHERE number = '393331239020'").fetchone()["comment"], "Updated")
+
+    def test_importer_exists_cleanup_preserves_calling_company_update_preview_and_summary(self):
+        csv_text = "server,country,company_name,company_id_external,has_autorotation,is_active,comment\nEU1,Италия,Company One,cc-1,no,yes,Initial\n"
+        apply_import(self.conn, "calling_companies", csv_text, user_id=self.admin_id)
+        update_csv = "server,country,company_name,company_id_external,has_autorotation,is_active,comment\nEU1,Италия,Company One Updated,cc-1,yes,yes,Updated\n"
+
+        preview = preview_import(self.conn, "calling_companies", update_csv)
+        result = apply_import(self.conn, "calling_companies", update_csv, user_id=self.admin_id)
+
+        self.assertEqual((preview.duplicate_rows, preview.new_rows, preview.error_rows), (1, 0, 0))
+        self.assertEqual((result.created_rows, result.updated_rows, result.skipped_rows), (0, 1, 0))
+        self.assertEqual(preview.rows[0]["status"], "duplicate_in_db")
+        row = self.conn.execute("SELECT company_name, has_autorotation, comment FROM calling_companies WHERE company_id_external = 'cc-1'").fetchone()
+        self.assertEqual((row["company_name"], row["has_autorotation"], row["comment"]), ("Company One Updated", 1, "Updated"))
+
+    def test_importer_exists_cleanup_preserves_tariff_update_preview_and_summary(self):
+        csv_text = "country,provider,prefix,currency,price,rate,rate_date,comment\nИталия,Miatel,,EUR,0.10,1,2026-07-14,Initial\n"
+        apply_import(self.conn, "tariffs", csv_text, user_id=self.admin_id)
+        update_csv = "country,provider,prefix,currency,price,rate,rate_date,comment\nИталия,Miatel,,EUR,0.20,1,2026-07-14,Updated\n"
+
+        preview = preview_import(self.conn, "tariffs", update_csv)
+        result = apply_import(self.conn, "tariffs", update_csv, user_id=self.admin_id)
+
+        self.assertEqual((preview.duplicate_rows, preview.new_rows, preview.error_rows), (1, 0, 0))
+        self.assertEqual((result.created_rows, result.updated_rows, result.skipped_rows), (0, 0, 1))
+        self.assertEqual(preview.rows[0]["status"], "duplicate_in_db")
+        rows = self.conn.execute("SELECT price_in_provider_currency, is_current FROM tariffs WHERE country_id = (SELECT id FROM countries WHERE name = 'Италия') ORDER BY id").fetchall()
+        self.assertEqual([(str(row["price_in_provider_currency"]), row["is_current"]) for row in rows], [("0.1", 0)])
+
     def test_routes_preview_detects_duplicate_business_key(self):
         country_id = self.repo.create_country("Мексика")
         provider_id = self.conn.execute("SELECT id FROM providers WHERE name = ?", ("Miatel",)).fetchone()["id"]

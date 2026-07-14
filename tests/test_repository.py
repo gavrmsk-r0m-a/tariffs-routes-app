@@ -75,6 +75,38 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
         self.assertEqual(self.repo.get_server_by_name("Lookup Server")["id"], server_id)
         self.assertIsNone(self.repo.get_currency_by_code("ZZZ"))
 
+    def test_repository_importer_exists_methods_return_bools(self):
+        phone_id = self.create_phone(number="393331239099")
+        server_id = self.repo.create_server("Exists Server")
+        self.repo.create_calling_company(
+            server_id=server_id,
+            country_id=self.country_id,
+            company_name="Exists Company",
+            company_id_external="ext-100",
+            has_autorotation=False,
+            created_by=self.admin_id,
+        )
+        self.repo.create_tariff(
+            country_id=self.country_id,
+            provider_id=self.provider_id,
+            provider_currency_id=self.currency_id,
+            price_in_provider_currency="0.10",
+            conversion_rate_to_eur="1",
+            conversion_rate_date="2026-07-14",
+            created_by=self.admin_id,
+        )
+
+        self.assertIsInstance(self.repo.route_exists_by_country_name_and_name("Италия", "Италия/Miatel/Pool_A@"), bool)
+        self.assertTrue(self.repo.route_exists_by_country_name_and_name("Италия", "Италия/Miatel/Pool_A@"))
+        self.assertFalse(self.repo.route_exists_by_country_name_and_name("Италия", "Missing"))
+        self.assertTrue(self.repo.phone_number_exists_by_normalized_number("393331239099"))
+        self.assertFalse(self.repo.phone_number_exists_by_normalized_number("393331239098"))
+        self.assertTrue(self.repo.calling_company_exists_by_server_country_external_id("Exists Server", "Италия", "ext-100"))
+        self.assertFalse(self.repo.calling_company_exists_by_server_country_external_id("Exists Server", "Италия", "missing"))
+        self.assertTrue(self.repo.current_tariff_exists_by_country_provider_prefix("Италия", "Miatel", None))
+        self.assertFalse(self.repo.current_tariff_exists_by_country_provider_prefix("Италия", "Miatel", "999"))
+        self.assertIsInstance(phone_id, int)
+
     def test_get_user_permissions_returns_existing_permissions(self):
         user_id = self.repo.create_user("permissions-user", "operator", "Permissions User")
         self.conn.execute(
