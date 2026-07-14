@@ -44,6 +44,41 @@ class ImporterTest(unittest.TestCase):
         with self.assertRaisesRegex(BusinessRuleError, "Импорт невозможен"):
             apply_import(self.conn, "phone_numbers", dup_csv, user_id=self.admin_id)
 
+
+    def test_importer_lookup_behavior_preserved(self):
+        self.conn.execute("INSERT INTO phone_number_types(name, is_active) VALUES ('Mobile', 1)")
+        self.conn.commit()
+        csv_text = "country,provider,project,number,assignment_type,currency,phone_type,Итоговый статус\nИталия,Miatel,Alpha,393331239010,ГЛ,EUR,Mobile,Используется\n"
+
+        preview = preview_import(self.conn, "phone_numbers", csv_text)
+        self.assertEqual(preview.error_rows, 0)
+        result = apply_import(self.conn, "phone_numbers", csv_text, user_id=self.admin_id)
+
+        self.assertEqual(result.created_rows, 1)
+        row = self.conn.execute("SELECT country_id, provider_id, currency_id, project_label, assignment_type, phone_type FROM phone_numbers WHERE number = '393331239010'").fetchone()
+        self.assertEqual(row["country_id"], self.conn.execute("SELECT id FROM countries WHERE name = 'Италия'").fetchone()["id"])
+        self.assertEqual(row["provider_id"], self.conn.execute("SELECT id FROM providers WHERE name = 'Miatel'").fetchone()["id"])
+        self.assertEqual(row["currency_id"], self.conn.execute("SELECT id FROM currencies WHERE code = 'EUR'").fetchone()["id"])
+        self.assertEqual(row["project_label"], "Alpha")
+        self.assertEqual(row["assignment_type"], "gl")
+        self.assertEqual(row["phone_type"], "Mobile")
+
+    def test_importer_validation_messages_preserved(self):
+        csv_text = "country,provider,project,number,assignment_type,Итоговый статус\nИталия,NoSuchProvider,Alpha,393331239011,gl,Используется\n"
+        preview = preview_import(self.conn, "phone_numbers", csv_text)
+
+        self.assertEqual(preview.error_rows, 1)
+        self.assertIn("Значение ‘NoSuchProvider’ не найдено в справочнике Провайдер. Исправьте файл или добавьте значение в справочник вручную.", preview.rows[0]["errors"])
+
+    def test_importer_preview_or_summary_preserved(self):
+        csv_text = "country,provider,project,number,assignment_type,Итоговый статус\nИталия,Miatel,Alpha,393331239012,gl,Используется\n"
+
+        preview = preview_import(self.conn, "phone_numbers", csv_text)
+        result = apply_import(self.conn, "phone_numbers", csv_text, user_id=self.admin_id)
+
+        self.assertEqual((preview.total_rows, preview.new_rows, preview.error_rows), (1, 1, 0))
+        self.assertEqual((result.created_rows, result.updated_rows, result.skipped_rows), (1, 0, 0))
+
     def test_phone_missing_reference_errors_and_does_not_autocreate_provider(self):
         csv_text = "country,provider,project,number,assignment_type,Итоговый статус\nИталия,NoSuchProvider,Alpha,393331239002,gl,Используется\n"
         preview = preview_import(self.conn, "phone_numbers", csv_text)

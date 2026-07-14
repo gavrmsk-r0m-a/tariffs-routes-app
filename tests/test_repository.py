@@ -58,6 +58,23 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
 
 
 
+
+    def test_repository_new_lookup_methods(self):
+        self.conn.execute("INSERT INTO projects(name, is_active) VALUES ('Lookup Project', 0)")
+        self.conn.execute("INSERT INTO phone_number_types(name, is_active) VALUES ('Lookup Type', 1)")
+        self.conn.execute("INSERT INTO phone_assignment_types(code, name, is_active) VALUES ('lookup_code', 'Lookup Assignment', 0)")
+        server_id = self.repo.create_server("Lookup Server")
+        self.conn.commit()
+
+        self.assertEqual(self.repo.get_country_by_name("Италия")["id"], self.country_id)
+        self.assertEqual(self.repo.get_provider_by_normalized_name("miatel")["id"], self.provider_id)
+        self.assertEqual(self.repo.get_currency_by_code("EUR")["id"], self.currency_id)
+        self.assertEqual(self.repo.get_project_by_name("Lookup Project")["is_active"], 0)
+        self.assertEqual(self.repo.get_phone_number_type_by_name("Lookup Type")["name"], "Lookup Type")
+        self.assertEqual(self.repo.get_phone_assignment_type_by_code_or_name("Lookup Assignment")["code"], "lookup_code")
+        self.assertEqual(self.repo.get_server_by_name("Lookup Server")["id"], server_id)
+        self.assertIsNone(self.repo.get_currency_by_code("ZZZ"))
+
     def test_get_user_permissions_returns_existing_permissions(self):
         user_id = self.repo.create_user("permissions-user", "operator", "Permissions User")
         self.conn.execute(

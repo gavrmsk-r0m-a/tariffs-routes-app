@@ -257,3 +257,12 @@ Checklist topics:
 - Every stage must run SQLite tests for changed behavior.
 - Do not modify `app/schema.sql` for PostgreSQL compatibility; it remains the SQLite schema.
 - Do not add generated audit reports, local databases, dumps, `.env`, or production data.
+
+### Stage 19 importer read-only cleanup status
+
+- Started the `app/importer.py` read-only direct SQL cleanup with a small lookup-only batch.
+- Moved selected dictionary/reference lookup `SELECT` calls behind narrow Repository methods.
+- Import write behavior, CSV parsing, validation messages, preview behavior, and summary counters remain unchanged.
+- Routes, tariffs, currency recalculation, and HLR flows were not changed.
+- PostgreSQL runtime remains disabled; no PostgreSQL connection is created.
+- SQLite remains the operational backend.

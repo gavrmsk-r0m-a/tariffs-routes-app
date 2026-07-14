@@ -231,10 +231,19 @@ def _resolve_reference(conn: sqlite3.Connection, table: str, value: str, label: 
     text = value.strip()
     if not text:
         raise BusinessRuleError(f"{label} обязателен")
+    repo = Repository(conn)
     if normalized_provider:
-        row = conn.execute(f"SELECT id, is_active FROM {table} WHERE normalized_name = ?", (normalize_provider_name(text),)).fetchone()
+        row = repo.get_provider_by_normalized_name(normalize_provider_name(text))
+    elif table == "countries" and code_column == "name":
+        row = repo.get_country_by_name(text)
+    elif table == "currencies" and code_column == "code":
+        row = repo.get_currency_by_code(text)
+    elif table == "projects" and code_column == "name":
+        row = repo.get_project_by_name(text)
+    elif table == "phone_number_types" and code_column == "name":
+        row = repo.get_phone_number_type_by_name(text)
     else:
-        row = conn.execute(f"SELECT id, {code_column} AS value, is_active FROM {table} WHERE {code_column} = ?", (text,)).fetchone()
+        raise BusinessRuleError(f"Unsupported reference lookup: {table}.{code_column}")
     if row is None:
         raise BusinessRuleError(f"Значение ‘{text}’ не найдено в справочнике {label}. Исправьте файл или добавьте значение в справочник вручную.")
     return row["id"], not bool(row["is_active"])
@@ -244,13 +253,7 @@ def _resolve_assignment_code(conn: sqlite3.Connection, value: str) -> tuple[str 
     value = value.strip()
     if not value:
         return None, False
-    row = conn.execute(
-        """
-        SELECT code, is_active FROM phone_assignment_types
-        WHERE code = ? OR name = ?
-        """,
-        (value, value),
-    ).fetchone()
+    row = Repository(conn).get_phone_assignment_type_by_code_or_name(value)
     if row is None:
         raise BusinessRuleError(f"Значение ‘{value}’ не найдено в справочнике Назначение. Исправьте файл или добавьте значение в справочник вручную.")
     return str(row["code"]), not bool(row["is_active"])
@@ -515,7 +518,9 @@ def _apply_phone(repo: Repository, row: dict[str, str], user_id: int, *, exists:
 
 
 def _apply_company(repo: Repository, row: dict[str, str], user_id: int, *, exists: bool) -> None:
-    server_id = repo.create_server(_first(row, "server", "сервер")) if not repo.conn.execute("SELECT id FROM servers WHERE name = ?", (_first(row, "server", "сервер"),)).fetchone() else int(repo.conn.execute("SELECT id FROM servers WHERE name = ?", (_first(row, "server", "сервер"),)).fetchone()["id"])
+    server_name = _first(row, "server", "сервер")
+    server = repo.get_server_by_name(server_name)
+    server_id = repo.create_server(server_name) if server is None else int(server["id"])
     country_id = repo.get_or_create_country(_first(row, "country", "страна", "гео"))
     external_id = _first(row, "company_id_external", "company_id", "id компании", "ID компании")
     has_auto = (_first(row, "has_autorotation", "авторотация") or "").lower() in {"1", "yes", "true", "да"}
@@ -560,7 +565,7 @@ def _apply_dictionary(repo: Repository, row: dict[str, str]) -> None:
     elif kind == "currency":
         repo.get_or_create_currency(name)
     elif kind == "server":
-        if not repo.conn.execute("SELECT id FROM servers WHERE name = ?", (name,)).fetchone():
+        if repo.get_server_by_name(name) is None:
             repo.create_server(name)
     elif kind == "project":
         repo.conn.execute("INSERT OR IGNORE INTO projects(name, is_active) VALUES (?, 1)", (name,))
