@@ -266,3 +266,12 @@ Checklist topics:
 - Routes, tariffs, currency recalculation, and HLR flows were not changed.
 - PostgreSQL runtime remains disabled; no PostgreSQL connection is created.
 - SQLite remains the operational backend.
+
+### Stage 20 importer exists-check cleanup status
+
+- Started the next `app/importer.py` read-only cleanup batch for SELECT-based existence checks.
+- Moved route, phone number, calling company, and current tariff existence checks behind narrow Repository bool methods.
+- Import write behavior, CSV parsing, validation messages, preview behavior, and summary counters remain unchanged.
+- Routes, tariffs, currency recalculation, HLR flows, Telegram, and UI flows were not changed.
+- PostgreSQL runtime remains disabled; no PostgreSQL connection is created and no runtime psycopg dependency is added.
+- SQLite remains the operational backend.

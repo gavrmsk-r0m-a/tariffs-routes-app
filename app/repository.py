@@ -3512,6 +3512,53 @@ class Repository:
         row = self.conn.execute(f"SELECT id, name, is_active FROM servers WHERE name = {p}", (name,)).fetchone()
         return row_to_dict(row)
 
+
+    def route_exists_by_country_name_and_name(self, country_name: str, route_name: str) -> bool:
+        p = placeholder(self.backend)
+        row = self.conn.execute(
+            f"""
+            SELECT 1 FROM routes r JOIN countries c ON c.id = r.country_id
+            WHERE c.name = {p} AND r.name = {p}
+            """,
+            (country_name, route_name),
+        ).fetchone()
+        return row is not None
+
+    def phone_number_exists_by_normalized_number(self, normalized_number: str) -> bool:
+        p = placeholder(self.backend)
+        row = self.conn.execute(
+            f"SELECT 1 FROM phone_numbers WHERE normalized_number = {p}",
+            (normalized_number,),
+        ).fetchone()
+        return row is not None
+
+    def calling_company_exists_by_server_country_external_id(self, server_name: str, country_name: str, external_id: str) -> bool:
+        p = placeholder(self.backend)
+        row = self.conn.execute(
+            f"""
+            SELECT 1 FROM calling_companies cc
+            JOIN servers s ON s.id = cc.server_id
+            JOIN countries c ON c.id = cc.country_id
+            WHERE s.name = {p} AND c.name = {p} AND cc.company_id_external = {p}
+            """,
+            (server_name, country_name, external_id),
+        ).fetchone()
+        return row is not None
+
+    def current_tariff_exists_by_country_provider_prefix(self, country_name: str, provider_name: str, prefix: str | None) -> bool:
+        p = placeholder(self.backend)
+        row = self.conn.execute(
+            f"""
+            SELECT 1 FROM tariffs t
+            JOIN countries c ON c.id = t.country_id
+            JOIN providers p ON p.id = t.provider_id
+            LEFT JOIN provider_prefixes pp ON pp.id = t.provider_prefix_id
+            WHERE t.is_current = 1 AND c.name = {p} AND p.name = {p} AND COALESCE(pp.prefix, '') = COALESCE({p}, '')
+            """,
+            (country_name, provider_name, prefix or None),
+        ).fetchone()
+        return row is not None
+
     def list_currencies(self) -> list[dict]:
         return rows_to_dicts(self.conn.execute("SELECT * FROM currencies ORDER BY code"))
 

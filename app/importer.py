@@ -378,40 +378,19 @@ def _phone_reference_ids(conn: sqlite3.Connection, row: dict[str, str]) -> dict[
     }
 
 def _exists(conn: sqlite3.Connection, entity_type: str, key: tuple) -> bool:
+    repo = Repository(conn)
     if entity_type == "routes":
         country, name = key
-        return conn.execute(
-            """
-            SELECT 1 FROM routes r JOIN countries c ON c.id = r.country_id
-            WHERE c.name = ? AND r.name = ?
-            """,
-            (country, name),
-        ).fetchone() is not None
+        return repo.route_exists_by_country_name_and_name(country, name)
     if entity_type == "phone_numbers":
-        return conn.execute("SELECT 1 FROM phone_numbers WHERE normalized_number = ?", key).fetchone() is not None
+        (normalized_number,) = key
+        return repo.phone_number_exists_by_normalized_number(normalized_number)
     if entity_type == "calling_companies":
         server, country, external_id = key
-        return conn.execute(
-            """
-            SELECT 1 FROM calling_companies cc
-            JOIN servers s ON s.id = cc.server_id
-            JOIN countries c ON c.id = cc.country_id
-            WHERE s.name = ? AND c.name = ? AND cc.company_id_external = ?
-            """,
-            (server, country, external_id),
-        ).fetchone() is not None
+        return repo.calling_company_exists_by_server_country_external_id(server, country, external_id)
     if entity_type == "tariffs":
         country, provider, prefix = key
-        return conn.execute(
-            """
-            SELECT 1 FROM tariffs t
-            JOIN countries c ON c.id = t.country_id
-            JOIN providers p ON p.id = t.provider_id
-            LEFT JOIN provider_prefixes pp ON pp.id = t.provider_prefix_id
-            WHERE t.is_current = 1 AND c.name = ? AND p.name = ? AND COALESCE(pp.prefix, '') = COALESCE(?, '')
-            """,
-            (country, provider, prefix or None),
-        ).fetchone() is not None
+        return repo.current_tariff_exists_by_country_provider_prefix(country, provider, prefix or None)
     return False
 
 
