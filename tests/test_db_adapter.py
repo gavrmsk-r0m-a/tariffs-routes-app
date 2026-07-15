@@ -7,6 +7,7 @@ from app.db_adapter import (
     build_in_clause,
     extract_inserted_id,
     from_db_bool,
+    insert_ignore_statement,
     normalize_backend_name,
     placeholder,
     placeholders,
@@ -61,6 +62,27 @@ class DbAdapterTest(unittest.TestCase):
             with self.subTest(name=name):
                 with self.assertRaises(ValueError):
                     validate_identifier(name)
+
+
+    def test_insert_ignore_statement_sqlite(self):
+        self.assertEqual(
+            insert_ignore_statement("projects", ["name", "is_active"], ["name"], "sqlite"),
+            "INSERT OR IGNORE INTO projects(name, is_active) VALUES (?, ?)",
+        )
+
+    def test_insert_ignore_statement_postgres(self):
+        self.assertEqual(
+            insert_ignore_statement("phone_number_types", ["name", "is_active"], ["name"], "postgres"),
+            "INSERT INTO phone_number_types(name, is_active) VALUES (%s, %s) ON CONFLICT (name) DO NOTHING",
+        )
+
+    def test_insert_ignore_statement_validates_identifiers(self):
+        with self.assertRaises(ValueError):
+            insert_ignore_statement("projects; DROP TABLE projects", ["name"], ["name"], "sqlite")
+        with self.assertRaises(ValueError):
+            insert_ignore_statement("projects", ["bad column"], ["name"], "sqlite")
+        with self.assertRaises(ValueError):
+            insert_ignore_statement("projects", ["name"], ["bad column"], "sqlite")
 
     def test_prepare_insert_returning_id_sqlite_noop(self):
         sql = "INSERT INTO users (username) VALUES (?)"

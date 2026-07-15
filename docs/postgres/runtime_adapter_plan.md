@@ -294,3 +294,13 @@ Checklist topics:
 - Stage 23 should extract only 1–2 low-risk write candidates, preferably isolated dictionary insert-or-ignore helpers, while preserving commit/rollback behavior and import counters.
 - PostgreSQL runtime remains disabled; no PostgreSQL connection is created and no runtime `psycopg` dependency is added.
 - SQLite remains the operational backend.
+
+### Stage 23 importer dictionary insert-ignore extraction status
+
+- Dictionary `INSERT OR IGNORE` extraction has started for the low-risk importer dictionary paths.
+- The `projects` and `phone_number_types` insert-if-missing paths now go through narrow Repository methods; the `phone_assignment_types` path remains classified for a later small batch.
+- Import write behavior, CSV parsing, validation messages, preview behavior, and summary counters remain unchanged.
+- Immediate commit behavior is preserved inside the new Repository methods, matching the previous importer statements.
+- Routes, phone-number complex writes, tariffs, calling companies, history tables, section clearing, currency, HLR, Telegram, and UI flows were not changed.
+- PostgreSQL runtime remains disabled; no PostgreSQL connection is created and no runtime `psycopg` dependency is added.
+- SQLite remains the operational backend.

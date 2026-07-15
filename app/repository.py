@@ -14,6 +14,7 @@ from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from app.db_adapter import (
     build_in_clause,
     extract_inserted_id,
+    insert_ignore_statement,
     normalize_backend_name,
     placeholder,
     prepare_insert_returning_id,
@@ -3506,6 +3507,20 @@ class Repository:
             (value, value),
         ).fetchone()
         return row_to_dict(row)
+
+    def ensure_project_exists(self, name: str, commit: bool = True) -> int:
+        sql = insert_ignore_statement("projects", ["name", "is_active"], ["name"], self.backend)
+        cur = self.conn.execute(sql, (name, to_db_bool(True, self.backend)))
+        if commit:
+            self.conn.commit()
+        return int(cur.rowcount)
+
+    def ensure_phone_number_type_exists(self, name: str, commit: bool = True) -> int:
+        sql = insert_ignore_statement("phone_number_types", ["name", "is_active"], ["name"], self.backend)
+        cur = self.conn.execute(sql, (name, to_db_bool(True, self.backend)))
+        if commit:
+            self.conn.commit()
+        return int(cur.rowcount)
 
     def get_server_by_name(self, name: str) -> dict | None:
         p = placeholder(self.backend)

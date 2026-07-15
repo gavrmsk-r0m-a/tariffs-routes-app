@@ -79,6 +79,41 @@ class ImporterTest(unittest.TestCase):
         self.assertEqual((preview.total_rows, preview.new_rows, preview.error_rows), (1, 1, 0))
         self.assertEqual((result.created_rows, result.updated_rows, result.skipped_rows), (1, 0, 0))
 
+
+    def test_dictionary_import_creates_project_and_preserves_summary(self):
+        csv_text = "type,name\nproject,Stage 23 Dictionary Project\n"
+        preview = preview_import(self.conn, "dictionaries", csv_text)
+        result = apply_import(self.conn, "dictionaries", csv_text, user_id=self.admin_id)
+
+        self.assertEqual((preview.total_rows, preview.new_rows, preview.error_rows), (1, 1, 0))
+        self.assertEqual((result.created_rows, result.updated_rows, result.skipped_rows), (1, 0, 0))
+        self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM projects WHERE name = ?", ("Stage 23 Dictionary Project",)).fetchone()[0], 1)
+
+    def test_dictionary_import_creates_phone_number_type_and_preserves_summary(self):
+        csv_text = "type,name\nphone_type,Stage 23 Dictionary Type\n"
+        preview = preview_import(self.conn, "dictionaries", csv_text)
+        result = apply_import(self.conn, "dictionaries", csv_text, user_id=self.admin_id)
+
+        self.assertEqual((preview.total_rows, preview.new_rows, preview.error_rows), (1, 1, 0))
+        self.assertEqual((result.created_rows, result.updated_rows, result.skipped_rows), (1, 0, 0))
+        self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM phone_number_types WHERE name = ?", ("Stage 23 Dictionary Type",)).fetchone()[0], 1)
+
+    def test_dictionary_duplicate_import_does_not_create_duplicates(self):
+        csv_text = "type,name\nproject,Stage 23 Dictionary Project\n"
+        apply_import(self.conn, "dictionaries", csv_text, user_id=self.admin_id)
+        preview = preview_import(self.conn, "dictionaries", csv_text)
+        result = apply_import(self.conn, "dictionaries", csv_text, user_id=self.admin_id)
+
+        self.assertEqual((preview.total_rows, preview.new_rows, preview.error_rows), (1, 1, 0))
+        self.assertEqual((result.created_rows, result.updated_rows, result.skipped_rows), (1, 0, 0))
+        self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM projects WHERE name = ?", ("Stage 23 Dictionary Project",)).fetchone()[0], 1)
+
+    def test_dictionary_validation_messages_preserved(self):
+        preview = preview_import(self.conn, "dictionaries", "type,name\nproject,\n")
+
+        self.assertEqual(preview.error_rows, 1)
+        self.assertEqual(preview.rows[0]["message"], "type and name are required")
+
     def test_phone_missing_reference_errors_and_does_not_autocreate_provider(self):
         csv_text = "country,provider,project,number,assignment_type,Итоговый статус\nИталия,NoSuchProvider,Alpha,393331239002,gl,Используется\n"
         preview = preview_import(self.conn, "phone_numbers", csv_text)

@@ -73,6 +73,29 @@ def build_in_clause(column: str, values: Sequence[Any], backend: str) -> tuple[s
     return f"{safe_column} IN ({placeholders(len(params), backend)})", params
 
 
+
+def insert_ignore_statement(
+    table: str,
+    columns: Sequence[str],
+    conflict_columns: Sequence[str],
+    backend: str,
+) -> str:
+    """Build a small backend-specific insert-if-missing statement."""
+    normalized = normalize_backend_name(backend)
+    safe_table = validate_identifier(table)
+    safe_columns = [validate_identifier(column) for column in columns]
+    safe_conflict_columns = [validate_identifier(column) for column in conflict_columns]
+    if not safe_columns:
+        raise ValueError("Insert-ignore columns must not be empty")
+    if not safe_conflict_columns:
+        raise ValueError("Insert-ignore conflict columns must not be empty")
+    column_sql = ", ".join(safe_columns)
+    values_sql = placeholders(len(safe_columns), normalized)
+    if normalized == "sqlite":
+        return f"INSERT OR IGNORE INTO {safe_table}({column_sql}) VALUES ({values_sql})"
+    conflict_sql = ", ".join(safe_conflict_columns)
+    return f"INSERT INTO {safe_table}({column_sql}) VALUES ({values_sql}) ON CONFLICT ({conflict_sql}) DO NOTHING"
+
 def prepare_insert_returning_id(sql: str, backend: str, id_column: str = "id") -> str:
     """Prepare an INSERT statement for backend-specific inserted-id retrieval."""
     normalized = normalize_backend_name(backend)

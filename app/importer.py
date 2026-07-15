@@ -547,11 +547,9 @@ def _apply_dictionary(repo: Repository, row: dict[str, str]) -> None:
         if repo.get_server_by_name(name) is None:
             repo.create_server(name)
     elif kind == "project":
-        repo.conn.execute("INSERT OR IGNORE INTO projects(name, is_active) VALUES (?, 1)", (name,))
-        repo.conn.commit()
+        repo.ensure_project_exists(name)
     elif kind == "phone_type":
-        repo.conn.execute("INSERT OR IGNORE INTO phone_number_types(name, is_active) VALUES (?, 1)", (name,))
-        repo.conn.commit()
+        repo.ensure_phone_number_type_exists(name)
     elif kind == "phone_assignment":
         code = _first(row, "code", "код") or name
         repo.conn.execute("INSERT OR IGNORE INTO phone_assignment_types(code, name, is_active) VALUES (?, ?, 1)", (code, name))
