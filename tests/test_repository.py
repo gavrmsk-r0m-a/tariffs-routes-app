@@ -111,6 +111,35 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
         self.assertFalse(self.repo.current_tariff_exists_by_country_provider_prefix("Италия", "Miatel", "999"))
         self.assertIsInstance(phone_id, int)
 
+
+    def test_ensure_project_exists_creates_missing_project(self):
+        rowcount = self.repo.ensure_project_exists("Stage 23 Project")
+
+        row = self.conn.execute("SELECT name, is_active FROM projects WHERE name = ?", ("Stage 23 Project",)).fetchone()
+        self.assertEqual(rowcount, 1)
+        self.assertEqual((row["name"], row["is_active"]), ("Stage 23 Project", 1))
+
+    def test_ensure_project_exists_is_idempotent(self):
+        self.repo.ensure_project_exists("Stage 23 Project")
+        rowcount = self.repo.ensure_project_exists("Stage 23 Project")
+
+        self.assertEqual(rowcount, 0)
+        self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM projects WHERE name = ?", ("Stage 23 Project",)).fetchone()[0], 1)
+
+    def test_ensure_phone_number_type_exists_creates_missing_type(self):
+        rowcount = self.repo.ensure_phone_number_type_exists("Stage 23 Mobile")
+
+        row = self.conn.execute("SELECT name, is_active FROM phone_number_types WHERE name = ?", ("Stage 23 Mobile",)).fetchone()
+        self.assertEqual(rowcount, 1)
+        self.assertEqual((row["name"], row["is_active"]), ("Stage 23 Mobile", 1))
+
+    def test_ensure_phone_number_type_exists_is_idempotent(self):
+        self.repo.ensure_phone_number_type_exists("Stage 23 Mobile")
+        rowcount = self.repo.ensure_phone_number_type_exists("Stage 23 Mobile")
+
+        self.assertEqual(rowcount, 0)
+        self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM phone_number_types WHERE name = ?", ("Stage 23 Mobile",)).fetchone()[0], 1)
+
     def test_get_user_permissions_returns_existing_permissions(self):
         user_id = self.repo.create_user("permissions-user", "operator", "Permissions User")
         self.conn.execute(
