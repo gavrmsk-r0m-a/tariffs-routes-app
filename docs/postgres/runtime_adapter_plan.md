@@ -285,3 +285,12 @@ Checklist topics:
 - Routes, tariffs, currency recalculation, HLR flows, Telegram, and UI flows were not changed.
 - PostgreSQL runtime remains disabled; no PostgreSQL connection is created and no runtime psycopg dependency is added.
 - SQLite remains the operational backend.
+
+### Stage 22 importer write SQL audit status
+
+- Importer read-only cleanup from Stages 19–21 is complete; no direct read-only `SELECT` statements remain in `app/importer.py`.
+- Remaining direct importer SQL has been classified as write/import flow: entity updates, phone history insert, dictionary `INSERT OR IGNORE` paths, and section-clearing `DELETE` statements.
+- Stage 22 is documentation/read-only planning only and does not change runtime behavior.
+- Stage 23 should extract only 1–2 low-risk write candidates, preferably isolated dictionary insert-or-ignore helpers, while preserving commit/rollback behavior and import counters.
+- PostgreSQL runtime remains disabled; no PostgreSQL connection is created and no runtime `psycopg` dependency is added.
+- SQLite remains the operational backend.
