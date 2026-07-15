@@ -86,6 +86,23 @@ class RepositoryAdapterReadMethodsTest(unittest.TestCase):
         self.assertEqual(row["id"], self.country_id)
         self.assertEqual(row["code"], "AT")
 
+    def test_importer_phone_identity_read_method_uses_backend_placeholder(self):
+        phone_id = self.repo.create_phone_number(
+            country_id=self.country_id,
+            provider_id=self.provider_id,
+            number="43123456789",
+            assignment_type="gl",
+            status="used",
+            created_by=1,
+            currency_id=self.currency_id,
+            imported_created_by="Excel User",
+        )
+
+        row = self.repo.get_phone_number_import_identity_by_normalized_number("43123456789")
+
+        self.assertEqual(row, {"id": phone_id, "imported_created_by": "Excel User"})
+        self.assertIsNone(self.repo.get_phone_number_import_identity_by_normalized_number("43123456780"))
+
     def test_dynamic_in_clause_read_method_handles_values_and_empty_list(self):
         rows = self.repo.list_countries_by_ids([self.country_id])
         empty_rows = self.repo.list_countries_by_ids([])

@@ -275,3 +275,13 @@ Checklist topics:
 - Routes, tariffs, currency recalculation, HLR flows, Telegram, and UI flows were not changed.
 - PostgreSQL runtime remains disabled; no PostgreSQL connection is created and no runtime psycopg dependency is added.
 - SQLite remains the operational backend.
+
+### Stage 21 importer remaining read-only cleanup status
+
+- Continued the final small `app/importer.py` read-only cleanup batch after manually reviewing remaining direct `SELECT` usage.
+- Moved the phone-number import identity lookup (`id`, `imported_created_by`) behind a narrow Repository read method used by the existing phone update import path.
+- Import write behavior, CSV parsing, validation messages, preview behavior, and summary counters remain unchanged.
+- Remaining direct SQL in `app/importer.py` is classified as write/import flow (`UPDATE`, `INSERT`, `DELETE`, section clearing, and dictionary insert-or-ignore paths) for later stages.
+- Routes, tariffs, currency recalculation, HLR flows, Telegram, and UI flows were not changed.
+- PostgreSQL runtime remains disabled; no PostgreSQL connection is created and no runtime psycopg dependency is added.
+- SQLite remains the operational backend.

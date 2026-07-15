@@ -3532,6 +3532,14 @@ class Repository:
         ).fetchone()
         return row is not None
 
+    def get_phone_number_import_identity_by_normalized_number(self, normalized_number: str) -> dict | None:
+        p = placeholder(self.backend)
+        row = self.conn.execute(
+            f"SELECT id, imported_created_by FROM phone_numbers WHERE normalized_number = {p}",
+            (normalized_number,),
+        ).fetchone()
+        return row_to_dict(row)
+
     def calling_company_exists_by_server_country_external_id(self, server_name: str, country_name: str, external_id: str) -> bool:
         p = placeholder(self.backend)
         row = self.conn.execute(
