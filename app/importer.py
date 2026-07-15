@@ -460,7 +460,7 @@ def _apply_phone(repo: Repository, row: dict[str, str], user_id: int, *, exists:
         "imported_created_by": imported["imported_created_by"],
     }
     if exists:
-        existing = repo.conn.execute("SELECT id, imported_created_by FROM phone_numbers WHERE normalized_number = ?", (validate_phone_number(number),)).fetchone()
+        existing = repo.get_phone_number_import_identity_by_normalized_number(validate_phone_number(number))
         imported_created_by = existing["imported_created_by"] if existing else None
         should_update_imported_created_by = bool(data["has_imported_created_by"] and data["imported_created_by"])
         if should_update_imported_created_by:
