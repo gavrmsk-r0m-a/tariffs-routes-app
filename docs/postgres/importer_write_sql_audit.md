@@ -69,6 +69,12 @@ Found, but currently inactive from normal runtime because `apply_import()` raise
 
 Found. The create path already goes through `Repository.create_phone_number()`, but the existing update path still contains direct write SQL in importer.
 
+> **Stage 28 status:** the existing phone-number UPDATE and adjacent history INSERT
+> are under focused audit in
+> [`phone_number_import_update_audit.md`](phone_number_import_update_audit.md).
+> No extraction or runtime change is made in Stage 28; extraction is deferred to
+> Stage 29 only under the audited transaction, history, and counter guardrails.
+
 | File | Function / area | SQL type | Tables | What it does | Side effects | Transaction participation | Validation order impact | Preview/summary counter impact | Risk | Safe to extract? | Recommended future stage |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `app/importer.py` | `_apply_phone`, existing phone update | `UPDATE` | `phone_numbers` | Updates country, provider, project, assignment, status, active flag, costs, rates, currency, type, tariff label, comment, review flag, imported creator, deactivation timestamp, and audit fields for an existing normalized phone number. | Can set or clear `deactivated_at`; can preserve or update `imported_created_by`; affects operational phone state. | Commits after update and history insert. | Medium/high: validation/reference resolution happens before write; extraction must not reorder `validate_phone_number()`, `_phone_reference_ids()`, or `_phone_import_values()`. | No direct counter changes, but exceptions control skipped/error counters. | high | Yes eventually, but not as Stage 23; requires focused tests around status/deactivation/imported creator/review behavior. | Later phone-update extraction stage. |
