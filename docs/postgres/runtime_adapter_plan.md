@@ -321,3 +321,16 @@ Checklist topics:
 - Left company creation, `company_routing_settings`, and section clearing untouched.
 - PostgreSQL runtime remains disabled; no PostgreSQL connection is created and no runtime `psycopg` dependency is added.
 - SQLite remains the operational backend.
+
+### Stage 26 route import UPDATE focused audit status
+
+- Completed a focused audit of the existing-route import UPDATE, including fields,
+  validation order, counters, preview/summary behavior, history and relation side
+  effects, and commit/failure boundaries.
+- Stage 26 is documentation-only; no runtime code or import behavior changed.
+- Extraction is deferred to Stage 27 and is recommended only as a narrow
+  `UPDATE routes` Repository method that preserves the current absence of update
+  history and the immediate commit.
+- PostgreSQL runtime remains disabled; no PostgreSQL connection is created and no
+  runtime `psycopg` dependency is added.
+- SQLite remains the operational backend.
