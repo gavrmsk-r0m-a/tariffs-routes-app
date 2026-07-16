@@ -391,3 +391,13 @@ Checklist topics:
   state decisions remain in the importer, which was not changed.
 - PostgreSQL runtime remains disabled, no runtime psycopg dependency was added,
   and SQLite remains the operational backend.
+
+### Stage 32 destructive import section-clearing audit status
+
+- Destructive section-clearing `DELETE` paths are under the focused audit in
+  [`import_section_clearing_audit.md`](import_section_clearing_audit.md), including
+  delete order, restrictive FK/history risks, and commit/rollback behavior.
+- Stage 32 is documentation/planning only; importer, Repository, server, schemas,
+  and all other runtime behavior are unchanged.
+- PostgreSQL runtime remains disabled, no runtime `psycopg` dependency is added,
+  and SQLite remains the operational backend.
