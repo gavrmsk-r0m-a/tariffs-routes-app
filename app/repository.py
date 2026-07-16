@@ -3596,10 +3596,72 @@ class Repository:
     def get_phone_number_import_identity_by_normalized_number(self, normalized_number: str) -> dict | None:
         p = placeholder(self.backend)
         row = self.conn.execute(
-            f"SELECT id, imported_created_by FROM phone_numbers WHERE normalized_number = {p}",
+            f"SELECT id, imported_created_by, review_required, deactivated_at FROM phone_numbers WHERE normalized_number = {p}",
             (normalized_number,),
         ).fetchone()
         return row_to_dict(row)
+
+    def update_phone_number_import_fields_with_history(
+        self,
+        *,
+        normalized_number: str,
+        phone_number_id: int,
+        country_id: int,
+        provider_id: int | None,
+        project_label: str | None,
+        assignment_type: str | None,
+        status: str,
+        is_active: bool,
+        connection_cost: str | None,
+        monthly_fee: str | None,
+        outgoing_rate: str | None,
+        incoming_rate: str | None,
+        currency_id: int,
+        phone_type: str | None,
+        tariff_label: str | None,
+        comment: str | None,
+        review_required: bool,
+        imported_created_by: str | None,
+        deactivated_at: str | None,
+        updated_by: int,
+        history_changed_by: int,
+        history_new_value: str,
+        history_comment: str,
+        commit: bool = True,
+    ) -> int:
+        p = placeholder(self.backend)
+        cursor = self.conn.execute(
+            f"""
+            UPDATE phone_numbers
+            SET country_id = {p}, provider_id = {p}, project_label = {p}, assignment_type = {p},
+                status = {p}, is_active = {p}, connection_cost = {p}, monthly_fee = {p},
+                outgoing_rate = {p}, incoming_rate = {p}, currency_id = {p}, phone_type = {p},
+                tariff_label = {p}, comment = {p}, review_required = {p},
+                imported_created_by = {p}, deactivated_at = {p}, updated_by = {p},
+                updated_at = CURRENT_TIMESTAMP
+            WHERE normalized_number = {p}
+            """,
+            (
+                country_id, provider_id, project_label, assignment_type, status,
+                to_db_bool(is_active, self.backend), connection_cost, monthly_fee,
+                outgoing_rate, incoming_rate, currency_id, phone_type, tariff_label,
+                comment, to_db_bool(review_required, self.backend), imported_created_by,
+                deactivated_at, updated_by, normalized_number,
+            ),
+        )
+        rowcount = int(cursor.rowcount)
+        if rowcount:
+            self.conn.execute(
+                f"""
+                INSERT INTO phone_number_history(
+                    phone_number_id, action, changed_by, field_name, old_value, new_value, comment
+                ) VALUES ({p}, 'updated', {p}, 'import', NULL, {p}, {p})
+                """,
+                (phone_number_id, history_changed_by, history_new_value, history_comment),
+            )
+        if commit:
+            self.conn.commit()
+        return rowcount
 
     def calling_company_exists_by_server_country_external_id(self, server_name: str, country_name: str, external_id: str) -> bool:
         p = placeholder(self.backend)

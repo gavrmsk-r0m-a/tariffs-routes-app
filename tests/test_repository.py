@@ -42,6 +42,73 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
             is_active=is_active,
         )
 
+    def update_phone_import(self, phone_id, normalized_number="393331234567", **overrides):
+        values = {
+            "normalized_number": normalized_number, "phone_number_id": phone_id,
+            "country_id": self.country_id, "provider_id": self.provider_id,
+            "project_label": "Import Project", "assignment_type": "aon", "status": "unused",
+            "is_active": False, "connection_cost": "1.25", "monthly_fee": "2.50",
+            "outgoing_rate": "0.10", "incoming_rate": "0.20", "currency_id": self.currency_id,
+            "phone_type": "Mobile", "tariff_label": "Import Tariff", "comment": "Imported",
+            "review_required": True, "imported_created_by": "excel-user",
+            "deactivated_at": "2026-07-16 12:00:00", "updated_by": self.admin_id,
+            "history_changed_by": self.admin_id, "history_new_value": "detail",
+            "history_comment": "detail",
+        }
+        values.update(overrides)
+        return self.repo.update_phone_number_import_fields_with_history(**values)
+
+    def test_update_phone_number_import_fields_with_history_updates_existing_phone(self):
+        phone_id = self.create_phone()
+        self.update_phone_import(phone_id)
+        row = self.conn.execute("SELECT * FROM phone_numbers WHERE id = ?", (phone_id,)).fetchone()
+        self.assertEqual(
+            (row["country_id"], row["provider_id"], row["project_label"], row["assignment_type"],
+             row["status"], str(row["connection_cost"]), str(row["monthly_fee"]),
+             str(row["outgoing_rate"]), str(row["incoming_rate"]), row["currency_id"],
+             row["phone_type"], row["tariff_label"], row["comment"], row["imported_created_by"],
+             row["deactivated_at"], row["updated_by"]),
+            (self.country_id, self.provider_id, "Import Project", "aon", "unused", "1.25", "2.5",
+             "0.1", "0.2", self.currency_id, "Mobile", "Import Tariff", "Imported", "excel-user",
+             "2026-07-16 12:00:00", self.admin_id),
+        )
+
+    def test_update_phone_number_import_fields_with_history_returns_rowcount_1(self):
+        self.assertEqual(self.update_phone_import(self.create_phone()), 1)
+
+    def test_update_phone_number_import_fields_with_history_missing_phone_returns_0(self):
+        phone_id = self.create_phone()
+        before = self.conn.execute("SELECT COUNT(*) FROM phone_number_history").fetchone()[0]
+        self.assertEqual(self.update_phone_import(phone_id, normalized_number="399999999999"), 0)
+        self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM phone_number_history").fetchone()[0], before)
+
+    def test_update_phone_number_import_fields_with_history_stores_booleans_as_sqlite_ints(self):
+        phone_id = self.create_phone()
+        self.update_phone_import(phone_id, is_active=False, review_required=True)
+        row = self.conn.execute("SELECT is_active, review_required FROM phone_numbers WHERE id = ?", (phone_id,)).fetchone()
+        self.assertEqual((row["is_active"], row["review_required"]), (0, 1))
+        self.assertTrue(all(isinstance(row[key], int) for key in ("is_active", "review_required")))
+
+    def test_update_phone_number_import_fields_with_history_inserts_history_once(self):
+        phone_id = self.create_phone()
+        before = self.conn.execute("SELECT COUNT(*) FROM phone_number_history WHERE phone_number_id = ?", (phone_id,)).fetchone()[0]
+        self.update_phone_import(phone_id)
+        after = self.conn.execute("SELECT COUNT(*) FROM phone_number_history WHERE phone_number_id = ?", (phone_id,)).fetchone()[0]
+        self.assertEqual(after, before + 1)
+
+    def test_update_phone_number_import_fields_with_history_history_payload_preserved(self):
+        phone_id = self.create_phone()
+        self.update_phone_import(phone_id, history_new_value="new detail", history_comment="comment detail")
+        row = self.conn.execute("SELECT action, field_name, changed_by, old_value, new_value, comment FROM phone_number_history WHERE phone_number_id = ? ORDER BY id DESC", (phone_id,)).fetchone()
+        self.assertEqual(tuple(row), ("updated", "import", self.admin_id, None, "new detail", "comment detail"))
+
+    def test_update_phone_number_import_fields_with_history_commit_false(self):
+        phone_id = self.create_phone()
+        self.update_phone_import(phone_id, commit=False)
+        self.assertTrue(self.conn.in_transaction)
+        self.conn.rollback()
+        self.assertEqual(self.conn.execute("SELECT status FROM phone_numbers WHERE id = ?", (phone_id,)).fetchone()["status"], "used")
+
 
     def _create_basic_routing_event(self, comment="initial"):
         return self.repo.create_routing_event(

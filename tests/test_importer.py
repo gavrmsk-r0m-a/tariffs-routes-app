@@ -220,6 +220,49 @@ class ImporterTest(unittest.TestCase):
         self.assertEqual(preview.rows[0]["message"], "Строка обновит существующий номер. ('393331239020',)")
         self.assertEqual(self.conn.execute("SELECT comment FROM phone_numbers WHERE number = '393331239020'").fetchone()["comment"], "Updated")
 
+    def test_existing_phone_import_updates_same_fields_as_before_and_writes_history_once(self):
+        create_csv = "country,provider,project,number,assignment_type,Итоговый статус\nИталия,Miatel,Alpha,393331239021,gl,Используется\n"
+        apply_import(self.conn, "phone_numbers", create_csv, user_id=self.admin_id)
+        before = self.conn.execute("SELECT COUNT(*) FROM phone_number_history WHERE action = 'updated'").fetchone()[0]
+        update_csv = "number;country;provider;project;assignment_type;Итоговый статус;connection_fee;monthly_fee;outgoing_rate;incoming_rate;currency;tariff_label;comment\n393331239021;Италия;Miatel;Alpha;ГЛ;Используется;1.25;2.50;0.10;0.20;EUR;T29;Updated\n"
+        result = apply_import(self.conn, "phone_numbers", update_csv, user_id=self.admin_id)
+        row = self.conn.execute("SELECT * FROM phone_numbers WHERE number = '393331239021'").fetchone()
+        self.assertEqual((row["status"], str(row["connection_cost"]), str(row["monthly_fee"]), str(row["outgoing_rate"]), str(row["incoming_rate"]), row["tariff_label"], row["comment"]), ("used", "1.25", "2.5", "0.1", "0.2", "T29", "Updated"))
+        self.assertEqual((result.updated_rows, result.created_rows, result.skipped_rows), (1, 0, 0))
+        self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM phone_number_history WHERE action = 'updated'").fetchone()[0], before + 1)
+
+    def test_existing_phone_import_review_required_sticky_behavior(self):
+        csv_text = "country,provider,project,number,assignment_type,Итоговый статус\nИталия,Miatel,Alpha,393331239022,gl,Используется\n"
+        apply_import(self.conn, "phone_numbers", csv_text, user_id=self.admin_id)
+        self.conn.execute("UPDATE phone_numbers SET review_required = 1 WHERE number = '393331239022'")
+        self.conn.commit()
+        apply_import(self.conn, "phone_numbers", csv_text, user_id=self.admin_id)
+        self.assertEqual(self.conn.execute("SELECT review_required FROM phone_numbers WHERE number = '393331239022'").fetchone()[0], 1)
+
+    def test_existing_phone_import_active_to_inactive_sets_deactivated_at(self):
+        active = "country,provider,project,number,assignment_type,Итоговый статус\nИталия,Miatel,Alpha,393331239023,gl,Используется\n"
+        inactive = active.replace("Используется", "Отключен")
+        apply_import(self.conn, "phone_numbers", active, user_id=self.admin_id)
+        apply_import(self.conn, "phone_numbers", inactive, user_id=self.admin_id)
+        row = self.conn.execute("SELECT is_active, deactivated_at FROM phone_numbers WHERE number = '393331239023'").fetchone()
+        self.assertEqual(row["is_active"], 0)
+        self.assertIsNotNone(row["deactivated_at"])
+
+    def test_existing_phone_import_inactive_to_inactive_preserves_deactivated_at(self):
+        inactive = "country,provider,project,number,assignment_type,Итоговый статус\nИталия,Miatel,Alpha,393331239024,gl,Отключен\n"
+        apply_import(self.conn, "phone_numbers", inactive, user_id=self.admin_id)
+        self.conn.execute("UPDATE phone_numbers SET deactivated_at = '2020-01-02 03:04:05' WHERE number = '393331239024'")
+        self.conn.commit()
+        apply_import(self.conn, "phone_numbers", inactive, user_id=self.admin_id)
+        self.assertEqual(self.conn.execute("SELECT deactivated_at FROM phone_numbers WHERE number = '393331239024'").fetchone()[0], "2020-01-02 03:04:05")
+
+    def test_existing_phone_import_inactive_to_active_clears_deactivated_at(self):
+        inactive = "country,provider,project,number,assignment_type,Итоговый статус\nИталия,Miatel,Alpha,393331239025,gl,Отключен\n"
+        apply_import(self.conn, "phone_numbers", inactive, user_id=self.admin_id)
+        apply_import(self.conn, "phone_numbers", inactive.replace("Отключен", "Используется"), user_id=self.admin_id)
+        row = self.conn.execute("SELECT is_active, deactivated_at FROM phone_numbers WHERE number = '393331239025'").fetchone()
+        self.assertEqual((row["is_active"], row["deactivated_at"]), (1, None))
+
     def test_importer_exists_cleanup_preserves_calling_company_update_preview_and_summary(self):
         csv_text = "server,country,company_name,company_id_external,has_autorotation,is_active,comment\nEU1,Италия,Company One,cc-1,no,yes,Initial\n"
         apply_import(self.conn, "calling_companies", csv_text, user_id=self.admin_id)

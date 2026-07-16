@@ -208,3 +208,10 @@ Do not choose for Stage 23:
 - PostgreSQL runtime backend remains disabled.
 - No runtime `psycopg` import or dependency is added.
 - SQLite remains the working database.
+
+## Stage 29 update
+
+- The direct existing-phone `UPDATE phone_numbers` and adjacent `INSERT phone_number_history` are now one Repository-backed write pair via `update_phone_number_import_fields_with_history()`.
+- Importer counters, preview, validation, identity lookup, state decisions, and history text remain importer responsibilities.
+- The phone create path and destructive section-clearing DELETE statements stay classified for later work; route-phone tables were not changed.
+- PostgreSQL runtime is still disabled and SQLite remains operational.
