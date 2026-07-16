@@ -79,6 +79,12 @@ Found. The create path already goes through `Repository.create_phone_number()`, 
 
 Found. The create path is already Repository-backed; the existing update path still has direct SQL.
 
+> **Stage 26 status:** the existing-route UPDATE is under focused audit in
+> [`route_import_update_audit.md`](route_import_update_audit.md). Extraction has not
+> been performed. The audit recommends a narrow Stage 27 extraction only if the
+> current immediate commit, no-history behavior, counters, and relation behavior are
+> preserved.
+
 | File | Function / area | SQL type | Tables | What it does | Side effects | Transaction participation | Validation order impact | Preview/summary counter impact | Risk | Safe to extract? | Recommended future stage |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `app/importer.py` | `_apply_route`, existing route update | `UPDATE` | `routes` | Updates provider, provider prefix, project label, CLI source type/label, comment, updated_by, and updated_at for an existing `(country_id, name)` route. | Changes active routing metadata; unlike create path, no route history/change_log is written here today. | Commits immediately after update. | Medium: country/provider/prefix are resolved before update and must stay in the same order. | No direct counter changes, but exceptions affect skipped counter. | medium | Yes eventually, but not Stage 23 by instruction. Must preserve no-history side effect. | Later route-update extraction stage. |
