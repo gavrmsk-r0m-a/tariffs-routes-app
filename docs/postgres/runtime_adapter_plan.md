@@ -367,3 +367,14 @@ Checklist topics:
 - The method executes both statements in order and performs their single immediate commit only after both statements; the importer's final commit is unchanged.
 - Identity lookup, creator preservation, sticky review and deactivation decisions, history detail construction, validation, preview, and counters remain in the importer. The phone create path is untouched.
 - PostgreSQL runtime remains disabled, no runtime psycopg dependency was added, and SQLite remains the operational backend.
+
+### Stage 30 phone-number import CREATE focused audit status
+
+- Completed the focused audit of phone-number import CREATE, including the
+  `phone_numbers`, `phone_number_history`, and `change_log` writes, fields,
+  validation, counters, preview/summary behavior, and transaction boundaries.
+- Stage 30 is documentation-only; no runtime code or import behavior changed.
+- Extraction is deferred to Stage 31 and is recommended only if the three-write
+  create operation remains together with its existing commit behavior.
+- PostgreSQL runtime remains disabled, no runtime psycopg dependency is added,
+  and SQLite remains the operational backend.

@@ -69,6 +69,12 @@ Found, but currently inactive from normal runtime because `apply_import()` raise
 
 Found. The create path already goes through `Repository.create_phone_number()`, but the existing update path still contains direct write SQL in importer.
 
+> **Stage 30 status:** phone-number CREATE and its mandatory
+> `phone_number_history`/`change_log` side effects are under focused audit in
+> [`phone_number_import_create_audit.md`](phone_number_import_create_audit.md).
+> No create extraction is performed in Stage 30; a combined extraction is
+> deferred to Stage 31 only if the audited behavior can be preserved.
+
 > **Stage 28 status:** the existing phone-number UPDATE and adjacent history INSERT
 > are under focused audit in
 > [`phone_number_import_update_audit.md`](phone_number_import_update_audit.md).
