@@ -57,6 +57,12 @@ Assessment: Stage 24 completed the remaining low-risk dictionary insert-or-ignor
 
 Found, but currently inactive from normal runtime because `apply_import()` raises `BusinessRuleError` before `_clear_section()` when `mode == "replace_section"`. The helper still contains direct `DELETE` SQL and should be treated as high-risk because enabling or moving it incorrectly could destroy section data.
 
+> **Stage 32 status:** all destructive section-clearing statements, ordering,
+> restrictive FK/history risks, and transaction boundaries are covered by the
+> focused [`import_section_clearing_audit.md`](import_section_clearing_audit.md).
+> Stage 32 makes no runtime change and recommends keeping replacement disabled
+> rather than extracting an unsafe delete-only helper in Stage 33.
+
 | File | Function / area | SQL type | Tables | What it does | Side effects | Transaction participation | Validation order impact | Preview/summary counter impact | Risk | Safe to extract? | Recommended future stage |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `app/importer.py` | `_clear_section`, `entity_type == "routes"` | section clearing / `DELETE` batch | `route_phone_numbers`, `route_phone_number_history`, `route_history`, `server_route_priorities`, `routes` | Clears route data and related route link/history/priority rows. | Destructive; intentionally does not clear business logs/change_log. | No local commit; relies on caller transaction/final commit. | Potentially high if replacement mode is ever re-enabled. | Could affect created/updated counts if replacement mode is re-enabled. | high | Not for Stage 23. Extract only after replacement-mode policy is decided. | Later dedicated section-clearing stage. |
