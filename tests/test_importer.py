@@ -217,8 +217,9 @@ class ImporterTest(unittest.TestCase):
         self.assertEqual((preview.duplicate_rows, preview.new_rows, preview.error_rows), (1, 0, 0))
         self.assertEqual((result.created_rows, result.updated_rows, result.skipped_rows), (0, 1, 0))
         self.assertEqual(preview.rows[0]["status"], "duplicate_in_db")
-        row = self.conn.execute("SELECT company_name, has_autorotation, comment FROM calling_companies WHERE company_id_external = 'cc-1'").fetchone()
-        self.assertEqual((row["company_name"], row["has_autorotation"], row["comment"]), ("Company One Updated", 1, "Updated"))
+        rows = self.conn.execute("SELECT company_name, has_autorotation, comment, is_active FROM calling_companies WHERE company_id_external = 'cc-1'").fetchall()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual((rows[0]["company_name"], rows[0]["has_autorotation"], rows[0]["comment"], rows[0]["is_active"]), ("Company One Updated", 1, "Updated", 1))
 
     def test_importer_exists_cleanup_preserves_tariff_update_preview_and_summary(self):
         csv_text = "country,provider,prefix,currency,price,rate,rate_date,comment\nИталия,Miatel,,EUR,0.10,1,2026-07-14,Initial\n"

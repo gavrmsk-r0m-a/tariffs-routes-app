@@ -505,15 +505,16 @@ def _apply_company(repo: Repository, row: dict[str, str], user_id: int, *, exist
     has_auto = (_first(row, "has_autorotation", "авторотация") or "").lower() in {"1", "yes", "true", "да"}
     is_active = (_first(row, "is_active", "активна") or "да").lower() not in {"0", "no", "false", "нет"}
     if exists:
-        repo.conn.execute(
-            """
-            UPDATE calling_companies SET company_name = ?, has_autorotation = ?, comment = ?, is_active = ?,
-                updated_by = ?, updated_at = CURRENT_TIMESTAMP
-            WHERE server_id = ? AND country_id = ? AND company_id_external = ?
-            """,
-            (_first(row, "company_name", "название компании"), 1 if has_auto else 0, _first(row, "comment", "комментарий") or None, 1 if is_active else 0, user_id, server_id, country_id, external_id),
+        repo.update_calling_company_import_fields(
+            server_id=server_id,
+            country_id=country_id,
+            company_id_external=external_id,
+            company_name=_first(row, "company_name", "название компании"),
+            has_autorotation=has_auto,
+            comment=_first(row, "comment", "комментарий") or None,
+            is_active=is_active,
+            updated_by=user_id,
         )
-        repo.conn.commit()
     else:
         repo.create_calling_company(server_id=server_id, country_id=country_id, company_name=_first(row, "company_name", "название компании"), company_id_external=external_id, has_autorotation=has_auto, created_by=user_id, comment=_first(row, "comment", "комментарий") or None, is_active=is_active)
 

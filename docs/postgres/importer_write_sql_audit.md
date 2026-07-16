@@ -95,11 +95,12 @@ Found. The importer directly closes current tariff rows before creating a new ta
 
 ### F. Calling company import writes
 
-Found. Existing-company update still has direct SQL. Create path is Repository-backed.
+Stage 25 extracted the existing-company update to the narrow
+`Repository.update_calling_company_import_fields()` method. The create path remains Repository-backed and unchanged.
 
 | File | Function / area | SQL type | Tables | What it does | Side effects | Transaction participation | Validation order impact | Preview/summary counter impact | Risk | Safe to extract? | Recommended future stage |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `app/importer.py` | `_apply_company`, existing company update | `UPDATE` | `calling_companies` | Updates company name, autorotation flag, comment, active flag, updated_by, and updated_at by server/country/external id. | Changes operational company metadata; no direct company history/change_log is written for this update in importer today. | Commits immediately after update. | Medium: server/country resolution and bool parsing must remain before write. | No direct counter changes, but exceptions affect skipped counter. | medium | Yes eventually; simpler than route/phone/tariff updates but still not preferred Stage 23 if dictionary helpers remain. | Later company-update extraction stage, possible Stage 24 candidate. |
+| `app/repository.py` | `update_calling_company_import_fields`, existing company update | `UPDATE` | `calling_companies` | Updates company name, autorotation flag, comment, active flag, updated_by, and updated_at by server/country/external id. | Changes operational company metadata; no company history/change_log was added. | Default `commit=True` preserves the importer's immediate commit. | Preserved: importer still resolves server/country and parses booleans before the call. | Preserved: method does not change counters. | medium | Extracted in Stage 25. | Keep isolated; PostgreSQL runtime remains disabled. |
 | `app/importer.py` | `_apply_company`, new company create | batch write through Repository | `calling_companies`, `change_log` | Calls `Repository.create_calling_company()`. | Creates company and change-log row through Repository. | Repository helper commits internally. | Existing Repository path. | No direct counter changes inside helper. | medium | Already repository-backed. | No Stage 23 work. |
 | `app/importer.py` | `_apply_company`, server create if missing | batch write through Repository | `servers` | Calls `Repository.create_server()` if the server does not exist. | May create a server dictionary row. | Repository helper commits internally. | Existing Repository path. | No direct counter changes inside helper. | low | Already repository-backed. | No Stage 23 work. |
 

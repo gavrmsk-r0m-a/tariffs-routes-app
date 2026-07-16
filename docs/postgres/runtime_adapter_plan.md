@@ -312,3 +312,12 @@ Checklist topics:
 - Import behavior is preserved: CSV parsing, validation messages, preview behavior, summary counters, fallback `code` resolution, and immediate commit semantics remain unchanged.
 - PostgreSQL runtime remains disabled; no PostgreSQL connection is created and no runtime `psycopg` dependency is added.
 - SQLite remains the operational backend.
+
+### Stage 25 existing calling-company update extraction status
+
+- Started the first medium-risk importer write extraction.
+- Moved only the existing `calling_companies` update into the narrow `Repository.update_calling_company_import_fields()` method.
+- Preserved import branching, counters, validation, preview/summary behavior, and the immediate commit.
+- Left company creation, `company_routing_settings`, and section clearing untouched.
+- PostgreSQL runtime remains disabled; no PostgreSQL connection is created and no runtime `psycopg` dependency is added.
+- SQLite remains the operational backend.
