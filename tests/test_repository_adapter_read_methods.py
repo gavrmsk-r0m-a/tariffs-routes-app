@@ -100,7 +100,15 @@ class RepositoryAdapterReadMethodsTest(unittest.TestCase):
 
         row = self.repo.get_phone_number_import_identity_by_normalized_number("43123456789")
 
-        self.assertEqual(row, {"id": phone_id, "imported_created_by": "Excel User"})
+        self.assertEqual(
+            row,
+            {
+                "id": phone_id,
+                "imported_created_by": "Excel User",
+                "review_required": 0,
+                "deactivated_at": None,
+            },
+        )
         self.assertIsNone(self.repo.get_phone_number_import_identity_by_normalized_number("43123456780"))
 
     def test_dynamic_in_clause_read_method_handles_values_and_empty_list(self):

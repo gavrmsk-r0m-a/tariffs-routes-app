@@ -320,3 +320,11 @@ only the two direct statements plus their one commit in the existing update
 branch. Keep identity lookup and `details` construction in importer, add focused
 Repository/adapter/importer tests, and leave phone create, clearing, routes,
 tariffs, UI, schema, PostgreSQL enablement, and dependencies untouched.
+
+## Stage 29 completion
+
+Stage 29 completed the selected paired extraction as `Repository.update_phone_number_import_fields_with_history()`. The method updates by `normalized_number` and receives the separately looked-up phone ID for its one history row. It writes country/provider, project, assignment, status, active state, connection/monthly/outgoing/incoming rates, currency, phone type, tariff, comment, resolved review flag, resolved imported creator, resolved deactivation timestamp, updater, and database-managed update timestamp.
+
+The same method then writes exactly one successful-update history record with `action='updated'`, `field_name='import'`, NULL old value, the applying user, and the importer-built detail payload as new value and comment. Its default commit occurs once after the pair; `commit=False` leaves both statements pending. A missing update key returns zero and does not create a spurious history record.
+
+Parsing, validation messages, identity lookup, imported-creator preservation, sticky-review resolution, active/deactivated transition resolution, history text, exception accounting, counters, preview, and summary remain intentionally in the importer. Phone creation, route-phone relations, section clearing, other entity writes, and schemas were not moved. PostgreSQL runtime remains disabled and SQLite remains the operational database.

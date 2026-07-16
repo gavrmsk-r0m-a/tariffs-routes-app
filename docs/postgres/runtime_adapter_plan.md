@@ -360,3 +360,10 @@ Checklist topics:
 - PostgreSQL runtime remains disabled; no PostgreSQL connection is created and no
   runtime `psycopg` dependency is added.
 - SQLite remains the operational backend.
+
+### Stage 29 phone-number import UPDATE and history extraction status
+
+- Extracted the existing-number `UPDATE phone_numbers` and its required `INSERT phone_number_history` together into `Repository.update_phone_number_import_fields_with_history()`.
+- The method executes both statements in order and performs their single immediate commit only after both statements; the importer's final commit is unchanged.
+- Identity lookup, creator preservation, sticky review and deactivation decisions, history detail construction, validation, preview, and counters remain in the importer. The phone create path is untouched.
+- PostgreSQL runtime remains disabled, no runtime psycopg dependency was added, and SQLite remains the operational backend.

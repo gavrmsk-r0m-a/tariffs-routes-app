@@ -4,6 +4,7 @@ import csv
 import io
 import sqlite3
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Iterable
 
@@ -436,7 +437,6 @@ def _apply_phone(repo: Repository, row: dict[str, str], user_id: int, *, exists:
     review_required = bool(refs["empty_provider"]) or bool(imported["empty_project"]) or bool(imported["empty_assignment"]) or bool(imported["status_review_required"])
     currency_id = int(refs["currency_id"])
     is_active = bool(imported["is_active"])
-    deactivated_at_expr = "CURRENT_TIMESTAMP" if not is_active else "NULL"
     data = {
         "country_id": country_id,
         "provider_id": provider_id,
@@ -463,20 +463,13 @@ def _apply_phone(repo: Repository, row: dict[str, str], user_id: int, *, exists:
         should_update_imported_created_by = bool(data["has_imported_created_by"] and data["imported_created_by"])
         if should_update_imported_created_by:
             imported_created_by = data["imported_created_by"]
-        repo.conn.execute(
-            f"""
-            UPDATE phone_numbers SET country_id = ?, provider_id = ?, project_label = ?, assignment_type = ?,
-                status = ?, is_active = ?, connection_cost = ?, monthly_fee = ?, outgoing_rate = ?, incoming_rate = ?, currency_id = ?, phone_type = ?, tariff_label = ?,
-                comment = ?, review_required = CASE WHEN ? = 1 THEN 1 ELSE review_required END, imported_created_by = ?, deactivated_at = CASE WHEN ? = 0 AND deactivated_at IS NULL THEN {deactivated_at_expr} WHEN ? = 1 THEN NULL ELSE deactivated_at END,
-                updated_by = ?, updated_at = CURRENT_TIMESTAMP
-            WHERE normalized_number = ?
-            """,
-            (
-                data["country_id"], data["provider_id"], data["project_label"], data["assignment_type"],
-                data["status"], data["is_active"], data["connection_cost"], data["monthly_fee"], data["outgoing_rate"], data["incoming_rate"], data["currency_id"], data["phone_type"], data["tariff_label"],
-                data["comment"], data["review_required"], imported_created_by, data["is_active"], data["is_active"], user_id, validate_phone_number(number),
-            ),
-        )
+        review_required = bool(data["review_required"] or (existing and existing["review_required"]))
+        if is_active:
+            deactivated_at = None
+        else:
+            deactivated_at = existing["deactivated_at"] if existing else None
+            if deactivated_at is None:
+                deactivated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
         details = "Номер импортирован/обновлён"
         if should_update_imported_created_by:
             old_label = existing["imported_created_by"] if existing and existing["imported_created_by"] else "—"
@@ -484,11 +477,18 @@ def _apply_phone(repo: Repository, row: dict[str, str], user_id: int, *, exists:
                 details += f". Создал в Excel: было {old_label}, стало {imported_created_by}"
             else:
                 details += f". Создал в Excel: {imported_created_by}"
-        repo.conn.execute(
-            "INSERT INTO phone_number_history(phone_number_id, action, changed_by, field_name, new_value, comment) VALUES (?, 'updated', ?, 'import', ?, ?)",
-            (existing["id"], user_id, details, details),
+        repo.update_phone_number_import_fields_with_history(
+            normalized_number=validate_phone_number(number), phone_number_id=existing["id"],
+            country_id=data["country_id"], provider_id=data["provider_id"],
+            project_label=data["project_label"], assignment_type=data["assignment_type"],
+            status=data["status"], is_active=is_active, connection_cost=data["connection_cost"],
+            monthly_fee=data["monthly_fee"], outgoing_rate=data["outgoing_rate"],
+            incoming_rate=data["incoming_rate"], currency_id=data["currency_id"],
+            phone_type=data["phone_type"], tariff_label=data["tariff_label"], comment=data["comment"],
+            review_required=review_required, imported_created_by=imported_created_by,
+            deactivated_at=deactivated_at, updated_by=user_id, history_changed_by=user_id,
+            history_new_value=details, history_comment=details,
         )
-        repo.conn.commit()
     else:
         create_data = {k: v for k, v in data.items() if k not in {"has_imported_created_by"}}
         repo.create_phone_number(number=number, created_by=user_id, deactivated_at=(data["created_at"] if not is_active else None), **create_data)
