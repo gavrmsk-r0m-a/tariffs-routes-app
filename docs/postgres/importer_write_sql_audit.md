@@ -77,17 +77,21 @@ Found. The create path already goes through `Repository.create_phone_number()`, 
 
 ### D. Route import writes
 
-Found. The create path is already Repository-backed; the existing update path still has direct SQL.
+Found. The create path is Repository-backed, and Stage 27 moved the existing update
+path behind a narrow Repository method.
 
-> **Stage 26 status:** the existing-route UPDATE is under focused audit in
-> [`route_import_update_audit.md`](route_import_update_audit.md). Extraction has not
-> been performed. The audit recommends a narrow Stage 27 extraction only if the
-> current immediate commit, no-history behavior, counters, and relation behavior are
-> preserved.
+> **Stage 27 status:** the existing-route UPDATE audited in Stage 26 is now extracted
+> to `Repository.update_route_import_fields()`. Only the `UPDATE routes` statement
+> moved; route create/history and relation writes remain classified for later work.
+>
+> **Stage 26 status:** the existing-route UPDATE was placed under focused audit in
+> [`route_import_update_audit.md`](route_import_update_audit.md). Its recommended
+> narrow extraction was completed in Stage 27 with the immediate commit, no-history
+> behavior, counters, and relation behavior preserved.
 
 | File | Function / area | SQL type | Tables | What it does | Side effects | Transaction participation | Validation order impact | Preview/summary counter impact | Risk | Safe to extract? | Recommended future stage |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `app/importer.py` | `_apply_route`, existing route update | `UPDATE` | `routes` | Updates provider, provider prefix, project label, CLI source type/label, comment, updated_by, and updated_at for an existing `(country_id, name)` route. | Changes active routing metadata; unlike create path, no route history/change_log is written here today. | Commits immediately after update. | Medium: country/provider/prefix are resolved before update and must stay in the same order. | No direct counter changes, but exceptions affect skipped counter. | medium | Yes eventually, but not Stage 23 by instruction. Must preserve no-history side effect. | Later route-update extraction stage. |
+| `app/repository.py` | `update_route_import_fields`, existing route update | `UPDATE` | `routes` | Updates provider, provider prefix, project label, CLI source type/label, comment, updated_by, and updated_at for an existing `(country_id, name)` route. | Changes active routing metadata; unlike create path, no route history/change_log is written here today. | Default `commit=True` preserves the immediate commit. | Preserved: importer resolves country/provider/prefix before calling the method. | Preserved: the method does not change counters. | medium | Extracted in Stage 27. | Keep isolated; create/history/relations remain later classifications. |
 | `app/importer.py` | `_apply_route`, new route create | batch write through Repository | `routes`, `route_history`, `change_log` | Calls `Repository.create_route()` for new routes. | Creates route row plus route history and change log through Repository. | Repository helper commits internally. | Existing Repository path. | No direct counter changes inside helper. | medium | Already repository-backed. | No Stage 23 work. |
 
 ### E. Tariff import writes

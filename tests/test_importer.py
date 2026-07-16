@@ -182,7 +182,9 @@ class ImporterTest(unittest.TestCase):
         country_id = self.repo.create_country("Испания")
         provider_id = self.conn.execute("SELECT id FROM providers WHERE name = ?", ("Miatel",)).fetchone()["id"]
         self.repo.create_route(country_id=country_id, provider_id=provider_id, name="Spain Route", cli_source_type="other", cli_source_label="OTHER", created_by=self.admin_id)
-        csv_text = "country,name,provider,comment\nИспания,Spain Route,Miatel,Updated comment\n"
+        replacement_provider_id = self.repo.create_provider("Spain Import Tel")
+        csv_text = "country,name,provider,prefix,project_label,cli_source_type,cli_source_label,comment\nИспания,Spain Route,Spain Import Tel,349,Stage 27,rnd,Imported RND,Updated comment\n"
+        history_count = self.conn.execute("SELECT COUNT(*) FROM route_history").fetchone()[0]
 
         preview = preview_import(self.conn, "routes", csv_text)
         result = apply_import(self.conn, "routes", csv_text, user_id=self.admin_id)
@@ -191,7 +193,19 @@ class ImporterTest(unittest.TestCase):
         self.assertEqual((result.created_rows, result.updated_rows, result.skipped_rows), (0, 1, 0))
         self.assertEqual(preview.rows[0]["status"], "duplicate_in_db")
         self.assertEqual(preview.rows[0]["action"], "update")
-        self.assertEqual(self.conn.execute("SELECT comment FROM routes WHERE name = 'Spain Route'").fetchone()["comment"], "Updated comment")
+        route = self.conn.execute("SELECT * FROM routes WHERE name = 'Spain Route'").fetchone()
+        prefix_id = self.conn.execute("SELECT id FROM provider_prefixes WHERE provider_id = ? AND prefix = '349'", (replacement_provider_id,)).fetchone()["id"]
+        self.assertEqual((route["provider_id"], route["provider_prefix_id"], route["project_label"], route["cli_source_type"], route["cli_source_label"], route["comment"], route["updated_by"]), (replacement_provider_id, prefix_id, "Stage 27", "rnd", "Imported RND", "Updated comment", self.admin_id))
+        self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM route_history").fetchone()[0], history_count)
+
+    def test_new_route_import_create_path_still_creates_history(self):
+        csv_text = "country,name,provider,comment\nИталия,Stage 27 New Route,Miatel,Created comment\n"
+
+        result = apply_import(self.conn, "routes", csv_text, user_id=self.admin_id)
+
+        route_id = self.conn.execute("SELECT id FROM routes WHERE name = 'Stage 27 New Route'").fetchone()["id"]
+        self.assertEqual((result.created_rows, result.updated_rows, result.skipped_rows), (1, 0, 0))
+        self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM route_history WHERE route_id = ?", (route_id,)).fetchone()[0], 1)
 
     def test_importer_exists_cleanup_preserves_phone_update_preview_and_summary(self):
         create_csv = "country,provider,project,number,assignment_type,Итоговый статус,comment\nИталия,Miatel,Alpha,393331239020,gl,Используется,Initial\n"

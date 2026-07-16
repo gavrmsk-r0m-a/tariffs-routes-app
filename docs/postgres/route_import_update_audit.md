@@ -264,3 +264,19 @@ existing-route UPDATE/commit pair in `_apply_route()` with that call. Add the fo
 Repository and importer coverage above. Do not touch route creation, general route
 editing/history, relations, priorities, overflow, section clearing, counters,
 preview/summary formatting, PostgreSQL runtime, or dependencies.
+
+## Stage 27 result
+
+Stage 27 completed the recommended extraction. The existing-route branch now calls
+`Repository.update_route_import_fields()`, which updates `provider_id`,
+`provider_prefix_id`, `project_label`, `cli_source_type`, `cli_source_label`,
+`comment`, `updated_by`, and the database-generated `updated_at`, using
+`(country_id, name)` as its predicate. The method returns the UPDATE rowcount, uses
+the backend placeholder helper, performs no extra SELECT, and retains the previous
+immediate commit through its default `commit=True`.
+
+No side effects were added or moved: route creation, `route_history`, `change_log`,
+`route_phone_numbers`, `server_route_priorities`, overflow/GSM behavior, AON/RND
+pool fields, counters, preview/summary formatting, and validation remain outside
+the method and unchanged. PostgreSQL runtime is still disabled and SQLite remains
+operational.
