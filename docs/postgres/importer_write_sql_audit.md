@@ -49,9 +49,9 @@ Found. These are the lowest-risk direct write SQL statements in `app/importer.py
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `app/importer.py` | `_apply_dictionary`, `kind == "project"` | Repository insert-ignore helper | `projects` | Adds an active project dictionary value if it does not already exist. | May create one dictionary row; no history/change-log write in current path. | Commits immediately through `Repository.ensure_project_exists()`, matching the previous immediate commit. | No, after `_business_key()` validates `type` and `name`. | No direct counter changes; `apply_import()` increments created/updated after helper returns. | low | Extracted in Stage 23. | Stage 23 extracted. |
 | `app/importer.py` | `_apply_dictionary`, `kind == "phone_type"` | Repository insert-ignore helper | `phone_number_types` | Adds an active phone-number type dictionary value if missing. | May create one dictionary row; no history/change-log write in current path. | Commits immediately through `Repository.ensure_phone_number_type_exists()`, matching the previous immediate commit. | No, after `_business_key()` validates `type` and `name`. | No direct counter changes. | low | Extracted in Stage 23. | Stage 23 extracted. |
-| `app/importer.py` | `_apply_dictionary`, `kind == "phone_assignment"` | `INSERT OR IGNORE` | `phone_assignment_types` | Adds an active phone assignment type by `code` and `name` if missing. | May create one dictionary row; no history/change-log write in current path. | Commits immediately after the statement. | Low sensitivity: `code` defaults to `name`; extraction must not change that fallback. | No direct counter changes. | low | Yes, if method accepts already-resolved `code` and `name`, preserves fallback in importer or exactly mirrors it. | Stage 23 candidate. |
+| `app/importer.py` | `_apply_dictionary`, `kind == "phone_assignment"` | Repository insert-ignore helper | `phone_assignment_types` | Adds an active phone assignment type by `code` and `name` if missing. | May create one dictionary row; no history/change-log write in current path. | Commits immediately through `Repository.ensure_phone_assignment_type_exists()`, matching the previous immediate commit. | No, the importer still resolves `code = _first(..., "code", "код") or name` before calling the helper. | No direct counter changes. | low | Extracted in Stage 24. | Stage 24 extracted. |
 
-Assessment: Stage 23 extracted the `projects` and `phone_number_types` paths into `Repository.ensure_project_exists()` and `Repository.ensure_phone_number_type_exists()` with immediate commit behavior preserved. `phone_assignment_types` remains a low-risk candidate for a later small batch because its `code` fallback should stay isolated and separately tested.
+Assessment: Stage 24 completed the remaining low-risk dictionary insert-or-ignore candidate. `projects`, `phone_number_types`, and `phone_assignment_types` now use narrow Repository helpers with immediate commit behavior preserved; the phone assignment `code` fallback stays in the importer and is covered by focused tests.
 
 ### B. Section clearing
 
@@ -130,12 +130,9 @@ Recommended Stage 23 scope: extract dictionary `INSERT OR IGNORE` helpers only.
 
 Preferred 1–2 candidates:
 
-1. `projects` dictionary insert-or-ignore from `_apply_dictionary(kind == "project")`.
-2. `phone_number_types` dictionary insert-or-ignore from `_apply_dictionary(kind == "phone_type")`.
-
-Optional only if the PR remains small:
-
-3. `phone_assignment_types` dictionary insert-or-ignore from `_apply_dictionary(kind == "phone_assignment")`.
+1. `projects` dictionary insert-or-ignore from `_apply_dictionary(kind == "project")` — extracted in Stage 23.
+2. `phone_number_types` dictionary insert-or-ignore from `_apply_dictionary(kind == "phone_type")` — extracted in Stage 23.
+3. `phone_assignment_types` dictionary insert-or-ignore from `_apply_dictionary(kind == "phone_assignment")` — extracted in Stage 24.
 
 Why these are safe:
 
@@ -162,11 +159,14 @@ Do not choose for Stage 23:
 ## Suggested small-PR sequence after Stage 22
 
 1. **Stage 23 — dictionary insert-or-ignore extraction**
-   - Add narrow Repository methods for `projects` and `phone_number_types` insert-or-ignore.
-   - Optionally include `phone_assignment_types` if test coverage remains focused.
-   - Preserve immediate commit behavior and importer counters.
+   - Added narrow Repository methods for `projects` and `phone_number_types` insert-or-ignore.
+   - Preserved immediate commit behavior and importer counters.
 
-2. **Stage 24 — simple calling-company update extraction**
+2. **Stage 24 — remaining dictionary insert-or-ignore extraction**
+   - Added a narrow Repository method for `phone_assignment_types` insert-or-ignore.
+   - Preserved the importer-side `code` fallback and immediate commit behavior.
+
+3. **Recommended Stage 25 — simple calling-company update extraction**
    - Move the existing-company `calling_companies` update to Repository.
    - Preserve the fact that the current importer update path does not add change-log/history entries.
 

@@ -552,8 +552,7 @@ def _apply_dictionary(repo: Repository, row: dict[str, str]) -> None:
         repo.ensure_phone_number_type_exists(name)
     elif kind == "phone_assignment":
         code = _first(row, "code", "код") or name
-        repo.conn.execute("INSERT OR IGNORE INTO phone_assignment_types(code, name, is_active) VALUES (?, ?, 1)", (code, name))
-        repo.conn.commit()
+        repo.ensure_phone_assignment_type_exists(code, name)
     else:
         raise BusinessRuleError(f"Unsupported dictionary type: {kind}")
 

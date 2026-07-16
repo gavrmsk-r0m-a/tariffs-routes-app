@@ -304,3 +304,11 @@ Checklist topics:
 - Routes, phone-number complex writes, tariffs, calling companies, history tables, section clearing, currency, HLR, Telegram, and UI flows were not changed.
 - PostgreSQL runtime remains disabled; no PostgreSQL connection is created and no runtime `psycopg` dependency is added.
 - SQLite remains the operational backend.
+
+### Stage 24 importer dictionary insert-ignore extraction status
+
+- The `phone_assignment_types` insert-if-missing path now goes through `Repository.ensure_phone_assignment_type_exists()`.
+- The safe dictionary insert-ignore candidates (`projects`, `phone_number_types`, and `phone_assignment_types`) are now extracted from `app/importer.py`.
+- Import behavior is preserved: CSV parsing, validation messages, preview behavior, summary counters, fallback `code` resolution, and immediate commit semantics remain unchanged.
+- PostgreSQL runtime remains disabled; no PostgreSQL connection is created and no runtime `psycopg` dependency is added.
+- SQLite remains the operational backend.

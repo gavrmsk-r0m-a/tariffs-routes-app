@@ -140,6 +140,27 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
         self.assertEqual(rowcount, 0)
         self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM phone_number_types WHERE name = ?", ("Stage 23 Mobile",)).fetchone()[0], 1)
 
+    def test_ensure_phone_assignment_type_exists_creates_missing_assignment_type(self):
+        rowcount = self.repo.ensure_phone_assignment_type_exists("stage24", "Stage 24 Assignment")
+
+        row = self.conn.execute("SELECT code, name, is_active FROM phone_assignment_types WHERE code = ?", ("stage24",)).fetchone()
+        self.assertEqual(rowcount, 1)
+        self.assertEqual((row["code"], row["name"], row["is_active"]), ("stage24", "Stage 24 Assignment", 1))
+
+    def test_ensure_phone_assignment_type_exists_is_idempotent(self):
+        self.repo.ensure_phone_assignment_type_exists("stage24", "Stage 24 Assignment")
+        rowcount = self.repo.ensure_phone_assignment_type_exists("stage24", "Stage 24 Assignment")
+
+        self.assertEqual(rowcount, 0)
+        self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM phone_assignment_types WHERE code = ?", ("stage24",)).fetchone()[0], 1)
+
+    def test_ensure_phone_assignment_type_exists_defaults_name_to_code(self):
+        rowcount = self.repo.ensure_phone_assignment_type_exists("stage24_default")
+
+        row = self.conn.execute("SELECT code, name, is_active FROM phone_assignment_types WHERE code = ?", ("stage24_default",)).fetchone()
+        self.assertEqual(rowcount, 1)
+        self.assertEqual((row["code"], row["name"], row["is_active"]), ("stage24_default", "stage24_default", 1))
+
     def test_get_user_permissions_returns_existing_permissions(self):
         user_id = self.repo.create_user("permissions-user", "operator", "Permissions User")
         self.conn.execute(
