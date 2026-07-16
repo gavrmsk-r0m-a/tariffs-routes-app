@@ -98,6 +98,34 @@ class ImporterTest(unittest.TestCase):
         self.assertEqual((result.created_rows, result.updated_rows, result.skipped_rows), (1, 0, 0))
         self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM phone_number_types WHERE name = ?", ("Stage 23 Dictionary Type",)).fetchone()[0], 1)
 
+    def test_dictionary_import_creates_phone_assignment_type_and_preserves_summary(self):
+        csv_text = "type,code,name\nphone_assignment,stage24_assignment,Stage 24 Assignment\n"
+        preview = preview_import(self.conn, "dictionaries", csv_text)
+        result = apply_import(self.conn, "dictionaries", csv_text, user_id=self.admin_id)
+
+        self.assertEqual((preview.total_rows, preview.new_rows, preview.error_rows), (1, 1, 0))
+        self.assertEqual((result.created_rows, result.updated_rows, result.skipped_rows), (1, 0, 0))
+        row = self.conn.execute("SELECT code, name, is_active FROM phone_assignment_types WHERE code = ?", ("stage24_assignment",)).fetchone()
+        self.assertEqual((row["code"], row["name"], row["is_active"]), ("stage24_assignment", "Stage 24 Assignment", 1))
+
+    def test_dictionary_import_phone_assignment_fallback_code_preserved(self):
+        csv_text = "type,name\nphone_assignment,Stage 24 Fallback Assignment\n"
+        result = apply_import(self.conn, "dictionaries", csv_text, user_id=self.admin_id)
+
+        self.assertEqual((result.created_rows, result.updated_rows, result.skipped_rows), (1, 0, 0))
+        row = self.conn.execute("SELECT code, name FROM phone_assignment_types WHERE name = ?", ("Stage 24 Fallback Assignment",)).fetchone()
+        self.assertEqual((row["code"], row["name"]), ("Stage 24 Fallback Assignment", "Stage 24 Fallback Assignment"))
+
+    def test_dictionary_duplicate_phone_assignment_import_does_not_create_duplicates(self):
+        csv_text = "type,code,name\nphone_assignment,stage24_duplicate,Stage 24 Duplicate Assignment\n"
+        apply_import(self.conn, "dictionaries", csv_text, user_id=self.admin_id)
+        preview = preview_import(self.conn, "dictionaries", csv_text)
+        result = apply_import(self.conn, "dictionaries", csv_text, user_id=self.admin_id)
+
+        self.assertEqual((preview.total_rows, preview.new_rows, preview.error_rows), (1, 1, 0))
+        self.assertEqual((result.created_rows, result.updated_rows, result.skipped_rows), (1, 0, 0))
+        self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM phone_assignment_types WHERE code = ?", ("stage24_duplicate",)).fetchone()[0], 1)
+
     def test_dictionary_duplicate_import_does_not_create_duplicates(self):
         csv_text = "type,name\nproject,Stage 23 Dictionary Project\n"
         apply_import(self.conn, "dictionaries", csv_text, user_id=self.admin_id)

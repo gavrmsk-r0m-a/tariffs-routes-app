@@ -3522,6 +3522,13 @@ class Repository:
             self.conn.commit()
         return int(cur.rowcount)
 
+    def ensure_phone_assignment_type_exists(self, code: str, name: str | None = None, commit: bool = True) -> int:
+        sql = insert_ignore_statement("phone_assignment_types", ["code", "name", "is_active"], ["code"], self.backend)
+        cur = self.conn.execute(sql, (code, name if name is not None else code, to_db_bool(True, self.backend)))
+        if commit:
+            self.conn.commit()
+        return int(cur.rowcount)
+
     def get_server_by_name(self, name: str) -> dict | None:
         p = placeholder(self.backend)
         row = self.conn.execute(f"SELECT id, name, is_active FROM servers WHERE name = {p}", (name,)).fetchone()

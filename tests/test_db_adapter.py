@@ -76,6 +76,12 @@ class DbAdapterTest(unittest.TestCase):
             "INSERT INTO phone_number_types(name, is_active) VALUES (%s, %s) ON CONFLICT (name) DO NOTHING",
         )
 
+    def test_insert_ignore_statement_postgres_phone_assignment_conflict_code(self):
+        self.assertEqual(
+            insert_ignore_statement("phone_assignment_types", ["code", "name", "is_active"], ["code"], "postgres"),
+            "INSERT INTO phone_assignment_types(code, name, is_active) VALUES (%s, %s, %s) ON CONFLICT (code) DO NOTHING",
+        )
+
     def test_insert_ignore_statement_validates_identifiers(self):
         with self.assertRaises(ValueError):
             insert_ignore_statement("projects; DROP TABLE projects", ["name"], ["name"], "sqlite")
