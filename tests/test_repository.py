@@ -42,6 +42,98 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
             is_active=is_active,
         )
 
+    def create_full_phone(self, **overrides):
+        values = {
+            "country_id": self.country_id, "provider_id": self.provider_id,
+            "number": "393331234568", "assignment_type": "gl", "status": "unknown",
+            "created_by": self.admin_id, "phone_type": "Mobile", "tariff_label": "Import tariff",
+            "project_label": "ИТМ", "connection_cost": "1.25", "monthly_fee": "2.50",
+            "outgoing_rate": "0.10", "incoming_rate": "0.20", "currency_id": self.currency_id,
+            "comment": "Imported", "is_active": False, "review_required": True,
+            "created_at": "2026-07-16 10:00:00", "deactivated_at": "2026-07-16 11:00:00",
+            "imported_created_by": "excel-user",
+        }
+        values.update(overrides)
+        return self.repo.create_phone_number(**values)
+
+    def test_create_phone_number_returns_new_id(self):
+        phone_id = self.create_full_phone()
+        self.assertIsInstance(phone_id, int)
+        self.assertGreater(phone_id, 0)
+
+    def test_create_phone_number_inserts_phone_row(self):
+        phone_id = self.create_full_phone()
+        row = self.conn.execute("SELECT * FROM phone_numbers WHERE id = ?", (phone_id,)).fetchone()
+        self.assertEqual(
+            (row["country_id"], row["provider_id"], row["country_label"], row["provider_label"],
+             row["number"], row["normalized_number"], row["project_label"], row["assignment_type"],
+             row["assignment_label"], row["phone_type"], row["tariff_label"], row["status"],
+             str(row["connection_cost"]), str(row["monthly_fee"]), str(row["outgoing_rate"]),
+             str(row["incoming_rate"]), row["currency_id"], row["currency_label"], row["comment"],
+             row["imported_created_by"], row["created_by"], row["created_at"], row["deactivated_at"]),
+            (self.country_id, self.provider_id, "Италия", "Miatel", "393331234568", "393331234568",
+             "ИТМ", "gl", "ГЛ", "Mobile", "Import tariff", "unknown", "1.25", "2.5", "0.1",
+             "0.2", self.currency_id, "EUR", "Imported", "excel-user", self.admin_id,
+             "2026-07-16 10:00:00", "2026-07-16 11:00:00"),
+        )
+
+    def test_create_phone_number_stores_booleans_as_sqlite_ints(self):
+        row = self.conn.execute(
+            "SELECT is_active, review_required FROM phone_numbers WHERE id = ?", (self.create_full_phone(),),
+        ).fetchone()
+        self.assertEqual((row["is_active"], row["review_required"]), (0, 1))
+        self.assertTrue(all(isinstance(row[key], int) for key in ("is_active", "review_required")))
+
+    def test_create_phone_number_inserts_history_once(self):
+        before = self.conn.execute("SELECT COUNT(*) FROM phone_number_history").fetchone()[0]
+        self.create_full_phone()
+        after = self.conn.execute("SELECT COUNT(*) FROM phone_number_history").fetchone()[0]
+        self.assertEqual(after - before, 1)
+
+    def test_create_phone_number_history_payload_preserved(self):
+        phone_id = self.create_full_phone()
+        row = self.conn.execute("SELECT * FROM phone_number_history WHERE phone_number_id = ?", (phone_id,)).fetchone()
+        self.assertEqual(
+            (row["action"], row["changed_by"], row["field_name"], row["new_value"], row["comment"]),
+            ("created", self.admin_id, "number", "393331234568", "Imported. Создал в Excel: excel-user"),
+        )
+
+    def test_create_phone_number_inserts_change_log_once(self):
+        before = self.conn.execute("SELECT COUNT(*) FROM change_log").fetchone()[0]
+        self.create_full_phone()
+        after = self.conn.execute("SELECT COUNT(*) FROM change_log").fetchone()[0]
+        self.assertEqual(after - before, 1)
+
+    def test_create_phone_number_change_log_payload_preserved(self):
+        phone_id = self.create_full_phone()
+        row = self.conn.execute(
+            "SELECT * FROM change_log WHERE entity_type = 'phone_number' AND entity_id = ?", (phone_id,),
+        ).fetchone()
+        self.assertEqual((row["change_type"], row["changed_by"], row["source"]),
+                         ("phone_number.created", self.admin_id, "ui"))
+        self.assertEqual(json.loads(row["new_values"]),
+                         {"number": "393331234568", "imported_created_by": "excel-user"})
+        self.assertIsNone(row["old_values"])
+        self.assertIsNone(row["summary"])
+
+    def test_create_phone_number_commit_false(self):
+        phone_id = self.create_full_phone(commit=False)
+        self.assertTrue(self.conn.in_transaction)
+        self.assertIsNotNone(self.conn.execute("SELECT id FROM phone_numbers WHERE id = ?", (phone_id,)).fetchone())
+        self.assertEqual(self.conn.execute(
+            "SELECT COUNT(*) FROM phone_number_history WHERE phone_number_id = ?", (phone_id,),
+        ).fetchone()[0], 1)
+        self.assertEqual(self.conn.execute(
+            "SELECT COUNT(*) FROM change_log WHERE entity_type = 'phone_number' AND entity_id = ?", (phone_id,),
+        ).fetchone()[0], 1)
+        self.conn.rollback()
+        self.assertIsNone(self.conn.execute("SELECT id FROM phone_numbers WHERE id = ?", (phone_id,)).fetchone())
+
+    def test_create_phone_number_uses_insert_id_adapter_on_sqlite(self):
+        first_id = self.create_full_phone()
+        second_id = self.create_full_phone(number="393331234569")
+        self.assertEqual(second_id, first_id + 1)
+
     def update_phone_import(self, phone_id, normalized_number="393331234567", **overrides):
         values = {
             "normalized_number": normalized_number, "phone_number_id": phone_id,

@@ -378,3 +378,16 @@ Checklist topics:
   create operation remains together with its existing commit behavior.
 - PostgreSQL runtime remains disabled, no runtime psycopg dependency is added,
   and SQLite remains the operational backend.
+
+### Stage 31 phone-number CREATE adapter compatibility status
+
+- Adapted the existing combined `Repository.create_phone_number()` operation; no
+  duplicate import-only create method was introduced.
+- `INSERT phone_numbers` now uses backend placeholders, backend-specific
+  `RETURNING id` preparation/id extraction, and backend boolean conversion.
+  The following `INSERT phone_number_history` and `INSERT change_log` remain in
+  the same Repository operation and precede its single optional commit.
+- Import counters, preview, validation, creator/review decisions, and active
+  state decisions remain in the importer, which was not changed.
+- PostgreSQL runtime remains disabled, no runtime psycopg dependency was added,
+  and SQLite remains the operational backend.
