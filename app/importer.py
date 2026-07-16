@@ -408,19 +408,17 @@ def _apply_route(repo: Repository, row: dict[str, str], user_id: int, *, exists:
         "comment": _first(row, "comment", "комментарий") or None,
     }
     if exists:
-        repo.conn.execute(
-            """
-            UPDATE routes SET provider_id = ?, provider_prefix_id = ?, project_label = ?,
-                cli_source_type = ?, cli_source_label = ?, comment = ?, updated_by = ?, updated_at = CURRENT_TIMESTAMP
-            WHERE country_id = ? AND name = ?
-            """,
-            (
-                values["provider_id"], values["provider_prefix_id"], values["project_label"],
-                values["cli_source_type"], values["cli_source_label"], values["comment"], user_id,
-                country_id, name,
-            ),
+        repo.update_route_import_fields(
+            country_id=country_id,
+            name=name,
+            provider_id=values["provider_id"],
+            provider_prefix_id=values["provider_prefix_id"],
+            project_label=values["project_label"],
+            cli_source_type=values["cli_source_type"],
+            cli_source_label=values["cli_source_label"],
+            comment=values["comment"],
+            updated_by=user_id,
         )
-        repo.conn.commit()
     else:
         repo.create_route(country_id=country_id, provider_id=provider_id, provider_prefix_id=prefix_id, name=name, created_by=user_id, **{k: v for k, v in values.items() if k not in {"provider_id", "provider_prefix_id"}})
 

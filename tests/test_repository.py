@@ -111,6 +111,64 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
         self.assertFalse(self.repo.current_tariff_exists_by_country_provider_prefix("Италия", "Miatel", "999"))
         self.assertIsInstance(phone_id, int)
 
+    def test_update_route_import_fields_updates_only_import_fields_and_preserves_relations(self):
+        replacement_provider_id = self.repo.create_provider("RouteImportTel")
+        replacement_prefix_id = self.repo.create_prefix(replacement_provider_id, "991")
+        phone_id = self.create_phone(number="393331239098")
+        self.conn.execute(
+            "INSERT INTO route_phone_numbers(route_id, phone_number_id, usage_type, added_by, comment) VALUES (?, ?, 'pool_member', ?, 'keep link')",
+            (self.route_id, phone_id, self.admin_id),
+        )
+        server_id = self.repo.create_server("route-import-server")
+        self.conn.execute(
+            "INSERT INTO server_route_priorities(country_id, server_id, current_route_id, has_overflow, created_by, comment) VALUES (?, ?, ?, 0, ?, 'keep priority')",
+            (self.country_id, server_id, self.route_id, self.admin_id),
+        )
+        self.conn.commit()
+        before = dict(self.conn.execute("SELECT * FROM routes WHERE id = ?", (self.route_id,)).fetchone())
+        history_count = self.conn.execute("SELECT COUNT(*) FROM route_history WHERE route_id = ?", (self.route_id,)).fetchone()[0]
+        change_log_count = self.conn.execute("SELECT COUNT(*) FROM change_log").fetchone()[0]
+
+        rowcount = self.repo.update_route_import_fields(
+            country_id=self.country_id,
+            name=before["name"],
+            provider_id=replacement_provider_id,
+            provider_prefix_id=replacement_prefix_id,
+            project_label="Imported Project",
+            cli_source_type="rnd",
+            cli_source_label="Imported RND",
+            comment="Imported comment",
+            updated_by=self.admin_id,
+        )
+
+        after = dict(self.conn.execute("SELECT * FROM routes WHERE id = ?", (self.route_id,)).fetchone())
+        self.assertEqual(rowcount, 1)
+        self.assertEqual(
+            {key: after[key] for key in ("provider_id", "provider_prefix_id", "project_label", "cli_source_type", "cli_source_label", "comment", "updated_by")},
+            {"provider_id": replacement_provider_id, "provider_prefix_id": replacement_prefix_id, "project_label": "Imported Project", "cli_source_type": "rnd", "cli_source_label": "Imported RND", "comment": "Imported comment", "updated_by": self.admin_id},
+        )
+        for key in ("id", "country_id", "name", "is_actual", "priority_status", "inbound_line_available", "aon_pool", "rnd_type", "rnd_pool_owner", "created_by", "created_at"):
+            self.assertEqual(after[key], before[key])
+        self.assertEqual(self.conn.execute("SELECT comment FROM route_phone_numbers WHERE route_id = ?", (self.route_id,)).fetchone()[0], "keep link")
+        self.assertEqual(self.conn.execute("SELECT comment FROM server_route_priorities WHERE current_route_id = ?", (self.route_id,)).fetchone()[0], "keep priority")
+        self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM route_history WHERE route_id = ?", (self.route_id,)).fetchone()[0], history_count)
+        self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM change_log").fetchone()[0], change_log_count)
+
+    def test_update_route_import_fields_returns_zero_for_missing_route(self):
+        rowcount = self.repo.update_route_import_fields(
+            country_id=self.country_id,
+            name="Missing route",
+            provider_id=self.provider_id,
+            provider_prefix_id=None,
+            project_label=None,
+            cli_source_type="other",
+            cli_source_label="OTHER",
+            comment=None,
+            updated_by=self.admin_id,
+        )
+
+        self.assertEqual(rowcount, 0)
+
 
     def test_ensure_project_exists_creates_missing_project(self):
         rowcount = self.repo.ensure_project_exists("Stage 23 Project")

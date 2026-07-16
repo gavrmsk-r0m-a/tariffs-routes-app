@@ -334,3 +334,15 @@ Checklist topics:
 - PostgreSQL runtime remains disabled; no PostgreSQL connection is created and no
   runtime `psycopg` dependency is added.
 - SQLite remains the operational backend.
+
+### Stage 27 existing route import UPDATE extraction status
+
+- Moved only the existing-route `UPDATE routes` statement into the narrow
+  `Repository.update_route_import_fields()` method.
+- Route creation, route history/change-log behavior, phone-number links, server
+  priorities, overflow, and AON/pool fields remain untouched.
+- Import branching, validation, preview/summary counters, exception handling, and
+  the existing immediate commit are preserved.
+- PostgreSQL runtime remains disabled; no PostgreSQL connection is created and no
+  runtime `psycopg` dependency is added.
+- SQLite remains the operational backend.

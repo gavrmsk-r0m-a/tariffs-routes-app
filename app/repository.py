@@ -3546,6 +3546,45 @@ class Repository:
         ).fetchone()
         return row is not None
 
+    def update_route_import_fields(
+        self,
+        *,
+        country_id: int,
+        name: str,
+        provider_id: int,
+        provider_prefix_id: int | None,
+        project_label: str | None,
+        cli_source_type: str,
+        cli_source_label: str,
+        comment: str | None,
+        updated_by: int,
+        commit: bool = True,
+    ) -> int:
+        p = placeholder(self.backend)
+        cursor = self.conn.execute(
+            f"""
+            UPDATE routes
+            SET provider_id = {p}, provider_prefix_id = {p}, project_label = {p},
+                cli_source_type = {p}, cli_source_label = {p}, comment = {p},
+                updated_by = {p}, updated_at = CURRENT_TIMESTAMP
+            WHERE country_id = {p} AND name = {p}
+            """,
+            (
+                provider_id,
+                provider_prefix_id,
+                project_label,
+                cli_source_type,
+                cli_source_label,
+                comment,
+                updated_by,
+                country_id,
+                name,
+            ),
+        )
+        if commit:
+            self.conn.commit()
+        return int(cursor.rowcount)
+
     def phone_number_exists_by_normalized_number(self, normalized_number: str) -> bool:
         p = placeholder(self.backend)
         row = self.conn.execute(
