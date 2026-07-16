@@ -346,3 +346,17 @@ Checklist topics:
 - PostgreSQL runtime remains disabled; no PostgreSQL connection is created and no
   runtime `psycopg` dependency is added.
 - SQLite remains the operational backend.
+
+### Stage 28 phone-number import UPDATE focused audit status
+
+- Completed a focused audit of the existing phone-number import UPDATE and its
+  adjacent `phone_number_history` INSERT, including imported creator metadata,
+  sticky review behavior, active/deactivated transitions, counters, preview,
+  summary, and transaction/failure boundaries.
+- Stage 28 is documentation-only; no runtime code or import behavior changed.
+- Extraction is deferred to Stage 29 only if implemented as the audited narrow
+  UPDATE-plus-history Repository pair with existing importer responsibilities and
+  commit behavior preserved.
+- PostgreSQL runtime remains disabled; no PostgreSQL connection is created and no
+  runtime `psycopg` dependency is added.
+- SQLite remains the operational backend.
