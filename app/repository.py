@@ -308,11 +308,12 @@ class Repository:
         def one(sql: str, params: tuple[object, ...]) -> str | None:
             row = self.conn.execute(sql, params).fetchone()
             return str(row[0]) if row and row[0] is not None else None
+        p = placeholder(self.backend)
         return {
-            "country_label": one("SELECT name FROM countries WHERE id = ?", (country_id,)),
-            "provider_label": one("SELECT name FROM providers WHERE id = ?", (provider_id,)) if provider_id else None,
-            "assignment_label": one("SELECT name FROM phone_assignment_types WHERE code = ?", (assignment_type,)) if assignment_type else None,
-            "currency_label": one("SELECT code FROM currencies WHERE id = ?", (currency_id,)) if currency_id else None,
+            "country_label": one(f"SELECT name FROM countries WHERE id = {p}", (country_id,)),
+            "provider_label": one(f"SELECT name FROM providers WHERE id = {p}", (provider_id,)) if provider_id else None,
+            "assignment_label": one(f"SELECT name FROM phone_assignment_types WHERE code = {p}", (assignment_type,)) if assignment_type else None,
+            "currency_label": one(f"SELECT code FROM currencies WHERE id = {p}", (currency_id,)) if currency_id else None,
         }
 
     def dictionary_rename_preview(self, kind: str, entity_id: int) -> dict[str, int]:
@@ -757,20 +758,26 @@ class Repository:
         created_at: str | None = None,
         deactivated_at: str | None = None,
         imported_created_by: str | None = None,
+        commit: bool = True,
     ) -> int:
         normalized = validate_phone_number(number)
         if not is_active and deactivated_at is None:
             deactivated_at = created_at or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         labels = self._phone_snapshot_labels(country_id, provider_id, assignment_type, currency_id)
-        cur = self.conn.execute(
-            """
+        p = placeholder(self.backend)
+        phone_insert_sql = prepare_insert_returning_id(
+            f"""
             INSERT INTO phone_numbers(
                 country_id, provider_id, country_label, provider_label, number, normalized_number, project_label,
                 assignment_type, assignment_label, phone_type, tariff_label, status, connection_cost, monthly_fee, outgoing_rate,
                 incoming_rate, currency_id, currency_label, comment, is_active, review_required, imported_created_by, created_by, created_at, deactivated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP), ?)
+            VALUES ({', '.join([p] * 23)}, COALESCE({p}, CURRENT_TIMESTAMP), {p})
             """,
+            self.backend,
+        )
+        cur = self.conn.execute(
+            phone_insert_sql,
             (
                 country_id,
                 provider_id,
@@ -791,24 +798,35 @@ class Repository:
                 currency_id,
                 labels["currency_label"],
                 comment,
-                1 if is_active else 0,
-                1 if review_required else 0,
+                to_db_bool(is_active, self.backend),
+                to_db_bool(review_required, self.backend),
                 imported_created_by,
                 created_by,
                 created_at,
                 deactivated_at,
             ),
         )
-        phone_id = int(cur.lastrowid)
+        phone_id = extract_inserted_id(cur, self.backend)
         self.conn.execute(
-            """
+            f"""
             INSERT INTO phone_number_history(phone_number_id, action, changed_by, field_name, new_value, comment)
-            VALUES (?, 'created', ?, 'number', ?, ?)
+            VALUES ({p}, 'created', {p}, 'number', {p}, {p})
             """,
             (phone_id, created_by, number, (f"{comment}. " if comment else "") + (f"Создал в Excel: {imported_created_by}" if imported_created_by else "")),
         )
-        self._change_log("phone_number", phone_id, "phone_number.created", created_by, new_values={"number": number, "imported_created_by": imported_created_by})
-        self.conn.commit()
+        self.conn.execute(
+            f"""
+            INSERT INTO change_log(entity_type, entity_id, change_type, changed_by, old_values, new_values, summary, source)
+            VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p})
+            """,
+            (
+                "phone_number", phone_id, "phone_number.created", created_by, None,
+                json.dumps({"number": number, "imported_created_by": imported_created_by}, ensure_ascii=False),
+                None, "ui",
+            ),
+        )
+        if commit:
+            self.conn.commit()
         return phone_id
 
     def add_phone_to_route(

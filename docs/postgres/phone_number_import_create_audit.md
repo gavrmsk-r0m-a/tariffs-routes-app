@@ -264,3 +264,20 @@ Stage 31 может быть маленьким adapter-compatibility PR по **
 переводит combined create/history/log boundary целиком и не меняет observable
 semantics. Route-phone links, section clearing и routes/import sections должны
 остаться вне scope. PostgreSQL runtime включать нельзя.
+
+## Итог Stage 31
+
+Stage 31 завершён адаптацией существующего
+`Repository.create_phone_number()`; отдельный import-only метод не понадобился.
+`INSERT phone_numbers` теперь строится через backend placeholder и
+`prepare_insert_returning_id()`, а новый id извлекается через
+`extract_inserted_id()` (`cursor.lastrowid` для SQLite, `RETURNING id` для
+будущего PostgreSQL). `is_active` и `review_required` проходят через
+`to_db_bool()`.
+
+Следующие `INSERT phone_number_history` и `INSERT change_log` сохранены в том же
+методе, в прежнем порядке и с прежними history text, JSON payload и `source=ui`.
+Все три записи по-прежнему предшествуют единственному commit; опциональный
+`commit=False` оставляет управление транзакцией caller. Importer, его counters,
+preview и validation не менялись. PostgreSQL runtime остаётся выключенным, а
+операционной БД остаётся SQLite.

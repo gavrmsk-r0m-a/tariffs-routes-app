@@ -221,3 +221,13 @@ Do not choose for Stage 23:
 - Importer counters, preview, validation, identity lookup, state decisions, and history text remain importer responsibilities.
 - The phone create path and destructive section-clearing DELETE statements stay classified for later work; route-phone tables were not changed.
 - PostgreSQL runtime is still disabled and SQLite remains operational.
+
+## Stage 31 update
+
+- The combined phone-number create path is adapter-compatible through the
+  existing `Repository.create_phone_number()` method. Phone creation, its
+  created-history row, and its change-log row remain one ordered operation with
+  one commit boundary.
+- Importer preview, validation, decisions, and counters were not changed.
+- Destructive section-clearing DELETE statements remain classified for a later
+  dedicated stage; PostgreSQL runtime remains disabled and SQLite operational.
