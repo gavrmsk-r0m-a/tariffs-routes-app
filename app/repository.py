@@ -3575,6 +3575,42 @@ class Repository:
         ).fetchone()
         return row is not None
 
+    def update_calling_company_import_fields(
+        self,
+        *,
+        server_id: int,
+        country_id: int,
+        company_id_external: str,
+        company_name: str,
+        has_autorotation: bool,
+        comment: str | None,
+        is_active: bool,
+        updated_by: int,
+        commit: bool = True,
+    ) -> int:
+        p = placeholder(self.backend)
+        cursor = self.conn.execute(
+            f"""
+            UPDATE calling_companies
+            SET company_name = {p}, has_autorotation = {p}, comment = {p}, is_active = {p},
+                updated_by = {p}, updated_at = CURRENT_TIMESTAMP
+            WHERE server_id = {p} AND country_id = {p} AND company_id_external = {p}
+            """,
+            (
+                company_name,
+                to_db_bool(has_autorotation, self.backend),
+                comment,
+                to_db_bool(is_active, self.backend),
+                updated_by,
+                server_id,
+                country_id,
+                company_id_external,
+            ),
+        )
+        if commit:
+            self.conn.commit()
+        return int(cursor.rowcount)
+
     def current_tariff_exists_by_country_provider_prefix(self, country_name: str, provider_name: str, prefix: str | None) -> bool:
         p = placeholder(self.backend)
         row = self.conn.execute(

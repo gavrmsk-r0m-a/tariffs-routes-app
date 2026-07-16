@@ -73,6 +73,53 @@ class RepositoryAdapterWriteMethodsTest(unittest.TestCase):
         self.assertEqual(self.conn.execute("SELECT comment FROM servers WHERE id = ?", (server_id,)).fetchone()["comment"], "plain write path")
         self.assertEqual(self.conn.execute("SELECT description FROM change_reasons WHERE id = ?", (reason_id,)).fetchone()["description"], "plain write path")
 
+    def test_update_calling_company_import_fields_updates_row_and_booleans(self):
+        user_id = self.repo.create_user("company-import-admin", "Company Import Admin")
+        country_id = self.repo.create_country("Италия", "IT")
+        server_id = self.repo.create_server("company-import-server")
+        company_id = self.repo.create_calling_company(
+            server_id=server_id,
+            country_id=country_id,
+            company_name="Before",
+            company_id_external="import-1",
+            has_autorotation=False,
+            created_by=user_id,
+            is_active=True,
+        )
+
+        rowcount = self.repo.update_calling_company_import_fields(
+            server_id=server_id,
+            country_id=country_id,
+            company_id_external="import-1",
+            company_name="After",
+            has_autorotation=True,
+            comment="Imported update",
+            is_active=False,
+            updated_by=user_id,
+        )
+
+        row = self.conn.execute("SELECT * FROM calling_companies WHERE id = ?", (company_id,)).fetchone()
+        self.assertEqual(rowcount, 1)
+        self.assertEqual(row["company_name"], "After")
+        self.assertEqual(row["has_autorotation"], 1)
+        self.assertEqual(row["comment"], "Imported update")
+        self.assertEqual(row["is_active"], 0)
+        self.assertEqual(row["updated_by"], user_id)
+
+    def test_update_calling_company_import_fields_returns_zero_for_missing_row(self):
+        rowcount = self.repo.update_calling_company_import_fields(
+            server_id=999,
+            country_id=999,
+            company_id_external="missing",
+            company_name="Missing",
+            has_autorotation=False,
+            comment=None,
+            is_active=True,
+            updated_by=999,
+        )
+
+        self.assertEqual(rowcount, 0)
+
 
 if __name__ == "__main__":
     unittest.main()
