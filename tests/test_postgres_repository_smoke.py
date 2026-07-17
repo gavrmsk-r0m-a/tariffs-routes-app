@@ -4,6 +4,7 @@ import sys
 import sqlite3
 import tempfile
 import unittest
+from decimal import Decimal
 from pathlib import Path
 from unittest import mock
 
@@ -104,6 +105,46 @@ class PostgreSQLRepositorySmokeTest(unittest.TestCase):
 
         self.assertEqual("failed", summary["status"])
         self.assertIn("get_calling_company_missing", {failure["check"] for failure in summary["failures"]})
+
+    def test_postgres_numeric_scales_pass_semantic_checks(self):
+        repository = RecordingRepository(Repository(self.conn))
+        original_usage = repository.repository.get_hlr_daily_usage
+        original_latest = repository.repository.latest_currency_rate
+
+        def usage_with_postgres_scale(usage_date):
+            result = original_usage(usage_date)
+            if usage_date == "2026-07-12":
+                result["credits_spent_today"] = Decimal("0.50000000")
+            return result
+
+        def rate_with_postgres_scale(currency_id):
+            result = original_latest(currency_id)
+            if result is not None:
+                result = dict(result)
+                result["rate_to_eur"] = Decimal("1.00000000")
+            return result
+
+        repository.repository.get_hlr_daily_usage = usage_with_postgres_scale
+        repository.repository.latest_currency_rate = rate_with_postgres_scale
+
+        self.assertEqual("ok", self.run_demo(repository)["status"])
+
+    def test_wrong_eur_rate_causes_failure(self):
+        repository = RecordingRepository(Repository(self.conn))
+        original = repository.repository.latest_currency_rate
+
+        def wrong_rate(currency_id):
+            result = original(currency_id)
+            if result is not None:
+                result = dict(result)
+                result["rate_to_eur"] = Decimal("1.25")
+            return result
+
+        repository.repository.latest_currency_rate = wrong_rate
+        summary = self.run_demo(repository)
+
+        self.assertEqual("failed", summary["status"])
+        self.assertIn("latest_currency_rate_values", {failure["check"] for failure in summary["failures"]})
 
     def test_workflow_paths_include_repository_and_db_adapter(self):
         workflow = (Path(__file__).parents[1] / ".github/workflows/postgres-migration-smoke.yml").read_text(encoding="utf-8")

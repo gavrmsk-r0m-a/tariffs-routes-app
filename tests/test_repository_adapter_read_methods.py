@@ -141,6 +141,7 @@ class RepositoryAdapterReadMethodsTest(unittest.TestCase):
                 companies = repo.list_calling_companies()
                 company = next(row for row in companies if row["company_id_external"] == "demo-company-1")
                 self.assertIsInstance(company, sqlite3.Row)
+                self.assertEqual(1, company["current_has_autorotation"])
                 self.assertEqual("Demo Company", repo.get_calling_company(company["id"])["company_name"])
                 self.assertIsNone(repo.get_calling_company(-1))
 
@@ -153,6 +154,23 @@ class RepositoryAdapterReadMethodsTest(unittest.TestCase):
                 self.assertIsNone(repo.get_currency_rate(-1))
             finally:
                 conn.close()
+
+    def test_postgres_calling_company_boolean_fallback_parameter_order(self):
+        class CaptureConnection:
+            def execute(self, sql, params=()):
+                self.sql = sql
+                self.params = params
+                return []
+
+        conn = CaptureConnection()
+        rows = Repository(conn, backend="postgres").list_calling_companies()
+
+        self.assertEqual([], rows)
+        normalized_sql = " ".join(conn.sql.split())
+        self.assertNotIn("COALESCE(active_crs.has_autorotation, 0)", normalized_sql)
+        self.assertIn("COALESCE(active_crs.has_autorotation, %s)", normalized_sql)
+        self.assertIn("active_crs.is_active = %s", normalized_sql)
+        self.assertEqual([False, True], conn.params)
 
 
 if __name__ == "__main__":

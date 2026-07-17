@@ -423,6 +423,10 @@ Checklist topics:
   values in those methods. SQLite return shapes, ordering, filters, and business
   semantics are unchanged. The synthetic demo adds only a deterministic
   `hlr_daily_limit_override=2500` application setting.
+- The unfiltered `list_calling_companies()` smoke path uses backend boolean
+  fallbacks for both `has_autorotation` and the active-setting join. Its optional
+  search/filter path still depends on SQLite search semantics and remains
+  deferred rather than being redesigned in Stage 34.
 - The smoke performs 61 semantic checks (the Stage 33 baseline 44 plus 17) and
   verifies exact demo values as well as missing setting, HLR usage, company,
   and currency-rate results.

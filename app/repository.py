@@ -1977,6 +1977,7 @@ class Repository:
                 "is_active": "cc.is_active",
             },
         )
+        inactive = to_db_bool(False, self.backend)
         active = to_db_bool(True, self.backend)
         p = placeholder(self.backend)
         active_join = f"active_crs.is_active = {p}"
@@ -1984,7 +1985,7 @@ class Repository:
             self.conn.execute(
                 f"""
                 SELECT cc.*, s.name AS server_name, c.name AS country_name,
-                       COALESCE(active_crs.has_autorotation, 0) AS current_has_autorotation,
+                       COALESCE(active_crs.has_autorotation, {p}) AS current_has_autorotation,
                        active_crs.routing_mode AS current_routing_mode, active_crs.route_id AS current_route_id
                 FROM calling_companies cc
                 JOIN servers s ON s.id = cc.server_id
@@ -1996,7 +1997,7 @@ class Repository:
                 {where}
                 ORDER BY c.name, s.name, cc.company_name
                 """,
-                [active, *params],
+                [inactive, active, *params],
             )
         )
 
