@@ -46,6 +46,13 @@ def create_demo_sqlite(output: str | Path) -> Path:
         """)
 
         admin_id = conn.execute("SELECT id FROM users WHERE username='admin'").fetchone()["id"]
+        conn.execute(
+            """INSERT INTO users(
+                username, display_name, role_key, email, password_hash, password_salt,
+                must_change_password, is_active, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, NULL, NULL, 0, 0, ?, ?)""",
+            ("ci-inactive", "CI Inactive", "guest", "ci-inactive@example.invalid", NOW, NOW),
+        )
         country_id = q(conn, "INSERT INTO countries(name, code, is_active, created_at, updated_at) VALUES (?, ?, 1, ?, ?)", ("Demo Country", "DC", NOW, NOW))
         eur_id = q(conn, "INSERT INTO currencies(code, name, symbol, is_active, created_at, updated_at) VALUES (?, ?, ?, 1, ?, ?)", ("EUR", "Euro", "€", NOW, NOW))
         provider_id = q(conn, "INSERT INTO providers(name, normalized_name, provider_type, default_currency_id, is_active, comment, created_at, updated_at) VALUES (?, ?, ?, ?, 1, ?, ?, ?)", ("Demo Provider", "demo provider", "voip", eur_id, "Synthetic CI provider", NOW, NOW))

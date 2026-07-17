@@ -464,3 +464,29 @@ Checklist topics:
 - The full application and Repository write paths are not run. PostgreSQL
   application runtime and `DB_BACKEND=postgres` remain disabled, while SQLite
   remains the operational production and development backend.
+
+### Stage 36 PostgreSQL user read and authentication smoke status
+
+- The Repository-only smoke adds `list_users`, `get_user`,
+  `get_user_by_username`, and `authenticate_user`; `_user_columns` is an adapted
+  private dependency and is deliberately excluded from the public smoke plan.
+- User schema introspection retains SQLite's `PRAGMA table_info(users)` path and
+  adds a parameterized PostgreSQL `information_schema.columns` query scoped by
+  `current_schema()`. It uses the existing Repository connection and performs no
+  DDL, migration, schema, or search-path change.
+- SQLite retains its exact `COLLATE NOCASE` ordering. PostgreSQL orders active
+  users first, then uses the effective display name and username through
+  `LOWER`, with `id` as a stable tie-breaker. Exact locale equivalence between
+  database engines is not claimed.
+- The smoke performs 131 semantic checks. The added coverage includes complete
+  and active-only lists, strict database booleans, absent-record contracts,
+  credential-column boundaries, trimmed exact username lookup, successful and
+  rejected password verification, and rejection of the deterministic inactive
+  user. No user credential values are emitted in diagnostics.
+- `authenticate_user` was audited as read-only: it delegates to
+  `get_user_by_username` and verifies the password hash locally without user
+  writes, commit/rollback, last-login state, HTTP login, cookies, or sessions.
+- The PostgreSQL connection remains in `SET TRANSACTION READ ONLY`; user writes,
+  the full application, and PostgreSQL runtime are not run.
+  `DB_BACKEND=postgres` remains disabled and SQLite remains the operational
+  production and development backend.

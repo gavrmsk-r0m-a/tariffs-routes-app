@@ -36,6 +36,7 @@ SMOKE_METHODS = (
     "dictionary_rename_preview", "get_user_section_permission", "get_user_permissions",
     "get_phone_number", "get_route", "route_numbers", "find_tariff_by_identity",
     "get_tariff",
+    "list_users", "get_user", "get_user_by_username", "authenticate_user",
 )
 
 STAGE_34_METHODS = (
@@ -48,6 +49,10 @@ STAGE_35_METHODS = (
     "dictionary_rename_preview", "get_user_section_permission", "get_user_permissions",
     "get_phone_number", "get_route", "route_numbers", "find_tariff_by_identity",
     "get_tariff",
+)
+
+STAGE_36_METHODS = (
+    "list_users", "get_user", "get_user_by_username", "authenticate_user",
 )
 
 EXISTS_CHECKS = (
@@ -117,6 +122,15 @@ def _decimal_equals(value: object, expected: str) -> bool:
 def _is_database_true(value: object) -> bool:
     """Accept only SQLite's integer true or PostgreSQL's native boolean true."""
     return value is True or (type(value) is int and value == 1)
+
+
+def _is_database_false(value: object) -> bool:
+    """Accept only SQLite's integer false or PostgreSQL's native boolean false."""
+    return value is False or (type(value) is int and value == 0)
+
+
+def _row_keys(row: object) -> set[str]:
+    return set(row.keys())
 
 
 def run_exists_checks(repo: Repository, check) -> None:
@@ -212,6 +226,44 @@ def run_stage_35_checks(repo: Repository, check, collections: dict, lookups: dic
     check("get_tariff_missing", lambda: _check(repo.get_tariff(-1) is None, "missing tariff must return None"))
 
 
+def run_stage_36_checks(repo: Repository, check) -> None:
+    """Check user reads and local password verification without exposing secrets."""
+    users = check("list_users", lambda: repo.list_users(active_only=False))
+    admin = next((row for row in (users or []) if row["username"] == "admin"), None)
+    inactive = next((row for row in (users or []) if row["username"] == "ci-inactive"), None)
+    check("list_users_admin_present", lambda: _check(admin is not None, "admin must be listed"))
+    check("list_users_inactive_present", lambda: _check(inactive is not None, "inactive fixture must be listed"))
+    check("list_users_admin_display_name", lambda: _check(admin is not None and admin["display_name"] == "Admin", "admin display name is incorrect"))
+    check("list_users_admin_role", lambda: _check(admin is not None and admin["role_key"] == "admin", "admin role is incorrect"))
+    check("list_users_admin_active", lambda: _check(admin is not None and _is_database_true(admin["is_active"]), "admin active flag must be database true"))
+    check("list_users_admin_password_change", lambda: _check(admin is not None and _is_database_false(admin["must_change_password"]), "admin password-change flag must be database false"))
+    check("list_users_inactive_role", lambda: _check(inactive is not None and inactive["role_key"] == "guest", "inactive fixture role is incorrect"))
+    check("list_users_inactive_flag", lambda: _check(inactive is not None and _is_database_false(inactive["is_active"]), "inactive fixture flag must be database false"))
+    check("list_users_active_first", lambda: _check(not users or [bool(row["is_active"]) for row in users] == sorted((bool(row["is_active"]) for row in users), reverse=True), "active users must precede inactive users"))
+    check("list_users_excludes_credentials", lambda: _check(all({"password_hash", "password_salt"}.isdisjoint(_row_keys(row)) for row in (users or [])), "user list must exclude credential columns"))
+
+    active_users = check("list_users_active_only", lambda: repo.list_users(active_only=True))
+    check("list_users_active_admin", lambda: _check(any(row["username"] == "admin" for row in (active_users or [])), "active list must contain admin"))
+    check("list_users_active_excludes_inactive", lambda: _check(all(row["username"] != "ci-inactive" for row in (active_users or [])), "active list must exclude inactive fixture"))
+    check("list_users_active_flags", lambda: _check(bool(active_users) and all(_is_database_true(row["is_active"]) for row in active_users), "active list flags must be database true"))
+
+    admin_detail = check("get_user", lambda: repo.get_user(admin["id"]) if admin is not None else None)
+    check("get_user_values", lambda: _check(admin_detail is not None and admin_detail["username"] == "admin" and admin_detail["display_name"] == "Admin" and admin_detail["role_key"] == "admin", "admin detail is incorrect"))
+    check("get_user_excludes_credentials", lambda: _check(admin_detail is not None and {"password_hash", "password_salt"}.isdisjoint(_row_keys(admin_detail)), "user detail must exclude credential columns"))
+    check("get_user_missing", lambda: _check(repo.get_user(-1) is None, "missing user ID must return None"))
+
+    login_user = check("get_user_by_username", lambda: repo.get_user_by_username(" admin "))
+    check("get_user_by_username_values", lambda: _check(login_user is not None and login_user["username"] == "admin" and login_user["display_name"] == "Admin" and login_user["role_key"] == "admin", "trimmed admin lookup is incorrect"))
+    check("get_user_by_username_credentials_present", lambda: _check(login_user is not None and bool(login_user.get("password_hash") if isinstance(login_user, dict) else login_user["password_hash"]) and (login_user.get("password_salt") if isinstance(login_user, dict) else login_user["password_salt"]) is not None, "authentication credentials must be available to Repository verification"))
+    check("get_user_by_username_missing", lambda: _check(repo.get_user_by_username("missing-user") is None, "missing username must return None"))
+
+    authenticated = check("authenticate_user", lambda: repo.authenticate_user("admin", "admin"))
+    check("authenticate_user_valid", lambda: _check(authenticated is not None and authenticated["username"] == "admin", "valid admin credentials must authenticate"))
+    check("authenticate_user_wrong_password", lambda: _check(repo.authenticate_user("admin", "incorrect") is None, "wrong password must not authenticate"))
+    check("authenticate_user_missing", lambda: _check(repo.authenticate_user("missing-user", "anything") is None, "missing username must not authenticate"))
+    check("authenticate_user_inactive", lambda: _check(repo.authenticate_user("ci-inactive", "anything") is None, "inactive user must not authenticate"))
+
+
 def run_repository_checks(repo: Repository, postgres_url: str) -> dict:
     summary = empty_summary(postgres_url)
     checks: list[tuple[str, object]] = []
@@ -265,6 +317,7 @@ def run_repository_checks(repo: Repository, postgres_url: str) -> dict:
     run_exists_checks(repo, check)
     company, company_detail = run_stage_34_checks(repo, check, collections["list_currencies"] or [])
     run_stage_35_checks(repo, check, collections, lookup_results, company, company_detail)
+    run_stage_36_checks(repo, check)
 
     summary.update(status="ok" if not failures else "failed", checks_count=len(checks) + len(failures), failures=failures)
     return summary

@@ -49,6 +49,25 @@ class MigrationDemoSqliteTests(unittest.TestCase):
                     count = conn.execute(f'SELECT COUNT(*) FROM "{table}"').fetchone()[0]
                     self.assertGreater(count, 0)
 
+    def test_demo_sqlite_has_deterministic_inactive_user(self):
+        db_path = self.make_demo_db()
+        conn = sqlite3.connect(db_path)
+        try:
+            conn.row_factory = sqlite3.Row
+            row = conn.execute("SELECT * FROM users WHERE username = ?", ("ci-inactive",)).fetchone()
+        finally:
+            conn.close()
+        self.assertIsNotNone(row)
+        self.assertEqual("CI Inactive", row["display_name"])
+        self.assertEqual("guest", row["role_key"])
+        self.assertEqual("ci-inactive@example.invalid", row["email"])
+        self.assertEqual(0, row["is_active"])
+        self.assertEqual(0, row["must_change_password"])
+        self.assertIsNone(row["password_hash"])
+        self.assertIsNone(row["password_salt"])
+        self.assertEqual("2026-07-12 10:00:00", row["created_at"])
+        self.assertEqual("2026-07-12 10:00:00", row["updated_at"])
+
     def test_demo_sqlite_has_no_empty_required_fields(self):
         db_path = self.make_demo_db()
         checks = (
