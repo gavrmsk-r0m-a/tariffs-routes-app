@@ -450,8 +450,9 @@ Checklist topics:
 - Compatibility fixes are limited to backend placeholders, mapping access to
   named `COUNT(*) AS count` results, and parameterized backend boolean values
   for active route-number relations. Existing SQLite row/dict/list contracts,
-  keys, ordering, nullable tariff-prefix identity, and business semantics remain
-  intact.
+  nullable tariff-prefix identity, and business semantics remain intact. For
+  `route_numbers`, the existing columns retain their exact order, while
+  `usage_type` and `is_active` are additive trailing relation fields.
 - The smoke performs 103 semantic checks. Coverage includes every supported
   dictionary-preview branch and unknown kind; positive and negative permission,
   phone, route, relation, tariff-identity, and tariff-detail results; strict

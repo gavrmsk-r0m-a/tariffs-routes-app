@@ -1241,8 +1241,8 @@ class Repository:
         return list(
             self.conn.execute(
                 """
-                SELECT rpn.id AS link_id, pn.id AS phone_id, pn.number, pn.status, pn.assignment_type, rpn.usage_type, rpn.is_active, pn.connection_cost, pn.monthly_fee,
-                    pn.outgoing_rate, pn.incoming_rate, pn.comment AS phone_comment, rpn.comment AS link_comment
+                SELECT rpn.id AS link_id, pn.id AS phone_id, pn.number, pn.status, pn.assignment_type, pn.connection_cost, pn.monthly_fee,
+                    pn.outgoing_rate, pn.incoming_rate, pn.comment AS phone_comment, rpn.comment AS link_comment, rpn.usage_type, rpn.is_active
                 FROM route_phone_numbers rpn
                 JOIN phone_numbers pn ON pn.id = rpn.phone_number_id
                 WHERE rpn.route_id = {p}

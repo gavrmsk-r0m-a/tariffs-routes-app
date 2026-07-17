@@ -205,7 +205,25 @@ class RepositoryAdapterReadMethodsTest(unittest.TestCase):
                 numbers = repo.route_numbers(route["id"])
                 self.assertIsInstance(numbers, list)
                 self.assertIsInstance(numbers[0], sqlite3.Row)
+                self.assertEqual(
+                    [
+                        "link_id",
+                        "phone_id",
+                        "number",
+                        "status",
+                        "assignment_type",
+                        "connection_cost",
+                        "monthly_fee",
+                        "outgoing_rate",
+                        "incoming_rate",
+                        "phone_comment",
+                        "link_comment",
+                    ],
+                    numbers[0].keys()[:11],
+                )
+                self.assertEqual(["usage_type", "is_active"], numbers[0].keys()[11:])
                 self.assertEqual("cli", numbers[0]["usage_type"])
+                self.assertEqual(1, numbers[0]["is_active"])
                 self.assertEqual([], repo.route_numbers(-1))
 
                 prefix = next(row for row in repo.list_provider_prefixes(provider["id"]) if row["prefix"] == "123")
