@@ -6,15 +6,19 @@ on:
     paths:
       - scripts/migrate_sqlite_to_postgres.py
       - scripts/postgres_preflight.py
+      - scripts/postgres_repository_smoke.py
       - scripts/create_migration_demo_sqlite.py
       - docs/postgres/schema.postgres.sql
       - docs/postgres/schema_decisions.md
       - app/schema.sql
       - app/db.py
+      - app/repository.py
+      - app/db_adapter.py
       - tests/test_sqlite_to_postgres_migration.py
       - tests/test_postgres_preflight.py
       - tests/test_postgres_schema_draft.py
       - tests/test_migration_demo_sqlite.py
+      - tests/test_postgres_repository_smoke.py
       - .github/workflows/postgres-migration-smoke.yml
 
 jobs:
@@ -57,6 +61,7 @@ jobs:
           python -m unittest tests.test_postgres_schema_draft
           python -m unittest tests.test_sqlite_to_postgres_migration
           python -m unittest tests.test_migration_demo_sqlite
+          python -m unittest tests.test_postgres_repository_smoke
 
       - name: Create demo SQLite database
         run: python scripts/create_migration_demo_sqlite.py --output "$RUNNER_TEMP/migration_demo.sqlite3"
@@ -81,3 +86,8 @@ jobs:
             --postgres-url "postgresql://postgres:postgres@localhost:5432/teleroute_migration_test" \
             --schema docs/postgres/schema.postgres.sql \
             --apply --yes --create-schema
+
+      - name: Run read-only PostgreSQL Repository smoke
+        run: |
+          python scripts/postgres_repository_smoke.py \
+            --postgres-url "postgresql://postgres:postgres@localhost:5432/teleroute_migration_test"
