@@ -155,6 +155,95 @@ class RepositoryAdapterReadMethodsTest(unittest.TestCase):
             finally:
                 conn.close()
 
+    def test_stage_35_reads_preserve_sqlite_contracts(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = create_demo_sqlite(Path(directory) / "demo.db")
+            conn = sqlite3.connect(path)
+            conn.row_factory = sqlite3.Row
+            try:
+                repo = Repository(conn)
+                country = repo.get_country_by_name("Demo Country")
+                provider = repo.get_provider_by_normalized_name("demo provider")
+                currency = repo.get_currency_by_code("EUR")
+                phone_type = next(row for row in repo.list_phone_number_types() if row["name"] == "Mobile")
+                project = next(row for row in repo.list_projects() if row["code"] == "rep")
+                assignment = next(row for row in repo.list_phone_assignment_types() if row["code"] == "gl")
+
+                expected = {
+                    "countries": {"Купленные номера": 1, "Маршруты": 1, "Тарифы": 1},
+                    "providers": {"Купленные номера": 1, "Маршруты": 1, "Тарифы": 1},
+                    "currencies": {"Купленные номера": 1, "Тарифы": 1},
+                    "phone-types": {"Купленные номера": 1},
+                    "projects": {"Купленные номера": 1, "Маршруты": 1},
+                    "phone-assignments": {"Купленные номера": 1},
+                }
+                entities = {"countries": country, "providers": provider, "currencies": currency, "phone-types": phone_type, "projects": project, "phone-assignments": assignment}
+                for kind, counts in expected.items():
+                    with self.subTest(kind=kind):
+                        preview = repo.dictionary_rename_preview(kind, entities[kind]["id"])
+                        self.assertEqual(counts, preview)
+                        self.assertTrue(all(type(value) is int for value in preview.values()))
+                self.assertEqual({}, repo.dictionary_rename_preview("unknown", -1))
+
+                company = next(row for row in repo.list_calling_companies() if row["company_id_external"] == "demo-company-1")
+                user_id = company["created_by"]
+                permission = repo.get_user_section_permission(user_id, "routes")
+                self.assertIsInstance(permission, sqlite3.Row)
+                self.assertEqual(1, permission["can_read"])
+                self.assertIsNone(repo.get_user_section_permission(user_id, "missing"))
+                permissions = repo.get_user_permissions(user_id)
+                self.assertIsInstance(permissions["routes"], sqlite3.Row)
+                self.assertEqual({}, repo.get_user_permissions(-1))
+
+                phone_identity = repo.get_phone_number_import_identity_by_normalized_number("525550000001")
+                phone = repo.get_phone_number(phone_identity["id"])
+                self.assertIsInstance(phone, sqlite3.Row)
+                self.assertIsNone(repo.get_phone_number(-1))
+                route = repo.get_route(company["current_route_id"])
+                self.assertIsInstance(route, sqlite3.Row)
+                self.assertIsNone(repo.get_route(-1))
+                numbers = repo.route_numbers(route["id"])
+                self.assertIsInstance(numbers, list)
+                self.assertIsInstance(numbers[0], sqlite3.Row)
+                self.assertEqual("cli", numbers[0]["usage_type"])
+                self.assertEqual([], repo.route_numbers(-1))
+
+                prefix = next(row for row in repo.list_provider_prefixes(provider["id"]) if row["prefix"] == "123")
+                tariff = repo.find_tariff_by_identity(country["id"], provider["id"], prefix["id"])
+                self.assertIsInstance(tariff, sqlite3.Row)
+                self.assertIsNone(repo.find_tariff_by_identity(country["id"], -1, None))
+                self.assertIsInstance(repo.get_tariff(tariff["id"]), sqlite3.Row)
+                self.assertIsNone(repo.get_tariff(-1))
+            finally:
+                conn.close()
+
+    def test_stage_35_postgres_placeholders_and_boolean_parameter_order(self):
+        class Result:
+            def fetchone(self):
+                return None
+
+            def __iter__(self):
+                return iter(())
+
+        class CaptureConnection:
+            def execute(self, sql, params=()):
+                self.calls.append((" ".join(sql.split()), params))
+                return Result()
+
+            def __init__(self):
+                self.calls = []
+
+        conn = CaptureConnection()
+        repo = Repository(conn, backend="postgres")
+        self.assertEqual([], repo.route_numbers(42))
+        sql, params = conn.calls[-1]
+        self.assertIn("rpn.route_id = %s", sql)
+        self.assertIn("rpn.is_active = %s", sql)
+        self.assertEqual((42, True, True), params)
+
+        self.assertIsNone(repo.get_tariff(9))
+        self.assertIn("WHERE t.id = %s", conn.calls[-1][0])
+
     def test_postgres_calling_company_boolean_fallback_parameter_order(self):
         class CaptureConnection:
             def execute(self, sql, params=()):

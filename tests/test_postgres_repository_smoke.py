@@ -62,12 +62,16 @@ class PostgreSQLRepositorySmokeTest(unittest.TestCase):
 
     def test_smoke_plan_contains_read_only_methods(self):
         self.assertTrue(smoke.SMOKE_METHODS)
-        forbidden = ("create_", "update_", "ensure_", "delete_", "clear_")
+        forbidden = ("create_", "update_", "ensure_", "set_", "delete_", "clear_", "deactivate_", "record_", "log_", "upsert_")
         self.assertFalse([name for name in smoke.SMOKE_METHODS if name.startswith(forbidden)])
 
     def test_stage_34_methods_are_in_smoke_plan(self):
         self.assertEqual(7, len(smoke.STAGE_34_METHODS))
         self.assertTrue(set(smoke.STAGE_34_METHODS) <= set(smoke.SMOKE_METHODS))
+
+    def test_stage_35_methods_are_in_smoke_plan(self):
+        self.assertEqual(8, len(smoke.STAGE_35_METHODS))
+        self.assertTrue(set(smoke.STAGE_35_METHODS) <= set(smoke.SMOKE_METHODS))
 
     def test_every_declared_method_is_actually_called_and_no_write_is_called(self):
         repository = RecordingRepository(Repository(self.conn))
@@ -82,8 +86,8 @@ class PostgreSQLRepositorySmokeTest(unittest.TestCase):
         summary = self.run_demo()
 
         self.assertEqual("ok", summary["status"])
-        self.assertEqual(61, summary["checks_count"])
-        self.assertGreater(summary["checks_count"], 44)
+        self.assertEqual(103, summary["checks_count"])
+        self.assertGreater(summary["checks_count"], 61)
         self.assertNotIn("secret", str(summary))
 
     def test_wrong_existing_demo_value_causes_failure(self):
@@ -105,6 +109,23 @@ class PostgreSQLRepositorySmokeTest(unittest.TestCase):
 
         self.assertEqual("failed", summary["status"])
         self.assertIn("get_calling_company_missing", {failure["check"] for failure in summary["failures"]})
+        self.assertEqual(103, summary["checks_count"])
+
+    def test_stage_35_assertion_failure_does_not_stop_later_checks(self):
+        repository = RecordingRepository(Repository(self.conn))
+        original = repository.repository.get_user_section_permission
+
+        def wrong_permission(user_id, section_key):
+            row = original(user_id, section_key)
+            return {**dict(row), "can_write": 0} if row is not None and section_key == "routes" else row
+
+        repository.repository.get_user_section_permission = wrong_permission
+        summary = self.run_demo(repository)
+
+        self.assertEqual("failed", summary["status"])
+        self.assertIn("get_user_section_permission_values", {failure["check"] for failure in summary["failures"]})
+        self.assertIn("get_tariff", repository.called)
+        self.assertEqual(103, summary["checks_count"])
 
     def test_postgres_numeric_scales_pass_semantic_checks(self):
         repository = RecordingRepository(Repository(self.conn))

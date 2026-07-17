@@ -440,3 +440,26 @@ Checklist topics:
   runtime is exercised.
 - `DB_BACKEND=postgres` remains disabled, `psycopg` remains CI/smoke-only, and
   SQLite remains the operational production and development backend.
+
+### Stage 35 Repository detail and permission read smoke status
+
+- The Repository-only smoke adds eight pure reads:
+  `dictionary_rename_preview`, `get_user_section_permission`,
+  `get_user_permissions`, `get_phone_number`, `get_route`, `route_numbers`,
+  `find_tariff_by_identity`, and `get_tariff`.
+- Compatibility fixes are limited to backend placeholders, mapping access to
+  named `COUNT(*) AS count` results, and parameterized backend boolean values
+  for active route-number relations. Existing SQLite row/dict/list contracts,
+  keys, ordering, nullable tariff-prefix identity, and business semantics remain
+  intact.
+- The smoke performs 103 semantic checks. Coverage includes every supported
+  dictionary-preview branch and unknown kind; positive and negative permission,
+  phone, route, relation, tariff-identity, and tariff-detail results; strict
+  SQLite/PostgreSQL boolean representations; and Decimal-based tariff numeric
+  comparisons.
+- Demo IDs are obtained only through earlier Repository results. The smoke does
+  not issue direct fixture SQL, and its PostgreSQL transaction remains
+  `SET TRANSACTION READ ONLY`.
+- The full application and Repository write paths are not run. PostgreSQL
+  application runtime and `DB_BACKEND=postgres` remain disabled, while SQLite
+  remains the operational production and development backend.

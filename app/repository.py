@@ -318,21 +318,33 @@ class Repository:
         }
 
     def dictionary_rename_preview(self, kind: str, entity_id: int) -> dict[str, int]:
+        p = placeholder(self.backend)
+
+        def count(table: str, column: str, value: object) -> int:
+            row = row_to_dict(
+                self.conn.execute(
+                    f"SELECT COUNT(*) AS count FROM {table} WHERE {column} = {p}",
+                    (value,),
+                ).fetchone()
+            )
+            return int(row["count"]) if row else 0
+
         if kind == "countries":
-            return {"Купленные номера": self.conn.execute("SELECT COUNT(*) FROM phone_numbers WHERE country_id = ?", (entity_id,)).fetchone()[0], "Маршруты": self.conn.execute("SELECT COUNT(*) FROM routes WHERE country_id = ?", (entity_id,)).fetchone()[0], "Тарифы": self.conn.execute("SELECT COUNT(*) FROM tariffs WHERE country_id = ?", (entity_id,)).fetchone()[0]}
+            return {"Купленные номера": count("phone_numbers", "country_id", entity_id), "Маршруты": count("routes", "country_id", entity_id), "Тарифы": count("tariffs", "country_id", entity_id)}
         if kind == "providers":
-            return {"Купленные номера": self.conn.execute("SELECT COUNT(*) FROM phone_numbers WHERE provider_id = ?", (entity_id,)).fetchone()[0], "Маршруты": self.conn.execute("SELECT COUNT(*) FROM routes WHERE provider_id = ?", (entity_id,)).fetchone()[0], "Тарифы": self.conn.execute("SELECT COUNT(*) FROM tariffs WHERE provider_id = ?", (entity_id,)).fetchone()[0]}
+            return {"Купленные номера": count("phone_numbers", "provider_id", entity_id), "Маршруты": count("routes", "provider_id", entity_id), "Тарифы": count("tariffs", "provider_id", entity_id)}
         if kind == "currencies":
-            return {"Купленные номера": self.conn.execute("SELECT COUNT(*) FROM phone_numbers WHERE currency_id = ?", (entity_id,)).fetchone()[0], "Тарифы": self.conn.execute("SELECT COUNT(*) FROM tariffs WHERE provider_currency_id = ?", (entity_id,)).fetchone()[0]}
+            return {"Купленные номера": count("phone_numbers", "currency_id", entity_id), "Тарифы": count("tariffs", "provider_currency_id", entity_id)}
         if kind == "phone-types":
-            row = self.conn.execute("SELECT name FROM phone_number_types WHERE id = ?", (entity_id,)).fetchone()
-            return {"Купленные номера": self.conn.execute("SELECT COUNT(*) FROM phone_numbers WHERE phone_type = ?", (row["name"] if row else None,)).fetchone()[0]}
+            row = row_to_dict(self.conn.execute(f"SELECT name FROM phone_number_types WHERE id = {p}", (entity_id,)).fetchone())
+            return {"Купленные номера": count("phone_numbers", "phone_type", row["name"] if row else None)}
         if kind == "projects":
-            row = self.conn.execute("SELECT name FROM projects WHERE id = ?", (entity_id,)).fetchone()
-            return {"Купленные номера": self.conn.execute("SELECT COUNT(*) FROM phone_numbers WHERE project_label = ?", (row["name"] if row else None,)).fetchone()[0], "Маршруты": self.conn.execute("SELECT COUNT(*) FROM routes WHERE project_label = ?", (row["name"] if row else None,)).fetchone()[0]}
+            row = row_to_dict(self.conn.execute(f"SELECT name FROM projects WHERE id = {p}", (entity_id,)).fetchone())
+            label = row["name"] if row else None
+            return {"Купленные номера": count("phone_numbers", "project_label", label), "Маршруты": count("routes", "project_label", label)}
         if kind == "phone-assignments":
-            row = self.conn.execute("SELECT code FROM phone_assignment_types WHERE id = ?", (entity_id,)).fetchone()
-            return {"Купленные номера": self.conn.execute("SELECT COUNT(*) FROM phone_numbers WHERE assignment_type = ?", (row["code"] if row else None,)).fetchone()[0]}
+            row = row_to_dict(self.conn.execute(f"SELECT code FROM phone_assignment_types WHERE id = {p}", (entity_id,)).fetchone())
+            return {"Купленные номера": count("phone_numbers", "assignment_type", row["code"] if row else None)}
         return {}
 
     def update_dictionary_snapshots(self, kind: str, entity_id: int, old_label: str | None, new_label: str | None) -> dict[str, int]:
@@ -549,24 +561,26 @@ class Repository:
         self.set_app_setting_value("hlr_daily_limit_override", str(value), updated_by, commit=commit)
 
     def get_user_section_permission(self, user_id: int, section_key: str) -> sqlite3.Row | None:
+        p = placeholder(self.backend)
         return self.conn.execute(
             """
             SELECT can_read, can_write, can_export
             FROM user_permissions
-            WHERE user_id = ? AND section_key = ?
-            """,
+            WHERE user_id = {p} AND section_key = {p}
+            """.format(p=p),
             (user_id, section_key),
         ).fetchone()
 
     def get_user_permissions(self, user_id: int) -> dict[str, sqlite3.Row]:
+        p = placeholder(self.backend)
         return {
             row["section_key"]: row
             for row in self.conn.execute(
                 """
                 SELECT section_key, can_read, can_write, can_export
                 FROM user_permissions
-                WHERE user_id = ?
-                """,
+                WHERE user_id = {p}
+                """.format(p=p),
                 (user_id,),
             )
         }
@@ -1071,26 +1085,28 @@ class Repository:
 
 
     def get_phone_number(self, phone_id: int) -> sqlite3.Row | None:
+        p = placeholder(self.backend)
         return self.conn.execute(
             """
             SELECT pn.*, c.name AS country_name, p.name AS provider_name
             FROM phone_numbers pn
             JOIN countries c ON c.id = pn.country_id
             LEFT JOIN providers p ON p.id = pn.provider_id
-            WHERE pn.id = ?
-            """,
+            WHERE pn.id = {p}
+            """.format(p=p),
             (phone_id,),
         ).fetchone()
 
     def get_route(self, route_id: int) -> sqlite3.Row | None:
+        p = placeholder(self.backend)
         return self.conn.execute(
             """
             SELECT r.*, c.name AS country_name, p.name AS provider_name
             FROM routes r
             JOIN countries c ON c.id = r.country_id
             JOIN providers p ON p.id = r.provider_id
-            WHERE r.id = ?
-            """,
+            WHERE r.id = {p}
+            """.format(p=p),
             (route_id,),
         ).fetchone()
 
@@ -1221,19 +1237,20 @@ class Repository:
         )
 
     def route_numbers(self, route_id: int) -> list[sqlite3.Row]:
+        p = placeholder(self.backend)
         return list(
             self.conn.execute(
                 """
-                SELECT rpn.id AS link_id, pn.id AS phone_id, pn.number, pn.status, pn.assignment_type, pn.connection_cost, pn.monthly_fee,
+                SELECT rpn.id AS link_id, pn.id AS phone_id, pn.number, pn.status, pn.assignment_type, rpn.usage_type, rpn.is_active, pn.connection_cost, pn.monthly_fee,
                     pn.outgoing_rate, pn.incoming_rate, pn.comment AS phone_comment, rpn.comment AS link_comment
                 FROM route_phone_numbers rpn
                 JOIN phone_numbers pn ON pn.id = rpn.phone_number_id
-                WHERE rpn.route_id = ?
-                  AND rpn.is_active = 1
-                  AND pn.is_active = 1
+                WHERE rpn.route_id = {p}
+                  AND rpn.is_active = {p}
+                  AND pn.is_active = {p}
                 ORDER BY pn.number
-                """,
-                (route_id,),
+                """.format(p=p),
+                (route_id, to_db_bool(True, self.backend), to_db_bool(True, self.backend)),
             )
         )
 
@@ -1540,6 +1557,7 @@ class Repository:
             self.conn.commit()
 
     def find_tariff_by_identity(self, country_id: int, provider_id: int, provider_prefix_id: int | None) -> sqlite3.Row | None:
+        p = placeholder(self.backend)
         return self.conn.execute(
             """
             SELECT t.*, c.name AS country_name, p.name AS provider_name, pp.prefix AS prefix
@@ -1547,10 +1565,10 @@ class Repository:
             JOIN countries c ON c.id = t.country_id
             JOIN providers p ON p.id = t.provider_id
             LEFT JOIN provider_prefixes pp ON pp.id = t.provider_prefix_id
-            WHERE t.country_id = ? AND t.provider_id = ? AND COALESCE(t.provider_prefix_id, 0) = COALESCE(?, 0)
+            WHERE t.country_id = {p} AND t.provider_id = {p} AND COALESCE(t.provider_prefix_id, 0) = COALESCE({p}, 0)
             ORDER BY t.id DESC
             LIMIT 1
-            """,
+            """.format(p=p),
             (country_id, provider_id, provider_prefix_id),
         ).fetchone()
 
@@ -1645,6 +1663,7 @@ class Repository:
         return tariff_id
 
     def get_tariff(self, tariff_id: int) -> sqlite3.Row | None:
+        p = placeholder(self.backend)
         return self.conn.execute(
             """
             SELECT t.*, c.name AS country_name, p.name AS provider_name, pp.prefix AS prefix, cur.code AS currency_code
@@ -1653,8 +1672,8 @@ class Repository:
             JOIN providers p ON p.id = t.provider_id
             LEFT JOIN provider_prefixes pp ON pp.id = t.provider_prefix_id
             JOIN currencies cur ON cur.id = t.provider_currency_id
-            WHERE t.id = ?
-            """,
+            WHERE t.id = {p}
+            """.format(p=p),
             (tariff_id,),
         ).fetchone()
 
