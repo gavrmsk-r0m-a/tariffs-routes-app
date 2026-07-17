@@ -294,7 +294,20 @@ class Repository:
             self.conn.commit()
 
     def _user_columns(self) -> set[str]:
-        return {row[1] for row in self.conn.execute("PRAGMA table_info(users)")}
+        if self.backend == "sqlite":
+            return {row["name"] for row in self.conn.execute("PRAGMA table_info(users)")}
+        p = placeholder(self.backend)
+        rows = self.conn.execute(
+            f"""
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_schema = current_schema()
+              AND table_name = {p}
+            ORDER BY ordinal_position
+            """,
+            ("users",),
+        )
+        return {row["column_name"] for row in rows}
 
     def _role_key(self, role: str) -> str:
         normalized = (role or "operator").strip().lower()
@@ -407,31 +420,41 @@ class Repository:
         return int(cur.lastrowid)
 
     def list_users(self, active_only: bool = False) -> list[sqlite3.Row]:
-        where = "WHERE is_active = 1" if active_only else ""
+        p = placeholder(self.backend)
+        where = f"WHERE is_active = {p}" if active_only else ""
+        params = (to_db_bool(True, self.backend),) if active_only else ()
         role_expr = "role_key" if "role_key" in self._user_columns() else "LOWER(role)"
+        ordering = (
+            "is_active DESC, display_name COLLATE NOCASE, username COLLATE NOCASE"
+            if self.backend == "sqlite"
+            else "is_active DESC, LOWER(COALESCE(NULLIF(display_name, ''), username)), LOWER(username), id"
+        )
         return list(self.conn.execute(
             f"""
             SELECT id, username, COALESCE(NULLIF(display_name, ''), username) AS display_name,
                    {role_expr} AS role_key, email, must_change_password, is_active, created_at, updated_at
             FROM users
             {where}
-            ORDER BY is_active DESC, display_name COLLATE NOCASE, username COLLATE NOCASE
-            """
+            ORDER BY {ordering}
+            """,
+            params,
         ))
 
     def get_user(self, user_id: int) -> sqlite3.Row | None:
+        p = placeholder(self.backend)
         role_expr = "role_key" if "role_key" in self._user_columns() else "LOWER(role)"
         return self.conn.execute(
             f"""
             SELECT id, username, COALESCE(NULLIF(display_name, ''), username) AS display_name,
                    {role_expr} AS role_key, email, must_change_password, is_active, created_at, updated_at
             FROM users
-            WHERE id = ?
+            WHERE id = {p}
             """,
             (user_id,),
         ).fetchone()
 
     def get_user_by_username(self, username: str) -> sqlite3.Row | None:
+        p = placeholder(self.backend)
         columns = self._user_columns()
         role_expr = "role_key" if "role_key" in columns else "LOWER(role)"
         password_cols = ", password_hash, password_salt" if {"password_hash", "password_salt"}.issubset(columns) else ""
@@ -440,7 +463,7 @@ class Repository:
             SELECT id, username, COALESCE(NULLIF(display_name, ''), username) AS display_name,
                    {role_expr} AS role_key, email, must_change_password, is_active, created_at, updated_at{password_cols}
             FROM users
-            WHERE username = ?
+            WHERE username = {p}
             """,
             (username.strip(),),
         ).fetchone()

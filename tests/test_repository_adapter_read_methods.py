@@ -279,6 +279,90 @@ class RepositoryAdapterReadMethodsTest(unittest.TestCase):
         self.assertIn("active_crs.is_active = %s", normalized_sql)
         self.assertEqual([False, True], conn.params)
 
+    def test_stage_36_sqlite_user_read_contracts(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = create_demo_sqlite(Path(directory) / "demo.db")
+            conn = sqlite3.connect(path)
+            conn.row_factory = sqlite3.Row
+            statements = []
+            conn.set_trace_callback(statements.append)
+            try:
+                repo = Repository(conn)
+                self.assertIn("role_key", repo._user_columns())
+                users = repo.list_users()
+                self.assertIsInstance(users, list)
+                self.assertIsInstance(users[0], sqlite3.Row)
+                keys = ["id", "username", "display_name", "role_key", "email", "must_change_password", "is_active", "created_at", "updated_at"]
+                self.assertEqual(keys, users[0].keys())
+                admin = next(row for row in users if row["username"] == "admin")
+                inactive = next(row for row in users if row["username"] == "ci-inactive")
+                self.assertEqual(0, inactive["is_active"])
+                self.assertNotIn("ci-inactive", [row["username"] for row in repo.list_users(active_only=True)])
+                detail = repo.get_user(admin["id"])
+                self.assertIsInstance(detail, sqlite3.Row)
+                self.assertEqual(keys, detail.keys())
+                login = repo.get_user_by_username(" admin ")
+                self.assertIsInstance(login, sqlite3.Row)
+                self.assertEqual(keys + ["password_hash", "password_salt"], login.keys())
+                self.assertEqual("admin", repo.authenticate_user("admin", "admin")["username"])
+                self.assertIsNone(repo.authenticate_user("admin", "wrong"))
+                self.assertTrue(any("PRAGMA table_info(users)" in sql for sql in statements))
+                self.assertTrue(any("display_name COLLATE NOCASE" in sql and "username COLLATE NOCASE" in sql for sql in statements))
+            finally:
+                conn.close()
+
+    def test_stage_36_legacy_sqlite_user_columns_and_role_fallback(self):
+        conn = sqlite3.connect(":memory:")
+        conn.row_factory = sqlite3.Row
+        conn.execute("""CREATE TABLE users (id INTEGER PRIMARY KEY, username TEXT, display_name TEXT,
+                     role TEXT, email TEXT, must_change_password INTEGER, is_active INTEGER,
+                     created_at TEXT, updated_at TEXT, password_hash TEXT, password_salt TEXT)""")
+        conn.execute("INSERT INTO users VALUES (1, 'legacy', '', 'ADMIN', NULL, 0, 1, 'now', 'now', NULL, NULL)")
+        try:
+            repo = Repository(conn)
+            self.assertIn("role", repo._user_columns())
+            self.assertNotIn("role_key", repo._user_columns())
+            for row in (repo.list_users()[0], repo.get_user(1), repo.get_user_by_username("legacy")):
+                self.assertEqual("admin", row["role_key"])
+                self.assertEqual("legacy", row["display_name"])
+        finally:
+            conn.close()
+
+    def test_stage_36_postgres_user_sql_recording(self):
+        columns = ["id", "username", "display_name", "role_key", "email", "must_change_password", "is_active", "created_at", "updated_at", "password_hash", "password_salt"]
+
+        class Result:
+            def __init__(self, rows=()): self.rows = rows
+            def __iter__(self): return iter(self.rows)
+            def fetchone(self): return self.rows[0] if self.rows else None
+
+        class Connection:
+            def __init__(self): self.calls = []
+            def execute(self, sql, params=()):
+                normalized = " ".join(sql.split())
+                self.calls.append((normalized, params))
+                if "information_schema.columns" in normalized:
+                    return Result([{"column_name": name} for name in columns])
+                return Result()
+
+        conn = Connection()
+        repo = Repository(conn, backend="postgres")
+        self.assertEqual(set(columns), repo._user_columns())
+        repo.list_users(active_only=True)
+        repo.get_user(7)
+        repo.get_user_by_username(" admin ")
+        introspection = next(call for call in conn.calls if "information_schema.columns" in call[0])
+        self.assertIn("table_schema = current_schema()", introspection[0])
+        self.assertIn("table_name = %s", introspection[0])
+        self.assertEqual(("users",), introspection[1])
+        self.assertFalse(any("PRAGMA" in sql for sql, _ in conn.calls))
+        list_call = next(call for call in conn.calls if "FROM users" in call[0] and "ORDER BY" in call[0])
+        self.assertEqual((True,), list_call[1])
+        self.assertNotIn("COLLATE NOCASE", list_call[0])
+        self.assertIn("LOWER(COALESCE(NULLIF(display_name, ''), username))", list_call[0])
+        self.assertTrue(any("WHERE id = %s" in sql and params == (7,) for sql, params in conn.calls))
+        self.assertTrue(any("WHERE username = %s" in sql and params == ("admin",) for sql, params in conn.calls))
+
 
 if __name__ == "__main__":
     unittest.main()

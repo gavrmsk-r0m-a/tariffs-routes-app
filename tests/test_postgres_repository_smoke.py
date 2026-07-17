@@ -73,6 +73,11 @@ class PostgreSQLRepositorySmokeTest(unittest.TestCase):
         self.assertEqual(8, len(smoke.STAGE_35_METHODS))
         self.assertTrue(set(smoke.STAGE_35_METHODS) <= set(smoke.SMOKE_METHODS))
 
+    def test_stage_36_methods_are_in_smoke_plan(self):
+        self.assertEqual(("list_users", "get_user", "get_user_by_username", "authenticate_user"), smoke.STAGE_36_METHODS)
+        self.assertTrue(set(smoke.STAGE_36_METHODS) <= set(smoke.SMOKE_METHODS))
+        self.assertNotIn("_user_columns", smoke.SMOKE_METHODS)
+
     def test_every_declared_method_is_actually_called_and_no_write_is_called(self):
         repository = RecordingRepository(Repository(self.conn))
         summary = self.run_demo(repository)
@@ -86,7 +91,7 @@ class PostgreSQLRepositorySmokeTest(unittest.TestCase):
         summary = self.run_demo()
 
         self.assertEqual("ok", summary["status"])
-        self.assertEqual(103, summary["checks_count"])
+        self.assertEqual(131, summary["checks_count"])
         self.assertGreater(summary["checks_count"], 61)
         self.assertNotIn("secret", str(summary))
 
@@ -109,7 +114,7 @@ class PostgreSQLRepositorySmokeTest(unittest.TestCase):
 
         self.assertEqual("failed", summary["status"])
         self.assertIn("get_calling_company_missing", {failure["check"] for failure in summary["failures"]})
-        self.assertEqual(103, summary["checks_count"])
+        self.assertEqual(131, summary["checks_count"])
 
     def test_stage_35_assertion_failure_does_not_stop_later_checks(self):
         repository = RecordingRepository(Repository(self.conn))
@@ -125,7 +130,28 @@ class PostgreSQLRepositorySmokeTest(unittest.TestCase):
         self.assertEqual("failed", summary["status"])
         self.assertIn("get_user_section_permission_values", {failure["check"] for failure in summary["failures"]})
         self.assertIn("get_tariff", repository.called)
-        self.assertEqual(103, summary["checks_count"])
+        self.assertEqual(131, summary["checks_count"])
+
+    def test_stage_36_assertion_failure_does_not_stop_later_checks(self):
+        repository = RecordingRepository(Repository(self.conn))
+        original = repository.repository.list_users
+
+        def wrong_users(active_only=False):
+            rows = original(active_only)
+            return [{**dict(row), "display_name": "Wrong"} if row["username"] == "admin" else row for row in rows]
+
+        repository.repository.list_users = wrong_users
+        summary = self.run_demo(repository)
+        self.assertEqual("failed", summary["status"])
+        self.assertIn("list_users_admin_display_name", {failure["check"] for failure in summary["failures"]})
+        self.assertIn("authenticate_user", repository.called)
+        self.assertEqual(131, summary["checks_count"])
+
+    def test_database_false_is_strict(self):
+        self.assertTrue(smoke._is_database_false(False))
+        self.assertTrue(smoke._is_database_false(0))
+        for value in (None, "", "false", [], {}):
+            self.assertFalse(smoke._is_database_false(value))
 
     def test_postgres_numeric_scales_pass_semantic_checks(self):
         repository = RecordingRepository(Repository(self.conn))
