@@ -413,3 +413,26 @@ Checklist topics:
   development backend.
 - `psycopg` remains a workflow-only dependency and is imported lazily by the
   standalone smoke script.
+
+### Stage 34 Repository read-only PostgreSQL smoke batch 2 status
+
+- The smoke adds seven pure reads: `get_app_setting_value`,
+  `get_hlr_daily_usage`, `get_hlr_limit_override`, `list_calling_companies`,
+  `get_calling_company`, `latest_currency_rate`, and `get_currency_rate`.
+- Compatibility changes are limited to backend placeholders and backend boolean
+  values in those methods. SQLite return shapes, ordering, filters, and business
+  semantics are unchanged. The synthetic demo adds only a deterministic
+  `hlr_daily_limit_override=2500` application setting.
+- The smoke performs 61 semantic checks (the Stage 33 baseline 44 plus 17) and
+  verifies exact demo values as well as missing setting, HLR usage, company,
+  and currency-rate results.
+- User reads that depend on `PRAGMA`, search/filter lists that depend on
+  `search_text_matches`/SQLite SQL, history and JSON reads, tariff reads, and
+  methods without a suitable adapter-ready fixture lookup remain deferred. The
+  focused rationale is recorded in
+  [`repository_read_only_smoke_audit.md`](repository_read_only_smoke_audit.md).
+- The PostgreSQL transaction remains `READ ONLY`. No Repository write path,
+  migration, schema change, full application flow, or PostgreSQL application
+  runtime is exercised.
+- `DB_BACKEND=postgres` remains disabled, `psycopg` remains CI/smoke-only, and
+  SQLite remains the operational production and development backend.

@@ -29,6 +29,15 @@ SMOKE_METHODS = (
     "calling_company_exists_by_server_country_external_id",
     "current_tariff_exists_by_country_provider_prefix",
     "get_phone_number_import_identity_by_normalized_number",
+    "get_app_setting_value", "get_hlr_daily_usage", "get_hlr_limit_override",
+    "list_calling_companies", "get_calling_company", "latest_currency_rate",
+    "get_currency_rate",
+)
+
+STAGE_34_METHODS = (
+    "get_app_setting_value", "get_hlr_daily_usage", "get_hlr_limit_override",
+    "list_calling_companies", "get_calling_company", "latest_currency_rate",
+    "get_currency_rate",
 )
 
 EXISTS_CHECKS = (
@@ -100,6 +109,32 @@ def run_exists_checks(repo: Repository, check) -> None:
         )
 
 
+def run_stage_34_checks(repo: Repository, check, currencies: list[dict]) -> None:
+    """Check the Stage 34 batch against deterministic migration-demo values."""
+    check("get_app_setting_value", lambda: _check(repo.get_app_setting_value("demo_setting") == "enabled", "demo_setting must equal enabled"))
+    check("get_app_setting_value_missing", lambda: _check(repo.get_app_setting_value("missing_setting") is None, "missing setting must return None"))
+
+    usage = check("get_hlr_daily_usage", lambda: repo.get_hlr_daily_usage("2026-07-12"))
+    check("get_hlr_daily_usage_values", lambda: _check(usage is not None and usage["checked_today"] == 1 and str(usage["credits_spent_today"]) in {"0.500000", "0.5"}, "demo HLR usage values are incorrect"))
+    check("get_hlr_daily_usage_missing", lambda: _check(repo.get_hlr_daily_usage("1999-01-01")["checked_today"] == 0, "missing HLR usage must have zero checks"))
+    check("get_hlr_limit_override", lambda: _check(repo.get_hlr_limit_override() == "2500", "demo HLR limit override must equal 2500"))
+
+    companies = check("list_calling_companies", repo.list_calling_companies)
+    company = next((row for row in (companies or []) if row["company_id_external"] == "demo-company-1"), None)
+    check("list_calling_companies_values", lambda: _check(company is not None and company["company_name"] == "Demo Company" and company["server_name"] == "demo-server-1", "demo calling company is incorrect"))
+    company_detail = check("get_calling_company", lambda: repo.get_calling_company(company["id"]) if company else None)
+    check("get_calling_company_values", lambda: _check(company_detail is not None and company_detail["country_name"] == "Demo Country" and company_detail["company_id_external"] == "demo-company-1", "calling company detail is incorrect"))
+    check("get_calling_company_missing", lambda: _check(repo.get_calling_company(-1) is None, "missing calling company must return None"))
+
+    eur = next((row for row in (currencies or []) if row["code"] == "EUR"), None)
+    latest_rate = check("latest_currency_rate", lambda: repo.latest_currency_rate(eur["id"]) if eur else None)
+    check("latest_currency_rate_values", lambda: _check(latest_rate is not None and str(latest_rate["rate_to_eur"]) in {"1.000000", "1.0", "1"} and str(latest_rate["rate_date"]) == "2026-07-12", "latest EUR rate is incorrect"))
+    check("latest_currency_rate_missing", lambda: _check(repo.latest_currency_rate(-1) is None, "missing latest rate must return None"))
+    rate = check("get_currency_rate", lambda: repo.get_currency_rate(latest_rate["id"]) if latest_rate else None)
+    check("get_currency_rate_values", lambda: _check(rate is not None and rate["currency_code"] == "EUR" and rate["source"] == "manual", "currency rate detail is incorrect"))
+    check("get_currency_rate_missing", lambda: _check(repo.get_currency_rate(-1) is None, "missing currency rate must return None"))
+
+
 def run_repository_checks(repo: Repository, postgres_url: str) -> dict:
     summary = empty_summary(postgres_url)
     checks: list[tuple[str, object]] = []
@@ -149,6 +184,7 @@ def run_repository_checks(repo: Repository, postgres_url: str) -> dict:
         check(method_name, lambda name=method_name, values=args: _check(isinstance(getattr(repo, name)(*values), dict), f"{name} must return dict for demo data"))
 
     run_exists_checks(repo, check)
+    run_stage_34_checks(repo, check, collections["list_currencies"] or [])
 
     summary.update(status="ok" if not failures else "failed", checks_count=len(checks) + len(failures), failures=failures)
     return summary

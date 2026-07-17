@@ -1,8 +1,11 @@
 import sqlite3
+import tempfile
 import unittest
+from pathlib import Path
 
 from app.db import init_db
 from app.repository import Repository
+from scripts.create_migration_demo_sqlite import create_demo_sqlite
 
 
 class RepositoryAdapterReadMethodsTest(unittest.TestCase):
@@ -122,6 +125,34 @@ class RepositoryAdapterReadMethodsTest(unittest.TestCase):
         created_id = self.repo.create_country("Бельгия", "BE")
 
         self.assertEqual(self.repo.get_country(created_id)["name"], "Бельгия")
+
+    def test_stage_34_reads_preserve_sqlite_rows_and_values(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = create_demo_sqlite(Path(directory) / "demo.db")
+            conn = sqlite3.connect(path)
+            conn.row_factory = sqlite3.Row
+            try:
+                repo = Repository(conn)
+                self.assertEqual("enabled", repo.get_app_setting_value("demo_setting"))
+                self.assertIsNone(repo.get_app_setting_value("missing_setting"))
+                self.assertEqual(1, repo.get_hlr_daily_usage("2026-07-12")["checked_today"])
+                self.assertEqual("2500", repo.get_hlr_limit_override())
+
+                companies = repo.list_calling_companies()
+                company = next(row for row in companies if row["company_id_external"] == "demo-company-1")
+                self.assertIsInstance(company, sqlite3.Row)
+                self.assertEqual("Demo Company", repo.get_calling_company(company["id"])["company_name"])
+                self.assertIsNone(repo.get_calling_company(-1))
+
+                currency_id = next(row["id"] for row in repo.list_currencies() if row["code"] == "EUR")
+                latest = repo.latest_currency_rate(currency_id)
+                self.assertIsInstance(latest, sqlite3.Row)
+                self.assertEqual("2026-07-12", latest["rate_date"])
+                self.assertEqual("EUR", repo.get_currency_rate(latest["id"])["currency_code"])
+                self.assertIsNone(repo.latest_currency_rate(-1))
+                self.assertIsNone(repo.get_currency_rate(-1))
+            finally:
+                conn.close()
 
 
 if __name__ == "__main__":

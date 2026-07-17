@@ -1,14 +1,48 @@
 import importlib.util
 import os
 import sys
+import sqlite3
+import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
 
 from scripts import postgres_repository_smoke as smoke
+from scripts.create_migration_demo_sqlite import create_demo_sqlite
+from app.repository import Repository
+
+
+class RecordingRepository:
+    def __init__(self, repository):
+        self.repository = repository
+        self.called = []
+
+    def __getattr__(self, name):
+        value = getattr(self.repository, name)
+        if not callable(value):
+            return value
+
+        def recorded(*args, **kwargs):
+            self.called.append(name)
+            return value(*args, **kwargs)
+
+        return recorded
 
 
 class PostgreSQLRepositorySmokeTest(unittest.TestCase):
+    def setUp(self):
+        self.temp_dir = tempfile.TemporaryDirectory()
+        path = create_demo_sqlite(Path(self.temp_dir.name) / "demo.db")
+        self.conn = sqlite3.connect(path)
+        self.conn.row_factory = sqlite3.Row
+
+    def tearDown(self):
+        self.conn.close()
+        self.temp_dir.cleanup()
+
+    def run_demo(self, repository=None):
+        return smoke.run_repository_checks(repository or Repository(self.conn), "postgresql://user:secret@localhost/demo")
+
     def test_smoke_script_imports_without_psycopg(self):
         script = Path(smoke.__file__)
         spec = importlib.util.spec_from_file_location("lazy_smoke_test_module", script)
@@ -29,6 +63,47 @@ class PostgreSQLRepositorySmokeTest(unittest.TestCase):
         self.assertTrue(smoke.SMOKE_METHODS)
         forbidden = ("create_", "update_", "ensure_", "delete_", "clear_")
         self.assertFalse([name for name in smoke.SMOKE_METHODS if name.startswith(forbidden)])
+
+    def test_stage_34_methods_are_in_smoke_plan(self):
+        self.assertEqual(7, len(smoke.STAGE_34_METHODS))
+        self.assertTrue(set(smoke.STAGE_34_METHODS) <= set(smoke.SMOKE_METHODS))
+
+    def test_every_declared_method_is_actually_called_and_no_write_is_called(self):
+        repository = RecordingRepository(Repository(self.conn))
+        summary = self.run_demo(repository)
+
+        self.assertEqual("ok", summary["status"])
+        self.assertFalse(set(smoke.SMOKE_METHODS) - set(repository.called))
+        write_prefixes = ("create_", "update_", "ensure_", "delete_", "clear_", "set_", "upsert_", "add_", "remove_", "recalculate_", "log_")
+        self.assertFalse([name for name in repository.called if name.startswith(write_prefixes)])
+
+    def test_stage_34_semantics_and_check_count(self):
+        summary = self.run_demo()
+
+        self.assertEqual("ok", summary["status"])
+        self.assertEqual(61, summary["checks_count"])
+        self.assertGreater(summary["checks_count"], 44)
+        self.assertNotIn("secret", str(summary))
+
+    def test_wrong_existing_demo_value_causes_failure(self):
+        repository = RecordingRepository(Repository(self.conn))
+        original = repository.repository.get_app_setting_value
+        repository.repository.get_app_setting_value = lambda key: "wrong" if key == "demo_setting" else original(key)
+
+        summary = self.run_demo(repository)
+
+        self.assertEqual("failed", summary["status"])
+        self.assertIn("get_app_setting_value", {failure["check"] for failure in summary["failures"]})
+
+    def test_wrong_negative_result_causes_failure(self):
+        repository = RecordingRepository(Repository(self.conn))
+        original = repository.repository.get_calling_company
+        repository.repository.get_calling_company = lambda company_id: {"id": -1} if company_id == -1 else original(company_id)
+
+        summary = self.run_demo(repository)
+
+        self.assertEqual("failed", summary["status"])
+        self.assertIn("get_calling_company_missing", {failure["check"] for failure in summary["failures"]})
 
     def test_workflow_paths_include_repository_and_db_adapter(self):
         workflow = (Path(__file__).parents[1] / ".github/workflows/postgres-migration-smoke.yml").read_text(encoding="utf-8")

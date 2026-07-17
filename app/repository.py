@@ -446,7 +446,8 @@ class Repository:
 
 
     def get_app_setting_value(self, key: str) -> str | None:
-        row = self.conn.execute("SELECT value FROM app_settings WHERE key = ?", (key,)).fetchone()
+        p = placeholder(self.backend)
+        row = self.conn.execute(f"SELECT value FROM app_settings WHERE key = {p}", (key,)).fetchone()
         if row is None or row["value"] in (None, ""):
             return None
         return str(row["value"])
@@ -482,7 +483,8 @@ class Repository:
             raise
 
     def get_hlr_daily_usage(self, usage_date: str) -> dict[str, object]:
-        row = self.conn.execute("SELECT * FROM hlr_daily_usage WHERE usage_date = ?", (usage_date,)).fetchone()
+        p = placeholder(self.backend)
+        row = self.conn.execute(f"SELECT * FROM hlr_daily_usage WHERE usage_date = {p}", (usage_date,)).fetchone()
         if row is None:
             return {
                 "date": usage_date,
@@ -969,13 +971,14 @@ class Repository:
         return company_id
 
     def get_calling_company(self, company_id: int) -> sqlite3.Row | None:
+        p = placeholder(self.backend)
         return self.conn.execute(
-            """
+            f"""
             SELECT cc.*, s.name AS server_name, c.name AS country_name
             FROM calling_companies cc
             JOIN servers s ON s.id = cc.server_id
             JOIN countries c ON c.id = cc.country_id
-            WHERE cc.id = ?
+            WHERE cc.id = {p}
             """,
             (company_id,),
         ).fetchone()
@@ -1774,12 +1777,13 @@ class Repository:
         return cur.lastrowid
 
     def get_currency_rate(self, currency_rate_id: int) -> sqlite3.Row | None:
+        p = placeholder(self.backend)
         return self.conn.execute(
-            """
+            f"""
             SELECT cr.*, c.code AS currency_code
             FROM currency_rates cr
             JOIN currencies c ON c.id = cr.currency_id
-            WHERE cr.id = ?
+            WHERE cr.id = {p}
             """,
             (currency_rate_id,),
         ).fetchone()
@@ -1915,10 +1919,11 @@ class Repository:
         )
 
     def latest_currency_rate(self, currency_id: int) -> sqlite3.Row | None:
+        p = placeholder(self.backend)
         return self.conn.execute(
-            """
+            f"""
             SELECT * FROM currency_rates
-            WHERE currency_id = ?
+            WHERE currency_id = {p}
             ORDER BY rate_date DESC, created_at DESC, id DESC
             LIMIT 1
             """,
@@ -1972,6 +1977,9 @@ class Repository:
                 "is_active": "cc.is_active",
             },
         )
+        active = to_db_bool(True, self.backend)
+        p = placeholder(self.backend)
+        active_join = f"active_crs.is_active = {p}"
         return list(
             self.conn.execute(
                 f"""
@@ -1983,12 +1991,12 @@ class Repository:
                 JOIN countries c ON c.id = cc.country_id
                 LEFT JOIN company_routing_settings active_crs
                   ON active_crs.calling_company_id = cc.id
-                 AND active_crs.is_active = 1
+                 AND {active_join}
                  AND active_crs.valid_to IS NULL
                 {where}
                 ORDER BY c.name, s.name, cc.company_name
                 """,
-                params,
+                [active, *params],
             )
         )
 
