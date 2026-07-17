@@ -280,7 +280,8 @@ class Repository:
     def __init__(self, conn: sqlite3.Connection, backend: str = "sqlite"):
         self.conn = conn
         self.backend = normalize_backend_name(backend)
-        self.conn.create_function("search_text_matches", 2, search_text_matches)
+        if self.backend == "sqlite":
+            self.conn.create_function("search_text_matches", 2, search_text_matches)
 
     @contextmanager
     def transaction(self):
@@ -3738,9 +3739,9 @@ class Repository:
             JOIN countries c ON c.id = t.country_id
             JOIN providers p ON p.id = t.provider_id
             LEFT JOIN provider_prefixes pp ON pp.id = t.provider_prefix_id
-            WHERE t.is_current = 1 AND c.name = {p} AND p.name = {p} AND COALESCE(pp.prefix, '') = COALESCE({p}, '')
+            WHERE t.is_current = {p} AND c.name = {p} AND p.name = {p} AND COALESCE(pp.prefix, '') = COALESCE({p}, '')
             """,
-            (country_name, provider_name, prefix or None),
+            (to_db_bool(True, self.backend), country_name, provider_name, prefix or None),
         ).fetchone()
         return row is not None
 
@@ -3783,16 +3784,20 @@ class Repository:
 
     def dictionary_counts(self) -> dict[str, int]:
         count_queries = {
-            "countries": "SELECT COUNT(*) FROM countries",
-            "providers": "SELECT COUNT(*) FROM providers",
-            "currencies": "SELECT COUNT(*) FROM currencies",
-            "prefixes": "SELECT COUNT(*) FROM provider_prefixes",
-            "servers": "SELECT COUNT(*) FROM servers",
-            "phone-types": "SELECT COUNT(*) FROM phone_number_types",
-            "projects": "SELECT COUNT(*) FROM projects",
-            "phone-assignments": "SELECT COUNT(*) FROM phone_assignment_types",
+            "countries": "SELECT COUNT(*) AS count FROM countries",
+            "providers": "SELECT COUNT(*) AS count FROM providers",
+            "currencies": "SELECT COUNT(*) AS count FROM currencies",
+            "prefixes": "SELECT COUNT(*) AS count FROM provider_prefixes",
+            "servers": "SELECT COUNT(*) AS count FROM servers",
+            "phone-types": "SELECT COUNT(*) AS count FROM phone_number_types",
+            "projects": "SELECT COUNT(*) AS count FROM projects",
+            "phone-assignments": "SELECT COUNT(*) AS count FROM phone_assignment_types",
         }
-        return {key: int(self.conn.execute(sql).fetchone()[0]) for key, sql in count_queries.items()}
+        counts = {}
+        for key, sql in count_queries.items():
+            row = row_to_dict(self.conn.execute(sql).fetchone())
+            counts[key] = int(row["count"])
+        return counts
 
     def list_providers_with_currency(self) -> list[dict]:
         return rows_to_dicts(
@@ -3810,7 +3815,13 @@ class Repository:
         return rows_to_dicts(self.conn.execute("SELECT * FROM change_reasons ORDER BY is_active DESC, name"))
 
     def list_active_change_reasons(self) -> list[dict]:
-        return rows_to_dicts(self.conn.execute("SELECT * FROM change_reasons WHERE is_active = 1 ORDER BY name"))
+        p = placeholder(self.backend)
+        return rows_to_dicts(
+            self.conn.execute(
+                f"SELECT * FROM change_reasons WHERE is_active = {p} ORDER BY name",
+                (to_db_bool(True, self.backend),),
+            )
+        )
 
     def create_change_reason(self, name: str, created_by: int | None = None, comment: str | None = None, is_active: bool = True) -> int:
         p = placeholder(self.backend)

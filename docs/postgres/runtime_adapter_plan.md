@@ -401,3 +401,15 @@ Checklist topics:
   and all other runtime behavior are unchanged.
 - PostgreSQL runtime remains disabled, no runtime `psycopg` dependency is added,
   and SQLite remains the operational backend.
+
+### Stage 33 Repository read-only PostgreSQL smoke status
+
+- CI now runs a Repository-level, read-only smoke after migration apply against
+  the workflow's temporary PostgreSQL service.
+- The smoke covers only adapter-ready read methods and starts a read-only
+  transaction; it does not run Repository writes, migrations, or the full app.
+- This is CI compatibility verification, not a runtime switch:
+  `DB_BACKEND=postgres` remains disabled and SQLite remains the production and
+  development backend.
+- `psycopg` remains a workflow-only dependency and is imported lazily by the
+  standalone smoke script.
