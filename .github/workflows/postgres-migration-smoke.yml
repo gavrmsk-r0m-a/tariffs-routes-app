@@ -12,6 +12,8 @@ on:
       - docs/postgres/schema_decisions.md
       - app/schema.sql
       - app/db.py
+      - app/repository.py
+      - app/db_adapter.py
       - tests/test_sqlite_to_postgres_migration.py
       - tests/test_postgres_preflight.py
       - tests/test_postgres_schema_draft.py

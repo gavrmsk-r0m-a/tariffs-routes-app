@@ -31,6 +31,33 @@ SMOKE_METHODS = (
     "get_phone_number_import_identity_by_normalized_number",
 )
 
+EXISTS_CHECKS = (
+    ("route_exists_by_country_name_and_name", ("Demo Country", "Demo Route"), True),
+    ("phone_number_exists_by_normalized_number", ("525550000001",), True),
+    (
+        "calling_company_exists_by_server_country_external_id",
+        ("demo-server-1", "Demo Country", "demo-company-1"),
+        True,
+    ),
+    (
+        "current_tariff_exists_by_country_provider_prefix",
+        ("Demo Country", "Demo Provider", "123"),
+        True,
+    ),
+    ("route_exists_by_country_name_and_name", ("Demo Country", "Missing Route"), False),
+    ("phone_number_exists_by_normalized_number", ("525559999999",), False),
+    (
+        "calling_company_exists_by_server_country_external_id",
+        ("demo-server-1", "Demo Country", "missing-company"),
+        False,
+    ),
+    (
+        "current_tariff_exists_by_country_provider_prefix",
+        ("Demo Country", "Demo Provider", "999999"),
+        False,
+    ),
+)
+
 
 def mask_postgres_url(url: str) -> str:
     """Return a display-safe URL which never contains the password."""
@@ -58,6 +85,19 @@ def empty_summary(postgres_url: str) -> dict:
 def _check(condition: bool, message: str) -> None:
     if not condition:
         raise AssertionError(message)
+
+
+def run_exists_checks(repo: Repository, check) -> None:
+    """Run positive and negative semantic checks for read-only exists methods."""
+    for method_name, args, expected in EXISTS_CHECKS:
+        suffix = "existing" if expected else "missing"
+        check(
+            f"{method_name}_{suffix}",
+            lambda name=method_name, values=args, wanted=expected, kind=suffix: _check(
+                getattr(repo, name)(*values) is wanted,
+                f"{name} must return {wanted} for {kind} demo data",
+            ),
+        )
 
 
 def run_repository_checks(repo: Repository, postgres_url: str) -> dict:
@@ -108,14 +148,7 @@ def run_repository_checks(repo: Repository, postgres_url: str) -> dict:
     for method_name, args in lookups:
         check(method_name, lambda name=method_name, values=args: _check(isinstance(getattr(repo, name)(*values), dict), f"{name} must return dict for demo data"))
 
-    bool_checks = (
-        ("route_exists_by_country_name_and_name", ("Demo Country", "Demo Route")),
-        ("phone_number_exists_by_normalized_number", ("525550000001",)),
-        ("calling_company_exists_by_server_country_external_id", ("demo-server-1", "Demo Country", "demo-company-1")),
-        ("current_tariff_exists_by_country_provider_prefix", ("Demo Country", "Demo Provider", "123")),
-    )
-    for method_name, args in bool_checks:
-        check(method_name, lambda name=method_name, values=args: _check(type(getattr(repo, name)(*values)) is bool, f"{name} must return bool"))
+    run_exists_checks(repo, check)
 
     summary.update(status="ok" if not failures else "failed", checks_count=len(checks) + len(failures), failures=failures)
     return summary

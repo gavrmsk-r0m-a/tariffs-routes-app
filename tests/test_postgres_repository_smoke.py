@@ -30,6 +30,37 @@ class PostgreSQLRepositorySmokeTest(unittest.TestCase):
         forbidden = ("create_", "update_", "ensure_", "delete_", "clear_")
         self.assertFalse([name for name in smoke.SMOKE_METHODS if name.startswith(forbidden)])
 
+    def test_workflow_paths_include_repository_and_db_adapter(self):
+        workflow = (Path(__file__).parents[1] / ".github/workflows/postgres-migration-smoke.yml").read_text(encoding="utf-8")
+        self.assertIn("- app/repository.py", workflow)
+        self.assertIn("- app/db_adapter.py", workflow)
+
+    def test_expected_positive_exists_check_fails_when_repository_returns_false(self):
+        repo = mock.Mock()
+        repo.route_exists_by_country_name_and_name.return_value = False
+        repo.phone_number_exists_by_normalized_number.return_value = False
+        repo.calling_company_exists_by_server_country_external_id.return_value = False
+        repo.current_tariff_exists_by_country_provider_prefix.return_value = False
+        failures = []
+
+        def check(name, operation):
+            try:
+                operation()
+            except AssertionError:
+                failures.append(name)
+
+        smoke.run_exists_checks(repo, check)
+
+        self.assertEqual(
+            {
+                "route_exists_by_country_name_and_name_existing",
+                "phone_number_exists_by_normalized_number_existing",
+                "calling_company_exists_by_server_country_external_id_existing",
+                "current_tariff_exists_by_country_provider_prefix_existing",
+            },
+            set(failures),
+        )
+
     def test_smoke_result_summary_shape(self):
         summary = smoke.empty_summary("postgresql://user:secret@localhost/db")
         self.assertEqual({"status", "postgres_url", "checks_count", "failures"}, summary.keys())
