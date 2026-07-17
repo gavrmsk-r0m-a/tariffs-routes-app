@@ -255,7 +255,12 @@ def eur_price(price: str | Decimal, rate: str | Decimal) -> Decimal:
     return value.quantize(Decimal("0.000001"), rounding=ROUND_HALF_UP)
 
 
-def query_filters(filters: dict | None, mapping: dict[str, str]) -> tuple[str, list]:
+def query_filters(
+    filters: dict | None,
+    mapping: dict[str, str],
+    *,
+    backend: str = "sqlite",
+) -> tuple[str, list]:
     if not filters:
         return "", []
     clauses: list[str] = []
@@ -265,13 +270,21 @@ def query_filters(filters: dict | None, mapping: dict[str, str]) -> tuple[str, l
         if value in (None, "", "all"):
             continue
         if key.endswith("_like"):
-            normalized = normalize_search_text(value)
-            if normalized is None:
+            search = str(value).strip()
+            if not search:
                 continue
-            clauses.append(f"search_text_matches({column}, ?) = 1")
-            params.append(normalized)
+            if normalize_backend_name(backend) == "postgres":
+                p = placeholder(backend)
+                clauses.append(
+                    f"POSITION(LOWER(CAST({p} AS TEXT)) "
+                    f"IN LOWER(COALESCE(CAST({column} AS TEXT), ''))) > 0"
+                )
+                params.append(search)
+            else:
+                clauses.append(f"search_text_matches({column}, ?) = 1")
+                params.append(normalize_search_text(search))
         else:
-            clauses.append(f"{column} = ?")
+            clauses.append(f"{column} = {placeholder(backend)}")
             params.append(value)
     return (" WHERE " + " AND ".join(clauses), params) if clauses else ("", [])
 
@@ -1184,6 +1197,11 @@ class Repository:
     def list_routes(self, filters: dict | None = None) -> list[sqlite3.Row]:
         route_filters = dict(filters or {})
         prefix_id = route_filters.pop("prefix_id", None)
+        is_actual = route_filters.get("is_actual")
+        if is_actual in (True, 1, "1"):
+            route_filters["is_actual"] = to_db_bool(True, self.backend)
+        elif is_actual in (False, 0, "0") and is_actual not in (None, ""):
+            route_filters["is_actual"] = to_db_bool(False, self.backend)
         where, params = query_filters(
             route_filters,
             {
@@ -1192,6 +1210,7 @@ class Repository:
                 "is_actual": "r.is_actual",
                 "search_like": "r.name",
             },
+            backend=self.backend,
         )
         if prefix_id == "__none__":
             if where:
@@ -1199,7 +1218,7 @@ class Repository:
             else:
                 where = " WHERE r.provider_prefix_id IS NULL"
         elif prefix_id not in (None, "", "all"):
-            prefix_clause = "r.provider_prefix_id = ?"
+            prefix_clause = f"r.provider_prefix_id = {placeholder(self.backend)}"
             if where:
                 where += " AND " + prefix_clause
             else:
@@ -1209,7 +1228,7 @@ class Repository:
             self.conn.execute(
                 f"""
                 SELECT r.*, c.name AS country_name, p.name AS provider_name, pp.prefix AS prefix,
-                    (SELECT COUNT(*) FROM route_phone_numbers rpn WHERE rpn.route_id = r.id AND rpn.is_active = 1) AS phone_count
+                    (SELECT COUNT(*) FROM route_phone_numbers rpn WHERE rpn.route_id = r.id AND rpn.is_active = {placeholder(self.backend)}) AS phone_count
                 FROM routes r
                 JOIN countries c ON c.id = r.country_id
                 JOIN providers p ON p.id = r.provider_id
@@ -1217,7 +1236,7 @@ class Repository:
                 {where}
                 ORDER BY c.name, r.name
                 """,
-                params,
+                [to_db_bool(True, self.backend), *params],
             )
         )
 
@@ -1234,6 +1253,7 @@ class Repository:
                 "number_like": "pn.number",
                 "review_required": "pn.review_required",
             },
+            backend=self.backend,
         )
         return list(
             self.conn.execute(
@@ -1981,6 +2001,7 @@ class Repository:
                 "country_id": "t.country_id",
                 "provider_id": "t.provider_id",
             },
+            backend=self.backend,
         )
         clauses = []
         if where:
@@ -2018,6 +2039,7 @@ class Repository:
                 "has_autorotation": "CAST(COALESCE(active_crs.has_autorotation, 0) AS TEXT)",
                 "is_active": "cc.is_active",
             },
+            backend=self.backend,
         )
         inactive = to_db_bool(False, self.backend)
         active = to_db_bool(True, self.backend)
