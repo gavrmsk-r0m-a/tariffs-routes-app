@@ -611,3 +611,32 @@ The synthetic migration-demo fixture now includes one historical CI Manual Compa
 The external-ID search uses the Stage 37 literal substring search foundation: SQLite uses `search_text_matches`, while PostgreSQL uses `POSITION(LOWER(CAST(%s AS TEXT)) IN LOWER(COALESCE(CAST(cc.company_id_external AS TEXT), ''))) > 0`; LIKE/ILIKE wildcard semantics are not introduced. `get_company_routing_setting` now uses backend placeholders for the ID lookup while preserving the existing joins, detail shape, and missing-ID `None` behavior.
 
 The actual local semantic smoke count after Stage 41 is `387` checks. The smoke remains read-only under `SET TRANSACTION READ ONLY`; it does not execute Repository write methods or full application runtime paths. `DB_BACKEND=postgres` remains disabled, and SQLite remains the operational production/development backend.
+
+## Stage 42 PostgreSQL provider-change list smoke status
+
+- `STAGE_42_METHODS = ("list_provider_changes",)` is included in the read-only
+  PostgreSQL Repository smoke plan.
+- The synthetic migration-demo fixture now has two provider-change rows:
+  - NEW: `provider_changed = 1`, route-before `Stage 42 Alpha`, route-after
+    `Stage 42 Beta`, reason `Planned provider switch`, and servers A+B inserted in
+    reverse order to prove ordered aggregation.
+  - OLD: `provider_changed = 0`, the same route before/after, no linked servers,
+    and reason `AON refresh without provider switch`.
+- `server_names` aggregation has a backend split: SQLite keeps ordered
+  `GROUP_CONCAT`, PostgreSQL uses ordered `STRING_AGG`.
+- `server_names` is generated through a correlated subquery; the main query does
+  not join provider-change servers and does not group by `pcl.id`.
+- The provider filter checks both `provider_before_id` and `provider_after_id`.
+- Route and reason searches use the Stage 37 literal substring foundation, so
+  LIKE metacharacters such as `%` and `_` are not wildcards.
+- SQL parameters are bound in this order: `date_from`, `date_to`, `country_id`,
+  `provider_id`, `provider_id`, `route_like`, `route_like`, `reason_like`,
+  `user_id`.
+- The `NULL server_names` contract is explicit for provider-change rows without
+  linked servers.
+- The confirmed smoke `checks_count` is **403**.
+- The PostgreSQL smoke connection remains `READ ONLY` through
+  `SET TRANSACTION READ ONLY`.
+- `DB_BACKEND=postgres` remains disabled; SQLite remains the operational backend.
+- Provider-change writes, routing events, JSON/history reads, migration logic, and
+  full app runtime remain outside Stage 42 scope.

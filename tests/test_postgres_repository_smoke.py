@@ -121,7 +121,7 @@ class PostgreSQLRepositorySmokeTest(unittest.TestCase):
         summary = self.run_demo()
 
         self.assertEqual("ok", summary["status"])
-        self.assertGreater(summary["checks_count"], 387)
+        self.assertEqual(403, summary["checks_count"])
         self.assertGreater(summary["checks_count"], 61)
         self.assertNotIn("secret", str(summary))
 
@@ -144,7 +144,7 @@ class PostgreSQLRepositorySmokeTest(unittest.TestCase):
 
         self.assertEqual("failed", summary["status"])
         self.assertIn("get_calling_company_missing", {failure["check"] for failure in summary["failures"]})
-        self.assertGreater(summary["checks_count"], 387)
+        self.assertEqual(403, summary["checks_count"])
 
     def test_stage_35_assertion_failure_does_not_stop_later_checks(self):
         repository = RecordingRepository(Repository(self.conn))
@@ -160,7 +160,7 @@ class PostgreSQLRepositorySmokeTest(unittest.TestCase):
         self.assertEqual("failed", summary["status"])
         self.assertIn("get_user_section_permission_values", {failure["check"] for failure in summary["failures"]})
         self.assertIn("get_tariff", repository.called)
-        self.assertGreater(summary["checks_count"], 387)
+        self.assertEqual(403, summary["checks_count"])
 
     def test_stage_36_assertion_failure_does_not_stop_later_checks(self):
         repository = RecordingRepository(Repository(self.conn))
@@ -175,7 +175,7 @@ class PostgreSQLRepositorySmokeTest(unittest.TestCase):
         self.assertEqual("failed", summary["status"])
         self.assertIn("list_users_admin_display_name", {failure["check"] for failure in summary["failures"]})
         self.assertIn("authenticate_user", repository.called)
-        self.assertGreater(summary["checks_count"], 387)
+        self.assertEqual(403, summary["checks_count"])
 
     def test_stage_37_filter_failure_is_recorded_and_later_checks_continue(self):
         repository = RecordingRepository(Repository(self.conn))
@@ -191,7 +191,7 @@ class PostgreSQLRepositorySmokeTest(unittest.TestCase):
         self.assertEqual("failed", summary["status"])
         self.assertIn("list_routes_country_id_filter", {failure["check"] for failure in summary["failures"]})
         self.assertGreater(repository.called.count("list_routes"), 10)
-        self.assertGreater(summary["checks_count"], 387)
+        self.assertEqual(403, summary["checks_count"])
 
     def test_stage_38_inactive_failure_is_recorded_and_later_checks_continue(self):
         repository = RecordingRepository(Repository(self.conn))
@@ -208,7 +208,7 @@ class PostgreSQLRepositorySmokeTest(unittest.TestCase):
         self.assertEqual("failed", summary["status"])
         self.assertIn("list_tariffs_inactive_values", {failure["check"] for failure in summary["failures"]})
         self.assertGreater(repository.called.count("list_tariffs"), 10)
-        self.assertGreater(summary["checks_count"], 387)
+        self.assertEqual(403, summary["checks_count"])
 
     def test_stage_39_current_autorotation_failure_is_recorded_and_later_checks_continue(self):
         repository = RecordingRepository(Repository(self.conn))
@@ -225,7 +225,7 @@ class PostgreSQLRepositorySmokeTest(unittest.TestCase):
         self.assertEqual("failed", summary["status"])
         self.assertIn("stage_39_has_autorotation_false_'0'", {failure["check"] for failure in summary["failures"]})
         self.assertIn("list_tariffs", repository.called)
-        self.assertGreater(summary["checks_count"], 387)
+        self.assertEqual(403, summary["checks_count"])
 
     def test_stage_40_route_names_failure_is_recorded_and_later_checks_continue(self):
         repository = RecordingRepository(Repository(self.conn))
@@ -240,7 +240,33 @@ class PostgreSQLRepositorySmokeTest(unittest.TestCase):
         self.assertEqual("failed", summary["status"])
         self.assertIn("stage_40_routed_values", {failure["check"] for failure in summary["failures"]})
         self.assertGreater(repository.called.count("list_phone_numbers"), 10)
-        self.assertGreater(summary["checks_count"], 387)
+        self.assertEqual(403, summary["checks_count"])
+
+    def test_stage_42_failure_is_recorded_and_later_checks_continue(self):
+        repository = RecordingRepository(Repository(self.conn))
+        original = repository.repository.list_provider_changes
+
+        def wrong_provider_changes(filters=None):
+            rows = original(filters)
+            if not filters:
+                return [
+                    {**dict(row), "server_names": "Stage 42 Server B, Stage 42 Server A"}
+                    if row["reason_text"] == "Planned provider switch" else row
+                    for row in rows
+                ]
+            return rows
+
+        repository.repository.list_provider_changes = wrong_provider_changes
+        summary = self.run_demo(repository)
+
+        self.assertEqual("failed", summary["status"])
+        failures = {failure["check"] for failure in summary["failures"]}
+        self.assertIn("stage_42_new_values", failures)
+        self.assertNotIn("stage_42_order_desc", failures)
+        self.assertGreater(repository.called.count("list_provider_changes"), 5)
+        write_prefixes = ("create_", "update_", "ensure_", "delete_", "clear_", "set_", "upsert_", "add_", "remove_", "recalculate_", "log_")
+        self.assertFalse([name for name in repository.called if name.startswith(write_prefixes)])
+        self.assertEqual(403, summary["checks_count"])
 
     def test_database_false_is_strict(self):
         self.assertTrue(smoke._is_database_false(False))

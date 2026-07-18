@@ -1,6 +1,8 @@
-# Repository read-only PostgreSQL smoke audit (Stage 39)
+# Repository read-only PostgreSQL smoke audit (Stage 42)
 
-Stage 39 adds the filtered `list_calling_companies` read path to the PostgreSQL
+Earlier stages added filtered `list_calling_companies`, `list_phone_numbers`, `list_company_routing_settings`, and now Stage 42 adds `list_provider_changes` to the PostgreSQL Repository smoke.
+
+Previously, Stage 39 added the filtered `list_calling_companies` read path to the PostgreSQL
 Repository smoke. The unfiltered `list_calling_companies` path was already covered
 from Stage 34; Stage 39 specifically covers server, country, literal name/external
 ID search, current autorotation, and `cc.is_active` filters without enabling
@@ -41,7 +43,7 @@ unknown status strings keep the existing no-status-predicate behavior.
 | --- | --- | --- | --- |
 | `list_routes` | `country_id`, `provider_id`, `is_actual`; separate `prefix_id` | `search_like` | Added in Stage 37. Backend placeholders, native boolean values, prefix/null-prefix behavior, and phone-count boolean are smoked. |
 | `list_tariffs` | `country_id`, `provider_id`; separate status logic | none | **Added in Stage 38.** Country/provider equality uses Stage 37 `query_filters()`; active/inactive status uses backend-native parameterized boolean; default active and all/empty/None contracts are preserved; numeric and strict boolean return semantics are checked. |
-| `list_phone_numbers` | `country_id`, `provider_id`, `project`, `assignment_type`, `status`, `review_required` | `project_like`, `number_like` | Deferred: `GROUP_CONCAT`, active boolean literals, aggregation, and additional boolean/search behavior remain SQLite-specific. |
+| `list_phone_numbers` | `country_id`, `provider_id`, `project`, `assignment_type`, `status`, `review_required` | `project_like`, `number_like` | **Added in Stage 40.** Uses backend-aware search and aggregation while preserving SQLite output. |
 | filtered `list_calling_companies` | `server_id`, `country_id`, `has_autorotation`, `is_active` | `company_like`, `external_id_like` | **Added in Stage 39.** Server/country use backend-aware equality. Name/external ID use the Stage 37 literal substring search foundation. `has_autorotation` means the current active `company_routing_settings` value; no active setting means false. `is_active` means `cc.is_active`. Boolean filter values are normalized backend-aware, and base `cc.has_autorotation` never substitutes for the current setting. Exact Unicode locale equivalence is still not claimed. |
 
 Direct `search_text_matches` SQL outside `query_filters()` remains intentionally
@@ -49,14 +51,9 @@ unchanged and deferred:
 
 - `list_calling_company_events` and `count_calling_company_events`: JSON extraction,
   combined text search, placeholders, and event paging/count behavior;
-- `list_company_routing_settings`: hand-built equality/search filters, active
-  boolean literals, and history mode;
-- `list_provider_changes`: route-name and reason searches plus its broader list logic;
 - `list_routing_events` and `get_routing_event`: routing/history joins, search,
   JSON/runtime business dependencies, and SQLite placeholders.
 
-`list_phone_numbers`,
-`list_company_routing_settings`, `list_provider_changes`,
 `list_routing_events`/`get_routing_event`, history/JSON/event reads, PostgreSQL full
 application runtime, and all write paths remain outside `SMOKE_METHODS`.
 
@@ -77,9 +74,7 @@ does not mutate `calling_companies` or `company_routing_settings`, writes no his
 not change application or session state. The smoke retains its recording proxy and
 `SET TRANSACTION READ ONLY`; it executes no direct fixture SQL, Repository write, full
 application flow, DDL, or migration logic. `query_filters` is a helper and is not a
-smoke method. `list_phone_numbers` remains deferred because of GROUP_CONCAT and
-additional boolean/search paths; `list_company_routing_settings`,
-`list_provider_changes`, `list_routing_events`/`get_routing_event`, calling-company
+smoke method. `list_routing_events`/`get_routing_event`, calling-company
 event/history JSON paths, PostgreSQL full application runtime, and all write paths
 remain deferred. PostgreSQL application runtime and `DB_BACKEND=postgres` remain
 disabled, `psycopg` remains a lazy CI/smoke-only import, and SQLite remains the
@@ -97,7 +92,7 @@ The `route_names` output remains the final text column. SQLite keeps `GROUP_CONC
 
 The observable contract remains `ORDER BY pn.number`. Case-insensitive literal substring matching is covered for the smoke fixtures, but exact Unicode locale equivalence is still not claimed.
 
-Deferred areas remain unchanged: phone write paths, phone/route history, `list_company_routing_settings`, `list_provider_changes`, `list_routing_events`/`get_routing_event`, calling-company event/history JSON paths, PostgreSQL full application runtime, and all write paths.
+Deferred areas after Stage 42 are phone write paths, phone/route history, `list_routing_events`/`get_routing_event`, calling-company event/history JSON paths, PostgreSQL full application runtime, and all write paths.
 
 ## Stage 41 company-routing settings list/detail smoke
 
@@ -109,4 +104,44 @@ The public `company_id_external` filter is preserved and is internally routed th
 
 Output order and shape are preserved. The list keeps `ORDER BY c.name, s.name, cc.company_name, crs.valid_from DESC, crs.id DESC` and includes `updated_by_username`; the detail lookup keeps its previous column order and intentionally does not include `updated_by_username`.
 
-Deferred after Stage 41 remain: create/update/deactivate company routing settings; company routing setting history based on `routing_events`; `list_provider_changes`; `list_routing_events`/`get_routing_event`; calling-company event/history JSON paths; PostgreSQL full application runtime; and all write paths.
+Deferred after Stage 42 remain: create/update/deactivate company routing settings; company routing setting history based on `routing_events`; `list_routing_events`/`get_routing_event`; calling-company event/history JSON paths; PostgreSQL full application runtime; and all write paths.
+
+
+Stage 42 adds the provider-change journal list read path to the PostgreSQL
+Repository smoke while preserving SQLite as the operational backend and keeping
+PostgreSQL runtime/write paths out of scope.
+
+## Stage 42 provider-change list smoke
+
+`list_provider_changes` is now included in PostgreSQL Repository smoke through
+`STAGE_42_METHODS = ("list_provider_changes",)`. The method remains SELECT-only:
+it does not call `commit()`, `rollback()`, `Repository.transaction()`, Repository
+write methods, routing-event writes, provider-change writes, `change_log`, HLR,
+importer, Telegram/HTTP, or application runtime flows.
+
+The Stage 42 SQL contract is:
+
+- SQLite uses ordered `GROUP_CONCAT` for `server_names`.
+- PostgreSQL uses ordered `STRING_AGG` for `server_names`.
+- `server_names` is built by a correlated subquery for both backends.
+- The main provider-change query no longer uses server joins or `GROUP BY pcl.id`.
+- Rows without linked servers preserve `server_names` as `NULL`; no `COALESCE` is
+  used for this output.
+- `provider_id` filters both sides of the change with
+  `provider_before_id OR provider_after_id`, preserving the double-bound parameter
+  contract.
+- `route_like` searches both route-before and route-after names.
+- `reason_like` searches `pcl.reason_text`.
+- Route and reason search use the Stage 37 literal substring foundation via
+  `query_filters`, so `%`, `_`, and other LIKE metacharacters are treated as input
+  characters rather than wildcards.
+- `date_from` and `date_to` remain inclusive bounds.
+- Output shape remains `pcl.*` followed by the existing aliases, including
+  `server_names` as the final alias.
+
+The PostgreSQL smoke still opens its PostgreSQL transaction with
+`SET TRANSACTION READ ONLY`. PostgreSQL application runtime remains disabled,
+`DB_BACKEND=postgres` is not enabled, and all provider-change writes, routing
+writes, migration logic, and full app runtime paths remain outside this stage.
+
+The confirmed Stage 42 smoke count is **403** checks.
