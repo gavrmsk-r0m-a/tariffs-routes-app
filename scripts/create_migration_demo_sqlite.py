@@ -84,6 +84,16 @@ def create_demo_sqlite(output: str | Path) -> Path:
                 created_by, created_at, updated_by, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, NULL, 1, ?, ?, ?, ?)
         """, (country_id, provider_id, prefix_id, eur_id, "0.100000", "1.000000", TODAY, rate_id, "0.100000", "normal", "Synthetic tariff", NOW, admin_id, NOW, admin_id, NOW))
+        inactive_country_id = q(conn, "INSERT INTO countries(name, code, is_active, created_at, updated_at) VALUES (?, ?, 1, ?, ?)", ("Inactive Tariff Country", "IC", NOW, NOW))
+        xts_id = q(conn, "INSERT INTO currencies(code, name, symbol, is_active, created_at, updated_at) VALUES (?, ?, ?, 1, ?, ?)", ("XTS", "Test Currency", "¤", NOW, NOW))
+        inactive_provider_id = q(conn, "INSERT INTO providers(name, normalized_name, provider_type, default_currency_id, is_active, comment, created_at, updated_at) VALUES (?, ?, ?, ?, 1, ?, ?, ?)", ("Inactive Tariff Provider", "inactive tariff provider", "voip", xts_id, "Synthetic inactive tariff provider", NOW, NOW))
+        q(conn, """
+            INSERT INTO tariffs(country_id, provider_id, provider_prefix_id, provider_currency_id,
+                price_in_provider_currency, conversion_rate_to_eur, conversion_rate_date, currency_rate_id,
+                eur_price, priority_status, is_estimated, comment, valid_from, valid_to, is_current,
+                created_by, created_at, updated_by, updated_at)
+            VALUES (?, ?, NULL, ?, ?, ?, ?, NULL, ?, ?, 1, ?, ?, ?, 0, ?, ?, ?, ?)
+        """, (inactive_country_id, inactive_provider_id, xts_id, "2.500000", "0.400000", TODAY, "1.000000", "alternative", "Synthetic inactive tariff", NOW, NOW, admin_id, NOW, admin_id, NOW))
         company_id = q(conn, """
             INSERT INTO calling_companies(server_id, country_id, company_name, company_id_external, has_autorotation,
                 line_count, dial_set_count, retry_interval_seconds, comment, is_active, created_by, created_at, updated_by, updated_at)

@@ -37,7 +37,7 @@ SMOKE_METHODS = (
     "get_phone_number", "get_route", "route_numbers", "find_tariff_by_identity",
     "get_tariff",
     "list_users", "get_user", "get_user_by_username", "authenticate_user",
-    "list_routes",
+    "list_routes", "list_tariffs",
 )
 
 STAGE_34_METHODS = (
@@ -58,6 +58,10 @@ STAGE_36_METHODS = (
 
 STAGE_37_METHODS = (
     "list_routes",
+)
+
+STAGE_38_METHODS = (
+    "list_tariffs",
 )
 
 EXISTS_CHECKS = (
@@ -307,6 +311,71 @@ def run_stage_37_checks(repo: Repository, check, collections: dict, lookups: dic
     check("list_routes_combined_filter", lambda: _check([row["name"] for row in repo.list_routes(combined)] == ["Demo Route"], "combined filters must return exactly Demo Route"))
 
 
+
+def run_stage_38_checks(repo: Repository, check, collections: dict, lookups: dict) -> None:
+    """Check list_tariffs status contracts and equality filters."""
+    country = lookups["get_country_by_name"]
+    provider = lookups["get_provider_by_normalized_name"]
+    expected_keys = [
+        "id", "country_id", "provider_id", "provider_prefix_id", "provider_currency_id",
+        "price_in_provider_currency", "conversion_rate_to_eur", "conversion_rate_date",
+        "currency_rate_id", "eur_price", "priority_status", "is_estimated", "comment",
+        "valid_from", "valid_to", "is_current", "created_by", "created_at", "updated_by",
+        "updated_at", "country_name", "provider_name", "prefix", "currency_code",
+    ]
+
+    def demo_row(rows):
+        return next((row for row in (rows or []) if row["country_name"] == "Demo Country" and row["provider_name"] == "Demo Provider"), None)
+
+    def inactive_row(rows):
+        return next((row for row in (rows or []) if row["country_name"] == "Inactive Tariff Country" and row["provider_name"] == "Inactive Tariff Provider"), None)
+
+    default_rows = check("list_tariffs", repo.list_tariffs)
+    default_demo = demo_row(default_rows)
+    check("list_tariffs_default_contains_demo", lambda: _check(default_demo is not None, "default tariffs must contain Demo active tariff"))
+    check("list_tariffs_default_excludes_inactive", lambda: _check(inactive_row(default_rows) is None, "default tariffs must exclude inactive fixture"))
+    check("list_tariffs_default_demo_values", lambda: _check(default_demo is not None and default_demo["country_name"] == "Demo Country" and default_demo["provider_name"] == "Demo Provider" and default_demo["prefix"] == "123" and default_demo["currency_code"] == "EUR" and _is_database_true(default_demo["is_current"]) and _is_database_false(default_demo["is_estimated"]) and _decimal_equals(default_demo["price_in_provider_currency"], "0.1") and _decimal_equals(default_demo["conversion_rate_to_eur"], "1") and _decimal_equals(default_demo["eur_price"], "0.1"), "default Demo tariff values are incorrect"))
+    empty_rows = check("list_tariffs_empty_filters", lambda: repo.list_tariffs({}))
+    check("list_tariffs_empty_filters_active_only", lambda: _check(demo_row(empty_rows) is not None and inactive_row(empty_rows) is None, "empty filters must use active-only contract"))
+
+    active_rows = check("list_tariffs_active", lambda: repo.list_tariffs({"status": "active"}))
+    check("list_tariffs_active_contains_demo", lambda: _check(demo_row(active_rows) is not None, "active tariffs must contain Demo tariff"))
+    check("list_tariffs_active_excludes_inactive", lambda: _check(inactive_row(active_rows) is None, "active tariffs must exclude inactive fixture"))
+    check("list_tariffs_active_all_current", lambda: _check(all(_is_database_true(row["is_current"]) for row in (active_rows or [])), "active tariffs must all be database true"))
+
+    inactive_rows = check("list_tariffs_inactive", lambda: repo.list_tariffs({"status": "inactive"}))
+    inactive = inactive_row(inactive_rows)
+    check("list_tariffs_inactive_contains_fixture", lambda: _check(inactive is not None, "inactive tariffs must contain inactive fixture"))
+    check("list_tariffs_inactive_excludes_demo", lambda: _check(demo_row(inactive_rows) is None, "inactive tariffs must exclude Demo active tariff"))
+    check("list_tariffs_inactive_values", lambda: _check(inactive is not None and inactive["country_name"] == "Inactive Tariff Country" and inactive["provider_name"] == "Inactive Tariff Provider" and inactive["prefix"] is None and inactive["currency_code"] == "XTS" and inactive["priority_status"] == "alternative" and _is_database_false(inactive["is_current"]) and _is_database_true(inactive["is_estimated"]) and _decimal_equals(inactive["price_in_provider_currency"], "2.5") and _decimal_equals(inactive["conversion_rate_to_eur"], "0.4") and _decimal_equals(inactive["eur_price"], "1"), "inactive tariff values are incorrect"))
+
+    all_rows = check("list_tariffs_all", lambda: repo.list_tariffs({"status": "all"}))
+    check("list_tariffs_all_contains_demo", lambda: _check(demo_row(all_rows) is not None, "all status must contain Demo tariff"))
+    check("list_tariffs_all_contains_inactive", lambda: _check(inactive_row(all_rows) is not None, "all status must contain inactive fixture"))
+    empty_status_rows = check("list_tariffs_empty_status", lambda: repo.list_tariffs({"status": ""}))
+    check("list_tariffs_empty_status_contains_demo", lambda: _check(demo_row(empty_status_rows) is not None, "empty status must contain Demo tariff"))
+    check("list_tariffs_empty_status_contains_inactive", lambda: _check(inactive_row(empty_status_rows) is not None, "empty status must contain inactive fixture"))
+    none_status_rows = check("list_tariffs_none_status", lambda: repo.list_tariffs({"status": None}))
+    check("list_tariffs_none_status_contains_demo", lambda: _check(demo_row(none_status_rows) is not None, "None status must contain Demo tariff"))
+    check("list_tariffs_none_status_contains_inactive", lambda: _check(inactive_row(none_status_rows) is not None, "None status must contain inactive fixture"))
+
+    inactive_all = inactive_row(all_rows)
+    check("list_tariffs_demo_country_filter", lambda: _check(demo_row(repo.list_tariffs({"country_id": country["id"]})) is not None, "Demo country filter must return Demo tariff"))
+    check("list_tariffs_demo_provider_filter", lambda: _check(demo_row(repo.list_tariffs({"provider_id": provider["id"]})) is not None, "Demo provider filter must return Demo tariff"))
+    check("list_tariffs_demo_country_provider_filter", lambda: _check(demo_row(repo.list_tariffs({"country_id": country["id"], "provider_id": provider["id"]})) is not None, "Demo combined filters must return Demo tariff"))
+    check("list_tariffs_inactive_country_default_empty", lambda: _check(inactive_all is not None and repo.list_tariffs({"country_id": inactive_all["country_id"]}) == [], "inactive country default active filter must be empty"))
+    check("list_tariffs_inactive_provider_default_empty", lambda: _check(inactive_all is not None and repo.list_tariffs({"provider_id": inactive_all["provider_id"]}) == [], "inactive provider default active filter must be empty"))
+    check("list_tariffs_inactive_country_filter", lambda: _check(inactive_all is not None and inactive_row(repo.list_tariffs({"country_id": inactive_all["country_id"], "status": "inactive"})) is not None, "inactive country filter must return inactive tariff"))
+    check("list_tariffs_inactive_provider_filter", lambda: _check(inactive_all is not None and inactive_row(repo.list_tariffs({"provider_id": inactive_all["provider_id"], "status": "inactive"})) is not None, "inactive provider filter must return inactive tariff"))
+    check("list_tariffs_inactive_country_provider_filter", lambda: _check(inactive_all is not None and [row["id"] for row in repo.list_tariffs({"country_id": inactive_all["country_id"], "provider_id": inactive_all["provider_id"], "status": "inactive"})] == [inactive_all["id"]], "inactive combined filters must return exactly inactive tariff"))
+    check("list_tariffs_missing_country_filter", lambda: _check(repo.list_tariffs({"country_id": -1}) == [], "missing country filter must return empty list"))
+    check("list_tariffs_missing_provider_filter", lambda: _check(repo.list_tariffs({"provider_id": -1}) == [], "missing provider filter must return empty list"))
+
+    check("list_tariffs_all_returns_list", lambda: _check(isinstance(all_rows, list), "list_tariffs must return list"))
+    check("list_tariffs_all_order", lambda: _check([(row["country_name"], row["provider_name"], row["prefix"] or "") for row in (all_rows or [])] == sorted((row["country_name"], row["provider_name"], row["prefix"] or "") for row in (all_rows or [])), "tariffs must be ordered by country/provider/prefix"))
+    check("list_tariffs_all_shape", lambda: _check(bool(all_rows) and all(list(row.keys()) == expected_keys for row in all_rows), "tariff row keys must match existing contract"))
+    check("list_tariffs_no_phone_history_write_side_effect_fields", lambda: _check(bool(all_rows) and all({"phone_count", "history_count", "change_log_count"}.isdisjoint(_row_keys(row)) for row in all_rows), "tariff list must not expose phone/history/write side-effect fields"))
+
 def run_repository_checks(repo: Repository, postgres_url: str) -> dict:
     summary = empty_summary(postgres_url)
     checks: list[tuple[str, object]] = []
@@ -362,6 +431,7 @@ def run_repository_checks(repo: Repository, postgres_url: str) -> dict:
     run_stage_35_checks(repo, check, collections, lookup_results, company, company_detail)
     run_stage_36_checks(repo, check)
     run_stage_37_checks(repo, check, collections, lookup_results)
+    run_stage_38_checks(repo, check, collections, lookup_results)
 
     summary.update(status="ok" if not failures else "failed", checks_count=len(checks) + len(failures), failures=failures)
     return summary

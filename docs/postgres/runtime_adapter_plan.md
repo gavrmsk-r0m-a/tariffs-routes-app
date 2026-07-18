@@ -516,3 +516,35 @@ Checklist topics:
   lists remain deferred. No Repository write or full application path is run.
 - This remains compatibility smoke only: `DB_BACKEND=postgres` is disabled,
   `psycopg` is lazy and CI/smoke-only, and SQLite remains the operational backend.
+
+### Stage 38 PostgreSQL tariff status-filter smoke status
+
+- `STAGE_38_METHODS` contains only `list_tariffs`, and `list_tariffs` appears in
+  `SMOKE_METHODS` exactly once.
+- The migration demo SQLite fixture now includes a deterministic synthetic inactive
+  tariff on separate synthetic dictionary entities: `Inactive Tariff Country`,
+  `Inactive Tariff Provider`, and `XTS` test currency. It intentionally adds no route,
+  phone number, calling company, provider prefix, currency rate, history, or change-log
+  data for those entities.
+- `list_tariffs` preserves its existing status contract: missing `status` defaults to
+  active only; `status="active"` returns current tariffs; `status="inactive"` returns
+  inactive tariffs; `status="all"`, `status=""`, and `status=None` omit the status
+  predicate. No `priority_status` or other new tariff filter is added.
+- Country/provider equality filters keep the Stage 37 `query_filters()` mapping order.
+  Combined PostgreSQL parameters follow SQL order: `country_id`, then `provider_id`,
+  then the status boolean; for example country `4`, provider `5`, inactive status binds
+  `[4, 5, False]`.
+- Active/inactive predicates bind backend-native booleans rather than embedding literals:
+  SQLite receives `1`/`0`, PostgreSQL receives `True`/`False`. The smoke uses strict
+  `_is_database_true`/`_is_database_false` helpers and `_decimal_equals` for numeric
+  tariff values, so SQLite 1/0 and PostgreSQL True/False are accepted without loose
+  `bool(value)` coercion or scale-dependent numeric string comparisons.
+- The Repository smoke now performs **193 semantic checks**. Coverage includes default,
+  explicit active, inactive, all, empty, and None status contracts; equality filters;
+  order by country/provider/prefix-or-empty; existing row shape; and inactive-fixture
+  numeric/boolean semantics.
+- The PostgreSQL connection remains `SET TRANSACTION READ ONLY`. The smoke does not run
+  tariff writes, currency recalculation, tariff history, migration writes, or the full
+  application runtime.
+- `DB_BACKEND=postgres` remains off, `psycopg` remains lazy and CI/smoke-only, and
+  SQLite remains the operational production/development backend.
