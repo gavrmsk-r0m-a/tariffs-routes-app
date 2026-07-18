@@ -649,14 +649,18 @@ Stage 43 declares `STAGE_43_METHODS = ("list_routing_events", "get_routing_event
 
 The Stage 43 semantic smoke checks old/new/delta prices for server-priority (`1`, `1.5`, `0.5`) and campaign-setting (`0.1`, `0.1`, `0`), preserves backend-native `snapshot_json` values (SQLite TEXT and PostgreSQL JSONB/dict), and verifies `get_routing_event` adds sorted `affected_server_names` only for `server_priority` detail rows. No routing-event write paths, full app runtime, DDL, JSON SQL predicates, SQLAlchemy, or Alembic are enabled.
 
-The confirmed local Repository semantic smoke count is **459** checks. PostgreSQL smoke still runs inside `SET TRANSACTION READ ONLY`; `DB_BACKEND=postgres` remains disabled, psycopg remains smoke/CI-only with lazy import, and SQLite remains the operational backend.
+The confirmed local Repository semantic smoke count is **490** checks. PostgreSQL smoke still runs inside `SET TRANSACTION READ ONLY`; `DB_BACKEND=postgres` remains disabled, psycopg remains smoke/CI-only with lazy import, and SQLite remains the operational backend.
 
 ## Stage 44 Repository read-surface audit status
 
-Stage 44 adds an audit-only, machine-verifiable Repository read-surface classification gate. The current static classification counts are: **112** public Repository methods, **54** smoke-covered read methods, **7** deferred read-only methods, **50** write/mutating methods, and **1** infrastructure/mixed method. The classified Repository read-surface coverage is **88.52%**: 54 smoke-covered reads out of 61 classified read-only methods. This percentage is only the Repository read-surface coverage metric; it is not full PostgreSQL runtime readiness.
+Stage 44 adds an audit-only, machine-verifiable Repository read-surface classification gate. The current static classification counts are: **112** public Repository methods, **57** smoke-covered read methods, **4** deferred read-only methods, **50** write/mutating methods, and **1** infrastructure/mixed method. The classified Repository read-surface coverage is **93.44%**: 57 smoke-covered reads out of 61 classified read-only methods. This percentage is only the Repository read-surface coverage metric; it is not full PostgreSQL runtime readiness.
 
 The direct runtime SQL census still finds direct SQL outside Repository: **53** SELECT calls, **65** write calls, **32** schema/PRAGMA calls, and **11** dynamic/unknown calls across `app/db.py`, `app/importer.py`, and `app/server.py`. That runtime boundary remains explicit: write/runtime work is still ahead.
 
-The recommended next implementation batch is **`route_phone_tariff_history`** for `list_phone_history`, `list_route_history`, and `list_tariff_history`. The main blockers are placeholder/boolean/history-shape adaptation and deterministic PostgreSQL semantic fixtures. Calling-company JSON/event-search methods and routing-setting event history remain later batches.
+## Stage 46 PostgreSQL route, phone and tariff history smoke status
 
-The PostgreSQL Repository smoke remains at **459** semantic checks and continues to run in `SET TRANSACTION READ ONLY`. `DB_BACKEND=postgres` remains disabled, SQLite remains the operational production/development backend, and PostgreSQL remains CI/smoke-only for this migration surface.
+Stage 46 adapts the read-only history methods `list_phone_history`, `list_route_history`, and `list_tariff_history` for backend-aware placeholders. The synthetic history fixture covers phone, route-phone replacement/addition, route comment, and tariff created/changed history without changing live business entity state.
+
+The smoke verifies PostgreSQL placeholder compatibility, `UNION ALL` history ordering, exact output shapes, old/new phone ID matching, and tariff numeric history semantics. The confirmed smoke `checks_count` is **490** and the read-surface audit coverage is **93.44%** (57 smoke-covered reads, 4 deferred reads, 50 writes, 1 infrastructure/mixed method).
+
+The remaining deferred reads are `list_calling_company_history`, `list_calling_company_events`, `count_calling_company_events`, and `list_company_routing_setting_history`. The next recommended coherent batch is `routing_setting_event_history`, specifically `list_company_routing_setting_history`, because it is a single SELECT-only method in the already-adapted routing-events domain and avoids the calling-company JSON search/count pagination batch. `DB_BACKEND=postgres` remains disabled.

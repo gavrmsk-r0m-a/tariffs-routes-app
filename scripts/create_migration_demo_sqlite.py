@@ -25,6 +25,12 @@ STAGE43_INACTIVE_AT = "2026-07-13 09:00:00"
 STAGE43_NONE_AT = "2026-07-14 10:00:00"
 STAGE43_SERVER_AT = "2026-07-15 11:00:00"
 STAGE43_CAMPAIGN_AT = "2026-07-16 12:00:00"
+STAGE46_PHONE_AT = "2026-07-17 08:00:00"
+STAGE46_REPLACE_AT = "2026-07-17 09:00:00"
+STAGE46_LINK_AT = "2026-07-17 10:00:00"
+STAGE46_ROUTE_AT = "2026-07-17 11:00:00"
+STAGE46_TARIFF_CREATED_AT = "2026-07-17 12:00:00"
+STAGE46_TARIFF_CHANGED_AT = "2026-07-17 13:00:00"
 
 
 def q(conn: sqlite3.Connection, sql: str, params: tuple = ()) -> int:
@@ -263,6 +269,10 @@ def create_demo_sqlite(output: str | Path) -> Path:
         q(conn, "INSERT INTO route_history(route_id, action, changed_by, changed_at, field_name, old_value, new_value, reason, comment) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", (route_id, "create", admin_id, NOW, "name", None, "Demo Route", "CI smoke", "Synthetic history"))
         q(conn, "INSERT INTO route_phone_number_history(route_id, phone_number_id, old_phone_number_id, new_phone_number_id, action, changed_by, changed_at, old_values, new_values, reason, comment) VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?)", (route_id, phone_id, phone_id, "attach", admin_id, NOW, "plain old", "plain new", "CI smoke", "Synthetic history"))
         q(conn, "INSERT INTO phone_number_history(phone_number_id, action, changed_by, changed_at, field_name, old_value, new_value, reason, comment) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", (phone_id, "create", admin_id, NOW, "status", None, "used", "CI smoke", "Synthetic history"))
+        q(conn, "INSERT INTO phone_number_history(phone_number_id, action, changed_by, changed_at, field_name, old_value, new_value, reason, comment) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", (phone_id, "updated", admin_id, STAGE46_PHONE_AT, "status", "problem", "used", "Stage 46 phone status", "Synthetic Stage 46 phone history"))
+        q(conn, "INSERT INTO route_phone_number_history(route_id, phone_number_id, old_phone_number_id, new_phone_number_id, action, changed_by, changed_at, old_values, new_values, reason, comment) VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?)", (route_id, phone_id, routed_phone_id, "replaced", admin_id, STAGE46_REPLACE_AT, json.dumps({"number": "525550000001"}, sort_keys=True), json.dumps({"number": "525550000020"}, sort_keys=True), "Stage 46 phone replaced", "Synthetic Stage 46 replacement history"))
+        q(conn, "INSERT INTO route_phone_number_history(route_id, phone_number_id, old_phone_number_id, new_phone_number_id, action, changed_by, changed_at, old_values, new_values, reason, comment) VALUES (?, ?, NULL, NULL, ?, ?, ?, ?, ?, ?, ?)", (route_id, phone_id, "added", admin_id, STAGE46_LINK_AT, None, json.dumps({"usage_type": "cli"}, sort_keys=True), "Stage 46 phone linked", "Synthetic Stage 46 route-phone history"))
+        q(conn, "INSERT INTO route_history(route_id, action, changed_by, changed_at, field_name, old_value, new_value, reason, comment) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", (route_id, "updated", admin_id, STAGE46_ROUTE_AT, "comment", "Temporary Stage 46 route comment", "Synthetic route", "Stage 46 route comment", "Synthetic Stage 46 route history"))
         q(conn, """
             INSERT INTO tariff_change_history(tariff_id, changed_at, changed_by, country_id, country_name_snapshot,
                 provider_id, provider_name_snapshot, provider_prefix_id, prefix_snapshot, old_provider_currency_id,
@@ -271,6 +281,22 @@ def create_demo_sqlite(output: str | Path) -> Path:
                 new_conversion_rate_date, old_eur_price, new_eur_price, eur_price_delta, reason, comment, created_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, NULL, ?, NULL, ?, NULL, ?, NULL, ?, ?, ?, ?, ?)
         """, (tariff_id, NOW, admin_id, country_id, "Demo Country", provider_id, "Demo Provider", prefix_id, "123", eur_id, "0.100000", "1.000000", TODAY, "0.100000", "0.000000", "CI smoke", "Synthetic tariff history", NOW))
+        q(conn, """
+            INSERT INTO tariff_change_history(tariff_id, changed_at, changed_by, country_id, country_name_snapshot,
+                provider_id, provider_name_snapshot, provider_prefix_id, prefix_snapshot, old_provider_currency_id,
+                new_provider_currency_id, old_price_in_provider_currency, new_price_in_provider_currency,
+                old_conversion_rate_to_eur, new_conversion_rate_to_eur, old_conversion_rate_date,
+                new_conversion_rate_date, old_eur_price, new_eur_price, eur_price_delta, reason, comment, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, NULL, ?, NULL, ?, NULL, ?, NULL, ?, NULL, ?, ?, ?)
+        """, (tariff_id, STAGE46_TARIFF_CREATED_AT, admin_id, country_id, "Demo Country", provider_id, "Demo Provider", prefix_id, "123", eur_id, "0.200000", "1.000000", TODAY, "0.200000", "tariff.created", "Synthetic Stage 46 tariff created", STAGE46_TARIFF_CREATED_AT))
+        q(conn, """
+            INSERT INTO tariff_change_history(tariff_id, changed_at, changed_by, country_id, country_name_snapshot,
+                provider_id, provider_name_snapshot, provider_prefix_id, prefix_snapshot, old_provider_currency_id,
+                new_provider_currency_id, old_price_in_provider_currency, new_price_in_provider_currency,
+                old_conversion_rate_to_eur, new_conversion_rate_to_eur, old_conversion_rate_date,
+                new_conversion_rate_date, old_eur_price, new_eur_price, eur_price_delta, reason, comment, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (tariff_id, STAGE46_TARIFF_CHANGED_AT, admin_id, country_id, "Demo Country", provider_id, "Demo Provider", prefix_id, "123", eur_id, eur_id, "0.200000", "0.100000", "1.000000", "1.000000", TODAY, TODAY, "0.200000", "0.100000", "-0.100000", "tariff.changed", "Synthetic Stage 46 tariff changed", STAGE46_TARIFF_CHANGED_AT))
         q(conn, "INSERT INTO change_log(entity_type, entity_id, change_type, changed_by, changed_at, old_values, new_values, summary, comment, source, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", ("route", route_id, "create", admin_id, NOW, '{"name":null}', '{"name":"Demo Route"}', "Created demo route", "Synthetic change log", "ci", NOW))
         q(conn, "INSERT INTO route_naming_rules(name, template, is_active, comment, created_by, created_at, updated_by, updated_at) VALUES (?, ?, 1, ?, ?, ?, ?, ?)", ("Demo rule", "{country}-{provider}", "Synthetic naming rule", admin_id, NOW, admin_id, NOW))
         q(conn, "INSERT INTO import_jobs(entity_type, mode, file_name, status, total_rows, new_rows, duplicate_rows, skipped_rows, updated_rows, replaced_rows, error_rows, preview_data, summary, error_report, created_by, created_at, started_at, finished_at) VALUES (?, ?, ?, ?, 1, 1, 0, 0, 0, 0, 0, ?, ?, ?, ?, ?, ?, ?)", ("routes", "append_update", "demo.csv", "completed", '[{"row":1}]', '{"inserted":1}', '{"errors":[]}', admin_id, NOW, NOW, NOW))

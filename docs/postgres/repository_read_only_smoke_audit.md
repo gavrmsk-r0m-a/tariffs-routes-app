@@ -162,12 +162,20 @@ The four current-tariff lookup predicates for old/new route and old/new company 
 
 `get_routing_event` preserves the detail contract: found rows are returned as `dict`, missing IDs return `None`, and only `server_priority` details append trailing `affected_server_names` sorted by server name (for Stage 43, `Stage 42 Server A, Stage 42 Server B`). The list output shape and key order are explicitly guarded, and `affected_server_names` is not added to list rows.
 
-The confirmed local semantic smoke `checks_count` is **459**. The PostgreSQL connection remains `SET TRANSACTION READ ONLY`; `DB_BACKEND=postgres` remains disabled, and SQLite remains the operational production/development backend. Deferred work still includes create/update/deactivate routing events, server-priority write application, campaign-routing write application, company routing-setting history, calling-company event/history JSON search, route/phone/tariff history methods, PostgreSQL full runtime, and all Repository write paths.
+The confirmed local semantic smoke `checks_count` is **490**. The PostgreSQL connection remains `SET TRANSACTION READ ONLY`; `DB_BACKEND=postgres` remains disabled, and SQLite remains the operational production/development backend. Deferred work still includes create/update/deactivate routing events, server-priority write application, campaign-routing write application, company routing-setting history, calling-company event/history JSON search, PostgreSQL full runtime, and all Repository write paths.
 
 ## Stage 44 machine-verifiable read-surface coverage audit
 
 Stage 44 updates this audit to include a machine-verifiable classification/coverage gate for all public `Repository` methods. The gate derives the smoke-covered read category from `SMOKE_METHODS` and verifies that every other public method is classified exactly once in `docs/postgres/repository_method_coverage.json` as deferred read-only, write/mutating, or infrastructure/mixed.
 
-No new Repository methods were added to the PostgreSQL Repository smoke in Stage 44, `SMOKE_METHODS` was not expanded, and the local semantic smoke `checks_count` remains **459**. The full list of remaining deferred read-only methods and recommended implementation batches is maintained in `docs/postgres/repository_read_surface_audit.md`.
+Stage 46 expands `SMOKE_METHODS` with route, phone, and tariff history reads, and the local semantic smoke `checks_count` is **490**. The full list of remaining deferred read-only methods and recommended implementation batches is maintained in `docs/postgres/repository_read_surface_audit.md`.
 
 The expected successful audit state is `unclassified == []` and `duplicate_classifications == []`. This Repository read-surface coverage does not mean the full PostgreSQL runtime application is ready: direct SQL remains in runtime modules, Repository write paths are still out of scope, `DB_BACKEND=postgres` remains disabled, and SQLite remains the operational backend.
+
+## Stage 46 route, phone and tariff history smoke
+
+Stage 46 adds `STAGE_46_METHODS = ("list_phone_history", "list_route_history", "list_tariff_history")` to the PostgreSQL Repository read-only smoke. The smoke preserves the existing `UNION ALL` contracts for phone and route history, including route-phone history matching by `phone_number_id`, `old_phone_number_id`, and `new_phone_number_id`.
+
+The synthetic fixture now includes deterministic `phone_number_history`, `route_phone_number_history`, `route_history`, and `tariff_change_history` rows. The smoke verifies exact output shapes, event ordering, positive and missing-ID lookup contracts, and tariff-history numeric semantics with scale-independent decimal comparisons. The confirmed local semantic smoke `checks_count` is **490**.
+
+The PostgreSQL smoke still runs under `SET TRANSACTION READ ONLY`. No history write methods, Repository write paths, application PostgreSQL runtime, DDL, SQL functions, or PostgreSQL extensions are enabled. `DB_BACKEND=postgres` remains disabled, and SQLite remains the operational production/development backend.

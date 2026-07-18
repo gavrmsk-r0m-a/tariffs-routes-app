@@ -1147,15 +1147,16 @@ class Repository:
         ).fetchone()
 
     def list_phone_history(self, phone_id: int) -> list[sqlite3.Row]:
+        p = placeholder(self.backend)
         return list(self.conn.execute(
-            """
+            f"""
             SELECT 'phone' AS source, pnh.action, pnh.changed_at, u.display_name AS user_name,
                    pnh.field_name, pnh.old_value, pnh.new_value, pnh.reason, pnh.comment,
                    NULL AS route_name, pn.number AS phone_number
             FROM phone_number_history pnh
             LEFT JOIN users u ON u.id = pnh.changed_by
             LEFT JOIN phone_numbers pn ON pn.id = pnh.phone_number_id
-            WHERE pnh.phone_number_id = ?
+            WHERE pnh.phone_number_id = {p}
             UNION ALL
             SELECT 'route_phone' AS source, rpnh.action, rpnh.changed_at, u.display_name AS user_name,
                    NULL AS field_name, rpnh.old_values AS old_value, rpnh.new_values AS new_value, rpnh.reason, rpnh.comment,
@@ -1164,22 +1165,23 @@ class Repository:
             LEFT JOIN users u ON u.id = rpnh.changed_by
             LEFT JOIN routes r ON r.id = rpnh.route_id
             LEFT JOIN phone_numbers pn ON pn.id = rpnh.phone_number_id
-            WHERE rpnh.phone_number_id = ? OR rpnh.old_phone_number_id = ? OR rpnh.new_phone_number_id = ?
+            WHERE rpnh.phone_number_id = {p} OR rpnh.old_phone_number_id = {p} OR rpnh.new_phone_number_id = {p}
             ORDER BY changed_at DESC
             """,
             (phone_id, phone_id, phone_id, phone_id),
         ))
 
     def list_route_history(self, route_id: int) -> list[sqlite3.Row]:
+        p = placeholder(self.backend)
         return list(self.conn.execute(
-            """
+            f"""
             SELECT 'route' AS source, rh.action, rh.changed_at, u.display_name AS user_name,
                    rh.field_name, rh.old_value, rh.new_value, rh.reason, rh.comment,
                    r.name AS route_name, NULL AS phone_number
             FROM route_history rh
             LEFT JOIN users u ON u.id = rh.changed_by
             LEFT JOIN routes r ON r.id = rh.route_id
-            WHERE rh.route_id = ?
+            WHERE rh.route_id = {p}
             UNION ALL
             SELECT 'route_phone' AS source, rpnh.action, rpnh.changed_at, u.display_name AS user_name,
                    NULL AS field_name, rpnh.old_values AS old_value, rpnh.new_values AS new_value, rpnh.reason, rpnh.comment,
@@ -1188,7 +1190,7 @@ class Repository:
             LEFT JOIN users u ON u.id = rpnh.changed_by
             LEFT JOIN routes r ON r.id = rpnh.route_id
             LEFT JOIN phone_numbers pn ON pn.id = rpnh.phone_number_id
-            WHERE rpnh.route_id = ?
+            WHERE rpnh.route_id = {p}
             ORDER BY changed_at DESC
             """,
             (route_id, route_id),
@@ -1829,12 +1831,13 @@ class Repository:
         self.conn.commit()
 
     def list_tariff_history(self, tariff_id: int) -> list[sqlite3.Row]:
+        p = placeholder(self.backend)
         return list(self.conn.execute(
-            """
+            f"""
             SELECT tch.*, u.display_name AS user_name
             FROM tariff_change_history tch
             LEFT JOIN users u ON u.id = tch.changed_by
-            WHERE tch.tariff_id = ?
+            WHERE tch.tariff_id = {p}
             ORDER BY tch.changed_at DESC, tch.id DESC
             """,
             (tariff_id,),

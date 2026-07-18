@@ -1011,3 +1011,95 @@ class RepositoryRoutingEventsAdapterTest(unittest.TestCase):
                 self.assertIsNone(repo.get_routing_event(-1))
             finally:
                 conn.close()
+
+class RepositoryHistoryAdapterReadMethodsTest(unittest.TestCase):
+    def test_postgres_history_sql_placeholders(self):
+        class CaptureConnection:
+            def create_function(self, *args):
+                pass
+
+            def execute(self, sql, params=()):
+                self.sql = sql
+                self.params = params
+                return []
+
+        for method, arg, expected_count, params, fragments in (
+            ("list_phone_history", 7, 4, (7, 7, 7, 7), ["UNION ALL", "WHERE pnh.phone_number_id = %s", "rpnh.phone_number_id = %s", "rpnh.old_phone_number_id = %s", "rpnh.new_phone_number_id = %s", "ORDER BY changed_at DESC"]),
+            ("list_route_history", 8, 2, (8, 8), ["UNION ALL", "WHERE rh.route_id = %s", "WHERE rpnh.route_id = %s", "ORDER BY changed_at DESC"]),
+            ("list_tariff_history", 9, 1, (9,), ["WHERE tch.tariff_id = %s", "ORDER BY tch.changed_at DESC, tch.id DESC"]),
+        ):
+            with self.subTest(method=method):
+                conn = CaptureConnection()
+                self.assertEqual([], getattr(Repository(conn, backend="postgres"), method)(arg))
+                sql = " ".join(conn.sql.split())
+                for fragment in fragments:
+                    self.assertIn(fragment, sql)
+                self.assertEqual(expected_count, sql.count("%s"))
+                self.assertEqual(params, conn.params)
+                self.assertNotIn("?", sql)
+                self.assertNotRegex(sql.upper(), r"\b(INSERT|UPDATE|DELETE|COMMIT|ROLLBACK)\b")
+
+    def test_sqlite_history_sql_and_fixture_contracts(self):
+        class CaptureConnection:
+            def create_function(self, *args):
+                pass
+
+            def execute(self, sql, params=()):
+                self.sql = sql
+                self.params = params
+                return []
+
+        for method, arg, expected_count, params, sort_fragment in (
+            ("list_phone_history", 7, 4, (7, 7, 7, 7), "ORDER BY changed_at DESC"),
+            ("list_route_history", 8, 2, (8, 8), "ORDER BY changed_at DESC"),
+            ("list_tariff_history", 9, 1, (9,), "ORDER BY tch.changed_at DESC, tch.id DESC"),
+        ):
+            with self.subTest(method=method):
+                conn = CaptureConnection()
+                self.assertEqual([], getattr(Repository(conn), method)(arg))
+                sql = " ".join(conn.sql.split())
+                self.assertEqual(expected_count, sql.count("?"))
+                self.assertEqual(params, conn.params)
+                self.assertIn(sort_fragment, sql)
+                if method != "list_tariff_history":
+                    self.assertIn("UNION ALL", sql)
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = create_demo_sqlite(Path(directory) / "demo.db")
+            conn = sqlite3.connect(path)
+            conn.row_factory = sqlite3.Row
+            try:
+                repo = Repository(conn)
+                phones = repo.list_phone_numbers()
+                routes = repo.list_routes()
+                tariffs = repo.list_tariffs()
+                demo_phone = next(row for row in phones if row["number"] == "525550000001")
+                routed_phone = next(row for row in phones if row["number"] == "525550000020")
+                demo_route = next(row for row in routes if row["name"] == "Demo Route")
+                demo_tariff = next(row for row in tariffs if row["country_name"] == "Demo Country" and row["provider_name"] == "Demo Provider" and row["prefix"] == "123")
+                phone_history = repo.list_phone_history(demo_phone["id"])
+                route_history = repo.list_route_history(demo_route["id"])
+                tariff_history = repo.list_tariff_history(demo_tariff["id"])
+                self.assertTrue(any(row["action"] == "replaced" for row in repo.list_phone_history(routed_phone["id"])))
+                self.assertEqual([], repo.list_phone_history(-1))
+                self.assertEqual([], repo.list_route_history(-1))
+                self.assertEqual([], repo.list_tariff_history(-1))
+            finally:
+                conn.close()
+
+        history_keys = ["source", "action", "changed_at", "user_name", "field_name", "old_value", "new_value", "reason", "comment", "route_name", "phone_number"]
+        tariff_keys = ["id", "tariff_id", "changed_at", "changed_by", "country_id", "country_name_snapshot", "provider_id", "provider_name_snapshot", "provider_prefix_id", "prefix_snapshot", "old_provider_currency_id", "new_provider_currency_id", "old_price_in_provider_currency", "new_price_in_provider_currency", "old_conversion_rate_to_eur", "new_conversion_rate_to_eur", "old_conversion_rate_date", "new_conversion_rate_date", "old_eur_price", "new_eur_price", "eur_price_delta", "reason", "comment", "created_at", "user_name"]
+        self.assertIsInstance(phone_history[0], sqlite3.Row)
+        phone_rows = [row for row in phone_history if str(row["reason"]).startswith("Stage 46")]
+        route_rows = [row for row in route_history if str(row["reason"]).startswith("Stage 46")]
+        tariff_rows = [row for row in tariff_history if row["reason"] in {"tariff.created", "tariff.changed"}]
+        self.assertEqual(history_keys, phone_rows[0].keys())
+        self.assertEqual(history_keys, route_rows[0].keys())
+        self.assertEqual(tariff_keys, tariff_rows[0].keys())
+        self.assertEqual([("route_phone", "added"), ("route_phone", "replaced"), ("phone", "updated")], [(r["source"], r["action"]) for r in phone_rows])
+        self.assertEqual([("route", "updated"), ("route_phone", "added"), ("route_phone", "replaced")], [(r["source"], r["action"]) for r in route_rows])
+        self.assertIn("525550000001", str(phone_rows[1]["old_value"]))
+        self.assertIn("525550000020", str(phone_rows[1]["new_value"]))
+        self.assertEqual(["tariff.changed", "tariff.created"], [r["reason"] for r in tariff_rows])
+        self.assertEqual(Decimal("-0.1"), Decimal(str(tariff_rows[0]["eur_price_delta"])))
+        self.assertEqual("Admin", phone_rows[0]["user_name"])

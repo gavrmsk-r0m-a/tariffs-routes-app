@@ -40,6 +40,7 @@ SMOKE_METHODS = (
     "list_routes", "list_tariffs", "list_phone_numbers",
     "list_company_routing_settings", "get_company_routing_setting",
     "list_provider_changes", "list_routing_events", "get_routing_event",
+    "list_phone_history", "list_route_history", "list_tariff_history",
 )
 
 STAGE_34_METHODS = (
@@ -86,6 +87,12 @@ STAGE_42_METHODS = (
 STAGE_43_METHODS = (
     "list_routing_events",
     "get_routing_event",
+)
+
+STAGE_46_METHODS = (
+    "list_phone_history",
+    "list_route_history",
+    "list_tariff_history",
 )
 
 EXISTS_CHECKS = (
@@ -731,6 +738,61 @@ def run_stage_43_checks(repo: Repository, check) -> None:
     check("stage_43_detail_inactive_values", lambda: _check(isinstance(inactive_detail, dict) and _is_database_false(inactive_detail.get("is_active")) and inactive_detail.get("deactivation_reason") == "Synthetic Stage 43 archive", "inactive detail wrong"))
     check("stage_43_detail_missing", lambda: _check(repo.get_routing_event(-1) is None, "missing detail must return None"))
 
+
+def _stage46_rows(rows: object) -> list:
+    return [row for row in (rows or []) if str(row["reason"]).startswith("Stage 46") or str(row["reason"]).startswith("tariff.")]
+
+def run_stage_46_checks(repo: Repository, check, collections: dict, lookups: dict) -> None:
+    """Check route, phone, and tariff read-only history contracts."""
+    history_keys = ["source", "action", "changed_at", "user_name", "field_name", "old_value", "new_value", "reason", "comment", "route_name", "phone_number"]
+    tariff_keys = ["id", "tariff_id", "changed_at", "changed_by", "country_id", "country_name_snapshot", "provider_id", "provider_name_snapshot", "provider_prefix_id", "prefix_snapshot", "old_provider_currency_id", "new_provider_currency_id", "old_price_in_provider_currency", "new_price_in_provider_currency", "old_conversion_rate_to_eur", "new_conversion_rate_to_eur", "old_conversion_rate_date", "new_conversion_rate_date", "old_eur_price", "new_eur_price", "eur_price_delta", "reason", "comment", "created_at", "user_name"]
+    phones = check("stage_46_list_phone_numbers_seed", repo.list_phone_numbers)
+    routes = check("stage_46_list_routes_seed", repo.list_routes)
+    tariffs = check("stage_46_list_tariffs_seed", repo.list_tariffs)
+    demo_phone = next((row for row in (phones or []) if row["number"] == "525550000001"), None)
+    routed_phone = next((row for row in (phones or []) if row["number"] == "525550000020"), None)
+    demo_route = next((row for row in (routes or []) if row["name"] == "Demo Route"), None)
+    demo_tariff = next((row for row in (tariffs or []) if row["country_name"] == "Demo Country" and row["provider_name"] == "Demo Provider" and row["prefix"] == "123"), None)
+    eur = next((row for row in (collections.get("list_currencies") or []) if row["code"] == "EUR"), None)
+
+    phone_history = check("stage_46_list_phone_history", lambda: repo.list_phone_history(demo_phone["id"]))
+    routed_history = check("stage_46_list_phone_history_new_phone", lambda: repo.list_phone_history(routed_phone["id"]))
+    route_history = check("stage_46_list_route_history", lambda: repo.list_route_history(demo_route["id"]))
+    tariff_history = check("stage_46_list_tariff_history", lambda: repo.list_tariff_history(demo_tariff["id"]))
+    phone_rows = [row for row in (phone_history or []) if str(row["reason"]).startswith("Stage 46")]
+    route_rows = [row for row in (route_history or []) if str(row["reason"]).startswith("Stage 46")]
+    tariff_rows = [row for row in (tariff_history or []) if row["reason"] in {"tariff.created", "tariff.changed"}]
+
+    check("stage_46_phone_history_type", lambda: _check(isinstance(phone_history, list), "phone history must be list"))
+    check("stage_46_phone_history_shape", lambda: _check(phone_rows and list(phone_rows[0].keys()) == history_keys, "phone history shape changed"))
+    check("stage_46_phone_history_order", lambda: _check([(r["source"], r["action"]) for r in phone_rows] == [("route_phone", "added"), ("route_phone", "replaced"), ("phone", "updated")], "phone history order wrong"))
+    check("stage_46_phone_history_desc", lambda: _check([r["changed_at"] for r in phone_rows] == sorted([r["changed_at"] for r in phone_rows], reverse=True), "phone history must sort desc"))
+    check("stage_46_phone_history_users", lambda: _check(all(r["user_name"] == "Admin" for r in phone_rows), "phone history user wrong"))
+    added, repl, phone = (phone_rows + [None, None, None])[:3]
+    check("stage_46_phone_added_values", lambda: _check(added is not None and added["route_name"] == "Demo Route" and added["phone_number"] == "525550000001" and added["field_name"] is None and added["old_value"] is None and "cli" in str(added["new_value"]) and added["comment"] == "Synthetic Stage 46 route-phone history", "phone added values wrong"))
+    check("stage_46_phone_replaced_values", lambda: _check(repl is not None and repl["phone_number"] is None and repl["field_name"] is None and "525550000001" in str(repl["old_value"]) and "525550000020" in str(repl["new_value"]) and repl["reason"] == "Stage 46 phone replaced", "phone replacement values wrong"))
+    check("stage_46_phone_row_values", lambda: _check(phone is not None and phone["route_name"] is None and phone["phone_number"] == "525550000001" and phone["field_name"] == "status" and phone["old_value"] == "problem" and phone["new_value"] == "used" and phone["reason"] == "Stage 46 phone status", "phone row values wrong"))
+    check("stage_46_phone_new_id_match", lambda: _check(any(row["action"] == "replaced" and row["route_name"] == "Demo Route" for row in (routed_history or [])), "replacement must match new phone id"))
+    check("stage_46_phone_missing", lambda: _check(repo.list_phone_history(-1) == [], "missing phone history must be []"))
+
+    check("stage_46_route_history_type", lambda: _check(isinstance(route_history, list), "route history must be list"))
+    check("stage_46_route_history_shape", lambda: _check(route_rows and list(route_rows[0].keys()) == history_keys, "route history shape changed"))
+    check("stage_46_route_history_order", lambda: _check([(r["source"], r["action"]) for r in route_rows] == [("route", "updated"), ("route_phone", "added"), ("route_phone", "replaced")], "route history order wrong"))
+    check("stage_46_route_history_users", lambda: _check(all(r["user_name"] == "Admin" for r in route_rows), "route history user wrong"))
+    route_row, route_added, route_repl = (route_rows + [None, None, None])[:3]
+    check("stage_46_route_row_values", lambda: _check(route_row is not None and route_row["route_name"] == "Demo Route" and route_row["phone_number"] is None and route_row["field_name"] == "comment" and route_row["old_value"] == "Temporary Stage 46 route comment" and route_row["new_value"] == "Synthetic route" and route_row["reason"] == "Stage 46 route comment", "route row values wrong"))
+    check("stage_46_route_added_values", lambda: _check(route_added is not None and route_added["source"] == "route_phone" and route_added["phone_number"] == "525550000001", "route added values wrong"))
+    check("stage_46_route_replaced_values", lambda: _check(route_repl is not None and route_repl["phone_number"] is None and "525550000001" in str(route_repl["old_value"]) and "525550000020" in str(route_repl["new_value"]), "route replacement values wrong"))
+    check("stage_46_route_missing", lambda: _check(repo.list_route_history(-1) == [], "missing route history must be []"))
+
+    check("stage_46_tariff_history_type", lambda: _check(isinstance(tariff_history, list), "tariff history must be list"))
+    check("stage_46_tariff_history_shape", lambda: _check(tariff_rows and list(tariff_rows[0].keys()) == tariff_keys, "tariff history shape changed"))
+    check("stage_46_tariff_history_order", lambda: _check([r["reason"] for r in tariff_rows] == ["tariff.changed", "tariff.created"], "tariff history order wrong"))
+    changed, created = (tariff_rows + [None, None])[:2]
+    check("stage_46_tariff_changed_values", lambda: _check(changed is not None and changed["user_name"] == "Admin" and changed["country_name_snapshot"] == "Demo Country" and changed["provider_name_snapshot"] == "Demo Provider" and changed["prefix_snapshot"] == "123" and changed["old_provider_currency_id"] == eur["id"] and changed["new_provider_currency_id"] == eur["id"] and _decimal_equals(changed["old_price_in_provider_currency"], "0.2") and _decimal_equals(changed["new_price_in_provider_currency"], "0.1") and _decimal_equals(changed["old_conversion_rate_to_eur"], "1") and _decimal_equals(changed["new_conversion_rate_to_eur"], "1") and _decimal_equals(changed["old_eur_price"], "0.2") and _decimal_equals(changed["new_eur_price"], "0.1") and _decimal_equals(changed["eur_price_delta"], "-0.1") and changed["comment"] == "Synthetic Stage 46 tariff changed", "tariff changed values wrong"))
+    check("stage_46_tariff_created_values", lambda: _check(created is not None and created["old_provider_currency_id"] is None and created["old_price_in_provider_currency"] is None and created["old_conversion_rate_to_eur"] is None and created["old_conversion_rate_date"] is None and created["old_eur_price"] is None and created["eur_price_delta"] is None and _decimal_equals(created["new_price_in_provider_currency"], "0.2") and _decimal_equals(created["new_conversion_rate_to_eur"], "1") and _decimal_equals(created["new_eur_price"], "0.2") and created["reason"] == "tariff.created", "tariff created values wrong"))
+    check("stage_46_tariff_missing", lambda: _check(repo.list_tariff_history(-1) == [], "missing tariff history must be []"))
+
 def run_repository_checks(repo: Repository, postgres_url: str) -> dict:
     summary = empty_summary(postgres_url)
     checks: list[tuple[str, object]] = []
@@ -792,6 +854,7 @@ def run_repository_checks(repo: Repository, postgres_url: str) -> dict:
     run_stage_41_checks(repo, check)
     run_stage_42_checks(repo, check)
     run_stage_43_checks(repo, check)
+    run_stage_46_checks(repo, check, collections, lookup_results)
 
     summary.update(status="ok" if not failures else "failed", checks_count=len(checks) + len(failures), failures=failures)
     return summary

@@ -37,8 +37,8 @@ class RepositoryPostgresCoverageAuditTests(unittest.TestCase):
         self.assertEqual([], s['stale_manifest_entries']); self.assertEqual([], s['unknown_smoke_methods'])
         self.assertEqual([], s['duplicate_smoke_methods']); self.assertEqual([], s['smoke_write_suspects'])
         self.assertEqual([], s['deferred_write_suspects']); self.assertEqual(s['repository_public_methods_count'], s['classified_methods_count'])
-        self.assertEqual(112, s['repository_public_methods_count']); self.assertEqual(54, s['smoke_covered_read_count'])
-        self.assertEqual(7, s['deferred_read_only_count']); self.assertEqual(50, s['write_or_mutating_count']); self.assertEqual(1, s['infrastructure_or_mixed_count'])
+        self.assertEqual(112, s['repository_public_methods_count']); self.assertEqual(57, s['smoke_covered_read_count'])
+        self.assertEqual(4, s['deferred_read_only_count']); self.assertEqual(50, s['write_or_mutating_count']); self.assertEqual(1, s['infrastructure_or_mixed_count']); self.assertEqual(93.44, s['read_surface_coverage_percent'])
 
     def test_unclassified_public_method(self):
         s=self.run_case(repo=REPO+'\n    def newly_added_method(self):\n        return []\n')
