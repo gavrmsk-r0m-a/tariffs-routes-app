@@ -3081,52 +3081,82 @@ class Repository:
         return event_id
 
     def list_routing_events(self, filters: dict | None = None) -> list[sqlite3.Row]:
-        filters = filters or {}
+        routing_filters = dict(filters or {})
+        include_inactive = routing_filters.pop("include_inactive", None)
+        date_from = routing_filters.pop("date_from", None)
+        date_to = routing_filters.pop("date_to", None)
+        server_id = routing_filters.pop("server_id", None)
+        campaign_id = routing_filters.pop("campaign_id", None)
+
+        include_supported, include_normalized = self._normalize_optional_bool_filter(include_inactive)
+        if not include_supported:
+            return []
+
+        p = placeholder(self.backend)
         clauses = []
-        params: list = []
-        if not filters.get("include_inactive"):
-            clauses.append("re.is_active = 1")
-        if filters.get("date_from"):
-            clauses.append("re.event_at >= ?")
-            params.append(filters["date_from"])
-        if filters.get("date_to"):
-            clauses.append("re.event_at <= ?")
-            params.append(filters["date_to"])
-        for key, column in {
-            "country_id": "re.country_id",
-            "apply_scope": "re.apply_scope",
-            "calling_company_id": "re.calling_company_id",
-            "provider_id": "re.provider_id",
-        }.items():
-            if filters.get(key):
-                clauses.append(f"{column} = ?")
-                params.append(filters[key])
-        if filters.get("server_id"):
+        filter_params: list = []
+        if include_normalized != to_db_bool(True, self.backend):
+            clauses.append(f"re.is_active = {p}")
+            filter_params.append(to_db_bool(True, self.backend))
+        if date_from:
+            clauses.append(f"re.event_at >= {p}")
+            filter_params.append(date_from)
+        if date_to:
+            clauses.append(f"re.event_at <= {p}")
+            filter_params.append(date_to)
+
+        equality_filters = {
+            "country_id": routing_filters.get("country_id"),
+            "apply_scope": routing_filters.get("apply_scope"),
+            "calling_company_id": routing_filters.get("calling_company_id"),
+            "provider_id": routing_filters.get("provider_id"),
+        }
+        equality_where, equality_params = query_filters(
+            equality_filters,
+            {
+                "country_id": "re.country_id",
+                "apply_scope": "re.apply_scope",
+                "calling_company_id": "re.calling_company_id",
+                "provider_id": "re.provider_id",
+            },
+            backend=self.backend,
+        )
+        if equality_where:
+            clauses.extend(equality_where.removeprefix(" WHERE ").split(" AND "))
+            filter_params.extend(equality_params)
+
+        if server_id not in (None, "", "all"):
             clauses.append(
-                """
+                f"""
                 (
                     (
                         re.apply_scope = 'server_priority'
                         AND (
-                            re.server_id = ?
+                            re.server_id = {p}
                             OR EXISTS (
                                 SELECT 1
                                 FROM routing_event_servers res
                                 WHERE res.routing_event_id = re.id
-                                  AND res.server_id = ?
+                                  AND res.server_id = {p}
                             )
                         )
                     )
-                    OR (re.apply_scope = 'campaign_setting' AND cc.server_id = ?)
+                    OR (re.apply_scope = 'campaign_setting' AND cc.server_id = {p})
                 )
                 """
             )
-            params.extend([filters["server_id"], filters["server_id"], filters["server_id"]])
-        campaign_id_search = normalize_search_text(filters.get("campaign_id"))
-        if campaign_id_search is not None:
-            clauses.append("search_text_matches(cc.company_id_external, ?) = 1")
-            params.append(campaign_id_search)
+            filter_params.extend([server_id, server_id, server_id])
+        campaign_where, campaign_params = query_filters(
+            {"campaign_id_like": campaign_id},
+            {"campaign_id_like": "cc.company_id_external"},
+            backend=self.backend,
+        )
+        if campaign_where:
+            clauses.append(campaign_where.removeprefix(" WHERE "))
+            filter_params.extend(campaign_params)
         where = " WHERE " + " AND ".join(clauses) if clauses else ""
+        current_flag = to_db_bool(True, self.backend)
+        params = [current_flag, current_flag, current_flag, current_flag, *filter_params]
         return list(self.conn.execute(f"""
             SELECT re.*, c.name AS country_name, s.name AS server_name, p.name AS provider_name,
                    ar.name AS affected_route_name, nr.name AS new_route_name, oldr.name AS old_route_name,
@@ -3164,28 +3194,28 @@ class Repository:
                 SELECT t.id FROM tariffs t
                 WHERE t.country_id = re.country_id AND t.provider_id = oldr.provider_id
                   AND COALESCE(t.provider_prefix_id, 0) = COALESCE(oldr.provider_prefix_id, 0)
-                  AND t.is_current = 1
+                  AND t.is_current = {p}
                 ORDER BY t.created_at DESC, t.id DESC LIMIT 1
             )
             LEFT JOIN tariffs new_route_tariff ON new_route_tariff.id = (
                 SELECT t.id FROM tariffs t
                 WHERE t.country_id = re.country_id AND t.provider_id = nr.provider_id
                   AND COALESCE(t.provider_prefix_id, 0) = COALESCE(nr.provider_prefix_id, 0)
-                  AND t.is_current = 1
+                  AND t.is_current = {p}
                 ORDER BY t.created_at DESC, t.id DESC LIMIT 1
             )
             LEFT JOIN tariffs old_company_tariff ON old_company_tariff.id = (
                 SELECT t.id FROM tariffs t
                 WHERE t.country_id = re.country_id AND t.provider_id = oldcr.provider_id
                   AND COALESCE(t.provider_prefix_id, 0) = COALESCE(oldcr.provider_prefix_id, 0)
-                  AND t.is_current = 1
+                  AND t.is_current = {p}
                 ORDER BY t.created_at DESC, t.id DESC LIMIT 1
             )
             LEFT JOIN tariffs new_company_tariff ON new_company_tariff.id = (
                 SELECT t.id FROM tariffs t
                 WHERE t.country_id = re.country_id AND t.provider_id = newcr.provider_id
                   AND COALESCE(t.provider_prefix_id, 0) = COALESCE(newcr.provider_prefix_id, 0)
-                  AND t.is_current = 1
+                  AND t.is_current = {p}
                 ORDER BY t.created_at DESC, t.id DESC LIMIT 1
             )
             LEFT JOIN providers oldcp ON oldcp.id = oldcr.provider_id
@@ -3203,12 +3233,13 @@ class Repository:
             if int(row["id"]) == int(event_id):
                 data = dict(row)
                 if data.get("apply_scope") == "server_priority":
+                    p = placeholder(self.backend)
                     server_rows = self.conn.execute(
-                        """
+                        f"""
                         SELECT s.name
                         FROM routing_event_servers res
                         JOIN servers s ON s.id = res.server_id
-                        WHERE res.routing_event_id = ?
+                        WHERE res.routing_event_id = {p}
                         ORDER BY s.name
                         """,
                         (event_id,),

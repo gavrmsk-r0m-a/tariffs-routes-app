@@ -1,6 +1,6 @@
-# Repository read-only PostgreSQL smoke audit (Stage 42)
+# Repository read-only PostgreSQL smoke audit (Stage 43)
 
-Earlier stages added filtered `list_calling_companies`, `list_phone_numbers`, `list_company_routing_settings`, and now Stage 42 adds `list_provider_changes` to the PostgreSQL Repository smoke.
+Earlier stages added filtered `list_calling_companies`, `list_phone_numbers`, `list_company_routing_settings`, and now Stage 42 added `list_provider_changes` and Stage 43 adds `list_routing_events`/`get_routing_event` to the PostgreSQL Repository smoke.
 
 Previously, Stage 39 added the filtered `list_calling_companies` read path to the PostgreSQL
 Repository smoke. The unfiltered `list_calling_companies` path was already covered
@@ -145,3 +145,21 @@ The PostgreSQL smoke still opens its PostgreSQL transaction with
 writes, migration logic, and full app runtime paths remain outside this stage.
 
 The confirmed Stage 42 smoke count is **403** checks.
+
+## Stage 43 routing-event list and detail smoke
+
+Stage 43 adds `list_routing_events` and `get_routing_event` to the PostgreSQL Repository read-only smoke. Both methods are audited as read-only: `list_routing_events` builds and executes one SELECT-only list query, and `get_routing_event` calls that list path with `include_inactive=True` before optionally running one additional SELECT for server names when the event scope is `server_priority`. Neither method commits, rolls back, opens `Repository.transaction()`, calls write methods, mutates routing-event/server-priority/company-routing tables, writes history/change-log rows, or calls Telegram, HTTP, HLR, importer, application, or session state.
+
+The Stage 43 list contract keeps default active-only results (`re.is_active` bound as a backend-native boolean), while strict `include_inactive` normalization accepts only `True`, `1`, and `"1"` to remove the active predicate. `False`, `0`, `"0"`, `None`, `""`, and `"all"` keep active-only behavior; unsupported non-empty values such as `"true"`, `"false"`, `"yes"`, and `"invalid"` return `[]` before SQL execution.
+
+Date filters remain inclusive (`re.event_at >= placeholder`, `re.event_at <= placeholder`) and are not parsed inside the Repository. Equality filters for `country_id`, `apply_scope`, `calling_company_id`, and `provider_id` use `query_filters(..., backend=self.backend)` in the existing mapping order. The `server_id` filter preserves the current business semantics: `server_priority` events match either `re.server_id` or an `EXISTS` lookup in `routing_event_servers`, while `campaign_setting` events match through `cc.server_id`; `none` events are not promoted into server-scoped events.
+
+The public `campaign_id` filter keeps the Stage 37 literal substring search foundation against `cc.company_id_external`: SQLite uses `search_text_matches(..., ?) = 1` with trimmed Python casefolded input, while PostgreSQL uses parameterized `POSITION(LOWER(CAST(%s AS TEXT)) IN LOWER(COALESCE(CAST(cc.company_id_external AS TEXT), ''))) > 0`. LIKE, ILIKE, regex, and wildcard semantics are not introduced.
+
+The four current-tariff lookup predicates for old/new route and old/new company prices are backend-aware (`t.is_current = placeholder`). SQL parameters are ordered as four current-tariff booleans first, followed by active flag when present, date range, equality filters, three server-id values, and campaign search. Price CASE expressions, provider/country/prefix matching, `ORDER BY created_at DESC, id DESC`, `LIMIT 1`, and delta subtraction semantics are unchanged.
+
+`snapshot_json` remains backend-native: SQLite can expose TEXT JSON and PostgreSQL/psycopg can expose JSONB as a dict. The smoke normalizes snapshots only for semantic assertions; runtime/UI JSON normalization is not enabled, and PostgreSQL full-application runtime remains disabled.
+
+`get_routing_event` preserves the detail contract: found rows are returned as `dict`, missing IDs return `None`, and only `server_priority` details append trailing `affected_server_names` sorted by server name (for Stage 43, `Stage 42 Server A, Stage 42 Server B`). The list output shape and key order are explicitly guarded, and `affected_server_names` is not added to list rows.
+
+The confirmed local semantic smoke `checks_count` is **459**. The PostgreSQL connection remains `SET TRANSACTION READ ONLY`; `DB_BACKEND=postgres` remains disabled, and SQLite remains the operational production/development backend. Deferred work still includes create/update/deactivate routing events, server-priority write application, campaign-routing write application, company routing-setting history, calling-company event/history JSON search, route/phone/tariff history methods, PostgreSQL full runtime, and all Repository write paths.

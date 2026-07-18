@@ -7,6 +7,7 @@ contains no production/user data.
 from __future__ import annotations
 
 import argparse
+import json
 import sqlite3
 import sys
 from pathlib import Path
@@ -20,6 +21,10 @@ from app.db import init_db
 NOW = "2026-07-12 10:00:00"
 TODAY = "2026-07-12"
 HISTORY_FROM = "2026-07-11 08:00:00"
+STAGE43_INACTIVE_AT = "2026-07-13 09:00:00"
+STAGE43_NONE_AT = "2026-07-14 10:00:00"
+STAGE43_SERVER_AT = "2026-07-15 11:00:00"
+STAGE43_CAMPAIGN_AT = "2026-07-16 12:00:00"
 
 
 def q(conn: sqlite3.Connection, sql: str, params: tuple = ()) -> int:
@@ -146,6 +151,50 @@ def create_demo_sqlite(output: str | Path) -> Path:
         """, ("2026-07-12 11:00:00", routed_country_id, stage42_route_alpha_id, phone_provider_id, stage42_route_beta_id, stage42_provider_after_id, "0.000000", reason_id, "Planned provider switch", "Synthetic Stage 42 new provider-change", "not_sent", admin_id, "2026-07-12 11:00:00", admin_id, "2026-07-12 11:00:00"))
         q(conn, "INSERT INTO provider_change_log_servers(provider_change_log_id, server_id) VALUES (?, ?)", (stage42_new_id, stage42_server_b_id))
         q(conn, "INSERT INTO provider_change_log_servers(provider_change_log_id, server_id) VALUES (?, ?)", (stage42_new_id, stage42_server_a_id))
+        stage43_old_tariff_id = q(conn, """
+            INSERT INTO tariffs(country_id, provider_id, provider_prefix_id, provider_currency_id,
+                price_in_provider_currency, conversion_rate_to_eur, conversion_rate_date, currency_rate_id,
+                eur_price, priority_status, is_estimated, comment, valid_from, valid_to, is_current,
+                created_by, created_at, updated_by, updated_at)
+            VALUES (?, ?, NULL, ?, ?, ?, ?, NULL, ?, ?, 0, ?, ?, NULL, 1, ?, ?, ?, ?)
+        """, (routed_country_id, phone_provider_id, xpn_id, "2.500000", "0.400000", TODAY, "1.000000", "normal", "Synthetic Stage 43 old route tariff", NOW, admin_id, NOW, admin_id, NOW))
+        stage43_new_tariff_id = q(conn, """
+            INSERT INTO tariffs(country_id, provider_id, provider_prefix_id, provider_currency_id,
+                price_in_provider_currency, conversion_rate_to_eur, conversion_rate_date, currency_rate_id,
+                eur_price, priority_status, is_estimated, comment, valid_from, valid_to, is_current,
+                created_by, created_at, updated_by, updated_at)
+            VALUES (?, ?, NULL, ?, ?, ?, ?, NULL, ?, ?, 0, ?, ?, NULL, 1, ?, ?, ?, ?)
+        """, (routed_country_id, stage42_provider_after_id, xpn_id, "3.750000", "0.400000", TODAY, "1.500000", "normal", "Synthetic Stage 43 new route tariff", NOW, admin_id, NOW, admin_id, NOW))
+        stage43_none_active_id = q(conn, """
+            INSERT INTO routing_events(event_at, apply_scope, reason, country_id, server_id, provider_id,
+                affected_route_id, old_route_id, new_route_id, calling_company_id, company_change_type,
+                old_company_routing_mode, new_company_routing_mode, old_company_route_id, new_company_route_id,
+                old_company_has_autorotation, new_company_has_autorotation, has_overflow, overflow_route_id,
+                comment, snapshot_json, is_active, created_at, created_by, updated_at, updated_by)
+            VALUES (?, 'none', 'Stage 43 none active', ?, NULL, ?, ?, NULL, NULL, NULL, NULL,
+                NULL, NULL, NULL, NULL, NULL, NULL, 0, NULL, ?, ?, 1, ?, ?, ?, ?)
+        """, (STAGE43_NONE_AT, routed_country_id, phone_provider_id, stage42_route_alpha_id, "Synthetic Stage 43 none active event", json.dumps({"stage": 43, "scope": "none", "state": "active"}, sort_keys=True), NOW, admin_id, NOW, admin_id))
+        stage43_none_inactive_id = q(conn, """
+            INSERT INTO routing_events(event_at, apply_scope, reason, country_id, server_id, provider_id,
+                affected_route_id, old_route_id, new_route_id, calling_company_id, company_change_type,
+                old_company_routing_mode, new_company_routing_mode, old_company_route_id, new_company_route_id,
+                old_company_has_autorotation, new_company_has_autorotation, has_overflow, overflow_route_id,
+                comment, snapshot_json, is_active, deactivation_reason, deactivated_at, deactivated_by,
+                created_at, created_by, updated_at, updated_by)
+            VALUES (?, 'none', 'Stage 43 none inactive', ?, NULL, ?, ?, NULL, NULL, NULL, NULL,
+                NULL, NULL, NULL, NULL, NULL, NULL, 0, NULL, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?)
+        """, (STAGE43_INACTIVE_AT, routed_country_id, phone_provider_id, stage42_route_alpha_id, "Synthetic Stage 43 inactive event", json.dumps({"stage": 43, "scope": "none", "state": "inactive"}, sort_keys=True), "Synthetic Stage 43 archive", NOW, admin_id, NOW, admin_id, NOW, admin_id))
+        stage43_server_event_id = q(conn, """
+            INSERT INTO routing_events(event_at, apply_scope, reason, country_id, server_id, provider_id,
+                affected_route_id, old_route_id, new_route_id, calling_company_id, company_change_type,
+                old_company_routing_mode, new_company_routing_mode, old_company_route_id, new_company_route_id,
+                old_company_has_autorotation, new_company_has_autorotation, has_overflow, overflow_route_id,
+                comment, snapshot_json, is_active, created_at, created_by, updated_at, updated_by)
+            VALUES (?, 'server_priority', 'Stage 43 server priority', ?, ?, ?, ?, ?, ?, NULL, NULL,
+                NULL, NULL, NULL, NULL, NULL, NULL, 1, ?, ?, ?, 1, ?, ?, ?, ?)
+        """, (STAGE43_SERVER_AT, routed_country_id, stage42_server_a_id, stage42_provider_after_id, stage42_route_beta_id, stage42_route_alpha_id, stage42_route_beta_id, ci_route_ids["CI Phone Route B"], "Synthetic Stage 43 server priority event", json.dumps({"stage": 43, "scope": "server_priority", "affected_servers": ["Stage 42 Server A", "Stage 42 Server B"]}, sort_keys=True), NOW, admin_id, NOW, admin_id))
+        q(conn, "INSERT INTO routing_event_servers(routing_event_id, server_id, old_route_id, new_route_id, server_route_priority_id, status, created_at) VALUES (?, ?, ?, ?, NULL, 'applied', ?)", (stage43_server_event_id, stage42_server_b_id, stage42_route_alpha_id, stage42_route_beta_id, NOW))
+        q(conn, "INSERT INTO routing_event_servers(routing_event_id, server_id, old_route_id, new_route_id, server_route_priority_id, status, created_at) VALUES (?, ?, ?, ?, NULL, 'applied', ?)", (stage43_server_event_id, stage42_server_a_id, stage42_route_alpha_id, stage42_route_beta_id, NOW))
         q(conn, """
             INSERT INTO tariffs(country_id, provider_id, provider_prefix_id, provider_currency_id,
                 price_in_provider_currency, conversion_rate_to_eur, conversion_rate_date, currency_rate_id,
@@ -163,6 +212,15 @@ def create_demo_sqlite(output: str | Path) -> Path:
                 has_autorotation, is_active, comment, valid_from, valid_to, created_at, created_by, updated_at, updated_by)
             VALUES (?, ?, ?, ?, ?, 1, 1, ?, ?, NULL, ?, ?, ?, ?)
         """, (company_id, country_id, server_id, route_id, "autorotation", "Synthetic setting", NOW, NOW, admin_id, NOW, admin_id))
+        stage43_campaign_event_id = q(conn, """
+            INSERT INTO routing_events(event_at, apply_scope, reason, country_id, server_id, provider_id,
+                affected_route_id, old_route_id, new_route_id, calling_company_id, company_change_type,
+                old_company_routing_mode, new_company_routing_mode, old_company_route_id, new_company_route_id,
+                old_company_has_autorotation, new_company_has_autorotation, has_overflow, overflow_route_id,
+                comment, snapshot_json, is_active, created_at, created_by, updated_at, updated_by)
+            VALUES (?, 'campaign_setting', 'Stage 43 campaign setting', ?, NULL, NULL, NULL, NULL, NULL, ?, ?,
+                ?, ?, ?, ?, 1, 1, 0, NULL, ?, ?, 1, ?, ?, ?, ?)
+        """, (STAGE43_CAMPAIGN_AT, country_id, company_id, "set_campaign_route", "autorotation", "mixed", route_id, route_id, "Synthetic Stage 43 campaign event", json.dumps({"stage": 43, "scope": "campaign_setting"}, sort_keys=True), NOW, admin_id, NOW, admin_id))
         manual_country_id = q(conn, "INSERT INTO countries(name, code, is_active, created_at, updated_at) VALUES (?, ?, 1, ?, ?)", ("CI Manual Company Country", "CM", NOW, NOW))
         manual_server_id = q(conn, "INSERT INTO servers(name, comment, is_active, created_at, updated_at) VALUES (?, ?, 1, ?, ?)", ("ci-manual-server-1", "Synthetic manual company server", NOW, NOW))
         manual_company_id = q(conn, """

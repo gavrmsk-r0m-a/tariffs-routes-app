@@ -884,3 +884,130 @@ class ProviderChangesAdapterReadMethodsTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class RepositoryRoutingEventsAdapterTest(unittest.TestCase):
+    def test_postgres_list_routing_events_default_sql_and_params(self):
+        class CaptureConnection:
+            def execute(self, sql, params=()):
+                self.sql = sql
+                self.params = params
+                return []
+
+        conn = CaptureConnection()
+        self.assertEqual([], Repository(conn, backend="postgres").list_routing_events())
+        sql = " ".join(conn.sql.split())
+        self.assertEqual(4, sql.count("t.is_current = %s"))
+        self.assertIn("re.is_active = %s", sql)
+        self.assertIn("ORDER BY re.event_at DESC, re.id DESC", sql)
+        self.assertNotIn("t.is_current = 1", sql)
+        self.assertNotIn("re.is_active = 1", sql)
+        self.assertNotIn("search_text_matches", sql)
+        self.assertNotIn("?", sql)
+        self.assertEqual([True, True, True, True, True], conn.params)
+
+    def test_postgres_list_routing_events_full_filter_sql_and_params(self):
+        class CaptureConnection:
+            def execute(self, sql, params=()):
+                self.sql = sql
+                self.params = params
+                return []
+
+        filters = {
+            "campaign_id": "  DEMO-COMPANY  ",
+            "server_id": 8,
+            "provider_id": 7,
+            "calling_company_id": 6,
+            "apply_scope": "campaign_setting",
+            "country_id": 5,
+            "date_to": "2026-07-16 12:00:00",
+            "date_from": "2026-07-16 12:00:00",
+            "include_inactive": "1",
+        }
+        original = dict(filters)
+        conn = CaptureConnection()
+        self.assertEqual([], Repository(conn, backend="postgres").list_routing_events(filters))
+        sql = " ".join(conn.sql.split())
+        self.assertEqual(4, sql.count("t.is_current = %s"))
+        for fragment in (
+            "re.event_at >= %s", "re.event_at <= %s", "re.country_id = %s",
+            "re.apply_scope = %s", "re.calling_company_id = %s", "re.provider_id = %s",
+            "EXISTS ( SELECT 1 FROM routing_event_servers res", "OR (re.apply_scope = 'campaign_setting' AND cc.server_id = %s)",
+            "POSITION(LOWER(CAST(%s AS TEXT)) IN LOWER(COALESCE(CAST(cc.company_id_external AS TEXT), ''))) > 0",
+        ):
+            self.assertIn(fragment, sql)
+        self.assertEqual(3, sql.count("server_id = %s"))
+        self.assertNotIn("search_text_matches", sql)
+        self.assertNotIn(" LIKE ", sql)
+        self.assertNotIn(" ILIKE ", sql)
+        self.assertNotIn("?", sql)
+        self.assertNotIn("DEMO-COMPANY", sql)
+        self.assertNotIn(" = 8", sql)
+        self.assertEqual([True, True, True, True, "2026-07-16 12:00:00", "2026-07-16 12:00:00", 5, "campaign_setting", 6, 7, 8, 8, 8, "DEMO-COMPANY"], conn.params)
+        self.assertEqual(original, filters)
+
+    def test_routing_events_include_inactive_recording_variants(self):
+        class CaptureConnection:
+            def create_function(self, *args):
+                pass
+            def execute(self, sql, params=()):
+                self.sql = sql
+                self.params = params
+                return []
+
+        for backend, true_value, false_params in (("postgres", True, [True, True, True, True, True]), ("sqlite", 1, [1, 1, 1, 1, 1])):
+            conn = CaptureConnection()
+            Repository(conn, backend=backend).list_routing_events({"include_inactive": True})
+            self.assertEqual([true_value, true_value, true_value, true_value], conn.params)
+            conn = CaptureConnection()
+            Repository(conn, backend=backend).list_routing_events({"include_inactive": "0"})
+            self.assertEqual(false_params, conn.params)
+            conn = CaptureConnection()
+            self.assertEqual([], Repository(conn, backend=backend).list_routing_events({"include_inactive": "true"}))
+            self.assertFalse(hasattr(conn, "sql"))
+
+    def test_sqlite_list_routing_events_recording_and_fixture_contract(self):
+        class CaptureConnection:
+            def create_function(self, *args):
+                pass
+            def execute(self, sql, params=()):
+                self.sql = sql
+                self.params = params
+                return []
+
+        filters = {"include_inactive": "1", "date_from": "2026-07-16 12:00:00", "date_to": "2026-07-16 12:00:00", "country_id": 5, "apply_scope": "campaign_setting", "calling_company_id": 6, "provider_id": 7, "server_id": 8, "campaign_id": "  DEMO-COMPANY  "}
+        original = dict(filters)
+        capture = CaptureConnection()
+        Repository(capture).list_routing_events(filters)
+        sql = " ".join(capture.sql.split())
+        self.assertEqual(4, sql.count("t.is_current = ?"))
+        self.assertIn("re.event_at >= ?", sql)
+        self.assertIn("search_text_matches(cc.company_id_external, ?) = 1", sql)
+        self.assertEqual([1, 1, 1, 1, "2026-07-16 12:00:00", "2026-07-16 12:00:00", 5, "campaign_setting", 6, 7, 8, 8, 8, "demo-company"], capture.params)
+        self.assertEqual(original, filters)
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = create_demo_sqlite(Path(directory) / "demo.db")
+            conn = sqlite3.connect(path)
+            conn.row_factory = sqlite3.Row
+            try:
+                repo = Repository(conn)
+                rows = repo.list_routing_events()
+                stage43 = [row for row in rows if row["reason"].startswith("Stage 43")]
+                self.assertTrue(all(isinstance(row, sqlite3.Row) for row in rows))
+                self.assertEqual(["Stage 43 campaign setting", "Stage 43 server priority", "Stage 43 none active"], [row["reason"] for row in stage43])
+                all_stage43 = [row for row in repo.list_routing_events({"include_inactive": True}) if row["reason"].startswith("Stage 43")]
+                self.assertEqual(["Stage 43 campaign setting", "Stage 43 server priority", "Stage 43 none active", "Stage 43 none inactive"], [row["reason"] for row in all_stage43])
+                self.assertEqual([], [row for row in repo.list_routing_events({"server_id": next(r["server_id"] for r in all_stage43 if r["reason"] == "Stage 43 server priority")}) if row["reason"] == "Stage 43 none active"])
+                campaign = next(row for row in all_stage43 if row["reason"] == "Stage 43 campaign setting")
+                self.assertEqual("demo-company-1", campaign["company_id_external"])
+                self.assertEqual("0.1", str(Decimal(str(campaign["old_price_eur"])).normalize()))
+                self.assertEqual("0", str(Decimal(str(campaign["price_delta_eur"])).normalize()))
+                self.assertEqual(["scope", "stage"], sorted(__import__("json").loads(campaign["snapshot_json"]).keys()))
+                self.assertEqual([], [row for row in repo.list_routing_events({"campaign_id": "demo_company_1"}) if row["reason"].startswith("Stage 43")])
+                self.assertEqual([], [row for row in repo.list_routing_events({"campaign_id": "demo%company%1"}) if row["reason"].startswith("Stage 43")])
+                detail = repo.get_routing_event(next(row["id"] for row in all_stage43 if row["reason"] == "Stage 43 server priority"))
+                self.assertEqual("Stage 42 Server A, Stage 42 Server B", detail["affected_server_names"])
+                self.assertNotIn("affected_server_names", repo.get_routing_event(campaign["id"]))
+                self.assertIsNone(repo.get_routing_event(-1))
+            finally:
+                conn.close()
