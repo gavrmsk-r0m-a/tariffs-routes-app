@@ -732,5 +732,95 @@ class RepositoryAdapterReadMethodsTest(unittest.TestCase):
             finally:
                 conn.close()
 
+class CompanyRoutingSettingsAdapterReadMethodsTest(unittest.TestCase):
+    def test_postgres_company_routing_settings_sql_and_parameter_order(self):
+        class CaptureConnection:
+            def __init__(self): self.calls = []
+            def execute(self, sql, params=()):
+                self.calls.append((" ".join(sql.split()), params))
+                return []
+        conn = CaptureConnection()
+        self.assertEqual([], Repository(conn, backend="postgres").list_company_routing_settings())
+        sql, params = conn.calls[-1]
+        self.assertIn("crs.is_active = %s", sql)
+        self.assertIn("crs.valid_to IS NULL", sql)
+        self.assertIn("ORDER BY c.name, s.name, cc.company_name, crs.valid_from DESC, crs.id DESC", sql)
+        self.assertNotIn("crs.is_active = 1", sql)
+        self.assertNotIn("search_text_matches", sql)
+        self.assertNotIn("?", sql)
+        self.assertEqual([True], params)
+
+        filters = {"is_active": "0", "company_id_external": "  MANUAL-COMPANY  ", "calling_company_id": 9, "routing_mode": "autorotation", "server_id": 5, "country_id": 4, "show_history": "1"}
+        original = dict(filters)
+        Repository(conn, backend="postgres").list_company_routing_settings(filters)
+        sql, params = conn.calls[-1]
+        self.assertNotIn("crs.valid_to IS NULL", sql)
+        self.assertIn("crs.country_id = %s", sql)
+        self.assertIn("crs.server_id = %s", sql)
+        self.assertIn("crs.routing_mode = %s", sql)
+        self.assertIn("crs.calling_company_id = %s", sql)
+        self.assertIn("POSITION(LOWER(CAST(%s AS TEXT)) IN LOWER(COALESCE(CAST(cc.company_id_external AS TEXT), ''))) > 0", sql)
+        self.assertIn("crs.is_active = %s", sql)
+        self.assertNotIn("search_text_matches", sql)
+        self.assertNotIn(" LIKE ", sql.upper())
+        self.assertNotIn(" ILIKE ", sql.upper())
+        self.assertNotIn("?", sql)
+        self.assertNotIn("MANUAL-COMPANY", sql)
+        self.assertEqual([4, 5, "autorotation", 9, "MANUAL-COMPANY", False], params)
+        self.assertEqual(original, filters)
+        self.assertEqual([], Repository(conn, backend="postgres").list_company_routing_settings({"include_history": "false"}))
+        self.assertEqual([], Repository(conn, backend="postgres").list_company_routing_settings({"include_history": "1", "is_active": "yes"}))
+        self.assertEqual(len(conn.calls), 2)
+        Repository(conn, backend="postgres").list_company_routing_settings({"include_history": "0", "is_active": "0"})
+        self.assertEqual([True], conn.calls[-1][1])
+
+    def test_postgres_company_routing_detail_uses_placeholder(self):
+        class Result:
+            def fetchone(self): return None
+        class CaptureConnection:
+            def execute(self, sql, params=()):
+                self.sql = " ".join(sql.split()); self.params = params; return Result()
+        conn = CaptureConnection()
+        self.assertIsNone(Repository(conn, backend="postgres").get_company_routing_setting(7))
+        self.assertIn("WHERE crs.id = %s", conn.sql)
+        self.assertEqual((7,), conn.params)
+
+    def test_sqlite_company_routing_settings_recording_and_fixture_contract(self):
+        class CaptureConnection:
+            def create_function(self, *args): pass
+            def execute(self, sql, params=()):
+                self.sql = " ".join(sql.split()); self.params = params; return []
+        capture = CaptureConnection()
+        filters = {"company_id_external": "  MANUAL-COMPANY  ", "country_id": 4, "server_id": 5, "routing_mode": "autorotation", "calling_company_id": 9, "include_history": "1", "is_active": "0"}
+        original = dict(filters)
+        self.assertEqual([], Repository(capture).list_company_routing_settings(filters))
+        self.assertIn("search_text_matches(cc.company_id_external, ?) = 1", capture.sql)
+        self.assertEqual([4, 5, "autorotation", 9, "manual-company", 0], capture.params)
+        self.assertEqual(original, filters)
+        self.assertEqual([], Repository(capture).list_company_routing_settings({"show_history": "true"}))
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = create_demo_sqlite(Path(directory) / "demo.db")
+            conn = sqlite3.connect(path); conn.row_factory = sqlite3.Row
+            try:
+                repo = Repository(conn)
+                rows = repo.list_company_routing_settings()
+                history = repo.list_company_routing_settings({"include_history": "1"})
+                self.assertIsInstance(rows, list)
+                self.assertIsInstance(rows[0], sqlite3.Row)
+                list_keys = ["id", "calling_company_id", "country_id", "server_id", "route_id", "routing_mode", "has_autorotation", "is_active", "comment", "valid_from", "valid_to", "created_at", "created_by", "updated_at", "updated_by", "country_name", "server_name", "company_id_external", "company_name", "route_name", "provider_name", "updated_by_username"]
+                detail_keys = list_keys[:-1]
+                self.assertEqual(list_keys, rows[0].keys())
+                manual_modes = [row["routing_mode"] for row in history if row["company_id_external"] == "ci-manual-company"]
+                self.assertEqual(["server_priority", "autorotation"], manual_modes)
+                self.assertEqual({"ci-manual-company"}, {row["company_id_external"] for row in repo.list_company_routing_settings({"company_id_external": "manual-company"})})
+                self.assertEqual({"ci-manual-company"}, {row["company_id_external"] for row in repo.list_company_routing_settings({"include_history": "1", "is_active": "0"})})
+                detail = repo.get_company_routing_setting(rows[0]["id"])
+                self.assertIsInstance(detail, sqlite3.Row)
+                self.assertEqual(detail_keys, detail.keys())
+                self.assertIsNone(repo.get_company_routing_setting(-1))
+            finally:
+                conn.close()
+
 if __name__ == "__main__":
     unittest.main()

@@ -2243,35 +2243,50 @@ class Repository:
         return "; ".join(parts)
 
     def list_company_routing_settings(self, filters: dict | None = None) -> list[sqlite3.Row]:
-        filters = filters or {}
-        include_history = filters.get("include_history") or filters.get("show_history")
+        routing_filters = dict(filters or {})
+        include_history_value = routing_filters.pop("include_history", None)
+        show_history_value = routing_filters.pop("show_history", None)
+        is_active_value = routing_filters.pop("is_active", None)
+        company_id_external = routing_filters.pop("company_id_external", None)
+
+        include_supported, include_normalized = self._normalize_optional_bool_filter(include_history_value)
+        show_supported, show_normalized = self._normalize_optional_bool_filter(show_history_value)
+        if not include_supported or not show_supported:
+            return []
+        include_history = include_normalized == to_db_bool(True, self.backend) or show_normalized == to_db_bool(True, self.backend)
+
+        if company_id_external not in (None, "", "all"):
+            routing_filters["company_id_external_like"] = company_id_external
+
+        where, params = query_filters(
+            routing_filters,
+            {
+                "country_id": "crs.country_id",
+                "server_id": "crs.server_id",
+                "routing_mode": "crs.routing_mode",
+                "calling_company_id": "crs.calling_company_id",
+                "company_id_external_like": "cc.company_id_external",
+            },
+            backend=self.backend,
+        )
         clauses: list[str] = []
-        params: list = []
-        if not include_history:
-            clauses.extend(["crs.is_active = 1", "crs.valid_to IS NULL"])
-        for key, column in {
-            "country_id": "crs.country_id",
-            "server_id": "crs.server_id",
-            "routing_mode": "crs.routing_mode",
-            "calling_company_id": "crs.calling_company_id",
-            "company_id_external": "cc.company_id_external",
-        }.items():
-            value = filters.get(key)
-            if value in (None, "", "all"):
-                continue
-            if key == "company_id_external":
-                normalized = normalize_search_text(value)
-                if normalized is None:
-                    continue
-                clauses.append(f"search_text_matches({column}, ?) = 1")
-                params.append(normalized)
-            else:
-                clauses.append(f"{column} = ?")
-                params.append(value)
-        if include_history and filters.get("is_active") not in (None, "", "all"):
-            clauses.append("crs.is_active = ?")
-            params.append(filters["is_active"])
-        where = " WHERE " + " AND ".join(clauses) if clauses else ""
+        if where:
+            clauses.extend(where.removeprefix(" WHERE ").split(" AND "))
+
+        p = placeholder(self.backend)
+        if include_history:
+            supported, normalized_active = self._normalize_optional_bool_filter(is_active_value)
+            if not supported:
+                return []
+            if normalized_active is not None:
+                clauses.append(f"crs.is_active = {p}")
+                params.append(normalized_active)
+        else:
+            clauses.insert(0, f"crs.is_active = {p}")
+            clauses.insert(1, "crs.valid_to IS NULL")
+            params.insert(0, to_db_bool(True, self.backend))
+
+        final_where = " WHERE " + " AND ".join(clauses) if clauses else ""
         return list(
             self.conn.execute(
                 f"""
@@ -2286,7 +2301,7 @@ class Repository:
                 LEFT JOIN routes r ON r.id = crs.route_id
                 LEFT JOIN providers p ON p.id = r.provider_id
                 LEFT JOIN users u ON u.id = crs.updated_by
-                {where}
+                {final_where}
                 ORDER BY c.name, s.name, cc.company_name, crs.valid_from DESC, crs.id DESC
                 """,
                 params,
@@ -2295,8 +2310,9 @@ class Repository:
 
 
     def get_company_routing_setting(self, setting_id: int) -> sqlite3.Row | None:
+        p = placeholder(self.backend)
         return self.conn.execute(
-            """
+            f"""
             SELECT crs.*, c.name AS country_name, s.name AS server_name,
                    cc.company_id_external, cc.company_name,
                    r.name AS route_name, p.name AS provider_name
@@ -2306,7 +2322,7 @@ class Repository:
             JOIN servers s ON s.id = crs.server_id
             LEFT JOIN routes r ON r.id = crs.route_id
             LEFT JOIN providers p ON p.id = r.provider_id
-            WHERE crs.id = ?
+            WHERE crs.id = {p}
             """,
             (setting_id,),
         ).fetchone()

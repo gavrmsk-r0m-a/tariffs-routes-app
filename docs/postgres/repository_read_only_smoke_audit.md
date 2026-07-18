@@ -98,3 +98,15 @@ The `route_names` output remains the final text column. SQLite keeps `GROUP_CONC
 The observable contract remains `ORDER BY pn.number`. Case-insensitive literal substring matching is covered for the smoke fixtures, but exact Unicode locale equivalence is still not claimed.
 
 Deferred areas remain unchanged: phone write paths, phone/route history, `list_company_routing_settings`, `list_provider_changes`, `list_routing_events`/`get_routing_event`, calling-company event/history JSON paths, PostgreSQL full application runtime, and all write paths.
+
+## Stage 41 company-routing settings list/detail smoke
+
+Stage 41 adds `list_company_routing_settings` and `get_company_routing_setting` to the PostgreSQL Repository read-only smoke. The pre-change audit confirmed both methods are read paths: the list method builds a `SELECT` over `company_routing_settings`, `calling_companies`, countries, servers, routes, providers, and users, and the detail method performs a single `SELECT` by routing-setting ID. Neither method calls `commit()`, `rollback()`, `Repository.transaction()`, Repository write methods, Telegram/HTTP/HLR/importer code, or application/session state mutation.
+
+The list contract remains current-only by default: when neither `include_history` nor `show_history` is enabled, rows must satisfy backend-aware `crs.is_active = true` plus `crs.valid_to IS NULL`. `include_history` and `show_history` are strict aliases. Only `True`, `1`, and `"1"` enable history; `False`, `0`, `"0"`, `None`, `""`, and `"all"` disable it; unsupported non-empty values safely return `[]` before SQL execution. In history mode, `is_active` accepts only the same strict true/false representations, while `None`, `""`, and `"all"` omit the predicate. Outside history mode, `is_active` does not weaken the current-only contract.
+
+The public `company_id_external` filter is preserved and is internally routed through the Stage 37 backend-aware literal search foundation. SQLite continues to use `search_text_matches(cc.company_id_external, ?) = 1`; PostgreSQL uses `POSITION(LOWER(CAST(%s AS TEXT)) IN LOWER(COALESCE(CAST(cc.company_id_external AS TEXT), ''))) > 0`. LIKE/ILIKE wildcard behavior is intentionally not used, so `%`, `_`, and backslash remain literal input characters. Exact Unicode/locale equivalence between SQLite `casefold` and PostgreSQL `LOWER` is not claimed.
+
+Output order and shape are preserved. The list keeps `ORDER BY c.name, s.name, cc.company_name, crs.valid_from DESC, crs.id DESC` and includes `updated_by_username`; the detail lookup keeps its previous column order and intentionally does not include `updated_by_username`.
+
+Deferred after Stage 41 remain: create/update/deactivate company routing settings; company routing setting history based on `routing_events`; `list_provider_changes`; `list_routing_events`/`get_routing_event`; calling-company event/history JSON paths; PostgreSQL full application runtime; and all write paths.

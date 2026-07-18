@@ -19,6 +19,7 @@ from app.db import init_db
 
 NOW = "2026-07-12 10:00:00"
 TODAY = "2026-07-12"
+HISTORY_FROM = "2026-07-11 08:00:00"
 
 
 def q(conn: sqlite3.Connection, sql: str, params: tuple = ()) -> int:
@@ -145,6 +146,11 @@ def create_demo_sqlite(output: str | Path) -> Path:
                 has_autorotation, is_active, comment, valid_from, valid_to, created_at, created_by, updated_at, updated_by)
             VALUES (?, ?, ?, NULL, ?, 0, 1, ?, ?, NULL, ?, ?, ?, ?)
         """, (manual_company_id, manual_country_id, manual_server_id, "server_priority", "Synthetic current autorotation disabled", NOW, NOW, admin_id, NOW, admin_id))
+        q(conn, """
+            INSERT INTO company_routing_settings(calling_company_id, country_id, server_id, route_id, routing_mode,
+                has_autorotation, is_active, comment, valid_from, valid_to, created_at, created_by, updated_at, updated_by)
+            VALUES (?, ?, ?, NULL, ?, 1, 0, ?, ?, ?, ?, ?, ?, ?)
+        """, (manual_company_id, manual_country_id, manual_server_id, "autorotation", "Synthetic historical autorotation setting", HISTORY_FROM, NOW, HISTORY_FROM, admin_id, NOW, admin_id))
         inactive_company_country_id = q(conn, "INSERT INTO countries(name, code, is_active, created_at, updated_at) VALUES (?, ?, 1, ?, ?)", ("CI Inactive Company Country", "CN", NOW, NOW))
         inactive_company_server_id = q(conn, "INSERT INTO servers(name, comment, is_active, created_at, updated_at) VALUES (?, ?, 1, ?, ?)", ("ci-inactive-server-1", "Synthetic inactive company server", NOW, NOW))
         q(conn, """

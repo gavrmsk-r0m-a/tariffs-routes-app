@@ -6,7 +6,7 @@ from decimal import Decimal
 
 from scripts import migrate_sqlite_to_postgres as migration
 from scripts import postgres_preflight
-from scripts.create_migration_demo_sqlite import create_demo_sqlite
+from scripts.create_migration_demo_sqlite import create_demo_sqlite, HISTORY_FROM, NOW
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SCHEMA = REPO_ROOT / "docs" / "postgres" / "schema.postgres.sql"
@@ -134,6 +134,21 @@ class MigrationDemoSqliteTests(unittest.TestCase):
                 "SELECT * FROM company_routing_settings WHERE calling_company_id = ?",
                 (inactive["id"] if inactive else -1,),
             ).fetchall()
+            historical_event_count = conn.execute(
+                "SELECT COUNT(*) FROM routing_events WHERE calling_company_id = ? AND comment = ?",
+                (manual["id"] if manual else -1, "Synthetic historical autorotation setting"),
+            ).fetchone()[0]
+            historical_change_log_count = conn.execute(
+                """
+                SELECT COUNT(*)
+                FROM change_log cl
+                JOIN company_routing_settings crs ON crs.id = cl.entity_id
+                WHERE cl.entity_type = ?
+                  AND crs.calling_company_id = ?
+                  AND cl.comment = ?
+                """,
+                ("company_routing_setting", manual["id"] if manual else -1, "Synthetic historical autorotation setting"),
+            ).fetchone()[0]
         finally:
             conn.close()
 
@@ -144,14 +159,32 @@ class MigrationDemoSqliteTests(unittest.TestCase):
         self.assertEqual(1, manual["is_active"])
         self.assertEqual("2026-07-12 10:00:00", manual["created_at"])
         self.assertEqual("2026-07-12 10:00:00", manual["updated_at"])
-        self.assertEqual(1, len(manual_settings))
-        self.assertEqual("server_priority", manual_settings[0]["routing_mode"])
-        self.assertEqual(0, manual_settings[0]["has_autorotation"])
-        self.assertEqual(1, manual_settings[0]["is_active"])
-        self.assertIsNone(manual_settings[0]["valid_to"])
-        self.assertIsNone(manual_settings[0]["route_id"])
-        self.assertEqual("2026-07-12 10:00:00", manual_settings[0]["created_at"])
-        self.assertEqual("2026-07-12 10:00:00", manual_settings[0]["updated_at"])
+        self.assertEqual(2, len(manual_settings))
+        current = [row for row in manual_settings if row["valid_to"] is None]
+        historical = [row for row in manual_settings if row["valid_to"] is not None]
+        self.assertEqual(1, len(current))
+        self.assertEqual(1, len(historical))
+        self.assertEqual("server_priority", current[0]["routing_mode"])
+        self.assertEqual(0, current[0]["has_autorotation"])
+        self.assertEqual(1, current[0]["is_active"])
+        self.assertIsNone(current[0]["valid_to"])
+        self.assertIsNone(current[0]["route_id"])
+        self.assertEqual(NOW, current[0]["valid_from"])
+        self.assertEqual(NOW, current[0]["created_at"])
+        self.assertEqual(NOW, current[0]["updated_at"])
+        self.assertEqual("autorotation", historical[0]["routing_mode"])
+        self.assertEqual(1, historical[0]["has_autorotation"])
+        self.assertEqual(0, historical[0]["is_active"])
+        self.assertEqual(HISTORY_FROM, historical[0]["valid_from"])
+        self.assertEqual(NOW, historical[0]["valid_to"])
+        self.assertEqual("Synthetic historical autorotation setting", historical[0]["comment"])
+        self.assertIsNone(historical[0]["route_id"])
+        self.assertEqual(manual["country_id"], current[0]["country_id"])
+        self.assertEqual(manual["country_id"], historical[0]["country_id"])
+        self.assertEqual(manual["server_id"], current[0]["server_id"])
+        self.assertEqual(manual["server_id"], historical[0]["server_id"])
+        self.assertEqual(0, historical_event_count)
+        self.assertEqual(0, historical_change_log_count)
 
         self.assertIsNotNone(inactive)
         self.assertEqual("CI Inactive Company Country", inactive["country_name"])
