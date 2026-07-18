@@ -8,6 +8,12 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 MANIFEST_CATEGORIES = ("deferred_read_only", "write_or_mutating", "infrastructure_or_mixed")
+MANIFEST_KEYS = ("schema_version",) + MANIFEST_CATEGORIES
+DEFERRED_FIELDS = {"reason", "blockers", "recommended_batch"}
+WRITE_FIELDS = {"reason", "mutation_kind"}
+INFRASTRUCTURE_FIELDS = {"reason"}
+MUTATION_KINDS = {"insert", "update", "delete", "upsert", "multi_write", "transaction_boundary", "write_with_history", "write_with_external_side_effect", "mixed_read_write"}
+EXCLUDED_RUNTIME_DIRS = {"__pycache__", ".venv", "venv", "data", "backups", "logs"}
 WRITE_OPS = {"insert", "update", "delete", "replace", "create", "alter", "drop", "truncate"}
 DDL_OPS = {"create", "alter", "drop", "truncate"}
 SQL_APIS = {"execute", "executemany", "executescript"}
@@ -38,12 +44,59 @@ def find_smoke_methods(tree):
     if not all(isinstance(x,str) for x in values): raise ConfigError("SMOKE_METHODS must contain strings")
     return values
 
+def _require_exact_fields(meta, expected, context):
+    keys=set(meta)
+    missing=sorted(expected-keys)
+    unknown=sorted(keys-expected)
+    if missing: raise ConfigError(f"manifest {context}.{missing[0]} is required")
+    if unknown: raise ConfigError(f"manifest {context}.{unknown[0]} is unknown")
+
+def _require_non_empty_string(value, context):
+    if not isinstance(value, str) or not value.strip(): raise ConfigError(f"manifest {context} must be a non-empty string")
+
+def _validate_deferred(method, meta):
+    context=f"deferred_read_only.{method}"
+    _require_exact_fields(meta, DEFERRED_FIELDS, context)
+    _require_non_empty_string(meta["reason"], f"{context}.reason")
+    blockers=meta["blockers"]
+    if not isinstance(blockers, list): raise ConfigError(f"manifest {context}.blockers must be a list")
+    if not blockers: raise ConfigError(f"manifest {context}.blockers must be a non-empty list")
+    seen=set()
+    for blocker in blockers:
+        if not isinstance(blocker, str) or not blocker.strip(): raise ConfigError(f"manifest {context}.blockers must contain non-empty strings")
+        if blocker in seen: raise ConfigError(f"manifest {context}.blockers contains duplicate blocker {blocker!r}")
+        seen.add(blocker)
+    _require_non_empty_string(meta["recommended_batch"], f"{context}.recommended_batch")
+
+def _validate_write(method, meta):
+    context=f"write_or_mutating.{method}"
+    _require_exact_fields(meta, WRITE_FIELDS, context)
+    _require_non_empty_string(meta["reason"], f"{context}.reason")
+    if not isinstance(meta["mutation_kind"], str) or meta["mutation_kind"] not in MUTATION_KINDS: raise ConfigError(f"manifest {context}.mutation_kind must be one of {', '.join(sorted(MUTATION_KINDS))}")
+
+def _validate_infrastructure(method, meta):
+    context=f"infrastructure_or_mixed.{method}"
+    _require_exact_fields(meta, INFRASTRUCTURE_FIELDS, context)
+    _require_non_empty_string(meta["reason"], f"{context}.reason")
+
 def read_manifest(path):
     try: data=json.loads(Path(path).read_text())
     except (OSError, json.JSONDecodeError) as e: raise ConfigError(f"cannot read manifest: {e}")
-    if data.get("schema_version") != 1: raise ConfigError("unknown manifest schema_version")
+    if not isinstance(data, dict): raise ConfigError("manifest top-level value must be object")
+    keys=set(data)
+    required=set(MANIFEST_KEYS)
+    missing=sorted(required-keys)
+    unknown=sorted(keys-required)
+    if missing: raise ConfigError(f"manifest {missing[0]} is required")
+    if unknown: raise ConfigError(f"manifest {unknown[0]} is unknown")
+    if type(data["schema_version"]) is not int or data["schema_version"] != 1: raise ConfigError("unknown manifest schema_version")
+    validators={"deferred_read_only":_validate_deferred,"write_or_mutating":_validate_write,"infrastructure_or_mixed":_validate_infrastructure}
     for cat in MANIFEST_CATEGORIES:
-        if not isinstance(data.get(cat), dict): raise ConfigError(f"manifest {cat} must be object")
+        if not isinstance(data[cat], dict): raise ConfigError(f"manifest {cat} must be object")
+        for method, meta in data[cat].items():
+            if not isinstance(method, str) or not method.strip(): raise ConfigError(f"manifest {cat} method name must be a non-empty string")
+            if not isinstance(meta, dict): raise ConfigError(f"manifest {cat}.{method} metadata must be object")
+            validators[cat](method, meta)
     return data
 
 def static_string(node):
@@ -96,8 +149,13 @@ def enclosing_name(tree, line):
 
 def runtime_census(app_dir, repo_file):
     calls=[]
-    for path in sorted(Path(app_dir).glob("*.py")):
-        if path.resolve()==Path(repo_file).resolve(): continue
+    repo_resolved=Path(repo_file).resolve()
+    paths=[]
+    for path in Path(app_dir).rglob("*.py"):
+        if any(part in EXCLUDED_RUNTIME_DIRS for part in path.parts): continue
+        if path.resolve()==repo_resolved: continue
+        paths.append(path)
+    for path in sorted(paths):
         tree=parse_file(path)
         text=path.read_text().splitlines()
         for n in ast.walk(tree):

@@ -76,7 +76,9 @@
     }
   },
   "infrastructure_or_mixed": {
-    "transaction": "Transaction context manager controls commit/rollback boundaries and is not a read surface."
+    "transaction": {
+      "reason": "Transaction context manager controls commit/rollback boundaries and is not a read surface."
+    }
   },
   "schema_version": 1,
   "write_or_mutating": {

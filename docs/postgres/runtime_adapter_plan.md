@@ -660,3 +660,12 @@ The direct runtime SQL census still finds direct SQL outside Repository: **53** 
 The recommended next implementation batch is **`route_phone_tariff_history`** for `list_phone_history`, `list_route_history`, and `list_tariff_history`. The main blockers are placeholder/boolean/history-shape adaptation and deterministic PostgreSQL semantic fixtures. Calling-company JSON/event-search methods and routing-setting event history remain later batches.
 
 The PostgreSQL Repository smoke remains at **459** semantic checks and continues to run in `SET TRANSACTION READ ONLY`. `DB_BACKEND=postgres` remains disabled, SQLite remains the operational production/development backend, and PostgreSQL remains CI/smoke-only for this migration surface.
+
+
+## Stage 45 PostgreSQL read-surface audit hardening status
+
+Stage 45 hardens the Stage 44 read-surface audit without changing Repository behavior or expanding the read-only smoke surface. The audit now enforces strict manifest metadata validation, including exact top-level keys, exact per-category metadata fields, non-empty deferred blockers, allowed write `mutation_kind` values, and object metadata for infrastructure/mixed entries.
+
+The CLI exit-code contract is stable: **0** for a valid `status=ok` audit, **1** for classification/coverage `status=failed` violations, and **2** for input, parser, and manifest configuration `status=error` failures. The runtime SQL census now scans `app/**/*.py` recursively while excluding service/data directories such as `__pycache__`, `.venv`, `venv`, `data`, `backups`, and `logs`, and still excludes the analyzed Repository file by resolved path. The no-code-execution regression test uses an absolute side-effect marker to verify that the audit does not import or execute analyzed Python modules.
+
+Classification counts remain unchanged: **112** public Repository methods, **54** smoke-covered reads, **7** deferred read-only methods, **50** write/mutating methods, **1** infrastructure/mixed method, and **88.52%** read-surface coverage. The direct runtime SQL census remains **53** SELECT calls, **65** write calls, **32** schema/PRAGMA calls, and **11** dynamic/unknown calls across `app/db.py`, `app/importer.py`, and `app/server.py`. The PostgreSQL Repository smoke remains **459** checks, `DB_BACKEND=postgres` remains disabled, and SQLite remains the operational backend.
