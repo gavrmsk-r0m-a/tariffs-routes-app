@@ -2031,15 +2031,39 @@ class Repository:
             )
         )
 
+    def _normalize_optional_bool_filter(self, value: object) -> tuple[bool, object | None]:
+        if value in (None, "", "all"):
+            return True, None
+        if value is True or value == 1 or value == "1":
+            return True, to_db_bool(True, self.backend)
+        if value is False or value == 0 or value == "0":
+            return True, to_db_bool(False, self.backend)
+        return False, None
+
     def list_calling_companies(self, filters: dict | None = None) -> list[sqlite3.Row]:
+        company_filters = dict(filters or {})
+        for key in ("has_autorotation", "is_active"):
+            supported, normalized = self._normalize_optional_bool_filter(company_filters.get(key))
+            if not supported:
+                return []
+            if normalized is None:
+                company_filters.pop(key, None)
+            else:
+                company_filters[key] = normalized
+
+        current_autorotation_filter = (
+            "COALESCE(active_crs.has_autorotation, FALSE)"
+            if self.backend == "postgres"
+            else "COALESCE(active_crs.has_autorotation, 0)"
+        )
         where, params = query_filters(
-            filters,
+            company_filters,
             {
                 "server_id": "cc.server_id",
                 "country_id": "cc.country_id",
                 "company_like": "cc.company_name",
                 "external_id_like": "cc.company_id_external",
-                "has_autorotation": "CAST(COALESCE(active_crs.has_autorotation, 0) AS TEXT)",
+                "has_autorotation": current_autorotation_filter,
                 "is_active": "cc.is_active",
             },
             backend=self.backend,

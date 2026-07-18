@@ -101,6 +101,67 @@ class MigrationDemoSqliteTests(unittest.TestCase):
         self.assertEqual(0, row["is_current"])
         self.assertEqual("2026-07-12 10:00:00", row["valid_to"])
 
+    def test_demo_sqlite_has_stage_39_calling_company_fixtures(self):
+        db_path = self.make_demo_db()
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        try:
+            manual = conn.execute(
+                """
+                SELECT cc.*, c.name AS country_name, s.name AS server_name
+                FROM calling_companies cc
+                JOIN countries c ON c.id = cc.country_id
+                JOIN servers s ON s.id = cc.server_id
+                WHERE cc.company_id_external = ?
+                """,
+                ("ci-manual-company",),
+            ).fetchone()
+            manual_settings = conn.execute(
+                "SELECT * FROM company_routing_settings WHERE calling_company_id = ?",
+                (manual["id"] if manual else -1,),
+            ).fetchall()
+            inactive = conn.execute(
+                """
+                SELECT cc.*, c.name AS country_name, s.name AS server_name
+                FROM calling_companies cc
+                JOIN countries c ON c.id = cc.country_id
+                JOIN servers s ON s.id = cc.server_id
+                WHERE cc.company_id_external = ?
+                """,
+                ("ci-inactive-company",),
+            ).fetchone()
+            inactive_settings = conn.execute(
+                "SELECT * FROM company_routing_settings WHERE calling_company_id = ?",
+                (inactive["id"] if inactive else -1,),
+            ).fetchall()
+        finally:
+            conn.close()
+
+        self.assertIsNotNone(manual)
+        self.assertEqual("CI Manual Company Country", manual["country_name"])
+        self.assertEqual("ci-manual-server-1", manual["server_name"])
+        self.assertEqual(1, manual["has_autorotation"])
+        self.assertEqual(1, manual["is_active"])
+        self.assertEqual("2026-07-12 10:00:00", manual["created_at"])
+        self.assertEqual("2026-07-12 10:00:00", manual["updated_at"])
+        self.assertEqual(1, len(manual_settings))
+        self.assertEqual("server_priority", manual_settings[0]["routing_mode"])
+        self.assertEqual(0, manual_settings[0]["has_autorotation"])
+        self.assertEqual(1, manual_settings[0]["is_active"])
+        self.assertIsNone(manual_settings[0]["valid_to"])
+        self.assertIsNone(manual_settings[0]["route_id"])
+        self.assertEqual("2026-07-12 10:00:00", manual_settings[0]["created_at"])
+        self.assertEqual("2026-07-12 10:00:00", manual_settings[0]["updated_at"])
+
+        self.assertIsNotNone(inactive)
+        self.assertEqual("CI Inactive Company Country", inactive["country_name"])
+        self.assertEqual("ci-inactive-server-1", inactive["server_name"])
+        self.assertEqual(0, inactive["has_autorotation"])
+        self.assertEqual(0, inactive["is_active"])
+        self.assertEqual("2026-07-12 10:00:00", inactive["created_at"])
+        self.assertEqual("2026-07-12 10:00:00", inactive["updated_at"])
+        self.assertEqual([], inactive_settings)
+
     def test_demo_sqlite_has_no_empty_required_fields(self):
         db_path = self.make_demo_db()
         checks = (

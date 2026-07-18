@@ -120,6 +120,95 @@ class RepositoryAdapterReadMethodsTest(unittest.TestCase):
                 conn.close()
 
 
+
+    def test_postgres_list_calling_companies_sql_and_parameter_order(self):
+        class CaptureConnection:
+            def execute(self, sql, params=()):
+                self.sql = sql
+                self.params = params
+                return []
+
+        conn = CaptureConnection()
+        filters = {
+            "is_active": "1",
+            "external_id_like": "  Manual-Company  ",
+            "has_autorotation": "0",
+            "company_like": "  Manual Company  ",
+            "country_id": 5,
+            "server_id": 4,
+        }
+        original = dict(filters)
+        self.assertEqual([], Repository(conn, backend="postgres").list_calling_companies(filters))
+        sql = " ".join(conn.sql.split())
+        self.assertIn("COALESCE(active_crs.has_autorotation, %s) AS current_has_autorotation", sql)
+        self.assertIn("active_crs.is_active = %s", sql)
+        self.assertIn("cc.server_id = %s", sql)
+        self.assertIn("cc.country_id = %s", sql)
+        self.assertEqual(2, sql.count("POSITION(LOWER(CAST(%s AS TEXT)) IN LOWER(COALESCE(CAST("))
+        self.assertIn("COALESCE(active_crs.has_autorotation, FALSE) = %s", sql)
+        self.assertIn("cc.is_active = %s", sql)
+        self.assertNotIn("COALESCE(active_crs.has_autorotation, 0)", sql)
+        self.assertNotIn("CAST(COALESCE(active_crs.has_autorotation, 0) AS TEXT)", sql)
+        self.assertNotIn("search_text_matches", sql)
+        self.assertNotIn("?", sql)
+        self.assertNotIn("Manual Company", sql)
+        self.assertNotIn("Manual-Company", sql)
+        self.assertNotIn(" = 4", sql)
+        self.assertNotIn(" = 5", sql)
+        self.assertEqual([False, True, 4, 5, "Manual Company", "Manual-Company", False, True], conn.params)
+        self.assertEqual(original, filters)
+
+    def test_sqlite_list_calling_companies_recording_and_regression_contract(self):
+        class CaptureConnection:
+            def create_function(self, *args):
+                pass
+
+            def execute(self, sql, params=()):
+                self.sql = sql
+                self.params = params
+                return []
+
+        capture = CaptureConnection()
+        filters = {"is_active": "1", "external_id_like": "  MANUAL-COMPANY  ", "has_autorotation": "0", "company_like": "  MANUAL COMPANY  ", "country_id": 5, "server_id": 4}
+        original = dict(filters)
+        self.assertEqual([], Repository(capture).list_calling_companies(filters))
+        sql = " ".join(capture.sql.split())
+        self.assertIn("COALESCE(active_crs.has_autorotation, ?) AS current_has_autorotation", sql)
+        self.assertIn("active_crs.is_active = ?", sql)
+        self.assertIn("COALESCE(active_crs.has_autorotation, 0) = ?", sql)
+        self.assertIn("cc.is_active = ?", sql)
+        self.assertIn("search_text_matches(cc.company_name, ?) = 1", sql)
+        self.assertIn("search_text_matches(cc.company_id_external, ?) = 1", sql)
+        self.assertIn("cc.server_id = ?", sql)
+        self.assertIn("cc.country_id = ?", sql)
+        self.assertEqual([0, 1, 4, 5, "manual company", "manual-company", 0, 1], capture.params)
+        self.assertEqual(original, filters)
+        self.assertEqual([], Repository(capture).list_calling_companies({"has_autorotation": "invalid"}))
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = create_demo_sqlite(Path(directory) / "demo.db")
+            conn = sqlite3.connect(path)
+            conn.row_factory = sqlite3.Row
+            try:
+                repo = Repository(conn)
+                rows = repo.list_calling_companies()
+                demo = next(row for row in rows if row["company_id_external"] == "demo-company-1")
+                manual = next(row for row in rows if row["company_id_external"] == "ci-manual-company")
+                inactive = next(row for row in rows if row["company_id_external"] == "ci-inactive-company")
+                self.assertIsInstance(rows, list)
+                self.assertIsInstance(demo, sqlite3.Row)
+                self.assertEqual(["id", "server_id", "country_id", "company_name", "company_id_external", "has_autorotation", "line_count", "dial_set_count", "retry_interval_seconds", "comment", "is_active", "created_by", "created_at", "updated_by", "updated_at", "server_name", "country_name", "current_has_autorotation", "current_routing_mode", "current_route_id"], demo.keys())
+                self.assertEqual([(row["country_name"], row["server_name"], row["company_name"]) for row in rows], sorted((row["country_name"], row["server_name"], row["company_name"]) for row in rows))
+                self.assertEqual(1, manual["has_autorotation"])
+                self.assertEqual(0, manual["current_has_autorotation"])
+                self.assertEqual(0, inactive["current_has_autorotation"])
+                false_ids = {row["company_id_external"] for row in repo.list_calling_companies({"has_autorotation": "0"})}
+                self.assertIn("ci-manual-company", false_ids)
+                self.assertIn("ci-inactive-company", false_ids)
+                self.assertNotIn("demo-company-1", false_ids)
+            finally:
+                conn.close()
+
     def test_postgres_list_tariffs_sql_and_status_parameter_order(self):
         class CaptureConnection:
             def execute(self, sql, params=()):

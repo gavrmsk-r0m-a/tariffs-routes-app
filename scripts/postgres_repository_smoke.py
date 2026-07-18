@@ -64,6 +64,10 @@ STAGE_38_METHODS = (
     "list_tariffs",
 )
 
+STAGE_39_METHODS = (
+    "list_calling_companies",
+)
+
 EXISTS_CHECKS = (
     ("route_exists_by_country_name_and_name", ("Demo Country", "Demo Route"), True),
     ("phone_number_exists_by_normalized_number", ("525550000001",), True),
@@ -376,6 +380,102 @@ def run_stage_38_checks(repo: Repository, check, collections: dict, lookups: dic
     check("list_tariffs_all_shape", lambda: _check(bool(all_rows) and all(list(row.keys()) == expected_keys for row in all_rows), "tariff row keys must match existing contract"))
     check("list_tariffs_no_phone_history_write_side_effect_fields", lambda: _check(bool(all_rows) and all({"phone_count", "history_count", "change_log_count"}.isdisjoint(_row_keys(row)) for row in all_rows), "tariff list must not expose phone/history/write side-effect fields"))
 
+
+def run_stage_39_checks(repo: Repository, check, collections: dict, lookups: dict) -> None:
+    """Check list_calling_companies filtered read path semantics."""
+    expected_keys = [
+        "id", "server_id", "country_id", "company_name", "company_id_external",
+        "has_autorotation", "line_count", "dial_set_count", "retry_interval_seconds",
+        "comment", "is_active", "created_by", "created_at", "updated_by", "updated_at",
+        "server_name", "country_name", "current_has_autorotation", "current_routing_mode",
+        "current_route_id",
+    ]
+
+    def by_external(rows, external_id):
+        return next((row for row in (rows or []) if row["company_id_external"] == external_id), None)
+
+    def externals(rows):
+        return {row["company_id_external"] for row in (rows or [])}
+
+    rows = check("stage_39_list_calling_companies_unfiltered", repo.list_calling_companies)
+    demo = by_external(rows, "demo-company-1")
+    manual = by_external(rows, "ci-manual-company")
+    inactive = by_external(rows, "ci-inactive-company")
+
+    for external_id in ("demo-company-1", "ci-manual-company", "ci-inactive-company"):
+        check(f"stage_39_unfiltered_contains_{external_id}", lambda external_id=external_id: _check(by_external(rows, external_id) is not None, f"unfiltered companies must contain {external_id}"))
+
+    check("stage_39_demo_values", lambda: _check(demo is not None and demo["company_name"] == "Demo Company" and demo["server_name"] == "demo-server-1" and demo["country_name"] == "Demo Country" and _is_database_true(demo["current_has_autorotation"]) and _is_database_true(demo["is_active"]) and demo["current_routing_mode"] == "autorotation" and demo["current_route_id"] is not None, "Demo Company current values are incorrect"))
+    check("stage_39_manual_values", lambda: _check(manual is not None and manual["company_name"] == "CI Manual Company" and manual["server_name"] == "ci-manual-server-1" and manual["country_name"] == "CI Manual Company Country" and _is_database_true(manual["has_autorotation"]) and _is_database_false(manual["current_has_autorotation"]) and _is_database_true(manual["is_active"]) and manual["current_routing_mode"] == "server_priority" and manual["current_route_id"] is None, "CI Manual Company values are incorrect"))
+    check("stage_39_inactive_values", lambda: _check(inactive is not None and inactive["company_name"] == "CI Inactive Company" and inactive["server_name"] == "ci-inactive-server-1" and inactive["country_name"] == "CI Inactive Company Country" and _is_database_false(inactive["has_autorotation"]) and _is_database_false(inactive["current_has_autorotation"]) and _is_database_false(inactive["is_active"]) and inactive["current_routing_mode"] is None and inactive["current_route_id"] is None, "CI Inactive Company values are incorrect"))
+
+    for row_name, row in (("demo", demo), ("manual", manual), ("inactive", inactive)):
+        check(f"stage_39_{row_name}_shape", lambda row=row: _check(row is not None and list(row.keys()) == expected_keys, "calling company row keys must match existing contract"))
+    check("stage_39_returns_list", lambda: _check(isinstance(rows, list), "list_calling_companies must return list"))
+    check("stage_39_order", lambda: _check([(row["country_name"], row["server_name"], row["company_name"]) for row in (rows or [])] == sorted((row["country_name"], row["server_name"], row["company_name"]) for row in (rows or [])), "calling companies must be ordered by country/server/company"))
+
+    filters = [
+        ("demo_server", {"server_id": demo["server_id"]}, {"demo-company-1"}),
+        ("demo_country", {"country_id": demo["country_id"]}, {"demo-company-1"}),
+        ("demo_server_country", {"server_id": demo["server_id"], "country_id": demo["country_id"]}, {"demo-company-1"}),
+        ("manual_server", {"server_id": manual["server_id"]}, {"ci-manual-company"}),
+        ("manual_country", {"country_id": manual["country_id"]}, {"ci-manual-company"}),
+        ("inactive_server", {"server_id": inactive["server_id"]}, {"ci-inactive-company"}),
+        ("inactive_country", {"country_id": inactive["country_id"]}, {"ci-inactive-company"}),
+        ("missing_server", {"server_id": -1}, set()),
+        ("missing_country", {"country_id": -1}, set()),
+    ]
+    for name, filter_values, expected in filters:
+        check(f"stage_39_filter_{name}", lambda filter_values=filter_values, expected=expected: _check(externals(repo.list_calling_companies(filter_values)) == expected, f"{name} filter returned wrong companies"))
+
+    for name, value, expected in (
+        ("company_lower", "ci manual company", {"ci-manual-company"}),
+        ("company_mixed", "Ci MaNuAl CoMpAnY", {"ci-manual-company"}),
+        ("company_trim", "  CI Manual Company  ", {"ci-manual-company"}),
+        ("company_partial", "Manual Company", {"ci-manual-company"}),
+        ("company_missing", "missing manual", set()),
+        ("company_underscore_literal", "CI_Manual_Company", set()),
+        ("company_percent_literal", "CI%Manual%Company", set()),
+    ):
+        check(f"stage_39_search_{name}", lambda value=value, expected=expected: _check(externals(repo.list_calling_companies({"company_like": value})) == expected, f"{name} search returned wrong companies"))
+
+    for name, value, expected in (
+        ("external_lower", "ci-manual-company", {"ci-manual-company"}),
+        ("external_mixed", "CI-MANUAL-COMPANY", {"ci-manual-company"}),
+        ("external_trim", "  ci-manual-company  ", {"ci-manual-company"}),
+        ("external_partial", "manual-company", {"ci-manual-company"}),
+        ("external_missing", "missing-company", set()),
+        ("external_underscore_literal", "ci_manual_company", set()),
+        ("external_percent_literal", "ci%manual%company", set()),
+    ):
+        check(f"stage_39_search_{name}", lambda value=value, expected=expected: _check(externals(repo.list_calling_companies({"external_id_like": value})) == expected, f"{name} search returned wrong companies"))
+
+    for value in ("1", 1, True):
+        check(f"stage_39_has_autorotation_true_{value!r}", lambda value=value: _check("demo-company-1" in externals(repo.list_calling_companies({"has_autorotation": value})) and "ci-manual-company" not in externals(repo.list_calling_companies({"has_autorotation": value})) and "ci-inactive-company" not in externals(repo.list_calling_companies({"has_autorotation": value})), "true autorotation filter must use current setting"))
+    for value in ("0", 0, False):
+        check(f"stage_39_has_autorotation_false_{value!r}", lambda value=value: _check({"ci-manual-company", "ci-inactive-company"} <= externals(repo.list_calling_companies({"has_autorotation": value})) and "demo-company-1" not in externals(repo.list_calling_companies({"has_autorotation": value})), "false autorotation filter must include current false and missing setting"))
+    for value in ("1", 1, True):
+        check(f"stage_39_is_active_true_{value!r}", lambda value=value: _check({"demo-company-1", "ci-manual-company"} <= externals(repo.list_calling_companies({"is_active": value})) and "ci-inactive-company" not in externals(repo.list_calling_companies({"is_active": value})), "active filter must use cc.is_active"))
+    for value in ("0", 0, False):
+        check(f"stage_39_is_active_false_{value!r}", lambda value=value: _check(externals(repo.list_calling_companies({"is_active": value})) == {"ci-inactive-company"}, "inactive filter must return only CI Inactive Company"))
+
+    for name, filter_values, expected in (
+        ("false_active", {"has_autorotation": "0", "is_active": "1"}, {"ci-manual-company"}),
+        ("false_inactive", {"has_autorotation": "0", "is_active": "0"}, {"ci-inactive-company"}),
+        ("true_active", {"has_autorotation": "1", "is_active": "1"}, {"demo-company-1"}),
+        ("true_inactive", {"has_autorotation": "1", "is_active": "0"}, set()),
+    ):
+        check(f"stage_39_combined_bool_{name}", lambda filter_values=filter_values, expected=expected: _check(externals(repo.list_calling_companies(filter_values)) == expected, f"combined boolean {name} returned wrong companies"))
+
+    baseline = externals(rows)
+    for key in ("has_autorotation", "is_active"):
+        for value_name, value in (("all", "all"), ("empty", ""), ("none", None)):
+            check(f"stage_39_{key}_{value_name}_ignored", lambda key=key, value=value: _check(externals(repo.list_calling_companies({key: value})) == baseline, f"{key}={value_name} must not restrict results"))
+        for value in ("true", "false", "yes", "invalid"):
+            check(f"stage_39_{key}_invalid_{value}", lambda key=key, value=value: _check(repo.list_calling_companies({key: value}) == [], f"{key} invalid value must return []"))
+
+    check("stage_39_full_combined_filter", lambda: _check(externals(repo.list_calling_companies({"server_id": manual["server_id"], "country_id": manual["country_id"], "company_like": "manual company", "external_id_like": "manual-company", "has_autorotation": "0", "is_active": "1"})) == {"ci-manual-company"}, "full combined filter must return only CI Manual Company"))
+
 def run_repository_checks(repo: Repository, postgres_url: str) -> dict:
     summary = empty_summary(postgres_url)
     checks: list[tuple[str, object]] = []
@@ -432,6 +532,7 @@ def run_repository_checks(repo: Repository, postgres_url: str) -> dict:
     run_stage_36_checks(repo, check)
     run_stage_37_checks(repo, check, collections, lookup_results)
     run_stage_38_checks(repo, check, collections, lookup_results)
+    run_stage_39_checks(repo, check, collections, lookup_results)
 
     summary.update(status="ok" if not failures else "failed", checks_count=len(checks) + len(failures), failures=failures)
     return summary

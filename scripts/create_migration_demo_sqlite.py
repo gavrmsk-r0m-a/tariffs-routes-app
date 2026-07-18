@@ -104,6 +104,25 @@ def create_demo_sqlite(output: str | Path) -> Path:
                 has_autorotation, is_active, comment, valid_from, valid_to, created_at, created_by, updated_at, updated_by)
             VALUES (?, ?, ?, ?, ?, 1, 1, ?, ?, NULL, ?, ?, ?, ?)
         """, (company_id, country_id, server_id, route_id, "autorotation", "Synthetic setting", NOW, NOW, admin_id, NOW, admin_id))
+        manual_country_id = q(conn, "INSERT INTO countries(name, code, is_active, created_at, updated_at) VALUES (?, ?, 1, ?, ?)", ("CI Manual Company Country", "CM", NOW, NOW))
+        manual_server_id = q(conn, "INSERT INTO servers(name, comment, is_active, created_at, updated_at) VALUES (?, ?, 1, ?, ?)", ("ci-manual-server-1", "Synthetic manual company server", NOW, NOW))
+        manual_company_id = q(conn, """
+            INSERT INTO calling_companies(server_id, country_id, company_name, company_id_external, has_autorotation,
+                line_count, dial_set_count, retry_interval_seconds, comment, is_active, created_by, created_at, updated_by, updated_at)
+            VALUES (?, ?, ?, ?, 1, 4, 2, 45, ?, 1, ?, ?, ?, ?)
+        """, (manual_server_id, manual_country_id, "CI Manual Company", "ci-manual-company", "Synthetic active manual company", admin_id, NOW, admin_id, NOW))
+        q(conn, """
+            INSERT INTO company_routing_settings(calling_company_id, country_id, server_id, route_id, routing_mode,
+                has_autorotation, is_active, comment, valid_from, valid_to, created_at, created_by, updated_at, updated_by)
+            VALUES (?, ?, ?, NULL, ?, 0, 1, ?, ?, NULL, ?, ?, ?, ?)
+        """, (manual_company_id, manual_country_id, manual_server_id, "server_priority", "Synthetic current autorotation disabled", NOW, NOW, admin_id, NOW, admin_id))
+        inactive_company_country_id = q(conn, "INSERT INTO countries(name, code, is_active, created_at, updated_at) VALUES (?, ?, 1, ?, ?)", ("CI Inactive Company Country", "CN", NOW, NOW))
+        inactive_company_server_id = q(conn, "INSERT INTO servers(name, comment, is_active, created_at, updated_at) VALUES (?, ?, 1, ?, ?)", ("ci-inactive-server-1", "Synthetic inactive company server", NOW, NOW))
+        q(conn, """
+            INSERT INTO calling_companies(server_id, country_id, company_name, company_id_external, has_autorotation,
+                line_count, dial_set_count, retry_interval_seconds, comment, is_active, created_by, created_at, updated_by, updated_at)
+            VALUES (?, ?, ?, ?, 0, 1, 1, 60, ?, 0, ?, ?, ?, ?)
+        """, (inactive_company_server_id, inactive_company_country_id, "CI Inactive Company", "ci-inactive-company", "Synthetic inactive company", admin_id, NOW, admin_id, NOW))
         rpn_id = q(conn, "INSERT INTO route_phone_numbers(route_id, phone_number_id, usage_type, is_active, added_at, added_by, comment) VALUES (?, ?, ?, 1, ?, ?, ?)", (route_id, phone_id, "cli", NOW, admin_id, "Synthetic link"))
         event_id = q(conn, """
             INSERT INTO routing_events(event_at, apply_scope, reason, country_id, server_id, provider_id,
