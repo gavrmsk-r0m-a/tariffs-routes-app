@@ -84,3 +84,17 @@ event/history JSON paths, PostgreSQL full application runtime, and all write pat
 remain deferred. PostgreSQL application runtime and `DB_BACKEND=postgres` remain
 disabled, `psycopg` remains a lazy CI/smoke-only import, and SQLite remains the
 operational production/development backend.
+
+## Stage 40 — `list_phone_numbers`
+
+Stage 40 adds `list_phone_numbers` to the PostgreSQL Repository read-only smoke while keeping the method read-only and preserving the existing SQLite output contract. The method uses the Stage 37 backend-aware `query_filters` foundation for equality and literal substring search filters in this order: `country_id`, `provider_id`, `project`, `project_like`, `assignment_type`, `status`, `number_like`, and `review_required`.
+
+The `review_required` filter is normalized with the Repository private optional-boolean helper so SQLite receives `0`/`1` values and PostgreSQL receives native booleans. Unsupported non-empty values safely return an empty result without executing SQL.
+
+Phone provider filtering keeps the existing `COALESCE(pn.provider_id, 0)` expression, so `provider_id=0` continues to mean phones without a provider. The `LEFT JOIN providers` remains in place; no synthetic provider is introduced for the no-provider fixture.
+
+The `route_names` output remains the final text column. SQLite keeps `GROUP_CONCAT`, while PostgreSQL uses ordered `STRING_AGG`. Both backends aggregate only active `route_phone_numbers` links through a backend placeholder and `to_db_bool(True, backend)`. Phones with no active route links return `""`. No `r.is_actual` filter, `DISTINCT`, output field additions, or output reordering were introduced.
+
+The observable contract remains `ORDER BY pn.number`. Case-insensitive literal substring matching is covered for the smoke fixtures, but exact Unicode locale equivalence is still not claimed.
+
+Deferred areas remain unchanged: phone write paths, phone/route history, `list_company_routing_settings`, `list_provider_changes`, `list_routing_events`/`get_routing_event`, calling-company event/history JSON paths, PostgreSQL full application runtime, and all write paths.

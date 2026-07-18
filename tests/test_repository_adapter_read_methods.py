@@ -636,5 +636,101 @@ class RepositoryAdapterReadMethodsTest(unittest.TestCase):
         self.assertTrue(any("WHERE username = %s" in sql and params == ("admin",) for sql, params in conn.calls))
 
 
+    def test_postgres_list_phone_numbers_sql_and_parameter_order(self):
+        class CaptureConnection:
+            def execute(self, sql, params=()):
+                self.sql = sql
+                self.params = params
+                return []
+
+        conn = CaptureConnection()
+        filters = {
+            "review_required": "0",
+            "number_like": "  525550000020  ",
+            "status": "free",
+            "assignment_type": "ivr",
+            "project_like": "  CI PHONE PROJECT  ",
+            "project": "CI Phone Project",
+            "provider_id": 5,
+            "country_id": 4,
+        }
+        original = dict(filters)
+        self.assertEqual([], Repository(conn, backend="postgres").list_phone_numbers(filters))
+        sql = " ".join(conn.sql.split())
+        self.assertIn("STRING_AGG(r.name, ', ' ORDER BY r.name)", sql)
+        self.assertIn("rpn.is_active = %s", sql)
+        self.assertIn("pn.country_id = %s", sql)
+        self.assertIn("COALESCE(pn.provider_id, 0) = %s", sql)
+        self.assertIn("pn.project_label = %s", sql)
+        self.assertEqual(2, sql.count("POSITION(LOWER(CAST(%s AS TEXT)) IN LOWER(COALESCE(CAST("))
+        self.assertIn("pn.assignment_type = %s", sql)
+        self.assertIn("pn.status = %s", sql)
+        self.assertIn("pn.review_required = %s", sql)
+        self.assertIn("ORDER BY pn.number", sql)
+        for forbidden in ("GROUP_CONCAT", "rpn.is_active = 1", "search_text_matches", "?", "LIKE", "ILIKE", "CI PHONE PROJECT", "525550000020", " = 4", " = 5"):
+            self.assertNotIn(forbidden, sql)
+        self.assertEqual([True, 4, 5, "CI Phone Project", "CI PHONE PROJECT", "ivr", "free", "525550000020", False], conn.params)
+        self.assertEqual(original, filters)
+
+        no_filter_conn = CaptureConnection()
+        Repository(no_filter_conn, backend="postgres").list_phone_numbers()
+        self.assertEqual([True], no_filter_conn.params)
+        invalid_conn = CaptureConnection()
+        self.assertEqual([], Repository(invalid_conn, backend="postgres").list_phone_numbers({"review_required": "invalid"}))
+        self.assertFalse(hasattr(invalid_conn, "sql"))
+
+    def test_sqlite_list_phone_numbers_recording_and_regression_contract(self):
+        class CaptureConnection:
+            def create_function(self, *args):
+                pass
+            def execute(self, sql, params=()):
+                self.sql = sql
+                self.params = params
+                return []
+
+        capture = CaptureConnection()
+        filters = {"review_required": "0", "number_like": "  525550000020  ", "status": "free", "assignment_type": "ivr", "project_like": "  CI PHONE PROJECT  ", "project": "CI Phone Project", "provider_id": 5, "country_id": 4}
+        original = dict(filters)
+        self.assertEqual([], Repository(capture).list_phone_numbers(filters))
+        sql = " ".join(capture.sql.split())
+        self.assertIn("GROUP_CONCAT", sql)
+        self.assertIn("rpn.is_active = ?", sql)
+        self.assertIn("pn.country_id = ?", sql)
+        self.assertIn("COALESCE(pn.provider_id, 0) = ?", sql)
+        self.assertIn("search_text_matches(pn.project_label, ?) = 1", sql)
+        self.assertIn("search_text_matches(pn.number, ?) = 1", sql)
+        self.assertEqual([1, 4, 5, "CI Phone Project", "ci phone project", "ivr", "free", "525550000020", 0], capture.params)
+        self.assertEqual(original, filters)
+        no_filter_capture = CaptureConnection()
+        Repository(no_filter_capture).list_phone_numbers()
+        self.assertEqual([1], no_filter_capture.params)
+        invalid_capture = CaptureConnection()
+        self.assertEqual([], Repository(invalid_capture).list_phone_numbers({"review_required": "invalid"}))
+        self.assertFalse(hasattr(invalid_capture, "sql"))
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = create_demo_sqlite(Path(directory) / "demo.db")
+            conn = sqlite3.connect(path)
+            conn.row_factory = sqlite3.Row
+            try:
+                repo = Repository(conn)
+                rows = repo.list_phone_numbers()
+                by_number = {row["number"]: row for row in rows}
+                self.assertIsInstance(rows, list)
+                self.assertIsInstance(rows[0], sqlite3.Row)
+                expected_keys = ["id", "country_id", "provider_id", "country_label", "provider_label", "number", "normalized_number", "project_label", "assignment_type", "assignment_label", "phone_type", "tariff_label", "status", "connection_cost", "monthly_fee", "outgoing_rate", "incoming_rate", "currency_id", "currency_label", "comment", "is_active", "review_required", "imported_created_by", "created_by", "created_at", "updated_by", "updated_at", "deactivated_at", "country_name", "provider_name", "currency_code", "assignment_type_label", "route_names"]
+                self.assertEqual(expected_keys, rows[0].keys())
+                self.assertEqual([row["number"] for row in rows], sorted(row["number"] for row in rows))
+                self.assertEqual("", by_number["525550000010"]["route_names"])
+                self.assertEqual("CI Phone Route A, CI Phone Route B", by_number["525550000020"]["route_names"])
+                self.assertNotIn("Hidden", by_number["525550000020"]["route_names"])
+                self.assertEqual(["525550000010"], [row["number"] for row in repo.list_phone_numbers({"provider_id": 0})])
+                self.assertEqual(["525550000020"], [row["number"] for row in repo.list_phone_numbers({"number_like": "0000020"})])
+                self.assertEqual([], repo.list_phone_numbers({"number_like": "5255500000%20"}))
+                self.assertEqual(["525550000010"], [row["number"] for row in repo.list_phone_numbers({"review_required": True})])
+                self.assertEqual({"525550000001", "525550000020"}, {row["number"] for row in repo.list_phone_numbers({"review_required": "0"})})
+            finally:
+                conn.close()
+
 if __name__ == "__main__":
     unittest.main()

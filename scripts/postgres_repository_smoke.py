@@ -37,7 +37,7 @@ SMOKE_METHODS = (
     "get_phone_number", "get_route", "route_numbers", "find_tariff_by_identity",
     "get_tariff",
     "list_users", "get_user", "get_user_by_username", "authenticate_user",
-    "list_routes", "list_tariffs",
+    "list_routes", "list_tariffs", "list_phone_numbers",
 )
 
 STAGE_34_METHODS = (
@@ -66,6 +66,10 @@ STAGE_38_METHODS = (
 
 STAGE_39_METHODS = (
     "list_calling_companies",
+)
+
+STAGE_40_METHODS = (
+    "list_phone_numbers",
 )
 
 EXISTS_CHECKS = (
@@ -476,6 +480,60 @@ def run_stage_39_checks(repo: Repository, check, collections: dict, lookups: dic
 
     check("stage_39_full_combined_filter", lambda: _check(externals(repo.list_calling_companies({"server_id": manual["server_id"], "country_id": manual["country_id"], "company_like": "manual company", "external_id_like": "manual-company", "has_autorotation": "0", "is_active": "1"})) == {"ci-manual-company"}, "full combined filter must return only CI Manual Company"))
 
+
+def run_stage_40_checks(repo: Repository, check) -> None:
+    """Check list_phone_numbers read-only filters and active route aggregation."""
+    expected_keys = ["id", "country_id", "provider_id", "country_label", "provider_label", "number", "normalized_number", "project_label", "assignment_type", "assignment_label", "phone_type", "tariff_label", "status", "connection_cost", "monthly_fee", "outgoing_rate", "incoming_rate", "currency_id", "currency_label", "comment", "is_active", "review_required", "imported_created_by", "created_by", "created_at", "updated_by", "updated_at", "deactivated_at", "country_name", "provider_name", "currency_code", "assignment_type_label", "route_names"]
+
+    def by_number(rows, number):
+        return next((row for row in (rows or []) if row["number"] == number), None)
+
+    def numbers(rows):
+        return {row["number"] for row in (rows or [])}
+
+    rows = check("stage_40_list_phone_numbers_unfiltered", repo.list_phone_numbers)
+    demo = by_number(rows, "525550000001")
+    review = by_number(rows, "525550000010")
+    routed = by_number(rows, "525550000020")
+    for number in ("525550000001", "525550000010", "525550000020"):
+        check(f"stage_40_unfiltered_contains_{number}", lambda number=number: _check(by_number(rows, number) is not None, f"unfiltered phones must contain {number}"))
+
+    check("stage_40_demo_values", lambda: _check(demo is not None and demo["country_name"] == "Demo Country" and demo["provider_name"] == "Demo Provider" and demo["currency_code"] == "EUR" and demo["project_label"] == "REP" and demo["assignment_type"] == "gl" and demo["assignment_type_label"] == "ГЛ" and demo["status"] == "used" and _is_database_true(demo["is_active"]) and _is_database_false(demo["review_required"]) and demo["route_names"] == "Demo Route" and _decimal_equals(demo["monthly_fee"], "1.25") and _decimal_equals(demo["outgoing_rate"], "0.05") and _decimal_equals(demo["incoming_rate"], "0.02"), "Demo phone values are incorrect"))
+    check("stage_40_review_values", lambda: _check(review is not None and review["country_name"] == "CI Review Phone Country" and review["provider_id"] is None and review["provider_name"] is None and review["currency_code"] == "XPN" and review["project_label"] == "ИТМ" and review["assignment_type"] == "aon" and review["assignment_type_label"] == "АОН" and review["status"] == "problem" and _is_database_false(review["is_active"]) and _is_database_true(review["review_required"]) and review["route_names"] == "" and review["deactivated_at"] is not None and _decimal_equals(review["connection_cost"], "3.5") and _decimal_equals(review["monthly_fee"], "4.5") and _decimal_equals(review["outgoing_rate"], "0.15") and _decimal_equals(review["incoming_rate"], "0.05"), "CI Review Phone values are incorrect"))
+    check("stage_40_routed_values", lambda: _check(routed is not None and routed["country_name"] == "CI Routed Phone Country" and routed["provider_name"] == "CI Phone Provider" and routed["currency_code"] == "XPN" and routed["project_label"] == "CI Phone Project" and routed["assignment_type"] == "ivr" and routed["assignment_type_label"] == "IVR" and routed["status"] == "free" and _is_database_true(routed["is_active"]) and _is_database_false(routed["review_required"]) and routed["route_names"] == "CI Phone Route A, CI Phone Route B" and "CI Phone Route Hidden" not in routed["route_names"] and _decimal_equals(routed["connection_cost"], "0.75") and _decimal_equals(routed["monthly_fee"], "1.5") and _decimal_equals(routed["outgoing_rate"], "0.03") and _decimal_equals(routed["incoming_rate"], "0.01"), "CI Routed Phone values are incorrect"))
+
+    filters = [
+        ("country_demo", {"country_id": demo["country_id"]}, {"525550000001"}), ("country_review", {"country_id": review["country_id"]}, {"525550000010"}), ("country_routed", {"country_id": routed["country_id"]}, {"525550000020"}), ("country_missing", {"country_id": -1}, set()),
+        ("provider_demo", {"provider_id": demo["provider_id"]}, {"525550000001"}), ("provider_routed", {"provider_id": routed["provider_id"]}, {"525550000020"}), ("provider_none", {"provider_id": 0}, {"525550000010"}), ("provider_missing", {"provider_id": -1}, set()),
+        ("project_demo", {"project": "REP"}, {"525550000001"}), ("project_review", {"project": "ИТМ"}, {"525550000010"}), ("project_routed", {"project": "CI Phone Project"}, {"525550000020"}), ("project_missing", {"project": "missing"}, set()),
+        ("assignment_demo", {"assignment_type": "gl"}, {"525550000001"}), ("assignment_review", {"assignment_type": "aon"}, {"525550000010"}), ("assignment_routed", {"assignment_type": "ivr"}, {"525550000020"}), ("assignment_missing", {"assignment_type": "missing"}, set()),
+        ("status_demo", {"status": "used"}, {"525550000001"}), ("status_review", {"status": "problem"}, {"525550000010"}), ("status_routed", {"status": "free"}, {"525550000020"}), ("status_missing", {"status": "missing"}, set()),
+    ]
+    for name, filter_values, expected in filters:
+        check(f"stage_40_filter_{name}", lambda filter_values=filter_values, expected=expected: _check(numbers(repo.list_phone_numbers(filter_values)) == expected, f"{name} filter returned wrong phones"))
+
+    for name, value, expected in (("lower", "ci phone project", {"525550000020"}), ("mixed", "Ci PhOnE PrOjEcT", {"525550000020"}), ("trim", "  CI Phone Project  ", {"525550000020"}), ("partial", "Phone Project", {"525550000020"}), ("missing", "missing project", set()), ("underscore", "CI_Phone_Project", set()), ("percent", "CI%Phone%Project", set())):
+        check(f"stage_40_project_like_{name}", lambda value=value, expected=expected: _check(numbers(repo.list_phone_numbers({"project_like": value})) == expected, f"project_like {name} returned wrong phones"))
+    for name, value, expected in (("full", "525550000020", {"525550000020"}), ("trim", "  525550000020  ", {"525550000020"}), ("partial", "0000020", {"525550000020"}), ("missing", "999999", set()), ("underscore", "5255500000_0", set()), ("percent", "5255500000%0", set())):
+        check(f"stage_40_number_like_{name}", lambda value=value, expected=expected: _check(numbers(repo.list_phone_numbers({"number_like": value})) == expected, f"number_like {name} returned wrong phones"))
+
+    for value in ("1", 1, True):
+        check(f"stage_40_review_required_true_{value!r}", lambda value=value: _check(numbers(repo.list_phone_numbers({"review_required": value})) == {"525550000010"}, "true review filter returned wrong phones"))
+    for value in ("0", 0, False):
+        check(f"stage_40_review_required_false_{value!r}", lambda value=value: _check(numbers(repo.list_phone_numbers({"review_required": value})) == {"525550000001", "525550000020"}, "false review filter returned wrong phones"))
+    baseline = numbers(rows)
+    for name, value in (("all", "all"), ("empty", ""), ("none", None)):
+        check(f"stage_40_review_required_{name}_ignored", lambda value=value: _check(numbers(repo.list_phone_numbers({"review_required": value})) == baseline, "ignored review filter must not restrict"))
+    for value in ("true", "false", "yes", "invalid"):
+        check(f"stage_40_review_required_invalid_{value}", lambda value=value: _check(repo.list_phone_numbers({"review_required": value}) == [], "invalid review filter must return []"))
+
+    check("stage_40_combined_routed", lambda: _check(numbers(repo.list_phone_numbers({"country_id": routed["country_id"], "provider_id": routed["provider_id"], "project": "CI Phone Project", "project_like": "phone project", "assignment_type": "ivr", "status": "free", "number_like": "0000020", "review_required": "0"})) == {"525550000020"}, "combined routed filters must match exactly"))
+    check("stage_40_combined_review", lambda: _check(numbers(repo.list_phone_numbers({"country_id": review["country_id"], "provider_id": 0, "project": "ИТМ", "assignment_type": "aon", "status": "problem", "number_like": "0000010", "review_required": "1"})) == {"525550000010"}, "combined review filters must match exactly"))
+    check("stage_40_returns_list", lambda: _check(isinstance(rows, list), "list_phone_numbers must return list"))
+    check("stage_40_order", lambda: _check([row["number"] for row in (rows or [])] == sorted(row["number"] for row in (rows or [])), "phone rows must be ordered by number"))
+    check("stage_40_shape", lambda: _check(bool(rows) and all(list(row.keys()) == expected_keys for row in rows), "phone row keys must match existing contract"))
+    check("stage_40_route_names_string", lambda: _check(all(isinstance(row["route_names"], str) for row in (rows or [])), "route_names must be a string"))
+
 def run_repository_checks(repo: Repository, postgres_url: str) -> dict:
     summary = empty_summary(postgres_url)
     checks: list[tuple[str, object]] = []
@@ -533,6 +591,7 @@ def run_repository_checks(repo: Repository, postgres_url: str) -> dict:
     run_stage_37_checks(repo, check, collections, lookup_results)
     run_stage_38_checks(repo, check, collections, lookup_results)
     run_stage_39_checks(repo, check, collections, lookup_results)
+    run_stage_40_checks(repo, check)
 
     summary.update(status="ok" if not failures else "failed", checks_count=len(checks) + len(failures), failures=failures)
     return summary

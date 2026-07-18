@@ -87,6 +87,35 @@ def create_demo_sqlite(output: str | Path) -> Path:
         inactive_country_id = q(conn, "INSERT INTO countries(name, code, is_active, created_at, updated_at) VALUES (?, ?, 1, ?, ?)", ("Inactive Tariff Country", "IC", NOW, NOW))
         xts_id = q(conn, "INSERT INTO currencies(code, name, symbol, is_active, created_at, updated_at) VALUES (?, ?, ?, 1, ?, ?)", ("XTS", "Test Currency", "¤", NOW, NOW))
         inactive_provider_id = q(conn, "INSERT INTO providers(name, normalized_name, provider_type, default_currency_id, is_active, comment, created_at, updated_at) VALUES (?, ?, ?, ?, 1, ?, ?, ?)", ("Inactive Tariff Provider", "inactive tariff provider", "voip", xts_id, "Synthetic inactive tariff provider", NOW, NOW))
+        xpn_id = q(conn, "INSERT INTO currencies(code, name, symbol, is_active, created_at, updated_at) VALUES (?, ?, ?, 1, ?, ?)", ("XPN", "Phone Test Currency", "¤", NOW, NOW))
+        review_country_id = q(conn, "INSERT INTO countries(name, code, is_active, created_at, updated_at) VALUES (?, ?, 1, ?, ?)", ("CI Review Phone Country", "PR", NOW, NOW))
+        review_phone_id = q(conn, """
+            INSERT INTO phone_numbers(country_id, provider_id, country_label, provider_label, number, normalized_number,
+                project_label, assignment_type, assignment_label, phone_type, tariff_label, status, connection_cost,
+                monthly_fee, outgoing_rate, incoming_rate, currency_id, currency_label, comment, is_active,
+                review_required, imported_created_by, created_by, created_at, updated_by, updated_at, deactivated_at)
+            VALUES (?, NULL, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 1, ?, ?, ?, ?, ?, ?)
+        """, (review_country_id, "CI Review Phone Country", "525550000010", "525550000010", "ИТМ", "aon", "АОН", "Fixed", "CI Review Tariff", "problem", "3.500000", "4.500000", "0.150000", "0.050000", xpn_id, "XPN", "Synthetic review-required phone", "ci-review", admin_id, NOW, admin_id, NOW, NOW))
+        routed_country_id = q(conn, "INSERT INTO countries(name, code, is_active, created_at, updated_at) VALUES (?, ?, 1, ?, ?)", ("CI Routed Phone Country", "PT", NOW, NOW))
+        phone_provider_id = q(conn, "INSERT INTO providers(name, normalized_name, provider_type, default_currency_id, is_active, comment, created_at, updated_at) VALUES (?, ?, ?, ?, 1, ?, ?, ?)", ("CI Phone Provider", "ci phone provider", "voip", xpn_id, "Synthetic phone provider", NOW, NOW))
+        routed_phone_id = q(conn, """
+            INSERT INTO phone_numbers(country_id, provider_id, country_label, provider_label, number, normalized_number,
+                project_label, assignment_type, assignment_label, phone_type, tariff_label, status, connection_cost,
+                monthly_fee, outgoing_rate, incoming_rate, currency_id, currency_label, comment, is_active,
+                review_required, imported_created_by, created_by, created_at, updated_by, updated_at, deactivated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, ?, ?, ?, ?, ?, NULL)
+        """, (routed_country_id, phone_provider_id, "CI Routed Phone Country", "CI Phone Provider", "525550000020", "525550000020", "CI Phone Project", "ivr", "IVR", "VoIP", "CI Routed Tariff", "free", "0.750000", "1.500000", "0.030000", "0.010000", xpn_id, "XPN", "Synthetic routed phone", "ci-routed", admin_id, NOW, admin_id, NOW))
+        ci_route_ids = {}
+        for route_name in ("CI Phone Route A", "CI Phone Route B", "CI Phone Route Hidden"):
+            ci_route_ids[route_name] = q(conn, """
+                INSERT INTO routes(country_id, provider_id, provider_prefix_id, name, project_label, cli_source_type,
+                    cli_source_label, aon_pool, rnd_type, rnd_pool_owner, comment, is_actual, priority_status,
+                    inbound_line_available, created_by, created_at, updated_by, updated_at)
+                VALUES (?, ?, NULL, ?, ?, ?, ?, NULL, NULL, NULL, ?, 1, ?, 0, ?, ?, ?, ?)
+            """, (routed_country_id, phone_provider_id, route_name, "CI Phone Project", "pool", route_name, "Synthetic phone route", "normal", admin_id, NOW, admin_id, NOW))
+        q(conn, "INSERT INTO route_phone_numbers(route_id, phone_number_id, usage_type, is_active, added_at, added_by, comment) VALUES (?, ?, ?, 1, ?, ?, ?)", (ci_route_ids["CI Phone Route A"], routed_phone_id, "cli", NOW, admin_id, "Synthetic active phone link"))
+        q(conn, "INSERT INTO route_phone_numbers(route_id, phone_number_id, usage_type, is_active, added_at, added_by, comment) VALUES (?, ?, ?, 1, ?, ?, ?)", (ci_route_ids["CI Phone Route B"], routed_phone_id, "pool_member", NOW, admin_id, "Synthetic active phone link"))
+        q(conn, "INSERT INTO route_phone_numbers(route_id, phone_number_id, usage_type, is_active, added_at, removed_at, added_by, removed_by, comment) VALUES (?, ?, ?, 0, ?, ?, ?, ?, ?)", (ci_route_ids["CI Phone Route Hidden"], routed_phone_id, "backup_number", NOW, NOW, admin_id, admin_id, "Synthetic inactive phone link"))
         q(conn, """
             INSERT INTO tariffs(country_id, provider_id, provider_prefix_id, provider_currency_id,
                 price_in_provider_currency, conversion_rate_to_eur, conversion_rate_date, currency_rate_id,
