@@ -548,3 +548,35 @@ Checklist topics:
   application runtime.
 - `DB_BACKEND=postgres` remains off, `psycopg` remains lazy and CI/smoke-only, and
   SQLite remains the operational production/development backend.
+
+
+### Stage 39 PostgreSQL calling-company filter smoke status
+
+- `STAGE_39_METHODS` contains only `list_calling_companies`; the method remains in
+  `SMOKE_METHODS` exactly once from the Stage 34 unfiltered coverage.
+- The migration demo fixture adds two independent synthetic calling companies:
+  `CI Manual Company`, with base `cc.has_autorotation` true but an active current
+  routing setting where autorotation is false, and `CI Inactive Company`, with no
+  routing setting so the current autorotation fallback is false.
+- Boolean filters are normalized backend-aware: `"1"`/`1`/`True` bind true,
+  `"0"`/`0`/`False` bind false, all/empty/None are ignored, and unsupported nonempty
+  values return `[]` without PostgreSQL cast errors or new business errors.
+- Name and external-ID filters use the Stage 37 literal substring search semantics:
+  SQLite uses `search_text_matches(column, ?) = 1` with casefolded parameters, while
+  PostgreSQL uses parameterized `POSITION(LOWER(CAST(%s AS TEXT)) IN
+  LOWER(COALESCE(CAST(column AS TEXT), ''))) > 0`; LIKE/ILIKE wildcards remain
+  literals and exact Unicode locale equivalence is not claimed.
+- Full PostgreSQL calling-company filter parameter order is SQL order: false SELECT
+  fallback, true active-setting join flag, `server_id`, `country_id`, trimmed company
+  search, trimmed external-ID search, current autorotation boolean, and `cc.is_active`
+  boolean. SQLite receives the same order with `0`/`1` boolean values and casefolded
+  search parameters.
+- The Repository smoke now performs **259 semantic checks**. Coverage includes
+  current-vs-base autorotation, explicit current false, missing-setting false fallback,
+  server/country filters, search literal behavior, boolean variants, ignored/invalid
+  boolean values, combined filters, row shape, and sort order.
+- The PostgreSQL connection remains `SET TRANSACTION READ ONLY`. The smoke does not
+  run calling-company writes, company-routing writes, history/event JSON paths,
+  migration writes, or the full application runtime.
+- `DB_BACKEND=postgres` remains off, `psycopg` remains lazy and CI/smoke-only, and
+  SQLite remains the operational production/development backend.
