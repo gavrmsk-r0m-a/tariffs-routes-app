@@ -2006,10 +2006,13 @@ class Repository:
         clauses = []
         if where:
             clauses.append(where[7:])
+        p = placeholder(self.backend)
         if status == "active":
-            clauses.append("t.is_current = 1")
+            clauses.append(f"t.is_current = {p}")
+            params.append(to_db_bool(True, self.backend))
         elif status == "inactive":
-            clauses.append("t.is_current = 0")
+            clauses.append(f"t.is_current = {p}")
+            params.append(to_db_bool(False, self.backend))
         final_where = " WHERE " + " AND ".join(clauses) if clauses else ""
         return list(
             self.conn.execute(

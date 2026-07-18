@@ -2,6 +2,7 @@ import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
+from decimal import Decimal
 
 from app.db import init_db
 from app.repository import Repository, query_filters
@@ -115,6 +116,107 @@ class RepositoryAdapterReadMethodsTest(unittest.TestCase):
                 self.assertEqual("Demo Route", repo.list_routes({"prefix_id": prefix_id, "is_actual": True, "search_like": "dEMO rOUTE"})[0]["name"])
                 self.assertEqual([], repo.list_routes({"search_like": "Demo_Route"}))
                 self.assertEqual([], repo.list_routes({"search_like": "Demo%Route"}))
+            finally:
+                conn.close()
+
+
+    def test_postgres_list_tariffs_sql_and_status_parameter_order(self):
+        class CaptureConnection:
+            def execute(self, sql, params=()):
+                self.sql = sql
+                self.params = params
+                return []
+
+        conn = CaptureConnection()
+        filters = {"provider_id": 5, "country_id": 4, "status": "inactive"}
+        original = dict(filters)
+        self.assertEqual([], Repository(conn, backend="postgres").list_tariffs(filters))
+        sql = " ".join(conn.sql.split())
+        self.assertIn("t.country_id = %s", sql)
+        self.assertIn("t.provider_id = %s", sql)
+        self.assertIn("t.is_current = %s", sql)
+        self.assertNotIn("t.is_current = 1", sql)
+        self.assertNotIn("t.is_current = 0", sql)
+        self.assertNotIn("?", sql)
+        self.assertNotIn(" = 4", sql)
+        self.assertNotIn(" = 5", sql)
+        self.assertEqual([4, 5, False], conn.params)
+        self.assertEqual(original, filters)
+
+    def test_postgres_list_tariffs_status_predicates(self):
+        class CaptureConnection:
+            def execute(self, sql, params=()):
+                self.sql = sql
+                self.params = params
+                return []
+
+        cases = ((None, [True], True), ({"status": "active"}, [True], True), ({"status": "inactive"}, [False], True), ({"status": "all"}, [], False), ({"status": ""}, [], False), ({"status": None}, [], False))
+        for filters, expected_params, has_predicate in cases:
+            with self.subTest(filters=filters):
+                conn = CaptureConnection()
+                Repository(conn, backend="postgres").list_tariffs(filters)
+                sql = " ".join(conn.sql.split())
+                self.assertEqual(expected_params, conn.params)
+                self.assertEqual(has_predicate, "t.is_current = %s" in sql)
+
+    def test_sqlite_list_tariffs_sql_and_status_parameters(self):
+        class CaptureConnection:
+            def create_function(self, *args):
+                pass
+
+            def execute(self, sql, params=()):
+                self.sql = sql
+                self.params = params
+                return []
+
+        cases = (({"status": "active"}, [1], True), ({"status": "inactive"}, [0], True), ({"status": "all"}, [], False), ({"status": ""}, [], False), ({"status": None}, [], False))
+        for filters, expected_params, has_predicate in cases:
+            with self.subTest(filters=filters):
+                conn = CaptureConnection()
+                Repository(conn).list_tariffs(filters)
+                sql = " ".join(conn.sql.split())
+                self.assertEqual(expected_params, conn.params)
+                self.assertEqual(has_predicate, "t.is_current = ?" in sql)
+                self.assertIn("ORDER BY c.name, p.name, COALESCE(pp.prefix, '')", sql)
+
+        conn = CaptureConnection()
+        Repository(conn).list_tariffs({"provider_id": 5, "country_id": 4, "status": "inactive"})
+        sql = " ".join(conn.sql.split())
+        self.assertIn("t.country_id = ?", sql)
+        self.assertIn("t.provider_id = ?", sql)
+        self.assertEqual([4, 5, 0], conn.params)
+
+    def test_sqlite_list_tariffs_regression_contract(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = create_demo_sqlite(Path(directory) / "demo.db")
+            conn = sqlite3.connect(path)
+            conn.row_factory = sqlite3.Row
+            try:
+                repo = Repository(conn)
+                rows = repo.list_tariffs({"status": "all"})
+                demo = next(row for row in rows if row["provider_name"] == "Demo Provider")
+                inactive = next(row for row in rows if row["provider_name"] == "Inactive Tariff Provider")
+                self.assertIsInstance(rows, list)
+                self.assertIsInstance(demo, sqlite3.Row)
+                self.assertEqual(
+                    ["id", "country_id", "provider_id", "provider_prefix_id", "provider_currency_id", "price_in_provider_currency", "conversion_rate_to_eur", "conversion_rate_date", "currency_rate_id", "eur_price", "priority_status", "is_estimated", "comment", "valid_from", "valid_to", "is_current", "created_by", "created_at", "updated_by", "updated_at", "country_name", "provider_name", "prefix", "currency_code"],
+                    demo.keys(),
+                )
+                self.assertEqual([(row["country_name"], row["provider_name"], row["prefix"] or "") for row in rows], sorted((row["country_name"], row["provider_name"], row["prefix"] or "") for row in rows))
+                self.assertEqual(1, demo["is_current"])
+                self.assertEqual(0, demo["is_estimated"])
+                self.assertEqual(0, inactive["is_current"])
+                self.assertEqual(1, inactive["is_estimated"])
+                self.assertEqual(Decimal("0.1"), Decimal(str(demo["price_in_provider_currency"])))
+                self.assertEqual(Decimal("1"), Decimal(str(demo["conversion_rate_to_eur"])))
+                self.assertEqual(Decimal("0.1"), Decimal(str(demo["eur_price"])))
+                self.assertEqual([demo["id"]], [row["id"] for row in repo.list_tariffs({"status": "active"}) if row["provider_name"] == "Demo Provider"])
+                self.assertEqual([inactive["id"]], [row["id"] for row in repo.list_tariffs({"status": "inactive"}) if row["provider_name"] == "Inactive Tariff Provider"])
+                self.assertTrue(repo.list_tariffs({"country_id": demo["country_id"]}))
+                self.assertTrue(repo.list_tariffs({"provider_id": demo["provider_id"]}))
+                self.assertTrue(repo.list_tariffs({"status": "all"}))
+                self.assertTrue(repo.list_tariffs({"status": ""}))
+                self.assertTrue(repo.list_tariffs({"status": None}))
             finally:
                 conn.close()
 

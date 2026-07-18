@@ -2,6 +2,7 @@ import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
+from decimal import Decimal
 
 from scripts import migrate_sqlite_to_postgres as migration
 from scripts import postgres_preflight
@@ -67,6 +68,38 @@ class MigrationDemoSqliteTests(unittest.TestCase):
         self.assertIsNone(row["password_salt"])
         self.assertEqual("2026-07-12 10:00:00", row["created_at"])
         self.assertEqual("2026-07-12 10:00:00", row["updated_at"])
+
+    def test_demo_sqlite_has_synthetic_inactive_tariff(self):
+        db_path = self.make_demo_db()
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        try:
+            row = conn.execute(
+                """
+                SELECT t.*, c.name AS country_name, p.name AS provider_name, cur.code AS currency_code
+                FROM tariffs t
+                JOIN countries c ON c.id = t.country_id
+                JOIN providers p ON p.id = t.provider_id
+                JOIN currencies cur ON cur.id = t.provider_currency_id
+                WHERE c.name = ? AND p.name = ?
+                """,
+                ("Inactive Tariff Country", "Inactive Tariff Provider"),
+            ).fetchone()
+        finally:
+            conn.close()
+
+        self.assertIsNotNone(row)
+        self.assertEqual("Inactive Tariff Country", row["country_name"])
+        self.assertEqual("Inactive Tariff Provider", row["provider_name"])
+        self.assertEqual("XTS", row["currency_code"])
+        self.assertIsNone(row["provider_prefix_id"])
+        self.assertEqual(Decimal("2.5"), Decimal(str(row["price_in_provider_currency"])))
+        self.assertEqual(Decimal("0.4"), Decimal(str(row["conversion_rate_to_eur"])))
+        self.assertEqual(Decimal("1"), Decimal(str(row["eur_price"])))
+        self.assertEqual("alternative", row["priority_status"])
+        self.assertEqual(1, row["is_estimated"])
+        self.assertEqual(0, row["is_current"])
+        self.assertEqual("2026-07-12 10:00:00", row["valid_to"])
 
     def test_demo_sqlite_has_no_empty_required_fields(self):
         db_path = self.make_demo_db()
