@@ -117,6 +117,35 @@ def create_demo_sqlite(output: str | Path) -> Path:
         q(conn, "INSERT INTO route_phone_numbers(route_id, phone_number_id, usage_type, is_active, added_at, added_by, comment) VALUES (?, ?, ?, 1, ?, ?, ?)", (ci_route_ids["CI Phone Route A"], routed_phone_id, "cli", NOW, admin_id, "Synthetic active phone link"))
         q(conn, "INSERT INTO route_phone_numbers(route_id, phone_number_id, usage_type, is_active, added_at, added_by, comment) VALUES (?, ?, ?, 1, ?, ?, ?)", (ci_route_ids["CI Phone Route B"], routed_phone_id, "pool_member", NOW, admin_id, "Synthetic active phone link"))
         q(conn, "INSERT INTO route_phone_numbers(route_id, phone_number_id, usage_type, is_active, added_at, removed_at, added_by, removed_by, comment) VALUES (?, ?, ?, 0, ?, ?, ?, ?, ?)", (ci_route_ids["CI Phone Route Hidden"], routed_phone_id, "backup_number", NOW, NOW, admin_id, admin_id, "Synthetic inactive phone link"))
+        stage42_provider_after_id = q(conn, "INSERT INTO providers(name, normalized_name, provider_type, default_currency_id, is_active, comment, created_at, updated_at) VALUES (?, ?, ?, ?, 1, ?, ?, ?)", ("CI Provider Change After", "ci provider change after", "voip", xpn_id, "Synthetic provider-change after provider", NOW, NOW))
+        stage42_route_alpha_id = q(conn, """
+            INSERT INTO routes(country_id, provider_id, provider_prefix_id, name, project_label, cli_source_type,
+                cli_source_label, aon_pool, rnd_type, rnd_pool_owner, comment, is_actual, priority_status,
+                inbound_line_available, created_by, created_at, updated_by, updated_at)
+            VALUES (?, ?, NULL, ?, ?, ?, ?, NULL, NULL, NULL, ?, 1, ?, 0, ?, ?, ?, ?)
+        """, (routed_country_id, phone_provider_id, "Stage 42 Alpha", "CI Phone Project", "pool", "Stage 42 Alpha", "Synthetic provider-change route", "normal", admin_id, NOW, admin_id, NOW))
+        stage42_route_beta_id = q(conn, """
+            INSERT INTO routes(country_id, provider_id, provider_prefix_id, name, project_label, cli_source_type,
+                cli_source_label, aon_pool, rnd_type, rnd_pool_owner, comment, is_actual, priority_status,
+                inbound_line_available, created_by, created_at, updated_by, updated_at)
+            VALUES (?, ?, NULL, ?, ?, ?, ?, NULL, NULL, NULL, ?, 1, ?, 0, ?, ?, ?, ?)
+        """, (routed_country_id, stage42_provider_after_id, "Stage 42 Beta", "CI Phone Project", "pool", "Stage 42 Beta", "Synthetic provider-change route", "normal", admin_id, NOW, admin_id, NOW))
+        stage42_server_a_id = q(conn, "INSERT INTO servers(name, comment, is_active, created_at, updated_at) VALUES (?, ?, 1, ?, ?)", ("Stage 42 Server A", "Synthetic provider-change server", NOW, NOW))
+        stage42_server_b_id = q(conn, "INSERT INTO servers(name, comment, is_active, created_at, updated_at) VALUES (?, ?, 1, ?, ?)", ("Stage 42 Server B", "Synthetic provider-change server", NOW, NOW))
+        stage42_old_id = q(conn, """
+            INSERT INTO provider_change_logs(changed_at, country_id, route_before_id, provider_before_id, route_after_id,
+                provider_after_id, price_delta_eur, provider_changed, reason_id, reason_text, comment, telegram_status,
+                created_by, created_at, updated_by, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, ("2026-07-10 09:00:00", routed_country_id, stage42_route_alpha_id, phone_provider_id, stage42_route_alpha_id, phone_provider_id, "0.000000", reason_id, "AON refresh without provider switch", "Synthetic Stage 42 old provider-change", "not_sent", admin_id, "2026-07-10 09:00:00", admin_id, "2026-07-10 09:00:00"))
+        stage42_new_id = q(conn, """
+            INSERT INTO provider_change_logs(changed_at, country_id, route_before_id, provider_before_id, route_after_id,
+                provider_after_id, price_delta_eur, provider_changed, reason_id, reason_text, comment, telegram_status,
+                created_by, created_at, updated_by, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, ("2026-07-12 11:00:00", routed_country_id, stage42_route_alpha_id, phone_provider_id, stage42_route_beta_id, stage42_provider_after_id, "0.000000", reason_id, "Planned provider switch", "Synthetic Stage 42 new provider-change", "not_sent", admin_id, "2026-07-12 11:00:00", admin_id, "2026-07-12 11:00:00"))
+        q(conn, "INSERT INTO provider_change_log_servers(provider_change_log_id, server_id) VALUES (?, ?)", (stage42_new_id, stage42_server_b_id))
+        q(conn, "INSERT INTO provider_change_log_servers(provider_change_log_id, server_id) VALUES (?, ?)", (stage42_new_id, stage42_server_a_id))
         q(conn, """
             INSERT INTO tariffs(country_id, provider_id, provider_prefix_id, provider_currency_id,
                 price_in_provider_currency, conversion_rate_to_eur, conversion_rate_date, currency_rate_id,

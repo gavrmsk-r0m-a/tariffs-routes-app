@@ -822,5 +822,65 @@ class CompanyRoutingSettingsAdapterReadMethodsTest(unittest.TestCase):
             finally:
                 conn.close()
 
+class ProviderChangesAdapterReadMethodsTest(unittest.TestCase):
+    def test_postgres_provider_changes_sql_and_parameter_order(self):
+        class CaptureConnection:
+            def execute(self, sql, params=()):
+                self.sql = " ".join(sql.split())
+                self.params = params
+                return []
+        conn = CaptureConnection()
+        filters = {"date_from": "2026-07-10 00:00:00", "date_to": "2026-07-12 23:59:59", "country_id": 4, "provider_id": 5, "route_like": "Alpha_%", "reason_like": "Planned%", "user_id": 6}
+        original = dict(filters)
+        self.assertEqual([], Repository(conn, backend="postgres").list_provider_changes(filters))
+        sql = conn.sql
+        self.assertIn("STRING_AGG(s.name, ', ' ORDER BY s.name)", sql)
+        self.assertIn("POSITION(LOWER(CAST(%s AS TEXT)) IN LOWER(COALESCE(CAST(rb.name AS TEXT), ''))) > 0", sql)
+        self.assertIn("POSITION(LOWER(CAST(%s AS TEXT)) IN LOWER(COALESCE(CAST(ra.name AS TEXT), ''))) > 0", sql)
+        self.assertIn("POSITION(LOWER(CAST(%s AS TEXT)) IN LOWER(COALESCE(CAST(pcl.reason_text AS TEXT), ''))) > 0", sql)
+        self.assertIn("(pcl.provider_before_id = %s OR pcl.provider_after_id = %s)", sql)
+        self.assertNotIn("GROUP_CONCAT", sql)
+        self.assertNotIn("search_text_matches", sql)
+        self.assertNotIn("?", sql)
+        self.assertNotIn(" LIKE ", sql.upper())
+        self.assertNotIn(" ILIKE ", sql.upper())
+        self.assertNotIn("GROUP BY pcl.id", sql)
+        self.assertNotIn("LEFT JOIN provider_change_log_servers", sql)
+        self.assertEqual(["2026-07-10 00:00:00", "2026-07-12 23:59:59", 4, 5, 5, "Alpha_%", "Alpha_%", "Planned%", 6], conn.params)
+        self.assertEqual(original, filters)
+
+    def test_sqlite_provider_changes_recording_and_fixture_contract(self):
+        class CaptureConnection:
+            def create_function(self, *args): pass
+            def execute(self, sql, params=()):
+                self.sql = " ".join(sql.split())
+                self.params = params
+                return []
+        capture = CaptureConnection()
+        Repository(capture).list_provider_changes({"route_like": "Alpha_%", "reason_like": "Planned%", "provider_id": 5})
+        self.assertIn("GROUP_CONCAT", capture.sql)
+        self.assertIn("search_text_matches(rb.name, ?) = 1", capture.sql)
+        self.assertIn("search_text_matches(ra.name, ?) = 1", capture.sql)
+        self.assertIn("search_text_matches(pcl.reason_text, ?) = 1", capture.sql)
+        self.assertIn("?", capture.sql)
+        self.assertNotIn("STRING_AGG", capture.sql)
+        self.assertNotIn("GROUP BY pcl.id", capture.sql)
+        self.assertEqual([5, 5, "alpha_%", "alpha_%", "planned%"], capture.params)
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = create_demo_sqlite(Path(directory) / "demo.db")
+            conn = sqlite3.connect(path); conn.row_factory = sqlite3.Row
+            try:
+                repo = Repository(conn)
+                rows = [row for row in repo.list_provider_changes() if row["reason_text"] in {"Planned provider switch", "AON refresh without provider switch"}]
+                self.assertEqual(["Planned provider switch", "AON refresh without provider switch"], [row["reason_text"] for row in rows])
+                self.assertEqual("Stage 42 Server A, Stage 42 Server B", rows[0]["server_names"])
+                self.assertIsNone(rows[1]["server_names"])
+                self.assertEqual([], repo.list_provider_changes({"route_like": "Stage 42 Alpha_"}))
+                self.assertEqual([], repo.list_provider_changes({"reason_like": "Planned%provider"}))
+            finally:
+                conn.close()
+
+
 if __name__ == "__main__":
     unittest.main()
