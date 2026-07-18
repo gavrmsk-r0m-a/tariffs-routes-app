@@ -1,0 +1,284 @@
+{
+  "deferred_read_only": {
+    "count_calling_company_events": {
+      "blockers": [
+        "sqlite_placeholder",
+        "search_text_matches",
+        "requires_fixture",
+        "no_postgres_semantic_test"
+      ],
+      "reason": "Calling-company event count is SELECT-only companion to list_calling_company_events and shares the search predicate contract.",
+      "recommended_batch": "company_event_search_and_count"
+    },
+    "list_calling_company_events": {
+      "blockers": [
+        "sqlite_placeholder",
+        "json_text_vs_jsonb",
+        "search_text_matches",
+        "pagination_contract",
+        "requires_fixture",
+        "no_postgres_semantic_test"
+      ],
+      "reason": "Calling-company event search/count list is SELECT-only but has text search, pagination, JSON payload, and runtime-row contracts not in smoke.",
+      "recommended_batch": "company_event_search_and_count"
+    },
+    "list_calling_company_history": {
+      "blockers": [
+        "sqlite_placeholder",
+        "json_text_vs_jsonb",
+        "history_shape",
+        "requires_fixture",
+        "no_postgres_semantic_test"
+      ],
+      "reason": "Calling-company history is SELECT-only but includes JSON snapshot payloads whose text/jsonb shape must be adapted and tested.",
+      "recommended_batch": "company_history_json"
+    },
+    "list_company_routing_setting_history": {
+      "blockers": [
+        "sqlite_placeholder",
+        "history_shape",
+        "requires_fixture",
+        "no_postgres_semantic_test"
+      ],
+      "reason": "Routing-setting history is SELECT-only over routing_events but needs event/history shape fixtures and PostgreSQL row semantics.",
+      "recommended_batch": "routing_setting_event_history"
+    },
+    "list_phone_history": {
+      "blockers": [
+        "sqlite_placeholder",
+        "integer_boolean_literal",
+        "history_shape",
+        "requires_fixture",
+        "no_postgres_semantic_test"
+      ],
+      "reason": "Route phone link history SELECT uses SQLite placeholders/integers and still lacks PostgreSQL semantic fixtures.",
+      "recommended_batch": "route_phone_tariff_history"
+    },
+    "list_route_history": {
+      "blockers": [
+        "sqlite_placeholder",
+        "history_shape",
+        "requires_fixture",
+        "no_postgres_semantic_test"
+      ],
+      "reason": "Route change history is SELECT-only but uses history table shape not covered by PostgreSQL smoke.",
+      "recommended_batch": "route_phone_tariff_history"
+    },
+    "list_tariff_history": {
+      "blockers": [
+        "sqlite_placeholder",
+        "history_shape",
+        "requires_fixture",
+        "no_postgres_semantic_test"
+      ],
+      "reason": "Tariff history is SELECT-only with ordering and row shape needing PostgreSQL fixtures.",
+      "recommended_batch": "route_phone_tariff_history"
+    }
+  },
+  "infrastructure_or_mixed": {
+    "transaction": "Transaction context manager controls commit/rollback boundaries and is not a read surface."
+  },
+  "schema_version": 1,
+  "write_or_mutating": {
+    "add_phone_to_route": {
+      "mutation_kind": "mixed_read_write",
+      "reason": "Audited public Repository method can mutate database/application state through direct SQL writes, commit/rollback, private change-log helpers, or public write-method calls; Stage 44 does not adapt write paths."
+    },
+    "add_phone_to_route_by_number": {
+      "mutation_kind": "mixed_read_write",
+      "reason": "Mixed read/write method: performs a read first but can call public write methods on the miss/update branch."
+    },
+    "create_calling_company": {
+      "mutation_kind": "insert",
+      "reason": "Audited public Repository method can mutate database/application state through direct SQL writes, commit/rollback, private change-log helpers, or public write-method calls; Stage 44 does not adapt write paths."
+    },
+    "create_change_reason": {
+      "mutation_kind": "insert",
+      "reason": "Audited public Repository method can mutate database/application state through direct SQL writes, commit/rollback, private change-log helpers, or public write-method calls; Stage 44 does not adapt write paths."
+    },
+    "create_company_routing_setting": {
+      "mutation_kind": "insert",
+      "reason": "Audited public Repository method can mutate database/application state through direct SQL writes, commit/rollback, private change-log helpers, or public write-method calls; Stage 44 does not adapt write paths."
+    },
+    "create_country": {
+      "mutation_kind": "insert",
+      "reason": "Audited public Repository method can mutate database/application state through direct SQL writes, commit/rollback, private change-log helpers, or public write-method calls; Stage 44 does not adapt write paths."
+    },
+    "create_currency": {
+      "mutation_kind": "insert",
+      "reason": "Audited public Repository method can mutate database/application state through direct SQL writes, commit/rollback, private change-log helpers, or public write-method calls; Stage 44 does not adapt write paths."
+    },
+    "create_currency_rate": {
+      "mutation_kind": "insert",
+      "reason": "Audited public Repository method can mutate database/application state through direct SQL writes, commit/rollback, private change-log helpers, or public write-method calls; Stage 44 does not adapt write paths."
+    },
+    "create_phone_number": {
+      "mutation_kind": "insert",
+      "reason": "Audited public Repository method can mutate database/application state through direct SQL writes, commit/rollback, private change-log helpers, or public write-method calls; Stage 44 does not adapt write paths."
+    },
+    "create_prefix": {
+      "mutation_kind": "insert",
+      "reason": "Audited public Repository method can mutate database/application state through direct SQL writes, commit/rollback, private change-log helpers, or public write-method calls; Stage 44 does not adapt write paths."
+    },
+    "create_provider": {
+      "mutation_kind": "insert",
+      "reason": "Audited public Repository method can mutate database/application state through direct SQL writes, commit/rollback, private change-log helpers, or public write-method calls; Stage 44 does not adapt write paths."
+    },
+    "create_provider_change": {
+      "mutation_kind": "insert",
+      "reason": "Audited public Repository method can mutate database/application state through direct SQL writes, commit/rollback, private change-log helpers, or public write-method calls; Stage 44 does not adapt write paths."
+    },
+    "create_route": {
+      "mutation_kind": "insert",
+      "reason": "Audited public Repository method can mutate database/application state through direct SQL writes, commit/rollback, private change-log helpers, or public write-method calls; Stage 44 does not adapt write paths."
+    },
+    "create_routing_event": {
+      "mutation_kind": "insert",
+      "reason": "Audited public Repository method can mutate database/application state through direct SQL writes, commit/rollback, private change-log helpers, or public write-method calls; Stage 44 does not adapt write paths."
+    },
+    "create_server": {
+      "mutation_kind": "insert",
+      "reason": "Audited public Repository method can mutate database/application state through direct SQL writes, commit/rollback, private change-log helpers, or public write-method calls; Stage 44 does not adapt write paths."
+    },
+    "create_tariff": {
+      "mutation_kind": "insert",
+      "reason": "Audited public Repository method can mutate database/application state through direct SQL writes, commit/rollback, private change-log helpers, or public write-method calls; Stage 44 does not adapt write paths."
+    },
+    "create_user": {
+      "mutation_kind": "insert",
+      "reason": "Audited public Repository method can mutate database/application state through direct SQL writes, commit/rollback, private change-log helpers, or public write-method calls; Stage 44 does not adapt write paths."
+    },
+    "deactivate_company_routing_setting": {
+      "mutation_kind": "mixed_read_write",
+      "reason": "Audited public Repository method can mutate database/application state through direct SQL writes, commit/rollback, private change-log helpers, or public write-method calls; Stage 44 does not adapt write paths."
+    },
+    "deactivate_routing_event": {
+      "mutation_kind": "mixed_read_write",
+      "reason": "Audited public Repository method can mutate database/application state through direct SQL writes, commit/rollback, private change-log helpers, or public write-method calls; Stage 44 does not adapt write paths."
+    },
+    "delete_app_setting_value": {
+      "mutation_kind": "delete",
+      "reason": "Audited public Repository method can mutate database/application state through direct SQL writes, commit/rollback, private change-log helpers, or public write-method calls; Stage 44 does not adapt write paths."
+    },
+    "ensure_phone_assignment_type_exists": {
+      "mutation_kind": "multi_write",
+      "reason": "Audited public Repository method can mutate database/application state through direct SQL writes, commit/rollback, private change-log helpers, or public write-method calls; Stage 44 does not adapt write paths."
+    },
+    "ensure_phone_number_type_exists": {
+      "mutation_kind": "multi_write",
+      "reason": "Audited public Repository method can mutate database/application state through direct SQL writes, commit/rollback, private change-log helpers, or public write-method calls; Stage 44 does not adapt write paths."
+    },
+    "ensure_project_exists": {
+      "mutation_kind": "multi_write",
+      "reason": "Audited public Repository method can mutate database/application state through direct SQL writes, commit/rollback, private change-log helpers, or public write-method calls; Stage 44 does not adapt write paths."
+    },
+    "get_or_create_country": {
+      "mutation_kind": "mixed_read_write",
+      "reason": "Mixed read/write method: performs a read first but can call public write methods on the miss/update branch."
+    },
+    "get_or_create_currency": {
+      "mutation_kind": "mixed_read_write",
+      "reason": "Mixed read/write method: performs a read first but can call public write methods on the miss/update branch."
+    },
+    "get_or_create_prefix": {
+      "mutation_kind": "mixed_read_write",
+      "reason": "Mixed read/write method: performs a read first but can call public write methods on the miss/update branch."
+    },
+    "get_or_create_provider": {
+      "mutation_kind": "mixed_read_write",
+      "reason": "Mixed read/write method: performs a read first but can call public write methods on the miss/update branch."
+    },
+    "log_currency_rate_change": {
+      "mutation_kind": "write_with_history",
+      "reason": "Writes currency-rate audit history through private change-log helper."
+    },
+    "recalculate_current_tariffs_for_currency_rate": {
+      "mutation_kind": "multi_write",
+      "reason": "Audited public Repository method can mutate database/application state through direct SQL writes, commit/rollback, private change-log helpers, or public write-method calls; Stage 44 does not adapt write paths."
+    },
+    "record_phone_update_history": {
+      "mutation_kind": "write_with_history",
+      "reason": "Audited public Repository method can mutate database/application state through direct SQL writes, commit/rollback, private change-log helpers, or public write-method calls; Stage 44 does not adapt write paths."
+    },
+    "remove_phone_links_from_route": {
+      "mutation_kind": "mixed_read_write",
+      "reason": "Audited public Repository method can mutate database/application state through direct SQL writes, commit/rollback, private change-log helpers, or public write-method calls; Stage 44 does not adapt write paths."
+    },
+    "set_app_setting_value": {
+      "mutation_kind": "update",
+      "reason": "Audited public Repository method can mutate database/application state through direct SQL writes, commit/rollback, private change-log helpers, or public write-method calls; Stage 44 does not adapt write paths."
+    },
+    "set_hlr_limit_override": {
+      "mutation_kind": "mixed_read_write",
+      "reason": "Mixed read/write method: performs a read first but can call public write methods on the miss/update branch."
+    },
+    "set_tariff_active": {
+      "mutation_kind": "update",
+      "reason": "Audited public Repository method can mutate database/application state through direct SQL writes, commit/rollback, private change-log helpers, or public write-method calls; Stage 44 does not adapt write paths."
+    },
+    "set_user_permissions": {
+      "mutation_kind": "update",
+      "reason": "Audited public Repository method can mutate database/application state through direct SQL writes, commit/rollback, private change-log helpers, or public write-method calls; Stage 44 does not adapt write paths."
+    },
+    "update_calling_company": {
+      "mutation_kind": "multi_write",
+      "reason": "Audited public Repository method can mutate database/application state through direct SQL writes, commit/rollback, private change-log helpers, or public write-method calls; Stage 44 does not adapt write paths."
+    },
+    "update_calling_company_import_fields": {
+      "mutation_kind": "multi_write",
+      "reason": "Audited public Repository method can mutate database/application state through direct SQL writes, commit/rollback, private change-log helpers, or public write-method calls; Stage 44 does not adapt write paths."
+    },
+    "update_company_routing_setting": {
+      "mutation_kind": "multi_write",
+      "reason": "Audited public Repository method can mutate database/application state through direct SQL writes, commit/rollback, private change-log helpers, or public write-method calls; Stage 44 does not adapt write paths."
+    },
+    "update_company_routing_setting_comment": {
+      "mutation_kind": "multi_write",
+      "reason": "Audited public Repository method can mutate database/application state through direct SQL writes, commit/rollback, private change-log helpers, or public write-method calls; Stage 44 does not adapt write paths."
+    },
+    "update_dictionary_snapshots": {
+      "mutation_kind": "multi_write",
+      "reason": "Audited public Repository method can mutate database/application state through direct SQL writes, commit/rollback, private change-log helpers, or public write-method calls; Stage 44 does not adapt write paths."
+    },
+    "update_phone_number": {
+      "mutation_kind": "multi_write",
+      "reason": "Audited public Repository method can mutate database/application state through direct SQL writes, commit/rollback, private change-log helpers, or public write-method calls; Stage 44 does not adapt write paths."
+    },
+    "update_phone_number_import_fields_with_history": {
+      "mutation_kind": "multi_write",
+      "reason": "Audited public Repository method can mutate database/application state through direct SQL writes, commit/rollback, private change-log helpers, or public write-method calls; Stage 44 does not adapt write paths."
+    },
+    "update_route": {
+      "mutation_kind": "multi_write",
+      "reason": "Audited public Repository method can mutate database/application state through direct SQL writes, commit/rollback, private change-log helpers, or public write-method calls; Stage 44 does not adapt write paths."
+    },
+    "update_route_import_fields": {
+      "mutation_kind": "multi_write",
+      "reason": "Audited public Repository method can mutate database/application state through direct SQL writes, commit/rollback, private change-log helpers, or public write-method calls; Stage 44 does not adapt write paths."
+    },
+    "update_routing_event": {
+      "mutation_kind": "multi_write",
+      "reason": "Audited public Repository method can mutate database/application state through direct SQL writes, commit/rollback, private change-log helpers, or public write-method calls; Stage 44 does not adapt write paths."
+    },
+    "update_server_route_priority": {
+      "mutation_kind": "multi_write",
+      "reason": "Audited public Repository method can mutate database/application state through direct SQL writes, commit/rollback, private change-log helpers, or public write-method calls; Stage 44 does not adapt write paths."
+    },
+    "update_tariff": {
+      "mutation_kind": "multi_write",
+      "reason": "Audited public Repository method can mutate database/application state through direct SQL writes, commit/rollback, private change-log helpers, or public write-method calls; Stage 44 does not adapt write paths."
+    },
+    "update_user": {
+      "mutation_kind": "multi_write",
+      "reason": "Audited public Repository method can mutate database/application state through direct SQL writes, commit/rollback, private change-log helpers, or public write-method calls; Stage 44 does not adapt write paths."
+    },
+    "update_user_password": {
+      "mutation_kind": "multi_write",
+      "reason": "Audited public Repository method can mutate database/application state through direct SQL writes, commit/rollback, private change-log helpers, or public write-method calls; Stage 44 does not adapt write paths."
+    },
+    "upsert_hlr_daily_usage": {
+      "mutation_kind": "upsert",
+      "reason": "Audited public Repository method can mutate database/application state through direct SQL writes, commit/rollback, private change-log helpers, or public write-method calls; Stage 44 does not adapt write paths."
+    }
+  }
+}
