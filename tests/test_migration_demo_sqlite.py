@@ -1,3 +1,4 @@
+import json
 import sqlite3
 import tempfile
 import unittest
@@ -6,7 +7,7 @@ from decimal import Decimal
 
 from scripts import migrate_sqlite_to_postgres as migration
 from scripts import postgres_preflight
-from scripts.create_migration_demo_sqlite import create_demo_sqlite, HISTORY_FROM, NOW
+from scripts.create_migration_demo_sqlite import create_demo_sqlite, HISTORY_FROM, NOW, STAGE43_CAMPAIGN_AT, STAGE43_INACTIVE_AT, STAGE43_NONE_AT, STAGE43_SERVER_AT
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SCHEMA = REPO_ROOT / "docs" / "postgres" / "schema.postgres.sql"
@@ -262,6 +263,98 @@ class MigrationDemoSqliteTests(unittest.TestCase):
         self.assertEqual(["CI Phone Route Hidden"], inactive_names)
         self.assertEqual("2026-07-12 10:00:00", routed["created_at"])
         self.assertEqual("2026-07-12 10:00:00", routed["updated_at"])
+
+
+    def test_stage_43_routing_event_and_tariff_fixtures(self):
+        db_path = self.make_demo_db()
+        with sqlite3.connect(db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            tariffs = conn.execute("""
+                SELECT t.*, c.name AS country_name, p.name AS provider_name, cur.code AS currency_code
+                FROM tariffs t
+                JOIN countries c ON c.id = t.country_id
+                JOIN providers p ON p.id = t.provider_id
+                JOIN currencies cur ON cur.id = t.provider_currency_id
+                WHERE t.comment IN (?, ?)
+                ORDER BY t.comment
+            """, ("Synthetic Stage 43 new route tariff", "Synthetic Stage 43 old route tariff")).fetchall()
+            tariff_ids = [row["id"] for row in tariffs]
+            tariff_history_count = conn.execute(
+                f"SELECT COUNT(*) FROM tariff_change_history WHERE tariff_id IN ({','.join('?' for _ in tariff_ids)})",
+                tariff_ids,
+            ).fetchone()[0]
+            events = conn.execute("""
+                SELECT re.*, c.name AS country_name, p.name AS provider_name, ar.name AS affected_route_name,
+                       oldr.name AS old_route_name, newr.name AS new_route_name, overflowr.name AS overflow_route_name,
+                       cc.company_id_external, cc.company_name, s.name AS server_name
+                FROM routing_events re
+                JOIN countries c ON c.id = re.country_id
+                LEFT JOIN providers p ON p.id = re.provider_id
+                LEFT JOIN routes ar ON ar.id = re.affected_route_id
+                LEFT JOIN routes oldr ON oldr.id = re.old_route_id
+                LEFT JOIN routes newr ON newr.id = re.new_route_id
+                LEFT JOIN routes overflowr ON overflowr.id = re.overflow_route_id
+                LEFT JOIN calling_companies cc ON cc.id = re.calling_company_id
+                LEFT JOIN servers s ON s.id = re.server_id
+                WHERE re.reason LIKE 'Stage 43%'
+                ORDER BY re.event_at
+            """).fetchall()
+            event_ids = [row["id"] for row in events]
+            event_servers = conn.execute("""
+                SELECT res.*, s.name AS server_name, oldr.name AS old_route_name, newr.name AS new_route_name
+                FROM routing_event_servers res
+                JOIN servers s ON s.id = res.server_id
+                JOIN routes oldr ON oldr.id = res.old_route_id
+                JOIN routes newr ON newr.id = res.new_route_id
+                WHERE res.routing_event_id IN (SELECT id FROM routing_events WHERE reason LIKE 'Stage 43%')
+                ORDER BY res.id
+            """).fetchall()
+            change_log_count = conn.execute("SELECT COUNT(*) FROM change_log WHERE summary LIKE '%Stage 43%' OR comment LIKE '%Stage 43%' OR old_values LIKE '%Stage 43%' OR new_values LIKE '%Stage 43%'").fetchone()[0]
+
+        self.assertEqual(2, len(tariffs))
+        by_comment = {row["comment"]: row for row in tariffs}
+        old_tariff = by_comment["Synthetic Stage 43 old route tariff"]
+        new_tariff = by_comment["Synthetic Stage 43 new route tariff"]
+        self.assertEqual("CI Routed Phone Country", old_tariff["country_name"])
+        self.assertEqual("CI Phone Provider", old_tariff["provider_name"])
+        self.assertEqual("CI Provider Change After", new_tariff["provider_name"])
+        for row in tariffs:
+            self.assertIsNone(row["provider_prefix_id"])
+            self.assertEqual("XPN", row["currency_code"])
+            self.assertEqual(1, row["is_current"])
+            self.assertEqual(0, row["is_estimated"])
+            self.assertEqual(NOW, row["created_at"])
+            self.assertEqual(NOW, row["updated_at"])
+        self.assertEqual(Decimal("1"), Decimal(str(old_tariff["eur_price"])))
+        self.assertEqual(Decimal("1.5"), Decimal(str(new_tariff["eur_price"])))
+        self.assertEqual(0, tariff_history_count)
+
+        self.assertEqual(4, len(events))
+        self.assertEqual([STAGE43_INACTIVE_AT, STAGE43_NONE_AT, STAGE43_SERVER_AT, STAGE43_CAMPAIGN_AT], [row["event_at"] for row in events])
+        by_reason = {row["reason"]: row for row in events}
+        self.assertEqual(0, by_reason["Stage 43 none inactive"]["is_active"])
+        self.assertEqual("Synthetic Stage 43 archive", by_reason["Stage 43 none inactive"]["deactivation_reason"])
+        self.assertIsNotNone(by_reason["Stage 43 none inactive"]["deactivated_at"])
+        self.assertEqual(1, by_reason["Stage 43 none active"]["is_active"])
+        self.assertEqual("none", by_reason["Stage 43 none active"]["apply_scope"])
+        self.assertEqual("server_priority", by_reason["Stage 43 server priority"]["apply_scope"])
+        self.assertEqual(1, by_reason["Stage 43 server priority"]["has_overflow"])
+        self.assertEqual("CI Phone Route B", by_reason["Stage 43 server priority"]["overflow_route_name"])
+        self.assertEqual("campaign_setting", by_reason["Stage 43 campaign setting"]["apply_scope"])
+        self.assertIsNone(by_reason["Stage 43 campaign setting"]["server_id"])
+        for row in events:
+            self.assertEqual(NOW, row["created_at"])
+            self.assertEqual(NOW, row["updated_at"])
+            self.assertIsInstance(json.loads(row["snapshot_json"]), dict)
+            self.assertIsNotNone(row["created_by"])
+            self.assertIsNotNone(row["updated_by"])
+        self.assertEqual(2, len(event_servers))
+        self.assertEqual(["Stage 42 Server B", "Stage 42 Server A"], [row["server_name"] for row in event_servers])
+        self.assertEqual(["Stage 42 Alpha", "Stage 42 Alpha"], [row["old_route_name"] for row in event_servers])
+        self.assertEqual(["Stage 42 Beta", "Stage 42 Beta"], [row["new_route_name"] for row in event_servers])
+        self.assertEqual(["applied", "applied"], [row["status"] for row in event_servers])
+        self.assertEqual({by_reason["Stage 43 server priority"]["id"]}, {row["routing_event_id"] for row in event_servers})
+        self.assertEqual(0, change_log_count)
 
     def test_demo_sqlite_has_no_empty_required_fields(self):
         db_path = self.make_demo_db()

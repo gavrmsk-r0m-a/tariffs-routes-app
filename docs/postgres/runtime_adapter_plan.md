@@ -640,3 +640,13 @@ The actual local semantic smoke count after Stage 41 is `387` checks. The smoke 
 - `DB_BACKEND=postgres` remains disabled; SQLite remains the operational backend.
 - Provider-change writes, routing events, JSON/history reads, migration logic, and
   full app runtime remain outside Stage 42 scope.
+
+## Stage 43 PostgreSQL routing-event list and detail smoke status
+
+Stage 43 declares `STAGE_43_METHODS = ("list_routing_events", "get_routing_event")` and includes both methods in `SMOKE_METHODS` exactly once. The synthetic fixture adds four deterministic routing events (active none, inactive none, multi-server `server_priority`, and `campaign_setting`) plus two current tariffs for Stage 42 routes.
+
+`list_routing_events` now uses backend-aware placeholders for active filtering and for all four current-tariff lookups. Parameter order is guarded: four tariff current flags first, then optional active/date/equality/server/campaign parameters. The smoke verifies include-inactive normalization, inclusive dates, country/scope/company/provider equality filters, server filtering via `re.server_id`, `routing_event_servers EXISTS`, and `cc.server_id`, and Stage 37 literal campaign search without LIKE/ILIKE wildcard behavior.
+
+The Stage 43 semantic smoke checks old/new/delta prices for server-priority (`1`, `1.5`, `0.5`) and campaign-setting (`0.1`, `0.1`, `0`), preserves backend-native `snapshot_json` values (SQLite TEXT and PostgreSQL JSONB/dict), and verifies `get_routing_event` adds sorted `affected_server_names` only for `server_priority` detail rows. No routing-event write paths, full app runtime, DDL, JSON SQL predicates, SQLAlchemy, or Alembic are enabled.
+
+The confirmed local Repository semantic smoke count is **459** checks. PostgreSQL smoke still runs inside `SET TRANSACTION READ ONLY`; `DB_BACKEND=postgres` remains disabled, psycopg remains smoke/CI-only with lazy import, and SQLite remains the operational backend.

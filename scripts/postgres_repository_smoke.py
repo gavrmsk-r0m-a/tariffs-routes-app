@@ -39,7 +39,7 @@ SMOKE_METHODS = (
     "list_users", "get_user", "get_user_by_username", "authenticate_user",
     "list_routes", "list_tariffs", "list_phone_numbers",
     "list_company_routing_settings", "get_company_routing_setting",
-    "list_provider_changes",
+    "list_provider_changes", "list_routing_events", "get_routing_event",
 )
 
 STAGE_34_METHODS = (
@@ -81,6 +81,11 @@ STAGE_41_METHODS = (
 
 STAGE_42_METHODS = (
     "list_provider_changes",
+)
+
+STAGE_43_METHODS = (
+    "list_routing_events",
+    "get_routing_event",
 )
 
 EXISTS_CHECKS = (
@@ -155,6 +160,18 @@ def _is_database_true(value: object) -> bool:
 def _is_database_false(value: object) -> bool:
     """Accept only SQLite's integer false or PostgreSQL's native boolean false."""
     return value is False or (type(value) is int and value == 0)
+
+
+def _snapshot_object(value: object) -> dict:
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+        except json.JSONDecodeError:
+            return {}
+        return parsed if isinstance(parsed, dict) else {}
+    return {}
 
 
 def _row_keys(row: object) -> set[str]:
@@ -643,6 +660,77 @@ def run_stage_42_checks(repo: Repository, check) -> None:
     check("stage_42_shape", lambda: _check(new is not None and list(new.keys()) == expected_keys, "provider-change list shape/order changed"))
 
 
+
+def run_stage_43_checks(repo: Repository, check) -> None:
+    """Check routing-event list/detail read-only semantics and filters."""
+    expected_keys = ["id", "event_at", "apply_scope", "reason", "country_id", "server_id", "provider_id", "affected_route_id", "old_route_id", "new_route_id", "calling_company_id", "company_change_type", "old_company_routing_mode", "new_company_routing_mode", "old_company_route_id", "new_company_route_id", "old_company_has_autorotation", "new_company_has_autorotation", "has_overflow", "overflow_route_id", "comment", "snapshot_json", "is_active", "deactivation_reason", "deactivated_at", "deactivated_by", "created_at", "created_by", "updated_at", "updated_by", "country_name", "server_name", "provider_name", "affected_route_name", "new_route_name", "old_route_name", "overflow_route_name", "old_company_route_name", "new_company_route_name", "old_company_route_provider_name", "new_company_route_provider_name", "old_price_eur", "new_price_eur", "price_delta_eur", "company_id_external", "company_name", "company_server_name", "author_name"]
+
+    def stage43(rows):
+        return [row for row in (rows or []) if str(row["reason"]).startswith("Stage 43")]
+
+    def reasons(rows):
+        return {row["reason"] for row in stage43(rows)}
+
+    def one(rows, reason):
+        return next((row for row in stage43(rows) if row["reason"] == reason), None)
+
+    rows = check("stage_43_list_routing_events_default", repo.list_routing_events)
+    all_rows = check("stage_43_list_routing_events_include_inactive", lambda: repo.list_routing_events({"include_inactive": True}))
+    none_active = one(rows, "Stage 43 none active")
+    server = one(rows, "Stage 43 server priority")
+    campaign = one(rows, "Stage 43 campaign setting")
+    inactive = one(all_rows, "Stage 43 none inactive")
+
+    check("stage_43_default_result_type", lambda: _check(isinstance(rows, list), "routing events must return list"))
+    check("stage_43_default_active_only", lambda: _check(reasons(rows) == {"Stage 43 none active", "Stage 43 server priority", "Stage 43 campaign setting"} and "Stage 43 none inactive" not in reasons(rows), "default routing events must be active-only"))
+    check("stage_43_default_active_flags", lambda: _check(all(_is_database_true(row["is_active"]) for row in stage43(rows)), "default Stage 43 rows must be active"))
+    check("stage_43_none_active_values", lambda: _check(none_active is not None and none_active["apply_scope"] == "none" and none_active["country_name"] == "CI Routed Phone Country" and none_active["provider_name"] == "CI Phone Provider" and none_active["affected_route_name"] == "Stage 42 Alpha" and none_active["server_id"] is None and none_active["server_name"] is None and none_active["calling_company_id"] is None and _is_database_false(none_active["has_overflow"]) and none_active["old_price_eur"] is None and none_active["new_price_eur"] is None and none_active["price_delta_eur"] is None and none_active["author_name"] == "Admin" and _snapshot_object(none_active["snapshot_json"]).get("state") == "active", "none active values wrong"))
+    check("stage_43_inactive_values", lambda: _check(inactive is not None and _is_database_false(inactive["is_active"]) and inactive["deactivation_reason"] == "Synthetic Stage 43 archive" and inactive["deactivated_at"] is not None and inactive["deactivated_by"] is not None and _snapshot_object(inactive["snapshot_json"]).get("state") == "inactive", "inactive values wrong"))
+    check("stage_43_server_values", lambda: _check(server is not None and server["apply_scope"] == "server_priority" and server["country_name"] == "CI Routed Phone Country" and server["server_name"] == "Stage 42 Server A" and server["provider_name"] == "CI Provider Change After" and server["affected_route_name"] == "Stage 42 Beta" and server["old_route_name"] == "Stage 42 Alpha" and server["new_route_name"] == "Stage 42 Beta" and _is_database_true(server["has_overflow"]) and server["overflow_route_name"] == "CI Phone Route B" and server["calling_company_id"] is None and _decimal_equals(server["old_price_eur"], "1") and _decimal_equals(server["new_price_eur"], "1.5") and _decimal_equals(server["price_delta_eur"], "0.5") and server["author_name"] == "Admin" and _snapshot_object(server["snapshot_json"]).get("scope") == "server_priority", "server priority values wrong"))
+    check("stage_43_campaign_values", lambda: _check(campaign is not None and campaign["apply_scope"] == "campaign_setting" and campaign["country_name"] == "Demo Country" and campaign["server_id"] is None and campaign["server_name"] is None and campaign["company_id_external"] == "demo-company-1" and campaign["company_name"] == "Demo Company" and campaign["company_server_name"] == "demo-server-1" and campaign["company_change_type"] == "set_campaign_route" and campaign["old_company_routing_mode"] == "autorotation" and campaign["new_company_routing_mode"] == "mixed" and campaign["old_company_route_name"] == "Demo Route" and campaign["new_company_route_name"] == "Demo Route" and campaign["old_company_route_provider_name"] == "Demo Provider" and campaign["new_company_route_provider_name"] == "Demo Provider" and _is_database_true(campaign["old_company_has_autorotation"]) and _is_database_true(campaign["new_company_has_autorotation"]) and _decimal_equals(campaign["old_price_eur"], "0.1") and _decimal_equals(campaign["new_price_eur"], "0.1") and _decimal_equals(campaign["price_delta_eur"], "0") and _snapshot_object(campaign["snapshot_json"]).get("scope") == "campaign_setting", "campaign values wrong"))
+
+    for value in (True, 1, "1"):
+        check(f"stage_43_include_true_{value!r}", lambda value=value: _check("Stage 43 none inactive" in reasons(repo.list_routing_events({"include_inactive": value})), "true include_inactive must include inactive"))
+    for value in (False, 0, "0", None, "", "all"):
+        check(f"stage_43_include_false_{value!r}", lambda value=value: _check("Stage 43 none inactive" not in reasons(repo.list_routing_events({"include_inactive": value})), "false include_inactive must stay active-only"))
+    for value in ("true", "false", "yes", "invalid"):
+        check(f"stage_43_include_invalid_{value}", lambda value=value: _check(repo.list_routing_events({"include_inactive": value}) == [], "invalid include_inactive must return []"))
+
+    check("stage_43_date_from_inclusive", lambda: _check({"Stage 43 server priority", "Stage 43 campaign setting"} <= reasons(repo.list_routing_events({"date_from": "2026-07-15 11:00:00"})), "date_from inclusive wrong"))
+    check("stage_43_date_to_inclusive", lambda: _check("Stage 43 none active" in reasons(repo.list_routing_events({"date_to": "2026-07-14 10:00:00"})) and "Stage 43 server priority" not in reasons(repo.list_routing_events({"date_to": "2026-07-14 10:00:00"})), "date_to inclusive wrong"))
+    check("stage_43_inactive_exact_range", lambda: _check(reasons(repo.list_routing_events({"include_inactive": True, "date_from": "2026-07-13 09:00:00", "date_to": "2026-07-13 09:00:00"})) == {"Stage 43 none inactive"}, "inactive exact date range wrong"))
+
+    check("stage_43_filter_routed_country", lambda: _check({"Stage 43 none active", "Stage 43 server priority"} <= reasons(repo.list_routing_events({"country_id": none_active["country_id"]})), "routed country filter wrong"))
+    check("stage_43_filter_demo_country", lambda: _check("Stage 43 campaign setting" in reasons(repo.list_routing_events({"country_id": campaign["country_id"]})), "demo country filter wrong"))
+    for scope, expected in (("none", {"Stage 43 none active"}), ("server_priority", {"Stage 43 server priority"}), ("campaign_setting", {"Stage 43 campaign setting"})):
+        check(f"stage_43_filter_scope_{scope}", lambda scope=scope, expected=expected: _check(reasons(repo.list_routing_events({"apply_scope": scope})) == expected, "scope filter wrong"))
+    check("stage_43_filter_calling_company", lambda: _check(reasons(repo.list_routing_events({"calling_company_id": campaign["calling_company_id"]})) == {"Stage 43 campaign setting"}, "calling company filter wrong"))
+    check("stage_43_filter_provider_old", lambda: _check("Stage 43 none active" in reasons(repo.list_routing_events({"provider_id": none_active["provider_id"]})), "old provider filter wrong"))
+    check("stage_43_filter_provider_new", lambda: _check(reasons(repo.list_routing_events({"provider_id": server["provider_id"]})) == {"Stage 43 server priority"}, "new provider filter wrong"))
+
+    servers = check("stage_43_list_servers_seed", repo.list_servers)
+    server_b = next(row for row in servers if row["name"] == "Stage 42 Server B")
+    demo_server = next(row for row in servers if row["name"] == "demo-server-1")
+    check("stage_43_filter_server_a", lambda: _check(reasons(repo.list_routing_events({"server_id": server["server_id"]})) == {"Stage 43 server priority"}, "server A filter wrong"))
+    check("stage_43_filter_server_b_exists", lambda: _check(reasons(repo.list_routing_events({"server_id": server_b["id"]})) == {"Stage 43 server priority"}, "server B EXISTS filter wrong"))
+    check("stage_43_filter_demo_server_campaign", lambda: _check("Stage 43 campaign setting" in reasons(repo.list_routing_events({"server_id": demo_server["id"]})), "demo server campaign filter wrong"))
+    for name, value, expected in (("lower", "demo-company-1", {"Stage 43 campaign setting"}), ("mixed", "DeMo-CoMpAnY-1", {"Stage 43 campaign setting"}), ("trim", "  demo-company-1  ", {"Stage 43 campaign setting"}), ("partial", "demo-company", {"Stage 43 campaign setting"}), ("missing", "missing", set()), ("underscore", "demo_company_1", set()), ("percent", "demo%company%1", set())):
+        check(f"stage_43_campaign_search_{name}", lambda value=value, expected=expected: _check(reasons(repo.list_routing_events({"campaign_id": value})) == expected, "campaign search wrong"))
+
+    check("stage_43_combined_server", lambda: _check(reasons(repo.list_routing_events({"date_from": "2026-07-15 11:00:00", "date_to": "2026-07-15 11:00:00", "country_id": server["country_id"], "apply_scope": "server_priority", "provider_id": server["provider_id"], "server_id": server_b["id"], "include_inactive": "0"})) == {"Stage 43 server priority"}, "combined server filter wrong"))
+    check("stage_43_combined_campaign", lambda: _check(reasons(repo.list_routing_events({"date_from": "2026-07-16 12:00:00", "date_to": "2026-07-16 12:00:00", "country_id": campaign["country_id"], "apply_scope": "campaign_setting", "calling_company_id": campaign["calling_company_id"], "server_id": demo_server["id"], "campaign_id": "demo-company", "include_inactive": "1"})) == {"Stage 43 campaign setting"}, "combined campaign filter wrong"))
+    check("stage_43_sort_order_default", lambda: _check([row["reason"] for row in stage43(rows)] == ["Stage 43 campaign setting", "Stage 43 server priority", "Stage 43 none active"], "default sort order wrong"))
+    check("stage_43_sort_order_include_inactive", lambda: _check([row["reason"] for row in stage43(all_rows)] == ["Stage 43 campaign setting", "Stage 43 server priority", "Stage 43 none active", "Stage 43 none inactive"], "include inactive sort order wrong"))
+    check("stage_43_list_shape", lambda: _check(none_active is not None and list(none_active.keys()) == expected_keys, "routing-event list shape/order changed"))
+
+    server_detail = check("stage_43_get_routing_event_server", lambda: repo.get_routing_event(server["id"]))
+    campaign_detail = check("stage_43_get_routing_event_campaign", lambda: repo.get_routing_event(campaign["id"]))
+    inactive_detail = check("stage_43_get_routing_event_inactive", lambda: repo.get_routing_event(inactive["id"]))
+    check("stage_43_detail_server_values", lambda: _check(isinstance(server_detail, dict) and server_detail.get("affected_server_names") == "Stage 42 Server A, Stage 42 Server B" and _decimal_equals(server_detail.get("price_delta_eur"), "0.5"), "server detail wrong"))
+    check("stage_43_detail_campaign_values", lambda: _check(isinstance(campaign_detail, dict) and "affected_server_names" not in campaign_detail and campaign_detail.get("company_id_external") == "demo-company-1", "campaign detail wrong"))
+    check("stage_43_detail_inactive_values", lambda: _check(isinstance(inactive_detail, dict) and _is_database_false(inactive_detail.get("is_active")) and inactive_detail.get("deactivation_reason") == "Synthetic Stage 43 archive", "inactive detail wrong"))
+    check("stage_43_detail_missing", lambda: _check(repo.get_routing_event(-1) is None, "missing detail must return None"))
+
 def run_repository_checks(repo: Repository, postgres_url: str) -> dict:
     summary = empty_summary(postgres_url)
     checks: list[tuple[str, object]] = []
@@ -703,6 +791,7 @@ def run_repository_checks(repo: Repository, postgres_url: str) -> dict:
     run_stage_40_checks(repo, check)
     run_stage_41_checks(repo, check)
     run_stage_42_checks(repo, check)
+    run_stage_43_checks(repo, check)
 
     summary.update(status="ok" if not failures else "failed", checks_count=len(checks) + len(failures), failures=failures)
     return summary
