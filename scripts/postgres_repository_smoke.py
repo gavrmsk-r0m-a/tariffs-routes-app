@@ -38,6 +38,7 @@ SMOKE_METHODS = (
     "get_tariff",
     "list_users", "get_user", "get_user_by_username", "authenticate_user",
     "list_routes", "list_tariffs", "list_phone_numbers",
+    "list_company_routing_settings", "get_company_routing_setting",
 )
 
 STAGE_34_METHODS = (
@@ -70,6 +71,11 @@ STAGE_39_METHODS = (
 
 STAGE_40_METHODS = (
     "list_phone_numbers",
+)
+
+STAGE_41_METHODS = (
+    "list_company_routing_settings",
+    "get_company_routing_setting",
 )
 
 EXISTS_CHECKS = (
@@ -534,6 +540,73 @@ def run_stage_40_checks(repo: Repository, check) -> None:
     check("stage_40_shape", lambda: _check(bool(rows) and all(list(row.keys()) == expected_keys for row in rows), "phone row keys must match existing contract"))
     check("stage_40_route_names_string", lambda: _check(all(isinstance(row["route_names"], str) for row in (rows or [])), "route_names must be a string"))
 
+def run_stage_41_checks(repo: Repository, check) -> None:
+    """Check company routing settings list/detail read-only semantics."""
+    expected_list_keys = ["id", "calling_company_id", "country_id", "server_id", "route_id", "routing_mode", "has_autorotation", "is_active", "comment", "valid_from", "valid_to", "created_at", "created_by", "updated_at", "updated_by", "country_name", "server_name", "company_id_external", "company_name", "route_name", "provider_name", "updated_by_username"]
+    expected_detail_keys = expected_list_keys[:-1]
+
+    def externals(rows):
+        return {row["company_id_external"] for row in (rows or [])}
+
+    def by_external_mode(rows, external, mode):
+        return next((row for row in (rows or []) if row["company_id_external"] == external and row["routing_mode"] == mode), None)
+
+    companies = check("stage_41_list_calling_companies_seed", repo.list_calling_companies)
+    countries = check("stage_41_list_countries_seed", repo.list_countries)
+    servers = check("stage_41_list_servers_seed", repo.list_servers)
+    rows = check("stage_41_list_company_routing_settings_default", repo.list_company_routing_settings)
+    history = check("stage_41_list_company_routing_settings_history", lambda: repo.list_company_routing_settings({"include_history": True}))
+    demo = by_external_mode(rows, "demo-company-1", "autorotation")
+    manual = by_external_mode(rows, "ci-manual-company", "server_priority")
+    historical = by_external_mode(history, "ci-manual-company", "autorotation")
+
+    check("stage_41_default_contains_demo_and_manual", lambda: _check({"demo-company-1", "ci-manual-company"} <= externals(rows), "current settings missing"))
+    check("stage_41_default_excludes_history_and_inactive", lambda: _check(by_external_mode(rows, "ci-manual-company", "autorotation") is None and "ci-inactive-company" not in externals(rows), "default must exclude history and inactive without setting"))
+    check("stage_41_default_current_contract", lambda: _check(all(_is_database_true(row["is_active"]) and row["valid_to"] is None for row in (rows or [])), "default rows must be active current only"))
+    check("stage_41_demo_values", lambda: _check(demo is not None and demo["company_name"] == "Demo Company" and demo["country_name"] == "Demo Country" and demo["server_name"] == "demo-server-1" and _is_database_true(demo["has_autorotation"]) and demo["route_name"] == "Demo Route" and demo["provider_name"] == "Demo Provider" and demo["updated_by_username"] == "admin", "demo setting values are incorrect"))
+    check("stage_41_manual_current_values", lambda: _check(manual is not None and manual["company_name"] == "CI Manual Company" and manual["country_name"] == "CI Manual Company Country" and manual["server_name"] == "ci-manual-server-1" and _is_database_false(manual["has_autorotation"]) and manual["route_id"] is None and manual["route_name"] is None and manual["provider_name"] is None and manual["updated_by_username"] == "admin", "manual current values are incorrect"))
+    check("stage_41_historical_values", lambda: _check(historical is not None and _is_database_true(historical["has_autorotation"]) and _is_database_false(historical["is_active"]) and historical["valid_to"] is not None and historical["route_id"] is None and historical["route_name"] is None and historical["provider_name"] is None and historical["comment"] == "Synthetic historical autorotation setting" and historical["updated_by_username"] == "admin", "historical values are incorrect"))
+
+    for name, filters in (("include_true", {"include_history": True}), ("include_int", {"include_history": 1}), ("include_str", {"include_history": "1"}), ("show_true", {"show_history": True}), ("show_str", {"show_history": "1"})):
+        check(f"stage_41_history_{name}", lambda filters=filters: _check(by_external_mode(repo.list_company_routing_settings(filters), "ci-manual-company", "autorotation") is not None, "history alias must include historical"))
+    for name, filters in (("include_false", {"include_history": False}), ("include_zero", {"include_history": 0}), ("include_zero_str", {"include_history": "0"}), ("show_false", {"show_history": False}), ("show_zero_str", {"show_history": "0"})):
+        check(f"stage_41_history_false_{name}", lambda filters=filters: _check(all(row["valid_to"] is None and _is_database_true(row["is_active"]) for row in repo.list_company_routing_settings(filters)), "false history must keep current-only"))
+    for value in ("true", "false", "yes", "invalid"):
+        check(f"stage_41_invalid_history_{value}", lambda value=value: _check(repo.list_company_routing_settings({"include_history": value}) == [] and repo.list_company_routing_settings({"show_history": value}) == [], "invalid history flag must return []"))
+
+    for name, filter_values, expected in (("demo_country", {"country_id": demo["country_id"]}, {"demo-company-1"}), ("demo_server", {"server_id": demo["server_id"]}, {"demo-company-1"}), ("demo_company", {"calling_company_id": demo["calling_company_id"]}, {"demo-company-1"}), ("manual_country", {"country_id": manual["country_id"]}, {"ci-manual-company"}), ("manual_server", {"server_id": manual["server_id"]}, {"ci-manual-company"}), ("manual_company", {"calling_company_id": manual["calling_company_id"]}, {"ci-manual-company"}), ("missing_country", {"country_id": -1}, set()), ("missing_server", {"server_id": -1}, set()), ("missing_company", {"calling_company_id": -1}, set())):
+        check(f"stage_41_filter_{name}", lambda filter_values=filter_values, expected=expected: _check(externals(repo.list_company_routing_settings(filter_values)) == expected, f"{name} returned wrong settings"))
+
+    check("stage_41_routing_mode_current_autorotation", lambda: _check("demo-company-1" in externals(repo.list_company_routing_settings({"routing_mode": "autorotation"})) and by_external_mode(repo.list_company_routing_settings({"routing_mode": "autorotation"}), "ci-manual-company", "autorotation") is None, "current autorotation filter wrong"))
+    check("stage_41_routing_mode_current_server_priority", lambda: _check(externals(repo.list_company_routing_settings({"routing_mode": "server_priority"})) == {"ci-manual-company"}, "server priority filter wrong"))
+    check("stage_41_routing_mode_history_autorotation", lambda: _check({"demo-company-1", "ci-manual-company"} <= externals(repo.list_company_routing_settings({"include_history": "1", "routing_mode": "autorotation"})), "history autorotation filter wrong"))
+    check("stage_41_routing_mode_missing", lambda: _check(repo.list_company_routing_settings({"routing_mode": "missing"}) == [], "missing mode must return []"))
+
+    for name, value, expected in (("lower", "ci-manual-company", {"ci-manual-company"}), ("mixed", "CI-MANUAL-COMPANY", {"ci-manual-company"}), ("trim", "  ci-manual-company  ", {"ci-manual-company"}), ("partial", "manual-company", {"ci-manual-company"}), ("missing", "missing", set()), ("underscore", "ci_manual_company", set()), ("percent", "ci%manual%company", set())):
+        check(f"stage_41_external_{name}", lambda value=value, expected=expected: _check(externals(repo.list_company_routing_settings({"company_id_external": value})) == expected, "external search mismatch"))
+
+    for value in ("1", 1, True):
+        check(f"stage_41_history_active_true_{value!r}", lambda value=value: _check({"demo-company-1", "ci-manual-company"} <= externals(repo.list_company_routing_settings({"include_history": "1", "is_active": value})) and by_external_mode(repo.list_company_routing_settings({"include_history": "1", "is_active": value}), "ci-manual-company", "autorotation") is None, "active true history filter wrong"))
+    for value in ("0", 0, False):
+        check(f"stage_41_history_active_false_{value!r}", lambda value=value: _check(externals(repo.list_company_routing_settings({"include_history": "1", "is_active": value})) == {"ci-manual-company"} and by_external_mode(repo.list_company_routing_settings({"include_history": "1", "is_active": value}), "ci-manual-company", "autorotation") is not None, "active false history filter wrong"))
+    for value in ("all", "", None):
+        check(f"stage_41_history_active_ignored_{value!r}", lambda value=value: _check(len(repo.list_company_routing_settings({"include_history": "1", "is_active": value})) == len(history), "ignored active filter restricted history"))
+    for value in ("true", "false", "yes", "invalid"):
+        check(f"stage_41_history_active_invalid_{value}", lambda value=value: _check(repo.list_company_routing_settings({"include_history": "1", "is_active": value}) == [], "invalid active must return []"))
+    check("stage_41_inactive_ignored_without_history", lambda: _check(all(row["valid_to"] is None and _is_database_true(row["is_active"]) for row in repo.list_company_routing_settings({"is_active": "0"})), "is_active must be ignored without history"))
+    check("stage_41_combined_history_filter", lambda: _check([row["id"] for row in repo.list_company_routing_settings({"include_history": "1", "country_id": manual["country_id"], "server_id": manual["server_id"], "routing_mode": "autorotation", "calling_company_id": manual["calling_company_id"], "company_id_external": "manual-company", "is_active": "0"})] == [historical["id"]], "combined filter must return exactly historical manual"))
+
+    current_detail = check("stage_41_get_company_routing_setting_current", lambda: repo.get_company_routing_setting(manual["id"]))
+    history_detail = check("stage_41_get_company_routing_setting_history", lambda: repo.get_company_routing_setting(historical["id"]))
+    check("stage_41_detail_current_values", lambda: _check(current_detail is not None and current_detail["company_id_external"] == "ci-manual-company" and current_detail["routing_mode"] == "server_priority" and _is_database_false(current_detail["has_autorotation"]) and _is_database_true(current_detail["is_active"]) and current_detail["valid_to"] is None, "current detail wrong"))
+    check("stage_41_detail_history_values", lambda: _check(history_detail is not None and history_detail["routing_mode"] == "autorotation" and _is_database_true(history_detail["has_autorotation"]) and _is_database_false(history_detail["is_active"]) and history_detail["valid_to"] is not None, "history detail wrong"))
+    check("stage_41_detail_missing", lambda: _check(repo.get_company_routing_setting(-1) is None, "missing detail must return None"))
+    check("stage_41_list_shape", lambda: _check(isinstance(rows, list) and bool(rows) and all(list(row.keys()) == expected_list_keys for row in rows), "list shape/order changed"))
+    check("stage_41_detail_shape", lambda: _check(current_detail is not None and list(current_detail.keys()) == expected_detail_keys and "updated_by_username" not in current_detail.keys(), "detail shape/order changed"))
+    check("stage_41_order", lambda: _check([(row["country_name"], row["server_name"], row["company_name"]) for row in (history or [])] == sorted((row["country_name"], row["server_name"], row["company_name"]) for row in (history or [])), "country/server/company order must be stable"))
+    check("stage_41_manual_current_before_history", lambda: _check([row["routing_mode"] for row in history if row["company_id_external"] == "ci-manual-company"] == ["server_priority", "autorotation"], "manual current must precede historical"))
+
+
 def run_repository_checks(repo: Repository, postgres_url: str) -> dict:
     summary = empty_summary(postgres_url)
     checks: list[tuple[str, object]] = []
@@ -592,6 +665,7 @@ def run_repository_checks(repo: Repository, postgres_url: str) -> dict:
     run_stage_38_checks(repo, check, collections, lookup_results)
     run_stage_39_checks(repo, check, collections, lookup_results)
     run_stage_40_checks(repo, check)
+    run_stage_41_checks(repo, check)
 
     summary.update(status="ok" if not failures else "failed", checks_count=len(checks) + len(failures), failures=failures)
     return summary

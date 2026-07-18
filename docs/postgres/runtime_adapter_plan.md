@@ -592,3 +592,22 @@ The method uses a backend split for route-name aggregation: SQLite uses `GROUP_C
 The smoke covers `provider_id=0` no-provider semantics through `COALESCE(pn.provider_id, 0)`, backend-aware `review_required` normalization, equality/search filter behavior, literal search metacharacters, combined filters, active/inactive `route_names` behavior, no-route `""` output, row shape, and `ORDER BY pn.number`.
 
 The actual local Repository semantic smoke count for Stage 40 is 318 checks. PostgreSQL runtime remains disabled; SQLite remains the production/development backend.
+
+## Stage 41 PostgreSQL company-routing settings list and detail smoke status
+
+Stage 41 extends the read-only Repository smoke with:
+
+```python
+STAGE_41_METHODS = (
+    "list_company_routing_settings",
+    "get_company_routing_setting",
+)
+```
+
+The synthetic migration-demo fixture now includes one historical CI Manual Company routing-setting version using the existing `CI Manual Company`, `CI Manual Company Country`, and `ci-manual-server-1` entities. The existing current version remains `server_priority`, active, `valid_to IS NULL`, and route-less; the synthetic historical version is inactive `autorotation`, route-less, has `valid_to = NOW`, and is not accompanied by a routing event, history row, change log, route, provider, phone, or tariff.
+
+`list_company_routing_settings` keeps the current-only default (`crs.is_active` plus `crs.valid_to IS NULL`) and adds strict `include_history`/`show_history` alias normalization for history mode. The history-mode `is_active` filter is strict and backend-aware, and is ignored when history is disabled so callers cannot bypass the current-only contract. Equality/search SQL parameter order is deterministic: current mode starts with the active boolean and then country, server, routing mode, calling company, external-ID search; history mode uses country, server, routing mode, calling company, external-ID search, then optional active boolean.
+
+The external-ID search uses the Stage 37 literal substring search foundation: SQLite uses `search_text_matches`, while PostgreSQL uses `POSITION(LOWER(CAST(%s AS TEXT)) IN LOWER(COALESCE(CAST(cc.company_id_external AS TEXT), ''))) > 0`; LIKE/ILIKE wildcard semantics are not introduced. `get_company_routing_setting` now uses backend placeholders for the ID lookup while preserving the existing joins, detail shape, and missing-ID `None` behavior.
+
+The actual local semantic smoke count after Stage 41 is `387` checks. The smoke remains read-only under `SET TRANSACTION READ ONLY`; it does not execute Repository write methods or full application runtime paths. `DB_BACKEND=postgres` remains disabled, and SQLite remains the operational production/development backend.
