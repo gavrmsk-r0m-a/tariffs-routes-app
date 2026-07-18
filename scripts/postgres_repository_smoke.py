@@ -39,6 +39,7 @@ SMOKE_METHODS = (
     "list_users", "get_user", "get_user_by_username", "authenticate_user",
     "list_routes", "list_tariffs", "list_phone_numbers",
     "list_company_routing_settings", "get_company_routing_setting",
+    "list_provider_changes",
 )
 
 STAGE_34_METHODS = (
@@ -76,6 +77,10 @@ STAGE_40_METHODS = (
 STAGE_41_METHODS = (
     "list_company_routing_settings",
     "get_company_routing_setting",
+)
+
+STAGE_42_METHODS = (
+    "list_provider_changes",
 )
 
 EXISTS_CHECKS = (
@@ -607,6 +612,37 @@ def run_stage_41_checks(repo: Repository, check) -> None:
     check("stage_41_manual_current_before_history", lambda: _check([row["routing_mode"] for row in history if row["company_id_external"] == "ci-manual-company"] == ["server_priority", "autorotation"], "manual current must precede historical"))
 
 
+def run_stage_42_checks(repo: Repository, check) -> None:
+    """Check provider-change list read-only semantics and filters."""
+    expected_keys = ["id", "changed_at", "country_id", "company_id", "company_name_snapshot", "has_autorotation_snapshot", "route_before_id", "provider_before_id", "provider_prefix_before_id", "tariff_before_id", "price_before_provider_currency_id", "price_before_in_provider_currency", "price_before_conversion_rate_to_eur", "price_before_conversion_rate_date", "price_before_eur", "route_after_id", "provider_after_id", "provider_prefix_after_id", "tariff_after_id", "price_after_provider_currency_id", "price_after_in_provider_currency", "price_after_conversion_rate_to_eur", "price_after_conversion_rate_date", "price_after_eur", "price_delta_eur", "provider_changed", "reason_id", "reason_text", "comment", "telegram_status", "telegram_sent_at", "created_by", "created_at", "updated_by", "updated_at", "country_name", "provider_before_name", "provider_after_name", "route_before_name", "route_after_name", "created_by_username", "server_names"]
+
+    def stage42(rows):
+        return [row for row in (rows or []) if str(row["reason_text"]).startswith(("Planned provider switch", "AON refresh without provider switch"))]
+
+    def reasons(rows):
+        return {row["reason_text"] for row in stage42(rows)}
+
+    rows = check("stage_42_list_provider_changes", repo.list_provider_changes)
+    new = next((row for row in stage42(rows) if row["reason_text"] == "Planned provider switch"), None)
+    old = next((row for row in stage42(rows) if row["reason_text"] == "AON refresh without provider switch"), None)
+    check("stage_42_contains_fixture_rows", lambda: _check(new is not None and old is not None, "provider-change fixture rows missing"))
+    check("stage_42_new_values", lambda: _check(new is not None and _is_database_true(new["provider_changed"]) and new["route_before_name"] == "Stage 42 Alpha" and new["route_after_name"] == "Stage 42 Beta" and new["server_names"] == "Stage 42 Server A, Stage 42 Server B", "new provider-change values wrong"))
+    check("stage_42_old_values", lambda: _check(old is not None and _is_database_false(old["provider_changed"]) and old["route_before_name"] == old["route_after_name"] == "Stage 42 Alpha" and old["server_names"] is None, "old provider-change values wrong"))
+
+    check("stage_42_provider_before_filter", lambda: _check("Planned provider switch" in reasons(repo.list_provider_changes({"provider_id": new["provider_before_id"]})), "before provider filter missing new row"))
+    check("stage_42_provider_after_filter", lambda: _check(reasons(repo.list_provider_changes({"provider_id": new["provider_after_id"]})) == {"Planned provider switch"}, "after provider filter wrong"))
+    check("stage_42_route_before_search", lambda: _check({"Planned provider switch", "AON refresh without provider switch"} <= reasons(repo.list_provider_changes({"route_like": "alpha"})), "before route search wrong"))
+    check("stage_42_route_after_search", lambda: _check(reasons(repo.list_provider_changes({"route_like": "beta"})) == {"Planned provider switch"}, "after route search wrong"))
+    check("stage_42_reason_search", lambda: _check(reasons(repo.list_provider_changes({"reason_like": "planned provider"})) == {"Planned provider switch"}, "reason search wrong"))
+    check("stage_42_user_filter", lambda: _check({"Planned provider switch", "AON refresh without provider switch"} <= reasons(repo.list_provider_changes({"user_id": new["created_by"]})), "user filter wrong"))
+    check("stage_42_date_from_inclusive", lambda: _check(reasons(repo.list_provider_changes({"date_from": "2026-07-12 11:00:00"})) == {"Planned provider switch"}, "date_from must be inclusive"))
+    check("stage_42_date_to_inclusive", lambda: _check({"Planned provider switch", "AON refresh without provider switch"} <= reasons(repo.list_provider_changes({"date_to": "2026-07-12 11:00:00"})), "date_to must be inclusive"))
+    check("stage_42_literal_underscore", lambda: _check(reasons(repo.list_provider_changes({"route_like": "Stage 42 Alpha_"})) == set(), "underscore must be literal"))
+    check("stage_42_literal_percent", lambda: _check(reasons(repo.list_provider_changes({"reason_like": "Planned%provider"})) == set(), "percent must be literal"))
+    check("stage_42_order_desc", lambda: _check([row["reason_text"] for row in stage42(rows)] == ["Planned provider switch", "AON refresh without provider switch"], "provider changes must sort DESC"))
+    check("stage_42_shape", lambda: _check(new is not None and list(new.keys()) == expected_keys, "provider-change list shape/order changed"))
+
+
 def run_repository_checks(repo: Repository, postgres_url: str) -> dict:
     summary = empty_summary(postgres_url)
     checks: list[tuple[str, object]] = []
@@ -666,6 +702,7 @@ def run_repository_checks(repo: Repository, postgres_url: str) -> dict:
     run_stage_39_checks(repo, check, collections, lookup_results)
     run_stage_40_checks(repo, check)
     run_stage_41_checks(repo, check)
+    run_stage_42_checks(repo, check)
 
     summary.update(status="ok" if not failures else "failed", checks_count=len(checks) + len(failures), failures=failures)
     return summary

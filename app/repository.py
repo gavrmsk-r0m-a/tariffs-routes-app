@@ -3300,32 +3300,63 @@ class Repository:
 
     def list_provider_changes(self, filters: dict | None = None) -> list[sqlite3.Row]:
         filters = filters or {}
+
+        def search_clause(column, value):
+            where, params = query_filters(
+                {"value_like": value},
+                {"value_like": column},
+                backend=self.backend,
+            )
+            return where.removeprefix(" WHERE ") if where else None, params
+
+        p = placeholder(self.backend)
         clauses = []
         params: list = []
         if filters.get("date_from"):
-            clauses.append("pcl.changed_at >= ?")
+            clauses.append(f"pcl.changed_at >= {p}")
             params.append(filters["date_from"])
         if filters.get("date_to"):
-            clauses.append("pcl.changed_at <= ?")
+            clauses.append(f"pcl.changed_at <= {p}")
             params.append(filters["date_to"])
         if filters.get("country_id"):
-            clauses.append("pcl.country_id = ?")
+            clauses.append(f"pcl.country_id = {p}")
             params.append(filters["country_id"])
         if filters.get("provider_id"):
-            clauses.append("(pcl.provider_before_id = ? OR pcl.provider_after_id = ?)")
+            clauses.append(f"(pcl.provider_before_id = {p} OR pcl.provider_after_id = {p})")
             params.extend([filters["provider_id"], filters["provider_id"]])
-        route_search = normalize_search_text(filters.get("route_like"))
-        if route_search is not None:
-            clauses.append("(search_text_matches(rb.name, ?) = 1 OR search_text_matches(ra.name, ?) = 1)")
-            params.extend([route_search, route_search])
-        reason_search = normalize_search_text(filters.get("reason_like"))
-        if reason_search is not None:
-            clauses.append("search_text_matches(pcl.reason_text, ?) = 1")
-            params.append(reason_search)
+        route_before_clause, route_before_params = search_clause("rb.name", filters.get("route_like"))
+        route_after_clause, route_after_params = search_clause("ra.name", filters.get("route_like"))
+        if route_before_clause and route_after_clause:
+            clauses.append(f"({route_before_clause} OR {route_after_clause})")
+            params.extend(route_before_params + route_after_params)
+        reason_clause, reason_params = search_clause("pcl.reason_text", filters.get("reason_like"))
+        if reason_clause:
+            clauses.append(reason_clause)
+            params.extend(reason_params)
         if filters.get("user_id"):
-            clauses.append("pcl.created_by = ?")
+            clauses.append(f"pcl.created_by = {p}")
             params.append(filters["user_id"])
         where = " WHERE " + " AND ".join(clauses) if clauses else ""
+        if self.backend == "postgres":
+            server_names_sql = """
+                       (
+                           SELECT STRING_AGG(s.name, ', ' ORDER BY s.name)
+                           FROM provider_change_log_servers p2
+                           JOIN servers s ON s.id = p2.server_id
+                           WHERE p2.provider_change_log_id = pcl.id
+                       ) AS server_names"""
+        else:
+            server_names_sql = """
+                       (
+                           SELECT GROUP_CONCAT(s2.name, ', ')
+                           FROM (
+                               SELECT s.name
+                               FROM provider_change_log_servers p2
+                               JOIN servers s ON s.id = p2.server_id
+                               WHERE p2.provider_change_log_id = pcl.id
+                               ORDER BY s.name
+                           ) s2
+                       ) AS server_names"""
         return list(
             self.conn.execute(
                 f"""
@@ -3333,7 +3364,7 @@ class Repository:
                        pb.name AS provider_before_name, pa.name AS provider_after_name,
                        rb.name AS route_before_name, ra.name AS route_after_name,
                        u.username AS created_by_username,
-                       GROUP_CONCAT(s.name, ', ') AS server_names
+{server_names_sql}
                 FROM provider_change_logs pcl
                 JOIN countries c ON c.id = pcl.country_id
                 JOIN providers pb ON pb.id = pcl.provider_before_id
@@ -3341,10 +3372,7 @@ class Repository:
                 LEFT JOIN routes rb ON rb.id = pcl.route_before_id
                 LEFT JOIN routes ra ON ra.id = pcl.route_after_id
                 JOIN users u ON u.id = pcl.created_by
-                LEFT JOIN provider_change_log_servers pcls ON pcls.provider_change_log_id = pcl.id
-                LEFT JOIN servers s ON s.id = pcls.server_id
                 {where}
-                GROUP BY pcl.id
                 ORDER BY pcl.changed_at DESC, pcl.id DESC
                 """,
                 params,
