@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 
 from app.db import init_db
-from app.repository import Repository
+from app.repository import Repository, query_filters
 from scripts.create_migration_demo_sqlite import create_demo_sqlite
 
 
@@ -36,6 +36,87 @@ class RepositoryAdapterReadMethodsTest(unittest.TestCase):
     def test_repository_rejects_invalid_backend(self):
         with self.assertRaisesRegex(ValueError, "Unsupported database backend"):
             Repository(self.conn, backend="bad")
+
+    def test_query_filters_sqlite_contract_and_mapping_order(self):
+        filters = {"name_like": "  АДАПТЕР  ", "ignored": "x", "country_id": 7, "empty": ""}
+        original = dict(filters)
+        where, params = query_filters(filters, {"country_id": "r.country_id", "name_like": "r.name", "empty": "r.empty"})
+        self.assertEqual(" WHERE r.country_id = ? AND search_text_matches(r.name, ?) = 1", where)
+        self.assertEqual([7, "адаптер"], params)
+        self.assertEqual(original, filters)
+        self.assertEqual(("", []), query_filters({"x": "all"}, {"x": "r.x"}))
+
+    def test_query_filters_postgres_literal_search_contract(self):
+        for value in ("Demo_Route", "Demo%Route"):
+            where, params = query_filters(
+                {"country_id": 3, "name_like": value},
+                {"country_id": "r.country_id", "name_like": "r.name"},
+                backend="postgres",
+            )
+            normalized = where.upper()
+            self.assertIn("R.COUNTRY_ID = %S", normalized)
+            self.assertIn("POSITION", normalized)
+            self.assertIn("LOWER", normalized)
+            self.assertIn("COALESCE", normalized)
+            self.assertNotIn("SEARCH_TEXT_MATCHES", normalized)
+            self.assertNotIn(" LIKE ", normalized)
+            self.assertNotIn(" ILIKE ", normalized)
+            self.assertNotIn(value.upper(), normalized)
+            self.assertEqual([3, value], params)
+
+    def test_sqlite_search_udf_keeps_unicode_and_literal_semantics(self):
+        self.assertEqual(1, self.conn.execute("SELECT search_text_matches(?, ?)", ("Привет Adapter", "пРИВЕТ")).fetchone()[0])
+        self.assertEqual(0, self.conn.execute("SELECT search_text_matches(?, ?)", ("Demo Route", "Demo_Route")).fetchone()[0])
+        self.assertEqual(0, self.conn.execute("SELECT search_text_matches(?, ?)", ("Demo Route", "Demo%Route")).fetchone()[0])
+        self.assertEqual(1, self.conn.execute("SELECT search_text_matches(NULL, '')").fetchone()[0])
+
+    def test_postgres_list_routes_sql_and_parameter_order(self):
+        class CaptureConnection:
+            def execute(self, sql, params=()):
+                self.sql = sql
+                self.params = params
+                return []
+
+        conn = CaptureConnection()
+        filters = {"country_id": 4, "provider_id": 5, "is_actual": "1", "search_like": "Demo_Route", "prefix_id": 6}
+        original = dict(filters)
+        self.assertEqual([], Repository(conn, backend="postgres").list_routes(filters))
+        sql = " ".join(conn.sql.split())
+        self.assertIn("rpn.is_active = %s", sql)
+        self.assertIn("r.provider_prefix_id = %s", sql)
+        self.assertIn("r.is_actual = %s", sql)
+        self.assertNotIn("rpn.is_active = 1", sql)
+        self.assertNotIn("r.is_actual = 1", sql)
+        self.assertNotIn("?", sql)
+        self.assertNotIn("search_text_matches", sql)
+        self.assertEqual([True, 4, 5, True, "Demo_Route", 6], conn.params)
+        self.assertEqual(original, filters)
+
+    def test_sqlite_list_routes_regression_contract(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = create_demo_sqlite(Path(directory) / "demo.db")
+            conn = sqlite3.connect(path)
+            conn.row_factory = sqlite3.Row
+            try:
+                repo = Repository(conn)
+                rows = repo.list_routes()
+                demo = next(row for row in rows if row["name"] == "Demo Route")
+                self.assertIsInstance(rows, list)
+                self.assertIsInstance(demo, sqlite3.Row)
+                self.assertEqual(
+                    ["id", "country_id", "provider_id", "provider_prefix_id", "name", "project_label", "cli_source_type", "cli_source_label", "aon_pool", "rnd_type", "rnd_pool_owner", "comment", "is_actual", "priority_status", "inbound_line_available", "created_by", "created_at", "updated_by", "updated_at", "country_name", "provider_name", "prefix", "phone_count"],
+                    demo.keys(),
+                )
+                self.assertIsInstance(demo["phone_count"], int)
+                self.assertEqual([(row["country_name"], row["name"]) for row in rows], sorted((row["country_name"], row["name"]) for row in rows))
+                country_id, provider_id = demo["country_id"], demo["provider_id"]
+                prefix_id = demo["provider_prefix_id"]
+                self.assertEqual("Demo Route", repo.list_routes({"country_id": country_id, "provider_id": provider_id})[0]["name"])
+                self.assertEqual("Demo Route", repo.list_routes({"prefix_id": prefix_id, "is_actual": True, "search_like": "dEMO rOUTE"})[0]["name"])
+                self.assertEqual([], repo.list_routes({"search_like": "Demo_Route"}))
+                self.assertEqual([], repo.list_routes({"search_like": "Demo%Route"}))
+            finally:
+                conn.close()
 
     def test_selected_read_methods_return_same_shape(self):
         method_names = [

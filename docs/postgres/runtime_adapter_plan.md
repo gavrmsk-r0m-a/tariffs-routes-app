@@ -490,3 +490,29 @@ Checklist topics:
   the full application, and PostgreSQL runtime are not run.
   `DB_BACKEND=postgres` remains disabled and SQLite remains the operational
   production and development backend.
+
+### Stage 37 PostgreSQL search-filter foundation and routes list smoke status
+
+- `query_filters()` now has a backward-compatible `backend="sqlite"` default, and
+  all four Repository callers explicitly supply their backend. Equality predicates
+  use backend placeholders while values remain parameters in mapping order.
+- SQLite continues to use the registered `search_text_matches(column, ?) = 1` UDF:
+  inputs are stripped and Python-Unicode-casefolded, `NULL` haystacks act as empty
+  strings, and contains matching treats `%`, `_`, backslash, and LIKE symbols literally.
+- PostgreSQL uses parameterized
+  `POSITION(LOWER(CAST(%s AS TEXT)) IN LOWER(COALESCE(CAST(column AS TEXT), ''))) > 0`.
+  Search input is trimmed only and PostgreSQL performs `LOWER`; no wildcard matching,
+  regex, extension, custom function, or DDL is involved.
+- Exact Unicode/locale equivalence between Python `casefold` and database `LOWER` is
+  not claimed. Ordinary ASCII, digits, and standard Cyrillic have the expected
+  case-insensitive contains behavior; `%` and `_` are literals on both engines.
+- `STAGE_37_METHODS` contains only `list_routes`. Its unfiltered values and phone
+  count, country/provider equality filters, boolean `is_actual` variants, prefix
+  variants, case/trim/partial/missing searches, literal wildcard characters, and
+  combined filter are independently asserted.
+- The smoke now performs **156 semantic checks**. Demo IDs are sourced only from
+  prior Repository reads and the transaction remains `SET TRANSACTION READ ONLY`.
+- Filtered phone, tariff, company, routing-settings, history/event/JSON, and routing
+  lists remain deferred. No Repository write or full application path is run.
+- This remains compatibility smoke only: `DB_BACKEND=postgres` is disabled,
+  `psycopg` is lazy and CI/smoke-only, and SQLite remains the operational backend.

@@ -37,6 +37,7 @@ SMOKE_METHODS = (
     "get_phone_number", "get_route", "route_numbers", "find_tariff_by_identity",
     "get_tariff",
     "list_users", "get_user", "get_user_by_username", "authenticate_user",
+    "list_routes",
 )
 
 STAGE_34_METHODS = (
@@ -53,6 +54,10 @@ STAGE_35_METHODS = (
 
 STAGE_36_METHODS = (
     "list_users", "get_user", "get_user_by_username", "authenticate_user",
+)
+
+STAGE_37_METHODS = (
+    "list_routes",
 )
 
 EXISTS_CHECKS = (
@@ -264,6 +269,44 @@ def run_stage_36_checks(repo: Repository, check) -> None:
     check("authenticate_user_inactive", lambda: _check(repo.authenticate_user("ci-inactive", "anything") is None, "inactive user must not authenticate"))
 
 
+def run_stage_37_checks(repo: Repository, check, collections: dict, lookups: dict) -> None:
+    """Check the Stage 37 route list and each supported filter independently."""
+    country = lookups["get_country_by_name"]
+    provider = lookups["get_provider_by_normalized_name"]
+    prefix = next((row for row in collections["list_provider_prefixes"] if row["prefix"] == "123"), None)
+
+    def demo_route(rows):
+        return next((row for row in (rows or []) if row["name"] == "Demo Route"), None)
+
+    def includes(filters):
+        return demo_route(repo.list_routes(filters)) is not None
+
+    routes = check("list_routes", repo.list_routes)
+    route = demo_route(routes)
+    check("list_routes_demo_present", lambda: _check(route is not None, "unfiltered routes must contain Demo Route"))
+    check("list_routes_country_name", lambda: _check(route is not None and route["country_name"] == "Demo Country", "Demo Route country is incorrect"))
+    check("list_routes_provider_name", lambda: _check(route is not None and route["provider_name"] == "Demo Provider", "Demo Route provider is incorrect"))
+    check("list_routes_prefix", lambda: _check(route is not None and route["prefix"] == "123", "Demo Route prefix is incorrect"))
+    check("list_routes_phone_count", lambda: _check(route is not None and route["phone_count"] == 1, "Demo Route phone count must be one"))
+    check("list_routes_country_id_filter", lambda: _check(includes({"country_id": country["id"]}), "country_id must return Demo Route"))
+    check("list_routes_provider_id_filter", lambda: _check(includes({"provider_id": provider["id"]}), "provider_id must return Demo Route"))
+    check("list_routes_country_provider_filter", lambda: _check(includes({"country_id": country["id"], "provider_id": provider["id"]}), "combined equality filters must return Demo Route"))
+    for value, suffix in (("1", "string_true"), (1, "integer_true"), (True, "boolean_true")):
+        check(f"list_routes_is_actual_{suffix}", lambda value=value: _check(includes({"is_actual": value}), f"is_actual={value!r} must return Demo Route"))
+    for value, suffix in (("0", "string_false"), (False, "boolean_false")):
+        check(f"list_routes_is_actual_{suffix}", lambda value=value: _check(not includes({"is_actual": value}), f"is_actual={value!r} must exclude Demo Route"))
+    check("list_routes_prefix_id_filter", lambda: _check(prefix is not None and includes({"prefix_id": prefix["id"]}), "prefix_id must return Demo Route"))
+    check("list_routes_prefix_none_filter", lambda: _check(not includes({"prefix_id": "__none__"}), "null prefix filter must exclude Demo Route"))
+    check("list_routes_prefix_missing_filter", lambda: _check(repo.list_routes({"prefix_id": -1}) == [], "missing prefix must return an empty list"))
+    for value, suffix in (("demo route", "lowercase"), ("DeMo RoUtE", "mixed_case"), ("  demo route  ", "trimmed"), ("emo Rou", "partial")):
+        check(f"list_routes_search_{suffix}", lambda value=value: _check(includes({"search_like": value}), f"search {value!r} must return Demo Route"))
+    check("list_routes_search_missing", lambda: _check(repo.list_routes({"search_like": "missing route text"}) == [], "missing search must return an empty list"))
+    check("list_routes_search_literal_underscore", lambda: _check(not includes({"search_like": "Demo_Route"}), "underscore must be literal"))
+    check("list_routes_search_literal_percent", lambda: _check(not includes({"search_like": "Demo%Route"}), "percent must be literal"))
+    combined = {"country_id": country["id"], "provider_id": provider["id"], "prefix_id": prefix["id"], "is_actual": "1", "search_like": "demo route"}
+    check("list_routes_combined_filter", lambda: _check([row["name"] for row in repo.list_routes(combined)] == ["Demo Route"], "combined filters must return exactly Demo Route"))
+
+
 def run_repository_checks(repo: Repository, postgres_url: str) -> dict:
     summary = empty_summary(postgres_url)
     checks: list[tuple[str, object]] = []
@@ -318,6 +361,7 @@ def run_repository_checks(repo: Repository, postgres_url: str) -> dict:
     company, company_detail = run_stage_34_checks(repo, check, collections["list_currencies"] or [])
     run_stage_35_checks(repo, check, collections, lookup_results, company, company_detail)
     run_stage_36_checks(repo, check)
+    run_stage_37_checks(repo, check, collections, lookup_results)
 
     summary.update(status="ok" if not failures else "failed", checks_count=len(checks) + len(failures), failures=failures)
     return summary
