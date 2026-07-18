@@ -1241,8 +1241,17 @@ class Repository:
         )
 
     def list_phone_numbers(self, filters: dict | None = None) -> list[sqlite3.Row]:
-        where, params = query_filters(
-            filters,
+        phone_filters = dict(filters or {})
+        supported, normalized_review = self._normalize_optional_bool_filter(phone_filters.get("review_required"))
+        if not supported:
+            return []
+        if normalized_review is None:
+            phone_filters.pop("review_required", None)
+        else:
+            phone_filters["review_required"] = normalized_review
+
+        where, filter_params = query_filters(
+            phone_filters,
             {
                 "country_id": "pn.country_id",
                 "provider_id": "COALESCE(pn.provider_id, 0)",
@@ -1255,18 +1264,35 @@ class Repository:
             },
             backend=self.backend,
         )
+        p = placeholder(self.backend)
+        route_names_expr = (
+            f"""
+                    COALESCE((
+                        SELECT STRING_AGG(r.name, ', ' ORDER BY r.name)
+                        FROM route_phone_numbers rpn
+                        JOIN routes r ON r.id = rpn.route_id
+                        WHERE rpn.phone_number_id = pn.id AND rpn.is_active = {p}
+                    ), '') AS route_names"""
+            if self.backend == "postgres"
+            else f"""
+                    COALESCE((
+                        SELECT GROUP_CONCAT(ordered_routes.name, ', ')
+                        FROM (
+                            SELECT r.name
+                            FROM route_phone_numbers rpn
+                            JOIN routes r ON r.id = rpn.route_id
+                            WHERE rpn.phone_number_id = pn.id AND rpn.is_active = {p}
+                            ORDER BY r.name
+                        ) AS ordered_routes
+                    ), '') AS route_names"""
+        )
+        params = [to_db_bool(True, self.backend), *filter_params]
         return list(
             self.conn.execute(
                 f"""
                 SELECT pn.*, COALESCE(pn.country_label, c.name) AS country_name, COALESCE(pn.provider_label, p.name) AS provider_name, COALESCE(pn.currency_label, cur.code) AS currency_code,
                     COALESCE(pn.assignment_label, pat.name, pn.assignment_type) AS assignment_type_label,
-                    COALESCE((
-                        SELECT GROUP_CONCAT(r.name, ', ')
-                        FROM route_phone_numbers rpn
-                        JOIN routes r ON r.id = rpn.route_id
-                        WHERE rpn.phone_number_id = pn.id AND rpn.is_active = 1
-                        ORDER BY r.name
-                    ), '') AS route_names
+{route_names_expr}
                 FROM phone_numbers pn
                 JOIN countries c ON c.id = pn.country_id
                 LEFT JOIN providers p ON p.id = pn.provider_id

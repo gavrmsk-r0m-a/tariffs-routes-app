@@ -162,6 +162,74 @@ class MigrationDemoSqliteTests(unittest.TestCase):
         self.assertEqual("2026-07-12 10:00:00", inactive["updated_at"])
         self.assertEqual([], inactive_settings)
 
+
+    def test_stage_40_phone_number_fixtures(self):
+        db_path = self.make_demo_db()
+        with sqlite3.connect(db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            review = conn.execute("""
+                SELECT pn.*, c.name AS country_name, cur.code AS currency_code
+                FROM phone_numbers pn
+                JOIN countries c ON c.id = pn.country_id
+                JOIN currencies cur ON cur.id = pn.currency_id
+                WHERE pn.number = ?
+            """, ("525550000010",)).fetchone()
+            routed = conn.execute("""
+                SELECT pn.*, c.name AS country_name, p.name AS provider_name, cur.code AS currency_code
+                FROM phone_numbers pn
+                JOIN countries c ON c.id = pn.country_id
+                JOIN providers p ON p.id = pn.provider_id
+                JOIN currencies cur ON cur.id = pn.currency_id
+                WHERE pn.number = ?
+            """, ("525550000020",)).fetchone()
+            review_links = conn.execute("SELECT * FROM route_phone_numbers WHERE phone_number_id = ?", (review["id"],)).fetchall()
+            routed_links = conn.execute("""
+                SELECT r.name, rpn.*
+                FROM route_phone_numbers rpn
+                JOIN routes r ON r.id = rpn.route_id
+                WHERE rpn.phone_number_id = ?
+                ORDER BY r.name
+            """, (routed["id"],)).fetchall()
+
+        self.assertEqual("CI Review Phone Country", review["country_name"])
+        self.assertIsNone(review["provider_id"])
+        self.assertIsNone(review["provider_label"])
+        self.assertEqual("problem", review["status"])
+        self.assertEqual("ИТМ", review["project_label"])
+        self.assertEqual("aon", review["assignment_type"])
+        self.assertEqual(0, review["is_active"])
+        self.assertEqual(1, review["review_required"])
+        self.assertEqual("XPN", review["currency_code"])
+        self.assertEqual("2026-07-12 10:00:00", review["deactivated_at"])
+        self.assertEqual(Decimal("3.500000"), Decimal(str(review["connection_cost"])))
+        self.assertEqual(Decimal("4.500000"), Decimal(str(review["monthly_fee"])))
+        self.assertEqual(Decimal("0.150000"), Decimal(str(review["outgoing_rate"])))
+        self.assertEqual(Decimal("0.050000"), Decimal(str(review["incoming_rate"])))
+        self.assertEqual([], review_links)
+        self.assertEqual("2026-07-12 10:00:00", review["created_at"])
+        self.assertEqual("2026-07-12 10:00:00", review["updated_at"])
+
+        self.assertEqual("CI Routed Phone Country", routed["country_name"])
+        self.assertEqual("CI Phone Provider", routed["provider_name"])
+        self.assertEqual("XPN", routed["currency_code"])
+        self.assertEqual("free", routed["status"])
+        self.assertEqual("CI Phone Project", routed["project_label"])
+        self.assertEqual("ivr", routed["assignment_type"])
+        self.assertEqual(1, routed["is_active"])
+        self.assertEqual(0, routed["review_required"])
+        self.assertIsNone(routed["deactivated_at"])
+        self.assertEqual(Decimal("0.750000"), Decimal(str(routed["connection_cost"])))
+        self.assertEqual(Decimal("1.500000"), Decimal(str(routed["monthly_fee"])))
+        self.assertEqual(Decimal("0.030000"), Decimal(str(routed["outgoing_rate"])))
+        self.assertEqual(Decimal("0.010000"), Decimal(str(routed["incoming_rate"])))
+        self.assertEqual(3, len(routed_links))
+        active_names = [row["name"] for row in routed_links if row["is_active"] == 1]
+        inactive_names = [row["name"] for row in routed_links if row["is_active"] == 0]
+        self.assertEqual(["CI Phone Route A", "CI Phone Route B"], active_names)
+        self.assertEqual(["CI Phone Route Hidden"], inactive_names)
+        self.assertEqual("2026-07-12 10:00:00", routed["created_at"])
+        self.assertEqual("2026-07-12 10:00:00", routed["updated_at"])
+
     def test_demo_sqlite_has_no_empty_required_fields(self):
         db_path = self.make_demo_db()
         checks = (

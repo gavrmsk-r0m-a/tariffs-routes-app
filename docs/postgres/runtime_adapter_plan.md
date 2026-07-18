@@ -580,3 +580,15 @@ Checklist topics:
   migration writes, or the full application runtime.
 - `DB_BACKEND=postgres` remains off, `psycopg` remains lazy and CI/smoke-only, and
   SQLite remains the operational production/development backend.
+
+## Stage 40 PostgreSQL phone-number list and route-name aggregation smoke status
+
+Stage 40 declares `STAGE_40_METHODS = ("list_phone_numbers",)` and includes the method in `SMOKE_METHODS` exactly once. The migration demo fixture now has isolated synthetic phone-list records: a no-provider review-required phone and an active routed phone with two active route links plus one inactive hidden route link.
+
+`list_phone_numbers` keeps SQLite as the operational backend and does not enable `DB_BACKEND=postgres`. The method remains read-only in the PostgreSQL smoke, which still opens the connection with `SET TRANSACTION READ ONLY`; write paths and full application runtime remain outside scope.
+
+The method uses a backend split for route-name aggregation: SQLite uses `GROUP_CONCAT`, PostgreSQL uses ordered `STRING_AGG`. The active route-link predicate appears in the SELECT before WHERE filters, so the active-link parameter is first, followed by `country_id`, `provider_id`, `project`, `project_like`, `assignment_type`, `status`, `number_like`, and `review_required` when present.
+
+The smoke covers `provider_id=0` no-provider semantics through `COALESCE(pn.provider_id, 0)`, backend-aware `review_required` normalization, equality/search filter behavior, literal search metacharacters, combined filters, active/inactive `route_names` behavior, no-route `""` output, row shape, and `ORDER BY pn.number`.
+
+The actual local Repository semantic smoke count for Stage 40 is 318 checks. PostgreSQL runtime remains disabled; SQLite remains the production/development backend.
