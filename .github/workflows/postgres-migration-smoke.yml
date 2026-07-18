@@ -7,6 +7,11 @@ on:
       - scripts/migrate_sqlite_to_postgres.py
       - scripts/postgres_preflight.py
       - scripts/postgres_repository_smoke.py
+      - scripts/audit_repository_postgres_coverage.py
+      - docs/postgres/repository_method_coverage.json
+      - docs/postgres/repository_read_surface_audit.md
+      - tests/test_repository_postgres_coverage_audit.py
+      - tests/test_postgres_runtime_audit.py
       - scripts/create_migration_demo_sqlite.py
       - docs/postgres/schema.postgres.sql
       - docs/postgres/schema_decisions.md
@@ -57,6 +62,8 @@ jobs:
 
       - name: Run focused migration tests
         run: |
+          python -m unittest tests.test_repository_postgres_coverage_audit
+          python -m unittest tests.test_postgres_runtime_audit
           python -m unittest tests.test_postgres_preflight
           python -m unittest tests.test_postgres_schema_draft
           python -m unittest tests.test_sqlite_to_postgres_migration
