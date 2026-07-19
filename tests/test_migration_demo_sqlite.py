@@ -446,3 +446,28 @@ class Stage47MigrationDemoFixtureTests(MigrationDemoSqliteTests):
         self.assertEqual(("2026-07-18 10:00:00", 1, "ci-manual-company", None, None, 1, 0), (manual["event_at"], manual["is_active"], manual["company_id_external"], manual["old_route_name"], manual["new_route_name"], manual["old_company_has_autorotation"], manual["new_company_has_autorotation"]))
         for row in rows:
             self.assertEqual(47, json.loads(row["snapshot_json"])["stage"])
+
+class Stage48MigrationDemoFixtureTests(MigrationDemoSqliteTests):
+    def test_stage_48_calling_company_history_fixture_contract(self):
+        db_path = self.make_demo_db()
+        with sqlite3.connect(db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            admin = conn.execute("SELECT id FROM users WHERE username='admin'").fetchone()["id"]
+            demo = conn.execute("SELECT * FROM calling_companies WHERE company_id_external='demo-company-1'").fetchone()
+            manual = conn.execute("SELECT * FROM calling_companies WHERE company_id_external='ci-manual-company'").fetchone()
+            rows = conn.execute("SELECT * FROM change_log WHERE summary LIKE 'Stage 48%' ORDER BY changed_at").fetchall()
+            campaign = conn.execute("SELECT id FROM routing_events WHERE reason='Stage 43 campaign setting'").fetchone()["id"]
+            routing_count = conn.execute("SELECT COUNT(*) FROM routing_events WHERE reason LIKE 'Stage 48%'").fetchone()[0]
+            setting_count = conn.execute("SELECT COUNT(*) FROM company_routing_settings WHERE comment LIKE 'Stage 48%'").fetchone()[0]
+        self.assertEqual(3, len(rows)); self.assertEqual(["2026-07-19 08:00:00", "2026-07-19 09:00:00", "2026-07-19 10:00:00"], [r["changed_at"] for r in rows])
+        self.assertTrue(all(r["changed_by"] == admin and r["source"] == "ci" and r["created_at"] == r["changed_at"] for r in rows))
+        direct, routing, manual_log = rows
+        self.assertEqual(("calling_company", demo["id"], "calling_company.updated", "Stage 48 company changed", "Synthetic Stage 48 direct company change log"), (direct["entity_type"], direct["entity_id"], direct["change_type"], direct["summary"], direct["comment"]))
+        self.assertEqual({"company_name":"Demo Company", "line_count":1, "comment":"Temporary Stage 48 company comment"}, json.loads(direct["old_values"]))
+        self.assertEqual(("routing_event", campaign, "routing_event.created"), (routing["entity_type"], routing["entity_id"], routing["change_type"])); self.assertNotEqual(demo["id"], routing["entity_id"])
+        self.assertEqual({"calling_company_id": demo["id"], "routing_mode":"mixed", "stage":48}, json.loads(routing["new_values"]))
+        self.assertEqual(("calling_company", manual["id"], "calling_company.updated"), (manual_log["entity_type"], manual_log["entity_id"], manual_log["change_type"]))
+        self.assertEqual({"comment":"Temporary Stage 48 manual company comment"}, json.loads(manual_log["old_values"]))
+        self.assertEqual(("Demo Company", 2, "Synthetic company", "demo-company-1"), (demo["company_name"], demo["line_count"], demo["comment"], demo["company_id_external"]))
+        self.assertEqual(("CI Manual Company", "Synthetic active manual company", "ci-manual-company"), (manual["company_name"], manual["comment"], manual["company_id_external"]))
+        self.assertEqual((0, 0), (routing_count, setting_count))

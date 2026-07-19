@@ -34,6 +34,9 @@ STAGE46_TARIFF_CHANGED_AT = "2026-07-17 13:00:00"
 STAGE47_DEMO_ACTIVE_AT = "2026-07-18 08:00:00"
 STAGE47_DEMO_INACTIVE_AT = "2026-07-18 09:00:00"
 STAGE47_MANUAL_ACTIVE_AT = "2026-07-18 10:00:00"
+STAGE48_COMPANY_CHANGED_AT = "2026-07-19 08:00:00"
+STAGE48_ROUTING_EVENT_LOG_AT = "2026-07-19 09:00:00"
+STAGE48_MANUAL_COMPANY_AT = "2026-07-19 10:00:00"
 
 
 def q(conn: sqlite3.Connection, sql: str, params: tuple = ()) -> int:
@@ -314,6 +317,23 @@ def create_demo_sqlite(output: str | Path) -> Path:
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (tariff_id, changed_at, admin_id, country_id, "Demo Country", provider_id, "Demo Provider", prefix_id, "123", eur_id if old_price else None, eur_id, old_price, "0.100000" if old_price else "0.200000", "1.000000" if old_price else None, "1.000000", TODAY if old_price else None, TODAY, "0.200000" if old_price else None, "0.100000" if old_price else "0.200000", "-0.100000" if old_price else None, reason, comment, changed_at))
         q(conn, "INSERT INTO change_log(entity_type, entity_id, change_type, changed_by, changed_at, old_values, new_values, summary, comment, source, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", ("route", route_id, "create", admin_id, NOW, '{"name":null}', '{"name":"Demo Route"}', "Created demo route", "Synthetic change log", "ci", NOW))
+        # Stage 48 adds audit history only; current companies and routing events remain unchanged.
+        stage48_logs = (
+            ("calling_company", company_id, "calling_company.updated", STAGE48_COMPANY_CHANGED_AT,
+             {"company_name": "Demo Company", "line_count": 1, "comment": "Temporary Stage 48 company comment"},
+             {"company_name": "Demo Company", "line_count": 2, "comment": "Synthetic company"},
+             "Stage 48 company changed", "Synthetic Stage 48 direct company change log"),
+            ("routing_event", stage43_campaign_event_id, "routing_event.created", STAGE48_ROUTING_EVENT_LOG_AT,
+             {"calling_company_id": company_id, "routing_mode": "autorotation"},
+             {"calling_company_id": company_id, "routing_mode": "mixed", "stage": 48},
+             "Stage 48 routing-event history", "Synthetic Stage 48 routing-event change log"),
+            ("calling_company", manual_company_id, "calling_company.updated", STAGE48_MANUAL_COMPANY_AT,
+             {"comment": "Temporary Stage 48 manual company comment"},
+             {"comment": "Synthetic active manual company"},
+             "Stage 48 manual company changed", "Synthetic Stage 48 manual company change log"),
+        )
+        for entity_type, entity_id, change_type, changed_at, old_values, new_values, summary, comment in stage48_logs:
+            q(conn, "INSERT INTO change_log(entity_type, entity_id, change_type, changed_by, changed_at, old_values, new_values, summary, comment, source, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", (entity_type, entity_id, change_type, admin_id, changed_at, json.dumps(old_values, sort_keys=True), json.dumps(new_values, sort_keys=True), summary, comment, "ci", changed_at))
         q(conn, "INSERT INTO route_naming_rules(name, template, is_active, comment, created_by, created_at, updated_by, updated_at) VALUES (?, ?, 1, ?, ?, ?, ?, ?)", ("Demo rule", "{country}-{provider}", "Synthetic naming rule", admin_id, NOW, admin_id, NOW))
         q(conn, "INSERT INTO import_jobs(entity_type, mode, file_name, status, total_rows, new_rows, duplicate_rows, skipped_rows, updated_rows, replaced_rows, error_rows, preview_data, summary, error_report, created_by, created_at, started_at, finished_at) VALUES (?, ?, ?, ?, 1, 1, 0, 0, 0, 0, 0, ?, ?, ?, ?, ?, ?, ?)", ("routes", "append_update", "demo.csv", "completed", '[{"row":1}]', '{"inserted":1}', '{"errors":[]}', admin_id, NOW, NOW, NOW))
         conn.execute("INSERT INTO app_settings(key, value, updated_at, updated_by) VALUES (?, ?, ?, ?)", ("demo_setting", "enabled", NOW, admin_id))

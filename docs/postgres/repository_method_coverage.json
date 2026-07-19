@@ -21,17 +21,6 @@
       ],
       "reason": "Calling-company event search/count list is SELECT-only but has text search, pagination, JSON payload, and runtime-row contracts not in smoke.",
       "recommended_batch": "company_event_search_and_count"
-    },
-    "list_calling_company_history": {
-      "blockers": [
-        "sqlite_placeholder",
-        "json_text_vs_jsonb",
-        "history_shape",
-        "requires_fixture",
-        "no_postgres_semantic_test"
-      ],
-      "reason": "Calling-company history is SELECT-only but includes JSON snapshot payloads whose text/jsonb shape must be adapted and tested.",
-      "recommended_batch": "company_history_json"
     }
   },
   "infrastructure_or_mixed": {
