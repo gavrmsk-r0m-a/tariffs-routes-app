@@ -200,8 +200,9 @@
     },
     "write_test_harness_and_transaction_foundation": {
       "acceptance": [
-        "SQL recording and SQLite regression coverage",
-        "rollback-only PostgreSQL integration coverage"
+        "Rollback/SAVEPOINT leaves no writes",
+        "No production or business write adaptation",
+        "DB_BACKEND=postgres remains disabled"
       ],
       "methods": [
         "set_hlr_limit_override"
@@ -211,9 +212,9 @@
         "production runtime enablement"
       ],
       "prerequisites": [],
-      "rationale": "Required sequencing boundary: isolate transaction ownership and PostgreSQL compatibility risk before adapting this write group.",
+      "rationale": "Stage 51 rollback-only harness and transaction foundation; it does not adapt business writes.",
       "risk": "critical",
-      "scope": "Rollback-only planning and future adapter work; no runtime enablement.",
+      "scope": "Only rollback-only synthetic probes inside a transaction rollback or SAVEPOINT; DB_BACKEND=postgres remains disabled.",
       "stage_hint": "Stage 51",
       "title": "Write test harness and transaction foundation"
     }
@@ -749,7 +750,7 @@
     },
     "delete_app_setting_value": {
       "batch": "app_settings_and_admin_low_risk",
-      "current_commit_behavior": "commits internally and rollbacks internally",
+      "current_commit_behavior": "mixed",
       "dependencies": [],
       "mutation_kind": "delete",
       "notes": "Stage 50 audit inventory only; no write adaptation.",
@@ -1061,7 +1062,7 @@
     },
     "set_app_setting_value": {
       "batch": "app_settings_and_admin_low_risk",
-      "current_commit_behavior": "commits internally and rollbacks internally",
+      "current_commit_behavior": "mixed",
       "dependencies": [],
       "mutation_kind": "update",
       "notes": "Stage 50 audit inventory only; no write adaptation.",
@@ -1093,8 +1094,8 @@
         "set_app_setting_value"
       ],
       "mutation_kind": "mixed_read_write",
-      "notes": "Stage 50 audit inventory only; no write adaptation.",
-      "postgres_strategy": "Keep runtime disabled; use rollback-only harness, backend placeholders, and RETURNING where identity retrieval is required.",
+      "notes": "Stage 51 never adapts this business write; every probe is rolled back by transaction rollback or SAVEPOINT.",
+      "postgres_strategy": "Stage 51 may use this only as a minimal rollback-only synthetic probe; no production adaptation or runtime enablement.",
       "returns": "none",
       "risk": "high",
       "rollback_strategy": "Not safe until harness exists; run inside explicit transaction and rollback.",
@@ -1141,7 +1142,7 @@
     },
     "set_user_permissions": {
       "batch": "app_settings_and_admin_low_risk",
-      "current_commit_behavior": "commits internally and rollbacks internally",
+      "current_commit_behavior": "mixed",
       "dependencies": [],
       "mutation_kind": "update",
       "notes": "Stage 50 audit inventory only; no write adaptation.",
@@ -1558,7 +1559,7 @@
     },
     "upsert_hlr_daily_usage": {
       "batch": "app_settings_and_admin_low_risk",
-      "current_commit_behavior": "commits internally and rollbacks internally",
+      "current_commit_behavior": "mixed",
       "dependencies": [],
       "mutation_kind": "upsert",
       "notes": "Stage 50 audit inventory only; no write adaptation.",
@@ -1582,5 +1583,6 @@
       "transaction_contract": "explicit_commit"
     }
   },
+  "recommended_next_batch": "write_test_harness_and_transaction_foundation",
   "schema_version": 1
 }

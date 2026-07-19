@@ -97,3 +97,7 @@ The unchanged runtime census is `app/db.py`, `app/server.py`, and `app/importer.
 ## Recommended Stage 51
 
 **Stage 51: PostgreSQL write test harness and transaction foundation.** It must keep production runtime and `DB_BACKEND=postgres` disabled, add a rollback-only PostgreSQL write harness, establish transaction ownership, verify PostgreSQL error/rollback behavior, and prepare RETURNING/boolean/upsert patterns. It must not adapt business domain writes except minimal synthetic harness probes.
+
+## Stage 51 boundary clarification
+
+`set_hlr_limit_override` is listed in the Stage 51 foundation batch solely as a minimal rollback-only synthetic probe. Stage 51 does **not** adapt it as a production/business write, does not enable `DB_BACKEND=postgres`, and does not start business-domain write adaptation. Every probe must run in an explicit transaction and finish with transaction rollback or `SAVEPOINT` rollback.

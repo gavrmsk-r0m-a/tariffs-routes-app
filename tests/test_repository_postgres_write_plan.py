@@ -1,41 +1,61 @@
-import copy
-import json
-import tempfile
-import unittest
+import copy,json,tempfile,unittest
 from pathlib import Path
-
-from scripts.audit_repository_postgres_write_plan import ROOT, audit
-
-
-class RepositoryPostgresWritePlanTests(unittest.TestCase):
-    def setUp(self):
-        self.coverage = ROOT / "docs/postgres/repository_method_coverage.json"
-        self.plan_path = ROOT / "docs/postgres/repository_write_surface_plan.json"
-        self.repository = ROOT / "app/repository.py"
-        self.plan = json.loads(self.plan_path.read_text())
-
-    def run_plan(self, plan):
-        with tempfile.TemporaryDirectory() as d:
-            path = Path(d) / "plan.json"; path.write_text(json.dumps(plan))
-            return audit(self.repository, self.coverage, path)
-
-    def test_actual_plan_passes_and_is_deterministic(self):
-        first = audit(self.repository, self.coverage, self.plan_path)
-        self.assertEqual(first, audit(self.repository, self.coverage, self.plan_path))
-        self.assertEqual("ok", first["status"]); self.assertEqual(50, first["planned_write_methods_count"])
-        self.assertEqual([], first["missing_write_methods"]); self.assertEqual([], first["duplicate_planned_methods"])
-        self.assertEqual([], first["stale_planned_methods"]); self.assertEqual([], first["non_write_methods_in_plan"])
-        self.assertEqual("write_test_harness_and_transaction_foundation", first["recommended_next_batch"])
-
-    def test_missing_duplicate_stale_read_unknown_empty_and_required_fail(self):
-        cases=[]
-        missing=copy.deepcopy(self.plan); n=next(iter(missing["methods"])); del missing["methods"][n]; missing["batches"][self.plan["methods"][n]["batch"]]["methods"].remove(n); cases.append(missing)
-        duplicate=copy.deepcopy(self.plan); n=next(iter(duplicate["methods"])); duplicate["batches"][next(k for k in duplicate["batches"] if k != duplicate["methods"][n]["batch"])]["methods"].append(n); cases.append(duplicate)
-        stale=copy.deepcopy(self.plan); stale["methods"]["gone"] = copy.deepcopy(next(iter(stale["methods"].values()))); stale["batches"][stale["methods"]["gone"]["batch"]]["methods"].append("gone"); cases.append(stale)
-        unknown=copy.deepcopy(self.plan); unknown["methods"][next(iter(unknown["methods"]))]["batch"]="gone"; cases.append(unknown)
-        empty=copy.deepcopy(self.plan); empty["batches"]["write_test_harness_and_transaction_foundation"]["methods"]=[]; cases.append(empty)
-        required=copy.deepcopy(self.plan); del required["methods"][next(iter(required["methods"]))]["transaction_contract"]; cases.append(required)
-        for case in cases: self.assertEqual("failed", self.run_plan(case)["status"])
-
-    def test_dynamic_sql_is_reported(self):
-        self.assertTrue(audit(self.repository, self.coverage, self.plan_path)["dynamic_sql_methods"])
+from scripts.audit_repository_postgres_write_plan import ROOT,audit,main
+class WritePlanTests(unittest.TestCase):
+ def setUp(self): self.plan=json.loads((ROOT/'docs/postgres/repository_write_surface_plan.json').read_text()); self.c=ROOT/'docs/postgres/repository_method_coverage.json'; self.r=ROOT/'app/repository.py'
+ def execute_plan(self,p):
+  with tempfile.TemporaryDirectory() as d:
+   q=Path(d)/'p.json'; q.write_text(json.dumps(p)); return audit(self.r,self.c,q)
+ def bad(self,p): self.assertEqual('failed',self.execute_plan(p)['status'])
+ def name(self): return next(iter(self.plan['methods']))
+ def test_actual_baseline_write_plan_passes(self): self.assertEqual('ok',self.execute_plan(self.plan)['status'])
+ def test_deterministic_output(self): self.assertEqual(self.execute_plan(self.plan),self.execute_plan(self.plan))
+ def test_missing_write_method_fails(self):
+  p=copy.deepcopy(self.plan); n=self.name(); del p['methods'][n]; p['batches'][self.plan['methods'][n]['batch']]['methods'].remove(n); self.bad(p)
+ def test_duplicate_write_method_fails(self):
+  p=copy.deepcopy(self.plan); n=self.name(); p['batches']['app_settings_and_admin_low_risk']['methods'].append(n); self.bad(p)
+ def test_stale_method_fails(self):
+  p=copy.deepcopy(self.plan); p['methods']['stale']=copy.deepcopy(p['methods'][self.name()]); p['batches'][p['methods']['stale']['batch']]['methods'].append('stale'); self.bad(p)
+ def test_read_method_fails(self):
+  p=copy.deepcopy(self.plan); p['methods']['list_countries']=copy.deepcopy(p['methods'][self.name()]); p['batches'][p['methods']['list_countries']['batch']]['methods'].append('list_countries'); self.bad(p)
+ def test_unknown_batch_fails(self): p=copy.deepcopy(self.plan); p['methods'][self.name()]['batch']='missing'; self.bad(p)
+ def test_empty_batch_fails(self): p=copy.deepcopy(self.plan); p['batches']['write_test_harness_and_transaction_foundation']['methods']=[]; self.bad(p)
+ def test_missing_required_batch_field_fails(self): p=copy.deepcopy(self.plan); del p['batches']['app_settings_and_admin_low_risk']['rationale']; self.bad(p)
+ def test_missing_required_method_field_fails(self): p=copy.deepcopy(self.plan); del p['methods'][self.name()]['transaction_contract']; self.bad(p)
+ def test_invalid_mutation_kind_fails(self): p=copy.deepcopy(self.plan); p['methods'][self.name()]['mutation_kind']='bad'; self.bad(p)
+ def test_invalid_transaction_contract_fails(self): p=copy.deepcopy(self.plan); p['methods'][self.name()]['transaction_contract']='bad'; self.bad(p)
+ def test_invalid_risk_fails(self): p=copy.deepcopy(self.plan); p['methods'][self.name()]['risk']='bad'; self.bad(p)
+ def test_duplicate_blockers_fail(self): p=copy.deepcopy(self.plan); p['methods'][self.name()]['sqlite_postgres_blockers']*=2; self.bad(p)
+ def test_duplicate_side_effects_fail(self): p=copy.deepcopy(self.plan); p['methods'][self.name()]['side_effects']*=2; self.bad(p)
+ def test_commit_and_rollback_acknowledgement_fail(self):
+  p=copy.deepcopy(self.plan); p['methods']['set_app_setting_value']['current_commit_behavior']='never commits'; self.bad(p)
+ def test_transitive_call_without_dependency_fails(self): p=copy.deepcopy(self.plan); p['methods']['set_hlr_limit_override']['dependencies']=[]; self.bad(p)
+ def test_dependency_cycle_fails(self):
+  p=copy.deepcopy(self.plan); a='app_settings_and_admin_low_risk'; b='dictionary_and_snapshot_writes'; p['batches'][a]['prerequisites'].append(b); p['batches'][b]['prerequisites'].append(a); self.bad(p)
+ def test_dynamic_sql_is_surfaced(self): self.assertTrue(self.execute_plan(self.plan)['dynamic_sql_methods'])
+ def test_bad_schema_versions_are_config_errors(self):
+  for v in (2,True):
+   p=copy.deepcopy(self.plan); p['schema_version']=v
+   with tempfile.TemporaryDirectory() as d:
+    q=Path(d)/'p.json'; q.write_text(json.dumps(p));
+    with self.assertRaises(Exception): audit(self.r,self.c,q)
+ def test_malformed_and_non_object_are_config_errors(self):
+  with tempfile.TemporaryDirectory() as d:
+   q=Path(d)/'p.json'; q.write_text('{');
+   with self.assertRaises(Exception): audit(self.r,self.c,q)
+   q.write_text('[]');
+   with self.assertRaises(Exception): audit(self.r,self.c,q)
+ def test_cli_exit_codes_and_output_file(self):
+  with tempfile.TemporaryDirectory() as d:
+   out=Path(d)/'out.json'; self.assertEqual(0,main(['--format','json','--output',str(out)])); self.assertEqual('ok',json.loads(out.read_text())['status'])
+   p=copy.deepcopy(self.plan); p['schema_version']=2; q=Path(d)/'bad.json'; q.write_text(json.dumps(p)); self.assertEqual(2,main(['--write-plan',str(q)]))
+ def test_no_code_execution(self):
+  with tempfile.TemporaryDirectory() as d:
+   r=Path(d)/'repository.py'; marker=Path(d)/'marker'; r.write_text(f"open({str(marker)!r},'w').write('x')\nclass Repository:\n def create_x(self): self.conn.execute('INSERT x')\n")
+   c=Path(d)/'coverage.json'; c.write_text(json.dumps({'write_or_mutating':{'create_x':{'mutation_kind':'insert'}}}))
+   p=copy.deepcopy(self.plan); p['methods']={'create_x':copy.deepcopy(self.plan['methods'][self.name()])}; p['methods']['create_x'].update(batch='write_test_harness_and_transaction_foundation',mutation_kind='insert');
+   for b in p['batches'].values(): b['methods']=[]
+   p['batches']['write_test_harness_and_transaction_foundation']['methods']=['create_x']
+   q=Path(d)/'plan.json'; q.write_text(json.dumps(p));
+   with self.assertRaises(Exception): audit(r,c,q)
+   self.assertFalse(marker.exists())
