@@ -41,7 +41,7 @@ SMOKE_METHODS = (
     "list_company_routing_settings", "get_company_routing_setting",
     "list_provider_changes", "list_routing_events", "get_routing_event",
     "list_phone_history", "list_route_history", "list_tariff_history",
-    "list_company_routing_setting_history",
+    "list_company_routing_setting_history", "list_calling_company_history",
 )
 
 STAGE_34_METHODS = (
@@ -98,6 +98,10 @@ STAGE_46_METHODS = (
 
 STAGE_47_METHODS = (
     "list_company_routing_setting_history",
+)
+
+STAGE_48_METHODS = (
+    "list_calling_company_history",
 )
 
 EXISTS_CHECKS = (
@@ -820,6 +824,33 @@ def run_stage_47_checks(repo: Repository, check) -> None:
     check("stage_47_event_sort", lambda: _check([(row["event_at"], row["id"]) for row in demo_rows] == sorted(((row["event_at"], row["id"]) for row in demo_rows), reverse=True), "history must be newest first"))
 
 
+def run_stage_48_checks(repo: Repository, check, demo_company) -> None:
+    """Check direct and JSON-routed calling-company history without writes."""
+    expected_keys = ["changed_at", "user_name", "action", "old_value", "new_value", "comment", "current_company_name", "company_id_external"]
+    demo_rows = check("stage_48_demo_history", lambda: repo.list_calling_company_history(demo_company["id"]))
+    companies = check("stage_48_companies", repo.list_calling_companies)
+    manual_company = check("stage_48_manual_company", lambda: next(row for row in (companies or []) if row["company_id_external"] == "ci-manual-company"))
+    manual_rows = check("stage_48_manual_history", lambda: repo.list_calling_company_history(manual_company["id"]))
+    missing_rows = check("stage_48_missing_history", lambda: repo.list_calling_company_history(-1))
+    check("stage_48_demo_history_type", lambda: _check(isinstance(demo_rows, list), "history must return a list"))
+    check("stage_48_demo_history_shape", lambda: _check(demo_rows and list(demo_rows[0].keys()) == expected_keys, "history shape/order changed"))
+    stage_rows = [row for row in (demo_rows or []) if str(row["comment"]).startswith("Stage 48")]
+    check("stage_48_demo_rows", lambda: _check([row["comment"] for row in stage_rows] == ["Stage 48 routing-event history", "Stage 48 company changed"], "demo Stage 48 history order changed"))
+    check("stage_48_demo_order", lambda: _check([(row["changed_at"], row["comment"]) for row in (demo_rows or [])] == sorted(((row["changed_at"], row["comment"]) for row in (demo_rows or [])), reverse=True), "history must be newest first"))
+    routing = next((row for row in stage_rows if row["comment"] == "Stage 48 routing-event history"), None)
+    direct = next((row for row in stage_rows if row["comment"] == "Stage 48 company changed"), None)
+    check("stage_48_routing_aliases", lambda: _check(routing and routing["user_name"] == "Admin" and routing["current_company_name"] == "Demo Company" and routing["company_id_external"] == "demo-company-1" and routing["action"] == "routing_event.created", "routing aliases/action wrong"))
+    check("stage_48_routing_values", lambda: _check(routing and _snapshot_object(routing["old_value"]) == {"calling_company_id": demo_company["id"], "routing_mode": "autorotation"} and _snapshot_object(routing["new_value"]) == {"calling_company_id": demo_company["id"], "routing_mode": "mixed", "stage": 48}, "routing JSON values wrong"))
+    check("stage_48_routing_summary_comment", lambda: _check(routing and routing["comment"] != "Synthetic Stage 48 routing-event change log", "output comment must use summary"))
+    check("stage_48_direct_aliases", lambda: _check(direct and direct["user_name"] == "Admin" and direct["current_company_name"] == "Demo Company" and direct["company_id_external"] == "demo-company-1" and direct["action"] == "calling_company.updated", "direct aliases/action wrong"))
+    check("stage_48_direct_values", lambda: _check(direct and _snapshot_object(direct["old_value"]) == {"company_name": "Demo Company", "line_count": 1, "comment": "Temporary Stage 48 company comment"} and _snapshot_object(direct["new_value"]) == {"company_name": "Demo Company", "line_count": 2, "comment": "Synthetic company"}, "direct JSON values wrong"))
+    manual = next((row for row in (manual_rows or []) if row["comment"] == "Stage 48 manual company changed"), None)
+    check("stage_48_manual_type", lambda: _check(isinstance(manual_rows, list), "manual history must return a list"))
+    check("stage_48_manual_isolation", lambda: _check(manual and all(not str(row["comment"]).startswith("Stage 48 routing-event") and row["current_company_name"] == "CI Manual Company" and row["company_id_external"] == "ci-manual-company" for row in manual_rows) and all("Demo Company" not in str(row["current_company_name"]) for row in manual_rows), "manual company history leaked demo rows"))
+    check("stage_48_manual_values", lambda: _check(manual and manual["user_name"] == "Admin" and manual["action"] == "calling_company.updated" and _snapshot_object(manual["old_value"]) == {"comment": "Temporary Stage 48 manual company comment"} and _snapshot_object(manual["new_value"]) == {"comment": "Synthetic active manual company"}, "manual JSON values wrong"))
+    check("stage_48_missing_company", lambda: _check(missing_rows == [], "missing company must return []"))
+
+
 def run_repository_checks(repo: Repository, postgres_url: str) -> dict:
     summary = empty_summary(postgres_url)
     checks: list[tuple[str, object]] = []
@@ -883,6 +914,7 @@ def run_repository_checks(repo: Repository, postgres_url: str) -> dict:
     run_stage_43_checks(repo, check)
     run_stage_46_checks(repo, check)
     run_stage_47_checks(repo, check)
+    run_stage_48_checks(repo, check, company)
 
     summary.update(status="ok" if not failures else "failed", checks_count=len(checks) + len(failures), failures=failures)
     return summary

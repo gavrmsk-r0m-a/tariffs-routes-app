@@ -2122,15 +2122,25 @@ class Repository:
         )
 
     def list_calling_company_history(self, company_id: int) -> list[sqlite3.Row]:
+        p = placeholder(self.backend)
+        routing_company_id_expr = (
+            "NULLIF(cl.new_values ->> 'calling_company_id', '')::BIGINT"
+            if self.backend == "postgres"
+            else "json_extract(cl.new_values, '$.calling_company_id')"
+        )
         return list(self.conn.execute(
-            """
+            f"""
             SELECT cl.changed_at, u.display_name AS user_name, cl.change_type AS action,
                    cl.old_values AS old_value, cl.new_values AS new_value, cl.summary AS comment,
                    cc.company_name AS current_company_name, cc.company_id_external
             FROM change_log cl
             LEFT JOIN users u ON u.id = cl.changed_by
-            LEFT JOIN calling_companies cc ON cc.id = CASE WHEN cl.entity_type = 'calling_company' THEN cl.entity_id ELSE json_extract(cl.new_values, '$.calling_company_id') END
-            WHERE (cl.entity_type = 'calling_company' AND cl.entity_id = ?) OR (cl.entity_type = 'routing_event' AND json_extract(cl.new_values, '$.calling_company_id') = ?)
+            LEFT JOIN calling_companies cc ON cc.id = CASE
+                WHEN cl.entity_type = 'calling_company' THEN cl.entity_id
+                ELSE {routing_company_id_expr}
+            END
+            WHERE (cl.entity_type = 'calling_company' AND cl.entity_id = {p})
+               OR (cl.entity_type = 'routing_event' AND {routing_company_id_expr} = {p})
             ORDER BY cl.changed_at DESC, cl.id DESC
             """,
             (company_id, company_id),

@@ -1087,3 +1087,34 @@ class CompanyRoutingSettingHistoryAdapterTest(unittest.TestCase):
         repo = Repository(NoSelectConnection())
         repo.get_company_routing_setting = lambda setting_id: None
         self.assertEqual([], repo.list_company_routing_setting_history(-1))
+
+class CallingCompanyHistoryAdapterTests(unittest.TestCase):
+    def test_postgres_list_calling_company_history_uses_jsonb_and_placeholders(self):
+        class CaptureConnection:
+            def execute(self, sql, params=()): self.sql, self.params = sql, params; return []
+        conn = CaptureConnection()
+        self.assertEqual([], Repository(conn, backend="postgres").list_calling_company_history(7))
+        sql = " ".join(conn.sql.split())
+        self.assertEqual((7, 7), conn.params)
+        self.assertEqual(2, sql.count("%s")); self.assertIn("cl.new_values ->> 'calling_company_id'", sql); self.assertIn("::BIGINT", sql)
+        self.assertIn("CASE WHEN cl.entity_type = 'calling_company' THEN cl.entity_id ELSE", sql)
+        self.assertIn("ORDER BY cl.changed_at DESC, cl.id DESC", sql)
+        for forbidden in ("json_extract", "search_text_matches", " LIMIT ", " OFFSET ", "?"):
+            self.assertNotIn(forbidden, sql)
+
+    def test_sqlite_list_calling_company_history_contract(self):
+        with tempfile.TemporaryDirectory() as directory:
+            conn = sqlite3.connect(create_demo_sqlite(Path(directory) / "demo.db")); conn.row_factory = sqlite3.Row
+            try:
+                repo = Repository(conn)
+                demo = next(row for row in repo.list_calling_companies() if row["company_id_external"] == "demo-company-1")
+                manual = next(row for row in repo.list_calling_companies() if row["company_id_external"] == "ci-manual-company")
+                rows = repo.list_calling_company_history(demo["id"])
+                stage = [row for row in rows if row["comment"].startswith("Stage 48")]
+                self.assertIsInstance(rows[0], sqlite3.Row)
+                self.assertEqual(["changed_at", "user_name", "action", "old_value", "new_value", "comment", "current_company_name", "company_id_external"], rows[0].keys())
+                self.assertEqual(["Stage 48 routing-event history", "Stage 48 company changed"], [row["comment"] for row in stage])
+                self.assertTrue(all(isinstance(row["old_value"], (str, type(None))) and isinstance(row["new_value"], (str, type(None))) for row in stage))
+                self.assertEqual([], repo.list_calling_company_history(-1))
+                self.assertEqual(["Stage 48 manual company changed"], [row["comment"] for row in repo.list_calling_company_history(manual["id"]) if row["comment"].startswith("Stage 48")])
+            finally: conn.close()

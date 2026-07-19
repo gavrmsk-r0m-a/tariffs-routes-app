@@ -1,18 +1,18 @@
-# PostgreSQL read-surface audit — Stage 47
+# PostgreSQL read-surface audit — Stage 48
 
 ## Executive summary
 
 Stage 44 adds a machine-verifiable, audit-only gate for the current PostgreSQL Repository read surface. Stage 45 hardens that gate with strict manifest metadata schema validation, stable configuration-error handling, and recursive runtime SQL census coverage. The audit statically parses `app/repository.py`, `scripts/postgres_repository_smoke.py`, and `docs/postgres/repository_method_coverage.json`; it does not import Repository code, execute top-level code, open databases, or rewrite inputs.
 
 - Public `Repository` methods: **112**.
-- Smoke-covered read methods: **58**.
-- Deferred read-only methods: **3**.
+- Smoke-covered read methods: **59**.
+- Deferred read-only methods: **2**.
 - Write/mutating methods: **50**.
 - Infrastructure/mixed methods: **1**.
 - Unclassified methods: **0**.
 - Duplicate classifications: **0**.
-- Current local PostgreSQL Repository smoke semantic checks: **522**.
-- Classified Repository read-surface coverage: **95.08%** (58 smoke-covered reads out of 61 classified read-only methods). This is not full application runtime readiness.
+- Current local PostgreSQL Repository smoke semantic checks: **540**.
+- Classified Repository read-surface coverage: **96.72%** (59 smoke-covered reads out of 61 classified read-only methods). This is not full application runtime readiness.
 
 ## Covered Repository read surface
 
@@ -32,7 +32,6 @@ The existing PostgreSQL Repository smoke covers adapter-ready read groups withou
 
 | Method | Purpose | Blockers | Recommended batch |
 | --- | --- | --- | --- |
-| `list_calling_company_history` | Calling-company history with JSON snapshots. | `sqlite_placeholder`, `json_text_vs_jsonb`, `history_shape`, `requires_fixture`, `no_postgres_semantic_test` | `company_history_json` |
 | `list_calling_company_events` | Calling-company event list/search page. | `sqlite_placeholder`, `json_text_vs_jsonb`, `search_text_matches`, `pagination_contract`, `requires_fixture`, `no_postgres_semantic_test` | `company_event_search_and_count` |
 | `count_calling_company_events` | Count companion for calling-company event search. | `sqlite_placeholder`, `search_text_matches`, `requires_fixture`, `no_postgres_semantic_test` | `company_event_search_and_count` |
 
@@ -68,4 +67,13 @@ Stage 47 moves `list_company_routing_setting_history` into the read-only smoke. 
 
 ## Recommended next implementation Stage
 
-The next batch is **`company_history_json`**, starting with `list_calling_company_history`, a SELECT-only JSON history read without search or pagination. After that, use a separate **`company_event_search_and_count`** batch for `list_calling_company_events` and `count_calling_company_events` so JSON/search/pagination and count parity can be adapted together.
+The final read-only batch is **`company_event_search_and_count`** for `list_calling_company_events` and `count_calling_company_events`; it requires PostgreSQL JSONB extraction, literal text search, list/count predicate parity, pagination, and deterministic ordering.
+
+
+## Stage 48 PostgreSQL calling-company JSON history smoke
+
+`STAGE_48_METHODS = ("list_calling_company_history",)` adapts this one-SELECT, read-only history method with backend-aware company ID extraction: SQLite uses `json_extract(cl.new_values, '$.calling_company_id')`; PostgreSQL uses `NULLIF(cl.new_values ->> 'calling_company_id', '')::BIGINT`. It combines direct calling-company logs and routing-event logs through one OR predicate, preserves `ORDER BY cl.changed_at DESC, cl.id DESC`, and returns the existing exact shape with `cl.summary AS comment`.
+
+The deterministic fixture adds exactly three Stage 48 change-log rows: Demo Company direct history, Demo Company routing-event JSON history using the existing Stage 43 event, and isolated CI Manual Company direct history. Old/new values remain backend-native (SQLite TEXT; PostgreSQL JSONB/psycopg dict) and smoke normalizes only for assertions. The smoke verifies direct and JSON history, aliases, summary-as-comment, company isolation, missing-company `[]`, exact field order, and no Repository writes under `SET TRANSACTION READ ONLY`. The actual semantic smoke count is **540**.
+
+Audit counts are **112 public / 59 smoke reads / 2 deferred reads / 50 writes / 1 infrastructure / 96.72%**. The remaining final read-only batch is `company_event_search_and_count`: `list_calling_company_events` and `count_calling_company_events`; it requires PostgreSQL JSONB extraction, literal text search, list/count predicate parity, pagination, and deterministic ordering. `DB_BACKEND=postgres` remains disabled and SQLite remains the operational backend.
