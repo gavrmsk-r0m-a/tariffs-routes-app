@@ -591,10 +591,44 @@ class Repository:
         return self.get_app_setting_value("hlr_daily_limit_override")
 
     def set_hlr_limit_override(self, value: object | None, updated_by: int | None = None, *, commit: bool = True) -> None:
-        if value in (None, ""):
-            self.delete_app_setting_value("hlr_daily_limit_override", commit=commit)
+        """Set the HLR override, optionally leaving transaction ownership to caller.
+
+        ``commit=False`` is the narrow transaction-foundation pattern used by the
+        rollback-only PostgreSQL harness.  Existing application callers retain
+        their historical commit-by-default behavior.
+        """
+        if self.backend == "sqlite":
+            if value in (None, ""):
+                self.delete_app_setting_value("hlr_daily_limit_override", commit=commit)
+                return
+            self.set_app_setting_value("hlr_daily_limit_override", str(value), updated_by, commit=commit)
             return
-        self.set_app_setting_value("hlr_daily_limit_override", str(value), updated_by, commit=commit)
+
+        p = placeholder(self.backend)
+        try:
+            if value in (None, ""):
+                self.conn.execute(
+                    f"DELETE FROM app_settings WHERE key = {p}",
+                    ("hlr_daily_limit_override",),
+                )
+            else:
+                self.conn.execute(
+                    f"""
+                    INSERT INTO app_settings(key, value, updated_at, updated_by)
+                    VALUES ({p}, {p}, CURRENT_TIMESTAMP, {p})
+                    ON CONFLICT(key) DO UPDATE SET
+                        value = excluded.value,
+                        updated_at = excluded.updated_at,
+                        updated_by = excluded.updated_by
+                    """,
+                    ("hlr_daily_limit_override", str(value), updated_by),
+                )
+            if commit:
+                self.conn.commit()
+        except Exception:
+            if commit:
+                self.conn.rollback()
+            raise
 
     def get_user_section_permission(self, user_id: int, section_key: str) -> sqlite3.Row | None:
         p = placeholder(self.backend)

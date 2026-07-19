@@ -696,3 +696,9 @@ Audit counts are **112 public / 59 smoke reads / 2 deferred reads / 50 writes / 
 ## Stage 50 PostgreSQL write-surface sequencing status
 
 Read coverage is 100%, while 50 Repository write methods remain. Stage 50 adds a machine-checked write plan; runtime direct SQL remains and `DB_BACKEND=postgres` is disabled. The recommended Stage 51 is the PostgreSQL write test harness and transaction foundation, before any domain write adaptation.
+
+## Stage 51 PostgreSQL rollback-only write harness foundation
+
+Stage 51 adds a CI-only PostgreSQL write harness after migration and the 611-check read-only smoke. It opens an explicit read-write transaction, uses the HLR override only as a synthetic `commit=False` caller-owned write, confirms the value inside that transaction, and rolls it back before verifying that the previous value remains. The harness never calls `conn.commit()`.
+
+It separately verifies PostgreSQL's aborted-transaction rule after a deliberate missing-table `SELECT`, and verifies that `ROLLBACK TO SAVEPOINT` permits subsequent work before the whole transaction is rolled back. `DB_BACKEND=postgres` remains disabled; there is no runtime connection factory or production PostgreSQL path. Stage 52 may be the first small write adaptation batch only after this harness is green; read-only smoke remains **611** checks.

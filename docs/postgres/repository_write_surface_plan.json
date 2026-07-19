@@ -1088,13 +1088,13 @@
     },
     "set_hlr_limit_override": {
       "batch": "write_test_harness_and_transaction_foundation",
-      "current_commit_behavior": "never commits",
+      "current_commit_behavior": "mixed",
       "dependencies": [
         "delete_app_setting_value",
         "set_app_setting_value"
       ],
       "mutation_kind": "mixed_read_write",
-      "notes": "Stage 51 never adapts this business write; every probe is rolled back by transaction rollback or SAVEPOINT.",
+      "notes": "Stage 51 synthetic probe only: PostgreSQL uses a backend-aware UPSERT and commit=False leaves ownership with the rollback-only harness; default callers retain commit behavior.",
       "postgres_strategy": "Stage 51 may use this only as a minimal rollback-only synthetic probe; no production adaptation or runtime enablement.",
       "returns": "none",
       "risk": "high",
@@ -1584,5 +1584,6 @@
     }
   },
   "recommended_next_batch": "write_test_harness_and_transaction_foundation",
-  "schema_version": 1
+  "schema_version": 1,
+  "foundation_status": "foundation_added"
 }
