@@ -1,4 +1,4 @@
-# Repository read-only PostgreSQL smoke audit (through Stage 48)
+# Repository read-only PostgreSQL smoke audit (through Stage 49)
 
 Earlier stages added filtered `list_calling_companies`, `list_phone_numbers`, `list_company_routing_settings`, and now Stage 42 added `list_provider_changes` and Stage 43 adds `list_routing_events`/`get_routing_event` to the PostgreSQL Repository smoke.
 
@@ -193,3 +193,8 @@ The confirmed local semantic smoke `checks_count` is **497**.
 The deterministic fixture adds exactly three Stage 48 change-log rows: Demo Company direct history, Demo Company routing-event JSON history using the existing Stage 43 event, and isolated CI Manual Company direct history. Old/new values remain backend-native (SQLite TEXT; PostgreSQL JSONB/psycopg dict) and smoke normalizes only for assertions. The smoke verifies direct and JSON history, aliases, summary-as-comment, company isolation, missing-company `[]`, exact field order, and no Repository writes under `SET TRANSACTION READ ONLY`. The actual semantic smoke count is **540**.
 
 Audit counts are **112 public / 59 smoke reads / 2 deferred reads / 50 writes / 1 infrastructure / 96.72%**. The remaining final read-only batch is `company_event_search_and_count`: `list_calling_company_events` and `count_calling_company_events`; it requires PostgreSQL JSONB extraction, literal text search, list/count predicate parity, pagination, and deterministic ordering. `DB_BACKEND=postgres` remains disabled and SQLite remains the operational backend.
+
+
+## Stage 49 PostgreSQL calling-company event search/count smoke
+
+`STAGE_49_METHODS = ("list_calling_company_events", "count_calling_company_events")` completes 61/61 Repository read coverage. Shared predicates preserve JSON number/string company extraction, six-field literal search, list/count parity, exact output, pagination, and ordering under `SET TRANSACTION READ ONLY`, with **598** local semantic checks. Runtime PostgreSQL and all writes remain out of scope; SQLite remains the operational backend.

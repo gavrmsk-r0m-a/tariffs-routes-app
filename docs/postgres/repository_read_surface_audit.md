@@ -1,18 +1,18 @@
-# PostgreSQL read-surface audit — Stage 48
+# PostgreSQL read-surface audit — Stage 49
 
 ## Executive summary
 
 Stage 44 adds a machine-verifiable, audit-only gate for the current PostgreSQL Repository read surface. Stage 45 hardens that gate with strict manifest metadata schema validation, stable configuration-error handling, and recursive runtime SQL census coverage. The audit statically parses `app/repository.py`, `scripts/postgres_repository_smoke.py`, and `docs/postgres/repository_method_coverage.json`; it does not import Repository code, execute top-level code, open databases, or rewrite inputs.
 
 - Public `Repository` methods: **112**.
-- Smoke-covered read methods: **59**.
-- Deferred read-only methods: **2**.
+- Smoke-covered read methods: **61**.
+- Deferred read-only methods: **0**.
 - Write/mutating methods: **50**.
 - Infrastructure/mixed methods: **1**.
 - Unclassified methods: **0**.
 - Duplicate classifications: **0**.
-- Current local PostgreSQL Repository smoke semantic checks: **540**.
-- Classified Repository read-surface coverage: **96.72%** (59 smoke-covered reads out of 61 classified read-only methods). This is not full application runtime readiness.
+- Current local PostgreSQL Repository smoke semantic checks: **598**.
+- Classified Repository read-surface coverage: **100.0%** (61 smoke-covered reads out of 61 classified read-only methods). This is not full application runtime readiness.
 
 ## Covered Repository read surface
 
@@ -77,3 +77,10 @@ The final read-only batch is **`company_event_search_and_count`** for `list_call
 The deterministic fixture adds exactly three Stage 48 change-log rows: Demo Company direct history, Demo Company routing-event JSON history using the existing Stage 43 event, and isolated CI Manual Company direct history. Old/new values remain backend-native (SQLite TEXT; PostgreSQL JSONB/psycopg dict) and smoke normalizes only for assertions. The smoke verifies direct and JSON history, aliases, summary-as-comment, company isolation, missing-company `[]`, exact field order, and no Repository writes under `SET TRANSACTION READ ONLY`. The actual semantic smoke count is **540**.
 
 Audit counts are **112 public / 59 smoke reads / 2 deferred reads / 50 writes / 1 infrastructure / 96.72%**. The remaining final read-only batch is `company_event_search_and_count`: `list_calling_company_events` and `count_calling_company_events`; it requires PostgreSQL JSONB extraction, literal text search, list/count predicate parity, pagination, and deterministic ordering. `DB_BACKEND=postgres` remains disabled and SQLite remains the operational backend.
+
+
+## Stage 49 calling-company event search/count smoke
+
+This final Repository read-only batch adds `STAGE_49_METHODS = ("list_calling_company_events", "count_calling_company_events")`. Both SELECT-only methods share one private JOIN/predicate builder, use JSON number/string company-ID extraction (`NULLIF(cl.new_values ->> 'calling_company_id', '')::BIGINT` on PostgreSQL and SQLite `CAST(NULLIF(json_extract(...), '') AS INTEGER)`), and apply six-field literal case-insensitive substring search without LIKE. Smoke verifies list/count parity, output shape, excluded route/orphan routing rows, pagination, and tie ordering under `SET TRANSACTION READ ONLY`; the confirmed local check count is **598**.
+
+Audit counts are **112 public / 61 smoke reads / 0 deferred reads / 50 writes / 1 infrastructure / 100.0%**. No deferred public Repository read-only methods remain. This does **not** mean full PostgreSQL runtime readiness: 50 Repository write/mutating methods and direct SQL in `app/db.py`, `app/importer.py`, and `app/server.py` remain; `DB_BACKEND=postgres` remains disabled and SQLite is operational. Recommended next stage: **Stage 50 — audit-only PostgreSQL write-surface sequencing and transaction plan**.

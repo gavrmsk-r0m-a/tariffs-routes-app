@@ -42,6 +42,7 @@ SMOKE_METHODS = (
     "list_provider_changes", "list_routing_events", "get_routing_event",
     "list_phone_history", "list_route_history", "list_tariff_history",
     "list_company_routing_setting_history", "list_calling_company_history",
+    "list_calling_company_events", "count_calling_company_events",
 )
 
 STAGE_34_METHODS = (
@@ -102,6 +103,11 @@ STAGE_47_METHODS = (
 
 STAGE_48_METHODS = (
     "list_calling_company_history",
+)
+
+STAGE_49_METHODS = (
+    "list_calling_company_events",
+    "count_calling_company_events",
 )
 
 EXISTS_CHECKS = (
@@ -851,6 +857,34 @@ def run_stage_48_checks(repo: Repository, check, demo_company) -> None:
     check("stage_48_missing_company", lambda: _check(missing_rows == [], "missing company must return []"))
 
 
+def run_stage_49_checks(repo: Repository, check, demo_company) -> None:
+    """Check calling-company event list/count parity, JSON routing and literals."""
+    keys = ["id", "company_id", "changed_at", "user_name", "action", "old_value", "new_value", "comment", "current_company_name", "company_id_external"]
+    rows = check("stage_49_all_rows", lambda: repo.list_calling_company_events(limit=1000, offset=0))
+    total = check("stage_49_all_count", repo.count_calling_company_events)
+    check("stage_49_list_type", lambda: _check(isinstance(rows, list), "events must return a list"))
+    check("stage_49_count_type", lambda: _check(isinstance(total, int), "count must return int"))
+    check("stage_49_count_parity", lambda: _check(total == len(rows or []), "list/count differ"))
+    check("stage_49_shape", lambda: _check(rows and list(rows[0].keys()) == keys, "event shape/order changed"))
+    stage = [row for row in (rows or []) if str(row["comment"]).startswith("Stage 49")]
+    expected = ["Stage 49 manual delta", "Stage 49 manual gamma", "Stage 49 literal-%_\\-needle", "Stage 49 routing beta", "Stage 49 alpha-summary-needle-49"]
+    check("stage_49_qualifying_order", lambda: _check([row["comment"] for row in stage] == expected, "qualifying events/order changed"))
+    check("stage_49_excluded_entities", lambda: _check(not any("excluded-route" in str(row["comment"]) or "orphan-routing" in str(row["comment"]) for row in (rows or [])), "excluded events leaked"))
+    routing = next((row for row in stage if row["comment"] == "Stage 49 routing beta"), None)
+    check("stage_49_routing_contract", lambda: _check(routing and routing["company_id"] != demo_company["id"] and routing["action"] == "routing_event.updated" and routing["current_company_name"] == "Demo Company" and routing["company_id_external"] == "demo-company-1" and routing["user_name"] == "Admin", "routing output contract changed"))
+    check("stage_49_routing_json", lambda: _check(routing and _snapshot_object(routing["old_value"])["calling_company_id"] == demo_company["id"] and int(_snapshot_object(routing["new_value"])["calling_company_id"]) == demo_company["id"], "routing JSON company ID wrong"))
+    for index, query in enumerate((None, "", "   ", "  ALPHA-SUMMARY-NEEDLE-49  ", "OLD-JSON-NEEDLE-49", "NEW-JSON-NEEDLE-49", "ROUTING-NEW-NEEDLE-49", "DEMO-COMPANY-1", "demo company", "ci-manual-company", "%_\\", "excluded-route-needle-49", "orphan-routing-needle-49", str(demo_company["id"]))):
+        found = check(f"stage_49_search_{index}_list", lambda q=query: repo.list_calling_company_events(search=q, limit=1000, offset=0))
+        count = check(f"stage_49_search_{index}_count", lambda q=query: repo.count_calling_company_events(search=q))
+        check(f"stage_49_search_{index}_parity", lambda found=found, count=count: _check(count == len(found or []), "search list/count differ"))
+    check("stage_49_literal_found", lambda: _check(any(row["comment"] == "Stage 49 literal-%_\\-needle" for row in (repo.list_calling_company_events(search="%_\\", limit=1000, offset=0))), "literal search failed"))
+    check("stage_49_excluded_searches", lambda: _check(repo.list_calling_company_events(search="excluded-route-needle-49", limit=1000, offset=0) == [] and repo.count_calling_company_events(search="orphan-routing-needle-49") == 0, "excluded search leaked"))
+    check("stage_49_page_1", lambda: _check([row["comment"] for row in repo.list_calling_company_events(limit=2, offset=0)] == expected[:2], "first page wrong"))
+    check("stage_49_page_2", lambda: _check([row["comment"] for row in repo.list_calling_company_events(limit=2, offset=2)] == expected[2:4], "second page wrong"))
+    check("stage_49_page_3", lambda: _check([row["comment"] for row in repo.list_calling_company_events(limit=1, offset=4)] == expected[4:5], "third page wrong"))
+    check("stage_49_zero_limit", lambda: _check(repo.list_calling_company_events(limit=0, offset=0) == [], "zero limit must be empty"))
+
+
 def run_repository_checks(repo: Repository, postgres_url: str) -> dict:
     summary = empty_summary(postgres_url)
     checks: list[tuple[str, object]] = []
@@ -915,6 +949,7 @@ def run_repository_checks(repo: Repository, postgres_url: str) -> dict:
     run_stage_46_checks(repo, check)
     run_stage_47_checks(repo, check)
     run_stage_48_checks(repo, check, company)
+    run_stage_49_checks(repo, check, company)
 
     summary.update(status="ok" if not failures else "failed", checks_count=len(checks) + len(failures), failures=failures)
     return summary

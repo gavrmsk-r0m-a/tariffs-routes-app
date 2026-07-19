@@ -2146,13 +2146,34 @@ class Repository:
             (company_id, company_id),
         ))
 
-    def list_calling_company_events(self, *, search: str | None = None, limit: int = 50, offset: int = 0) -> list[sqlite3.Row]:
-        where = "WHERE (cl.entity_type = 'calling_company' OR (cl.entity_type = 'routing_event' AND json_extract(cl.new_values, '$.calling_company_id') IS NOT NULL))"
-        params: list[object] = []
+    def _calling_company_event_query_parts(self, search: str | None) -> tuple[str, str, list[object]]:
+        """Build the shared, read-only calling-company event JOIN and predicate."""
+        p = placeholder(self.backend)
+        routing_company_id = (
+            "NULLIF(cl.new_values ->> 'calling_company_id', '')::BIGINT"
+            if self.backend == "postgres"
+            else "CAST(NULLIF(json_extract(cl.new_values, '$.calling_company_id'), '') AS INTEGER)"
+        )
+        company_join = f"CASE WHEN cl.entity_type = 'calling_company' THEN cl.entity_id ELSE {routing_company_id} END"
+        where = f"WHERE (cl.entity_type = 'calling_company' OR (cl.entity_type = 'routing_event' AND {routing_company_id} IS NOT NULL))"
         normalized_search = normalize_search_text(search)
+        params: list[object] = []
         if normalized_search is not None:
-            where += " AND (search_text_matches(CAST(COALESCE(cc.id, json_extract(cl.new_values, '$.calling_company_id'), cl.entity_id) AS TEXT), ?) = 1 OR search_text_matches(cc.company_id_external, ?) = 1 OR search_text_matches(cc.company_name, ?) = 1 OR search_text_matches(cl.summary, ?) = 1 OR search_text_matches(cl.old_values, ?) = 1 OR search_text_matches(cl.new_values, ?) = 1)"
-            params.extend([normalized_search] * 6)
+            fields = (
+                f"COALESCE(cc.id, {routing_company_id}, cl.entity_id)",
+                "cc.company_id_external", "cc.company_name", "cl.summary", "cl.old_values", "cl.new_values",
+            )
+            if self.backend == "postgres":
+                predicates = [f"POSITION(LOWER(CAST({p} AS TEXT)) IN LOWER(COALESCE(CAST({field} AS TEXT), ''))) > 0" for field in fields]
+            else:
+                predicates = [f"search_text_matches(CAST({field} AS TEXT), {p}) = 1" for field in fields]
+            where += " AND (" + " OR ".join(predicates) + ")"
+            params = [normalized_search] * 6
+        return company_join, where, params
+
+    def list_calling_company_events(self, *, search: str | None = None, limit: int = 50, offset: int = 0) -> list[sqlite3.Row]:
+        p = placeholder(self.backend)
+        company_join, where, params = self._calling_company_event_query_parts(search)
         params.extend([limit, offset])
         return list(self.conn.execute(
             f"""
@@ -2161,22 +2182,19 @@ class Repository:
                    cl.summary AS comment, cc.company_name AS current_company_name, cc.company_id_external
             FROM change_log cl
             LEFT JOIN users u ON u.id = cl.changed_by
-            LEFT JOIN calling_companies cc ON cc.id = CASE WHEN cl.entity_type = 'calling_company' THEN cl.entity_id ELSE json_extract(cl.new_values, '$.calling_company_id') END
+            LEFT JOIN calling_companies cc ON cc.id = {company_join}
             {where}
             ORDER BY cl.changed_at DESC, cl.id DESC
-            LIMIT ? OFFSET ?
+            LIMIT {p} OFFSET {p}
             """,
             params,
         ))
 
     def count_calling_company_events(self, *, search: str | None = None) -> int:
-        where = "WHERE (cl.entity_type = 'calling_company' OR (cl.entity_type = 'routing_event' AND json_extract(cl.new_values, '$.calling_company_id') IS NOT NULL))"
-        params: list[object] = []
-        normalized_search = normalize_search_text(search)
-        if normalized_search is not None:
-            where += " AND (search_text_matches(CAST(COALESCE(cc.id, json_extract(cl.new_values, '$.calling_company_id'), cl.entity_id) AS TEXT), ?) = 1 OR search_text_matches(cc.company_id_external, ?) = 1 OR search_text_matches(cc.company_name, ?) = 1 OR search_text_matches(cl.summary, ?) = 1 OR search_text_matches(cl.old_values, ?) = 1 OR search_text_matches(cl.new_values, ?) = 1)"
-            params.extend([normalized_search] * 6)
-        return int(self.conn.execute(f"SELECT COUNT(*) FROM change_log cl LEFT JOIN calling_companies cc ON cc.id = CASE WHEN cl.entity_type = 'calling_company' THEN cl.entity_id ELSE json_extract(cl.new_values, '$.calling_company_id') END {where}", params).fetchone()[0])
+        company_join, where, params = self._calling_company_event_query_parts(search)
+        row = self.conn.execute(f"SELECT COUNT(*) AS count FROM change_log cl LEFT JOIN calling_companies cc ON cc.id = {company_join} {where}", params).fetchone()
+        values = row_to_dict(row) if row else {}
+        return int(values["count"]) if values else 0
 
     def _validate_company_routing_values(
         self,

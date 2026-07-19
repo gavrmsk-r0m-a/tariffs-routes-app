@@ -1,28 +1,5 @@
 {
-  "deferred_read_only": {
-    "count_calling_company_events": {
-      "blockers": [
-        "sqlite_placeholder",
-        "search_text_matches",
-        "requires_fixture",
-        "no_postgres_semantic_test"
-      ],
-      "reason": "Calling-company event count is SELECT-only companion to list_calling_company_events and shares the search predicate contract.",
-      "recommended_batch": "company_event_search_and_count"
-    },
-    "list_calling_company_events": {
-      "blockers": [
-        "sqlite_placeholder",
-        "json_text_vs_jsonb",
-        "search_text_matches",
-        "pagination_contract",
-        "requires_fixture",
-        "no_postgres_semantic_test"
-      ],
-      "reason": "Calling-company event search/count list is SELECT-only but has text search, pagination, JSON payload, and runtime-row contracts not in smoke.",
-      "recommended_batch": "company_event_search_and_count"
-    }
-  },
+  "deferred_read_only": {},
   "infrastructure_or_mixed": {
     "transaction": {
       "reason": "Transaction context manager controls commit/rollback boundaries and is not a read surface."

@@ -37,6 +37,11 @@ STAGE47_MANUAL_ACTIVE_AT = "2026-07-18 10:00:00"
 STAGE48_COMPANY_CHANGED_AT = "2026-07-19 08:00:00"
 STAGE48_ROUTING_EVENT_LOG_AT = "2026-07-19 09:00:00"
 STAGE48_MANUAL_COMPANY_AT = "2026-07-19 10:00:00"
+STAGE49_DEMO_DIRECT_AT = "2026-07-20 08:00:00"
+STAGE49_DEMO_ROUTING_AT = "2026-07-20 09:00:00"
+STAGE49_DEMO_LITERAL_AT = "2026-07-20 10:00:00"
+STAGE49_MANUAL_TIE_AT = "2026-07-20 11:00:00"
+STAGE49_EXCLUDED_AT = "2026-07-20 12:00:00"
 
 
 def q(conn: sqlite3.Connection, sql: str, params: tuple = ()) -> int:
@@ -333,6 +338,18 @@ def create_demo_sqlite(output: str | Path) -> Path:
              "Stage 48 manual company changed", "Synthetic Stage 48 manual company change log"),
         )
         for entity_type, entity_id, change_type, changed_at, old_values, new_values, summary, comment in stage48_logs:
+            q(conn, "INSERT INTO change_log(entity_type, entity_id, change_type, changed_by, changed_at, old_values, new_values, summary, comment, source, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", (entity_type, entity_id, change_type, admin_id, changed_at, json.dumps(old_values, sort_keys=True), json.dumps(new_values, sort_keys=True), summary, comment, "ci", changed_at))
+        # Stage 49 adds only deterministic change-log rows; no business entities change.
+        stage49_logs = (
+            ("calling_company", company_id, "calling_company.updated", STAGE49_DEMO_DIRECT_AT, {"marker": "old-json-needle-49", "line_count": 2}, {"marker": "new-json-needle-49", "line_count": 3}, "Stage 49 alpha-summary-needle-49", "Synthetic Stage 49 demo direct log"),
+            ("routing_event", stage43_campaign_event_id, "routing_event.updated", STAGE49_DEMO_ROUTING_AT, {"calling_company_id": company_id, "routing_mode": "mixed", "marker": "routing-old-needle-49"}, {"calling_company_id": str(company_id), "routing_mode": "campaign_route", "marker": "routing-new-needle-49"}, "Stage 49 routing beta", "Synthetic Stage 49 routing log"),
+            ("calling_company", company_id, "calling_company.updated", STAGE49_DEMO_LITERAL_AT, {"literal": "before"}, {"literal": "after"}, "Stage 49 literal-%_\\-needle", "Synthetic Stage 49 literal search log"),
+            ("calling_company", manual_company_id, "calling_company.updated", STAGE49_MANUAL_TIE_AT, {"marker": "manual-gamma-old"}, {"marker": "manual-gamma-new"}, "Stage 49 manual gamma", "Synthetic Stage 49 manual gamma log"),
+            ("calling_company", manual_company_id, "calling_company.updated", STAGE49_MANUAL_TIE_AT, {"marker": "manual-delta-old"}, {"marker": "manual-delta-new"}, "Stage 49 manual delta", "Synthetic Stage 49 manual delta log"),
+            ("route", route_id, "route.updated", STAGE49_EXCLUDED_AT, {"marker": "excluded-route-old"}, {"marker": "excluded-route-needle-49"}, "Stage 49 excluded-route-needle-49", "Synthetic Stage 49 excluded route log"),
+            ("routing_event", stage43_none_active_id, "routing_event.updated", STAGE49_EXCLUDED_AT, {"stage": 49}, {"stage": 49, "marker": "orphan-routing-needle-49"}, "Stage 49 orphan-routing-needle-49", "Synthetic Stage 49 orphan routing log"),
+        )
+        for entity_type, entity_id, change_type, changed_at, old_values, new_values, summary, comment in stage49_logs:
             q(conn, "INSERT INTO change_log(entity_type, entity_id, change_type, changed_by, changed_at, old_values, new_values, summary, comment, source, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", (entity_type, entity_id, change_type, admin_id, changed_at, json.dumps(old_values, sort_keys=True), json.dumps(new_values, sort_keys=True), summary, comment, "ci", changed_at))
         q(conn, "INSERT INTO route_naming_rules(name, template, is_active, comment, created_by, created_at, updated_by, updated_at) VALUES (?, ?, 1, ?, ?, ?, ?, ?)", ("Demo rule", "{country}-{provider}", "Synthetic naming rule", admin_id, NOW, admin_id, NOW))
         q(conn, "INSERT INTO import_jobs(entity_type, mode, file_name, status, total_rows, new_rows, duplicate_rows, skipped_rows, updated_rows, replaced_rows, error_rows, preview_data, summary, error_report, created_by, created_at, started_at, finished_at) VALUES (?, ?, ?, ?, 1, 1, 0, 0, 0, 0, 0, ?, ?, ?, ?, ?, ?, ?)", ("routes", "append_update", "demo.csv", "completed", '[{"row":1}]', '{"inserted":1}', '{"errors":[]}', admin_id, NOW, NOW, NOW))

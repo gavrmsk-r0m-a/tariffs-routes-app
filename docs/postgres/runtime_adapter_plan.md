@@ -687,3 +687,8 @@ Stage 46 declares `STAGE_46_METHODS = ("list_phone_history", "list_route_history
 The deterministic fixture adds exactly three Stage 48 change-log rows: Demo Company direct history, Demo Company routing-event JSON history using the existing Stage 43 event, and isolated CI Manual Company direct history. Old/new values remain backend-native (SQLite TEXT; PostgreSQL JSONB/psycopg dict) and smoke normalizes only for assertions. The smoke verifies direct and JSON history, aliases, summary-as-comment, company isolation, missing-company `[]`, exact field order, and no Repository writes under `SET TRANSACTION READ ONLY`. The actual semantic smoke count is **540**.
 
 Audit counts are **112 public / 59 smoke reads / 2 deferred reads / 50 writes / 1 infrastructure / 96.72%**. The remaining final read-only batch is `company_event_search_and_count`: `list_calling_company_events` and `count_calling_company_events`; it requires PostgreSQL JSONB extraction, literal text search, list/count predicate parity, pagination, and deterministic ordering. `DB_BACKEND=postgres` remains disabled and SQLite remains the operational backend.
+
+
+## Stage 49 PostgreSQL Repository read-surface completion
+
+`STAGE_49_METHODS` adds `list_calling_company_events` and `count_calling_company_events`, completing **112 / 61 / 0 / 50 / 1 / 100.0%** (public/smoke/deferred/writes/infrastructure/coverage) with **598** smoke checks. No deferred Repository reads remain. Runtime census is unchanged (53 SELECT, 65 writes, 32 schema/PRAGMA, 11 dynamic/unknown); 50 write methods remain, `DB_BACKEND=postgres` stays disabled, and Stage 50 is audit/write sequencing only.
