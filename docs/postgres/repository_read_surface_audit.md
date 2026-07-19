@@ -11,7 +11,7 @@ Stage 44 adds a machine-verifiable, audit-only gate for the current PostgreSQL R
 - Infrastructure/mixed methods: **1**.
 - Unclassified methods: **0**.
 - Duplicate classifications: **0**.
-- Current local PostgreSQL Repository smoke semantic checks: **490**.
+- Current local PostgreSQL Repository smoke semantic checks: **497**.
 - Classified Repository read-surface coverage: **93.44%** (57 smoke-covered reads out of 61 classified read-only methods). This is not full application runtime readiness.
 
 ## Covered Repository read surface
@@ -57,7 +57,7 @@ Deferred read-only entries require `reason`, non-empty unique `blockers`, and `r
 
 ## Stage 46 history smoke
 
-Stage 46 moves `list_phone_history`, `list_route_history`, and `list_tariff_history` into the PostgreSQL read-only smoke. The deterministic synthetic fixture contains phone, route-phone replacement/addition, route, and tariff-created/tariff-changed history records without changing the current Demo Phone, Demo Route, or Demo Tariff state. The smoke now has **490** semantic checks.
+Stage 46 moves `list_phone_history`, `list_route_history`, and `list_tariff_history` into the PostgreSQL read-only smoke. The deterministic synthetic fixture contains phone, route-phone replacement/addition, route, and tariff-created/tariff-changed history records without changing the current Demo Phone, Demo Route, or Demo Tariff state. The smoke now has **497** semantic checks.
 
 The next deferred Repository method is **`list_company_routing_setting_history`**.
 

@@ -673,4 +673,4 @@ Classification counts remain unchanged: **112** public Repository methods, **54*
 
 ## Stage 46: route, phone, and tariff history smoke
 
-Stage 46 declares `STAGE_46_METHODS = ("list_phone_history", "list_route_history", "list_tariff_history")` and includes each method in `SMOKE_METHODS` exactly once. The synthetic migration fixture supplies deterministic history-only records, and the smoke verifies history shapes, ordering, missing-ID contracts, old/new route-phone matching, Decimal tariff values, and unchanged current entity state. The confirmed smoke `checks_count` is **490**.
+Stage 46 declares `STAGE_46_METHODS = ("list_phone_history", "list_route_history", "list_tariff_history")` and includes each method in `SMOKE_METHODS` exactly once. The synthetic migration fixture supplies deterministic history-only records, and the smoke verifies history shapes, ordering, missing-ID contracts, old/new route-phone matching, Decimal tariff values, and unchanged current entity state. The confirmed smoke `checks_count` is **497**.

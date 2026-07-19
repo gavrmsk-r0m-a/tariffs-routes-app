@@ -162,12 +162,21 @@ The four current-tariff lookup predicates for old/new route and old/new company 
 
 `get_routing_event` preserves the detail contract: found rows are returned as `dict`, missing IDs return `None`, and only `server_priority` details append trailing `affected_server_names` sorted by server name (for Stage 43, `Stage 42 Server A, Stage 42 Server B`). The list output shape and key order are explicitly guarded, and `affected_server_names` is not added to list rows.
 
-The confirmed local semantic smoke `checks_count` is **490**. The PostgreSQL connection remains `SET TRANSACTION READ ONLY`; `DB_BACKEND=postgres` remains disabled, and SQLite remains the operational production/development backend. Deferred work still includes create/update/deactivate routing events, server-priority write application, campaign-routing write application, company routing-setting history, calling-company event/history JSON search, PostgreSQL full runtime, and all Repository write paths.
+The confirmed local semantic smoke `checks_count` remains **459**. The PostgreSQL connection remains `SET TRANSACTION READ ONLY`; `DB_BACKEND=postgres` remains disabled, and SQLite remains the operational production/development backend. Deferred work still includes create/update/deactivate routing events, server-priority write application, campaign-routing write application, company routing-setting history, calling-company event/history JSON search, PostgreSQL full runtime, and all Repository write paths.
 
 ## Stage 44 machine-verifiable read-surface coverage audit
 
 Stage 44 updates this audit to include a machine-verifiable classification/coverage gate for all public `Repository` methods. The gate derives the smoke-covered read category from `SMOKE_METHODS` and verifies that every other public method is classified exactly once in `docs/postgres/repository_method_coverage.json` as deferred read-only, write/mutating, or infrastructure/mixed.
 
-No new Repository methods were added to the PostgreSQL Repository smoke in Stage 44, `SMOKE_METHODS` was not expanded, and the local semantic smoke `checks_count` remains **490**. The full list of remaining deferred read-only methods and recommended implementation batches is maintained in `docs/postgres/repository_read_surface_audit.md`.
+No new Repository methods were added to the PostgreSQL Repository smoke in Stage 44, `SMOKE_METHODS` was not expanded, and the local semantic smoke `checks_count` remained **459**. The full list of remaining deferred read-only methods and recommended implementation batches is maintained in `docs/postgres/repository_read_surface_audit.md`.
 
 The expected successful audit state is `unclassified == []` and `duplicate_classifications == []`. This Repository read-surface coverage does not mean the full PostgreSQL runtime application is ready: direct SQL remains in runtime modules, Repository write paths are still out of scope, `DB_BACKEND=postgres` remains disabled, and SQLite remains the operational backend.
+
+
+## Stage 46 route, phone and tariff history smoke
+
+`STAGE_46_METHODS = ("list_phone_history", "list_route_history", "list_tariff_history")` covers the three history reads in the same `SET TRANSACTION READ ONLY` smoke transaction. The phone and route history queries preserve their `UNION ALL` output-shape contracts; the smoke asserts exact row keys and descending history order.
+
+The route-phone replacement fixture has no `phone_number_id`, so `list_phone_history` is exercised separately through both its old Demo Phone ID and its new CI Routed Phone ID. The checks prove the old/new matching branches, a null output `phone_number`, the Demo Route name, and both recorded phone numbers. Tariff history checks use `Decimal` semantics for created and changed values, including the negative `-0.1` EUR delta. The fixture preserves the current Demo Phone, Route, and Tariff state, and the RecordingRepository regression confirms no write method is called.
+
+The confirmed local semantic smoke `checks_count` is **497**.
