@@ -143,6 +143,8 @@ class PostgreSQLRepositorySmokeTest(unittest.TestCase):
         self.assertEqual("failed", summary["status"])
         self.assertIn("stage_47_demo_active_values", {failure["check"] for failure in summary["failures"]})
         self.assertGreater(repository.called.count("list_company_routing_setting_history"), 3)
+        write_prefixes = ("create_", "update_", "ensure_", "delete_", "clear_", "set_", "upsert_", "add_", "remove_", "recalculate_", "log_")
+        self.assertFalse([name for name in repository.called if name.startswith(write_prefixes)])
         self.assertEqual(522, summary["checks_count"])
 
     def test_stage_43_failure_is_recorded_and_later_checks_continue(self):
