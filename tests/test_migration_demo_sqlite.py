@@ -429,3 +429,20 @@ class Stage46MigrationDemoFixtureTests(MigrationDemoSqliteTests):
         self.assertEqual(Decimal("0.1"), Decimal(str(tariff["price_in_provider_currency"])))
         self.assertEqual(1, tariff["is_current"])
         self.assertEqual(0, stage46_log_count)
+
+class Stage47MigrationDemoFixtureTests(MigrationDemoSqliteTests):
+    def test_stage_47_routing_event_fixture_contract(self):
+        db_path = self.make_demo_db()
+        with sqlite3.connect(db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute("SELECT re.*, cc.company_id_external, old_route.name AS old_route_name, new_route.name AS new_route_name FROM routing_events re JOIN calling_companies cc ON cc.id=re.calling_company_id LEFT JOIN routes old_route ON old_route.id=re.old_company_route_id LEFT JOIN routes new_route ON new_route.id=re.new_company_route_id WHERE re.reason LIKE 'Stage 47%' ORDER BY re.event_at").fetchall()
+            settings = conn.execute("SELECT COUNT(*) FROM company_routing_settings").fetchone()[0]
+            links = conn.execute("SELECT COUNT(*) FROM routing_event_servers res JOIN routing_events re ON re.id=res.routing_event_id WHERE re.reason LIKE 'Stage 47%'").fetchone()[0]
+            logs = conn.execute("SELECT COUNT(*) FROM change_log WHERE change_type LIKE 'Stage 47%' OR comment LIKE 'Synthetic Stage 47%'").fetchone()[0]
+        self.assertEqual(3, len(rows)); self.assertEqual(0, links); self.assertEqual(0, logs); self.assertEqual(3, settings)
+        active, inactive, manual = rows
+        self.assertEqual(("2026-07-18 08:00:00", "campaign_setting", 1, "demo-company-1", "Demo Route", "Demo Route", 1, 0), (active["event_at"], active["apply_scope"], active["is_active"], active["company_id_external"], active["old_route_name"], active["new_route_name"], active["old_company_has_autorotation"], active["new_company_has_autorotation"]))
+        self.assertEqual(("2026-07-18 09:00:00", 0, "Synthetic Stage 47 archive"), (inactive["event_at"], inactive["is_active"], inactive["deactivation_reason"])); self.assertIsNotNone(inactive["deactivated_at"]); self.assertIsNotNone(inactive["deactivated_by"])
+        self.assertEqual(("2026-07-18 10:00:00", 1, "ci-manual-company", None, None, 1, 0), (manual["event_at"], manual["is_active"], manual["company_id_external"], manual["old_route_name"], manual["new_route_name"], manual["old_company_has_autorotation"], manual["new_company_has_autorotation"]))
+        for row in rows:
+            self.assertEqual(47, json.loads(row["snapshot_json"])["stage"])

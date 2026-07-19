@@ -1,18 +1,18 @@
-# PostgreSQL read-surface audit — Stage 46
+# PostgreSQL read-surface audit — Stage 47
 
 ## Executive summary
 
 Stage 44 adds a machine-verifiable, audit-only gate for the current PostgreSQL Repository read surface. Stage 45 hardens that gate with strict manifest metadata schema validation, stable configuration-error handling, and recursive runtime SQL census coverage. The audit statically parses `app/repository.py`, `scripts/postgres_repository_smoke.py`, and `docs/postgres/repository_method_coverage.json`; it does not import Repository code, execute top-level code, open databases, or rewrite inputs.
 
 - Public `Repository` methods: **112**.
-- Smoke-covered read methods: **57**.
-- Deferred read-only methods: **4**.
+- Smoke-covered read methods: **58**.
+- Deferred read-only methods: **3**.
 - Write/mutating methods: **50**.
 - Infrastructure/mixed methods: **1**.
 - Unclassified methods: **0**.
 - Duplicate classifications: **0**.
-- Current local PostgreSQL Repository smoke semantic checks: **497**.
-- Classified Repository read-surface coverage: **93.44%** (57 smoke-covered reads out of 61 classified read-only methods). This is not full application runtime readiness.
+- Current local PostgreSQL Repository smoke semantic checks: **522**.
+- Classified Repository read-surface coverage: **95.08%** (58 smoke-covered reads out of 61 classified read-only methods). This is not full application runtime readiness.
 
 ## Covered Repository read surface
 
@@ -35,7 +35,6 @@ The existing PostgreSQL Repository smoke covers adapter-ready read groups withou
 | `list_calling_company_history` | Calling-company history with JSON snapshots. | `sqlite_placeholder`, `json_text_vs_jsonb`, `history_shape`, `requires_fixture`, `no_postgres_semantic_test` | `company_history_json` |
 | `list_calling_company_events` | Calling-company event list/search page. | `sqlite_placeholder`, `json_text_vs_jsonb`, `search_text_matches`, `pagination_contract`, `requires_fixture`, `no_postgres_semantic_test` | `company_event_search_and_count` |
 | `count_calling_company_events` | Count companion for calling-company event search. | `sqlite_placeholder`, `search_text_matches`, `requires_fixture`, `no_postgres_semantic_test` | `company_event_search_and_count` |
-| `list_company_routing_setting_history` | Company routing-setting history from routing events. | `sqlite_placeholder`, `history_shape`, `requires_fixture`, `no_postgres_semantic_test` | `routing_setting_event_history` |
 
 ## Runtime SQL outside Repository
 
@@ -57,10 +56,16 @@ Deferred read-only entries require `reason`, non-empty unique `blockers`, and `r
 
 ## Stage 46 history smoke
 
-Stage 46 moves `list_phone_history`, `list_route_history`, and `list_tariff_history` into the PostgreSQL read-only smoke. The deterministic synthetic fixture contains phone, route-phone replacement/addition, route, and tariff-created/tariff-changed history records without changing the current Demo Phone, Demo Route, or Demo Tariff state. The smoke now has **497** semantic checks.
-
-The next deferred Repository method is **`list_company_routing_setting_history`**.
+Stage 46 moves `list_phone_history`, `list_route_history`, and `list_tariff_history` into the PostgreSQL read-only smoke. The deterministic synthetic fixture contains phone, route-phone replacement/addition, route, and tariff-created/tariff-changed history records without changing the current Demo Phone, Demo Route, or Demo Tariff state. The smoke has **497** semantic checks at this stage.
 
 ## Runtime boundary
 
 PostgreSQL full runtime is still not ready. Repository writes are not adapted, direct SQL outside Repository still exists, `DB_BACKEND=postgres` remains disabled, and SQLite remains the operational production/development backend. The PostgreSQL smoke remains a read-only CI/smoke surface using `SET TRANSACTION READ ONLY`, not a full runtime enablement.
+
+## Stage 47 company routing-setting event history smoke
+
+Stage 47 moves `list_company_routing_setting_history` into the read-only smoke. It preserves company-scoped history semantics across current and historical settings, filters to active `campaign_setting` events with backend-aware placeholders/booleans, and validates exact aliases, ordering, and TEXT/JSONB snapshot behavior. The current local smoke has **522** semantic checks.
+
+## Recommended next implementation Stage
+
+The next batch is **`company_history_json`**, starting with `list_calling_company_history`, a SELECT-only JSON history read without search or pagination. After that, use a separate **`company_event_search_and_count`** batch for `list_calling_company_events` and `count_calling_company_events` so JSON/search/pagination and count parity can be adapted together.

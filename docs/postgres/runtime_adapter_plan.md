@@ -674,3 +674,7 @@ Classification counts remain unchanged: **112** public Repository methods, **54*
 ## Stage 46: route, phone, and tariff history smoke
 
 Stage 46 declares `STAGE_46_METHODS = ("list_phone_history", "list_route_history", "list_tariff_history")` and includes each method in `SMOKE_METHODS` exactly once. The synthetic migration fixture supplies deterministic history-only records, and the smoke verifies history shapes, ordering, missing-ID contracts, old/new route-phone matching, Decimal tariff values, and unchanged current entity state. The confirmed smoke `checks_count` is **497**.
+
+## Stage 47: PostgreSQL company routing-setting event history smoke
+
+`STAGE_47_METHODS = ("list_company_routing_setting_history",)` adds synthetic active/inactive campaign events and verifies active-only, company-scoped semantics across current/historical setting versions, aliases, and snapshot JSON. The confirmed smoke count is **522**. Audit counts are **112 / 58 / 3 / 50 / 1 / 95.08%**. Remaining deferred methods are `list_calling_company_history`, `list_calling_company_events`, and `count_calling_company_events`; `DB_BACKEND=postgres` remains disabled.

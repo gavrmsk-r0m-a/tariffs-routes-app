@@ -1046,3 +1046,44 @@ class RepositoryHistoryPostgresSqlTest(unittest.TestCase):
             self.assertEqual([], getattr(Repository(conn), method)(*args))
             self.assertIn("?", conn.sql)
             self.assertEqual(expected_params, conn.params)
+
+class CompanyRoutingSettingHistoryAdapterTest(unittest.TestCase):
+    def _capture(self, backend):
+        class CaptureConnection:
+            def create_function(self, *args):
+                pass
+            def execute(self, sql, params=()):
+                self.sql, self.params = sql, params
+                return []
+        conn = CaptureConnection()
+        repo = Repository(conn, backend=backend)
+        repo.get_company_routing_setting = lambda setting_id: {"calling_company_id": 7}
+        self.assertEqual([], repo.list_company_routing_setting_history(11))
+        return conn
+
+    def test_postgres_company_routing_setting_history_sql(self):
+        conn = self._capture("postgres")
+        sql = " ".join(conn.sql.split())
+        self.assertIn("re.apply_scope = 'campaign_setting'", sql)
+        self.assertIn("re.calling_company_id = %s", sql)
+        self.assertIn("re.is_active = %s", sql)
+        self.assertIn("ORDER BY re.event_at DESC, re.id DESC", sql)
+        self.assertIn("old_provider.name AS old_provider_name", sql)
+        self.assertIn("new_provider.name AS new_provider_name", sql)
+        self.assertNotIn("re.is_active = 1", sql)
+        self.assertNotIn("?", sql)
+        self.assertEqual((7, True), conn.params)
+
+    def test_sqlite_company_routing_setting_history_sql_and_missing_setting(self):
+        conn = self._capture("sqlite")
+        sql = " ".join(conn.sql.split())
+        self.assertEqual(2, sql.count("?"))
+        self.assertEqual((7, 1), conn.params)
+        class NoSelectConnection:
+            def create_function(self, *args):
+                pass
+            def execute(self, *args):
+                raise AssertionError("history SELECT must not execute")
+        repo = Repository(NoSelectConnection())
+        repo.get_company_routing_setting = lambda setting_id: None
+        self.assertEqual([], repo.list_company_routing_setting_history(-1))

@@ -1,4 +1,4 @@
-# Repository read-only PostgreSQL smoke audit (through Stage 44)
+# Repository read-only PostgreSQL smoke audit (through Stage 47)
 
 Earlier stages added filtered `list_calling_companies`, `list_phone_numbers`, `list_company_routing_settings`, and now Stage 42 added `list_provider_changes` and Stage 43 adds `list_routing_events`/`get_routing_event` to the PostgreSQL Repository smoke.
 
@@ -177,6 +177,10 @@ The expected successful audit state is `unclassified == []` and `duplicate_class
 
 `STAGE_46_METHODS = ("list_phone_history", "list_route_history", "list_tariff_history")` covers the three history reads in the same `SET TRANSACTION READ ONLY` smoke transaction. The phone and route history queries preserve their `UNION ALL` output-shape contracts; the smoke asserts exact row keys and descending history order.
 
-The route-phone replacement fixture has no `phone_number_id`, so `list_phone_history` is exercised separately through both its old Demo Phone ID and its new CI Routed Phone ID. The checks prove the old/new matching branches, a null output `phone_number`, the Demo Route name, and both recorded phone numbers. Tariff history checks use `Decimal` semantics for created and changed values, including the negative `-0.1` EUR delta. The fixture preserves the current Demo Phone, Route, and Tariff state, and the RecordingRepository regression confirms no write method is called.
+The route-phone replacement fixture has no `phone_number_id`, so `list_phone_history` is exercised separately through both its old Demo Phone ID and its new CI Routed Phone ID. The checks prove the old/new matching branches, a null output `phone_number`, the Demo Route name, and both recorded phone numbers. Tariff history checks use `Decimal` semantics for created and changed values, including the negative `-0.1` EUR delta. The fixture preserves the current Demo Phone, Route, and Demo Tariff state, and the RecordingRepository regression confirms no write method is called.
 
 The confirmed local semantic smoke `checks_count` is **497**.
+
+## Stage 47 company routing-setting event history smoke
+
+`list_company_routing_setting_history` now runs in the same `SET TRANSACTION READ ONLY` smoke transaction with no Repository writes. It is company-scoped rather than setting-version-scoped: current and historical CI Manual Company settings return the same active campaign history. Checks cover backend placeholders/booleans, active filtering, JSON snapshot TEXT/JSONB behavior, exact row shape/order, aliases, and missing settings. The confirmed smoke count is **522**; runtime remains disabled (`DB_BACKEND=postgres` is not enabled).
