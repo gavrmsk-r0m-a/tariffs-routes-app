@@ -471,3 +471,19 @@ class Stage48MigrationDemoFixtureTests(MigrationDemoSqliteTests):
         self.assertEqual(("Demo Company", 2, "Synthetic company", "demo-company-1"), (demo["company_name"], demo["line_count"], demo["comment"], demo["company_id_external"]))
         self.assertEqual(("CI Manual Company", "Synthetic active manual company", "ci-manual-company"), (manual["company_name"], manual["comment"], manual["company_id_external"]))
         self.assertEqual((0, 0), (routing_count, setting_count))
+
+class Stage49MigrationDemoFixtureTests(unittest.TestCase):
+    def test_stage_49_change_log_fixture(self):
+        with tempfile.TemporaryDirectory() as directory:
+            conn=sqlite3.connect(create_demo_sqlite(Path(directory)/"demo.db")); conn.row_factory=sqlite3.Row
+            try:
+                rows=list(conn.execute("SELECT cl.*, u.username FROM change_log cl JOIN users u ON u.id=cl.changed_by WHERE cl.summary LIKE 'Stage 49%' ORDER BY cl.id"))
+                self.assertEqual(7, len(rows)); self.assertTrue(all(r["username"]=="admin" and r["source"]=="ci" and r["created_at"]==r["changed_at"] for r in rows))
+                values={r["summary"]:r for r in rows}; demo=conn.execute("SELECT * FROM calling_companies WHERE company_name='Demo Company'").fetchone(); manual=conn.execute("SELECT * FROM calling_companies WHERE company_name='CI Manual Company'").fetchone()
+                self.assertEqual((2,"Synthetic company","Demo Company"),(demo["line_count"],demo["comment"],demo["company_name"])); self.assertEqual(("Synthetic active manual company","CI Manual Company"),(manual["comment"],manual["company_name"]))
+                routing=values["Stage 49 routing beta"]; new=json.loads(routing["new_values"]); old=json.loads(routing["old_values"])
+                self.assertEqual("routing_event",routing["entity_type"]); self.assertIsInstance(new["calling_company_id"],str); self.assertEqual(demo["id"],int(new["calling_company_id"])); self.assertEqual(("mixed","campaign_route","routing-old-needle-49","routing-new-needle-49"),(old["routing_mode"],new["routing_mode"],old["marker"],new["marker"]))
+                gamma,delta=values["Stage 49 manual gamma"],values["Stage 49 manual delta"]; self.assertEqual(gamma["changed_at"],delta["changed_at"]); self.assertGreater(delta["id"],gamma["id"])
+                self.assertEqual("route",values["Stage 49 excluded-route-needle-49"]["entity_type"]); self.assertNotIn("calling_company_id",json.loads(values["Stage 49 orphan-routing-needle-49"]["new_values"]))
+                self.assertEqual(0,conn.execute("SELECT COUNT(*) FROM routing_events WHERE created_at LIKE '2026-07-20%'").fetchone()[0]); self.assertEqual(0,conn.execute("SELECT COUNT(*) FROM company_routing_settings WHERE created_at LIKE '2026-07-20%'").fetchone()[0]); self.assertEqual(0,conn.execute("SELECT COUNT(*) FROM routing_event_servers WHERE created_at LIKE '2026-07-20%'").fetchone()[0])
+            finally: conn.close()

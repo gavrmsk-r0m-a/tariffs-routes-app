@@ -197,4 +197,4 @@ Audit counts are **112 public / 59 smoke reads / 2 deferred reads / 50 writes / 
 
 ## Stage 49 PostgreSQL calling-company event search/count smoke
 
-`STAGE_49_METHODS = ("list_calling_company_events", "count_calling_company_events")` completes 61/61 Repository read coverage. Shared predicates preserve JSON number/string company extraction, six-field literal search, list/count parity, exact output, pagination, and ordering under `SET TRANSACTION READ ONLY`, with **598** local semantic checks. Runtime PostgreSQL and all writes remain out of scope; SQLite remains the operational backend.
+`STAGE_49_METHODS = ("list_calling_company_events", "count_calling_company_events")` completes 61/61 Repository read coverage. Shared predicates preserve JSON number/string company extraction, six-field literal search, list/count parity, exact output, pagination, and ordering under `SET TRANSACTION READ ONLY`, with **611** local semantic checks. Runtime PostgreSQL and all writes remain out of scope; SQLite remains the operational backend.

@@ -1118,3 +1118,43 @@ class CallingCompanyHistoryAdapterTests(unittest.TestCase):
                 self.assertEqual([], repo.list_calling_company_history(-1))
                 self.assertEqual(["Stage 48 manual company changed"], [row["comment"] for row in repo.list_calling_company_history(manual["id"]) if row["comment"].startswith("Stage 48")])
             finally: conn.close()
+
+class CallingCompanyEventsAdapterTests(unittest.TestCase):
+    class Cursor(list):
+        def __init__(self, row=None): super().__init__(); self.row = row
+        def fetchone(self): return self.row
+    class CaptureConnection:
+        def __init__(self): self.calls = []
+        def create_function(self, *args): pass
+        def execute(self, sql, params=()):
+            self.calls.append((sql, tuple(params)))
+            return CallingCompanyEventsAdapterTests.Cursor({"count": 7} if "COUNT(*)" in sql else None)
+    def capture(self, backend, search=None, count=False):
+        conn=self.CaptureConnection(); repo=Repository(conn, backend=backend)
+        value=repo.count_calling_company_events(search=search) if count else repo.list_calling_company_events(search=search, limit=25 if search else 50, offset=5 if search else 0)
+        return conn.calls[-1], value
+    def test_postgres_list_and_count_sql_contract(self):
+        (sql, params), value=self.capture("postgres"); flat=" ".join(sql.split())
+        self.assertEqual([], value); self.assertEqual((50,0), params); self.assertEqual(2, flat.count("%s"))
+        for token in ("->>", "NULLIF", "::BIGINT", "CASE WHEN cl.entity_type = 'calling_company' THEN cl.entity_id ELSE", "WHERE (cl.entity_type = 'calling_company' OR (cl.entity_type = 'routing_event' AND", "ORDER BY cl.changed_at DESC, cl.id DESC", "LIMIT %s OFFSET %s"): self.assertIn(token, flat)
+        for token in ("json_extract", "search_text_matches", " LIKE", " ILIKE", "?"): self.assertNotIn(token, flat)
+        (sql, params), _=self.capture("postgres", "  TeSt  "); flat=" ".join(sql.split())
+        self.assertEqual(("test",)*6+(25,5), params); self.assertEqual(6, flat.count("POSITION(")); self.assertEqual(8, flat.count("%s"))
+        self.assertIn("CAST(cl.old_values AS TEXT)", flat); self.assertIn("CAST(cl.new_values AS TEXT)", flat)
+        for token in ("LIKE", "ILIKE", "search_text_matches", "json_extract"): self.assertNotIn(token, flat)
+        (sql, params), value=self.capture("postgres", count=True); flat=" ".join(sql.split())
+        self.assertEqual(7, value); self.assertEqual((), params); self.assertIn("SELECT COUNT(*) AS count", flat); self.assertNotIn("LIMIT", flat)
+        (sql, params), value=self.capture("postgres", "  TeSt  ", True); flat=" ".join(sql.split())
+        self.assertEqual(7, value); self.assertEqual(("test",)*6, params); self.assertEqual(6, flat.count("%s")); self.assertEqual(6, flat.count("POSITION(")); self.assertNotIn("LIMIT", flat)
+    def test_sqlite_list_and_count_sql_contract_and_fixture_parity(self):
+        (sql, params), _=self.capture("sqlite", "test"); flat=" ".join(sql.split())
+        self.assertEqual(("test",)*6+(25,5), params); self.assertEqual(8, flat.count("?")); self.assertEqual(6, flat.count("search_text_matches")); self.assertIn("CAST(NULLIF(json_extract", flat)
+        (sql, params), _=self.capture("sqlite", count=True); self.assertEqual((), params); self.assertEqual(0, " ".join(sql.split()).count("?"))
+        (sql, params), _=self.capture("sqlite", "test", True); self.assertEqual(("test",)*6, params); self.assertEqual(6, " ".join(sql.split()).count("?"))
+        with tempfile.TemporaryDirectory() as directory:
+            conn=sqlite3.connect(create_demo_sqlite(Path(directory)/"demo.db")); conn.row_factory=sqlite3.Row
+            try:
+                repo=Repository(conn)
+                for query in (None,"","   ","alpha-summary-needle-49","old-json-needle-49","new-json-needle-49","routing-new-needle-49","demo-company-1","Demo Company","ci-manual-company","%_\\","excluded-route-needle-49","orphan-routing-needle-49"):
+                    self.assertEqual(repo.count_calling_company_events(search=query), len(repo.list_calling_company_events(search=query,limit=1000,offset=0)))
+            finally: conn.close()

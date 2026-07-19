@@ -691,4 +691,4 @@ Audit counts are **112 public / 59 smoke reads / 2 deferred reads / 50 writes / 
 
 ## Stage 49 PostgreSQL Repository read-surface completion
 
-`STAGE_49_METHODS` adds `list_calling_company_events` and `count_calling_company_events`, completing **112 / 61 / 0 / 50 / 1 / 100.0%** (public/smoke/deferred/writes/infrastructure/coverage) with **598** smoke checks. No deferred Repository reads remain. Runtime census is unchanged (53 SELECT, 65 writes, 32 schema/PRAGMA, 11 dynamic/unknown); 50 write methods remain, `DB_BACKEND=postgres` stays disabled, and Stage 50 is audit/write sequencing only.
+`STAGE_49_METHODS` adds `list_calling_company_events` and `count_calling_company_events`, completing **112 / 61 / 0 / 50 / 1 / 100.0%** (public/smoke/deferred/writes/infrastructure/coverage) with **611** smoke checks. No deferred Repository reads remain. Runtime census is unchanged (53 SELECT, 65 writes, 32 schema/PRAGMA, 11 dynamic/unknown); 50 write methods remain, `DB_BACKEND=postgres` stays disabled, and Stage 50 is audit/write sequencing only.

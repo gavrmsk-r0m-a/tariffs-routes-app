@@ -883,6 +883,29 @@ def run_stage_49_checks(repo: Repository, check, demo_company) -> None:
     check("stage_49_page_2", lambda: _check([row["comment"] for row in repo.list_calling_company_events(limit=2, offset=2)] == expected[2:4], "second page wrong"))
     check("stage_49_page_3", lambda: _check([row["comment"] for row in repo.list_calling_company_events(limit=1, offset=4)] == expected[4:5], "third page wrong"))
     check("stage_49_zero_limit", lambda: _check(repo.list_calling_company_events(limit=0, offset=0) == [], "zero limit must be empty"))
+    by_comment = {row["comment"]: row for row in stage}
+    direct = by_comment.get("Stage 49 alpha-summary-needle-49")
+    gamma = by_comment.get("Stage 49 manual gamma")
+    delta = by_comment.get("Stage 49 manual delta")
+    check("stage_49_direct_semantics", lambda: _check(direct and direct["action"] == "calling_company.updated" and direct["user_name"] == "Admin" and direct["current_company_name"] == "Demo Company" and direct["company_id_external"] == "demo-company-1" and _snapshot_object(direct["old_value"])["marker"] == "old-json-needle-49" and _snapshot_object(direct["new_value"])["marker"] == "new-json-needle-49", "direct event semantics wrong"))
+    check("stage_49_routing_values", lambda: _check(routing and _snapshot_object(routing["old_value"])["routing_mode"] == "mixed" and _snapshot_object(routing["new_value"])["routing_mode"] == "campaign_route" and _snapshot_object(routing["old_value"])["marker"] == "routing-old-needle-49" and _snapshot_object(routing["new_value"])["marker"] == "routing-new-needle-49", "routing values wrong"))
+    check("stage_49_manual_semantics", lambda: _check(gamma and delta and all(row["current_company_name"] == "CI Manual Company" and row["company_id_external"] == "ci-manual-company" and row["user_name"] == "Admin" for row in (gamma, delta)) and _snapshot_object(gamma["old_value"])["marker"] == "manual-gamma-old" and _snapshot_object(delta["new_value"])["marker"] == "manual-delta-new", "manual event semantics wrong"))
+    def search_rows(query):
+        return repo.list_calling_company_events(search=query, limit=1000, offset=0)
+    expectations = (
+        ("summary", "  ALPHA-SUMMARY-NEEDLE-49  ", lambda found: any(row["comment"] == "Stage 49 alpha-summary-needle-49" for row in found)),
+        ("old", "OLD-JSON-NEEDLE-49", lambda found: any(row["comment"] == "Stage 49 alpha-summary-needle-49" for row in found)),
+        ("new", "NEW-JSON-NEEDLE-49", lambda found: any(row["comment"] == "Stage 49 alpha-summary-needle-49" for row in found)),
+        ("routing", "ROUTING-NEW-NEEDLE-49", lambda found: [row["comment"] for row in found if str(row["comment"]).startswith("Stage 49")] == ["Stage 49 routing beta"]),
+        ("external", "DEMO-COMPANY-1", lambda found: all(row["current_company_name"] == "Demo Company" for row in found if str(row["comment"]).startswith("Stage 49"))),
+        ("company", "demo company", lambda found: all(row["current_company_name"] == "Demo Company" for row in found if str(row["comment"]).startswith("Stage 49"))),
+        ("manual", "ci-manual-company", lambda found: all(row["current_company_name"] == "CI Manual Company" for row in found if str(row["comment"]).startswith("Stage 49"))),
+        ("numeric", str(demo_company["id"]), lambda found: {"Stage 49 alpha-summary-needle-49", "Stage 49 routing beta"} <= {row["comment"] for row in found}),
+    )
+    for name, query, assertion in expectations:
+        check(f"stage_49_search_{name}_semantics", lambda query=query, assertion=assertion: _check(assertion(search_rows(query)), f"{name} search semantics wrong"))
+    check("stage_49_empty_search_equivalence", lambda: _check(all([row["id"] for row in search_rows(query)] == [row["id"] for row in (rows or [])] and repo.count_calling_company_events(search=query) == total for query in (None, "", "   ")), "empty searches differ"))
+    check("stage_49_manual_search_pagination", lambda: _check(repo.count_calling_company_events(search="Stage 49 manual") == 2 and [row["comment"] for row in repo.list_calling_company_events(search="Stage 49 manual", limit=1, offset=0)] == ["Stage 49 manual delta"] and [row["comment"] for row in repo.list_calling_company_events(search="Stage 49 manual", limit=1, offset=1)] == ["Stage 49 manual gamma"], "search pagination wrong"))
 
 
 def run_repository_checks(repo: Repository, postgres_url: str) -> dict:
