@@ -1,0 +1,1588 @@
+{
+  "baseline": {
+    "deferred_read_only_count": 0,
+    "infrastructure_or_mixed_count": 1,
+    "read_surface_coverage_percent": 100.0,
+    "repository_public_methods_count": 112,
+    "repository_smoke_checks_count": 611,
+    "smoke_covered_read_count": 61,
+    "write_or_mutating_count": 50
+  },
+  "batches": {
+    "app_settings_and_admin_low_risk": {
+      "acceptance": [
+        "SQL recording and SQLite regression coverage",
+        "rollback-only PostgreSQL integration coverage"
+      ],
+      "methods": [
+        "create_user",
+        "delete_app_setting_value",
+        "set_app_setting_value",
+        "set_user_permissions",
+        "update_user",
+        "update_user_password",
+        "upsert_hlr_daily_usage"
+      ],
+      "out_of_scope": [
+        "DB_BACKEND=postgres",
+        "production runtime enablement"
+      ],
+      "prerequisites": [
+        "write_test_harness_and_transaction_foundation"
+      ],
+      "rationale": "Required sequencing boundary: isolate transaction ownership and PostgreSQL compatibility risk before adapting this write group.",
+      "risk": "high",
+      "scope": "Rollback-only planning and future adapter work; no runtime enablement.",
+      "stage_hint": "subsequent write adaptation stage",
+      "title": "App settings and admin low risk"
+    },
+    "company_routing_setting_writes": {
+      "acceptance": [
+        "SQL recording and SQLite regression coverage",
+        "rollback-only PostgreSQL integration coverage"
+      ],
+      "methods": [
+        "create_calling_company",
+        "create_company_routing_setting",
+        "deactivate_company_routing_setting",
+        "update_calling_company",
+        "update_company_routing_setting",
+        "update_company_routing_setting_comment"
+      ],
+      "out_of_scope": [
+        "DB_BACKEND=postgres",
+        "production runtime enablement"
+      ],
+      "prerequisites": [
+        "write_test_harness_and_transaction_foundation"
+      ],
+      "rationale": "Required sequencing boundary: isolate transaction ownership and PostgreSQL compatibility risk before adapting this write group.",
+      "risk": "high",
+      "scope": "Rollback-only planning and future adapter work; no runtime enablement.",
+      "stage_hint": "subsequent write adaptation stage",
+      "title": "Company routing-setting writes"
+    },
+    "dictionary_and_snapshot_writes": {
+      "acceptance": [
+        "SQL recording and SQLite regression coverage",
+        "rollback-only PostgreSQL integration coverage"
+      ],
+      "methods": [
+        "create_change_reason",
+        "create_country",
+        "create_currency",
+        "create_prefix",
+        "create_provider",
+        "create_server",
+        "ensure_phone_assignment_type_exists",
+        "ensure_phone_number_type_exists",
+        "ensure_project_exists",
+        "get_or_create_country",
+        "get_or_create_currency",
+        "get_or_create_prefix",
+        "get_or_create_provider",
+        "update_dictionary_snapshots"
+      ],
+      "out_of_scope": [
+        "DB_BACKEND=postgres",
+        "production runtime enablement"
+      ],
+      "prerequisites": [
+        "write_test_harness_and_transaction_foundation"
+      ],
+      "rationale": "Required sequencing boundary: isolate transaction ownership and PostgreSQL compatibility risk before adapting this write group.",
+      "risk": "high",
+      "scope": "Rollback-only planning and future adapter work; no runtime enablement.",
+      "stage_hint": "subsequent write adaptation stage",
+      "title": "Dictionary and snapshot writes"
+    },
+    "importer_and_bulk_mutation_writes": {
+      "acceptance": [
+        "SQL recording and SQLite regression coverage",
+        "rollback-only PostgreSQL integration coverage"
+      ],
+      "methods": [
+        "update_calling_company_import_fields",
+        "update_phone_number_import_fields_with_history",
+        "update_route_import_fields"
+      ],
+      "out_of_scope": [
+        "DB_BACKEND=postgres",
+        "production runtime enablement"
+      ],
+      "prerequisites": [
+        "write_test_harness_and_transaction_foundation"
+      ],
+      "rationale": "Required sequencing boundary: isolate transaction ownership and PostgreSQL compatibility risk before adapting this write group.",
+      "risk": "critical",
+      "scope": "Rollback-only planning and future adapter work; no runtime enablement.",
+      "stage_hint": "subsequent write adaptation stage",
+      "title": "Importer and bulk mutation writes"
+    },
+    "phone_route_tariff_core_writes": {
+      "acceptance": [
+        "SQL recording and SQLite regression coverage",
+        "rollback-only PostgreSQL integration coverage"
+      ],
+      "methods": [
+        "add_phone_to_route",
+        "add_phone_to_route_by_number",
+        "create_currency_rate",
+        "create_phone_number",
+        "create_route",
+        "create_tariff",
+        "log_currency_rate_change",
+        "recalculate_current_tariffs_for_currency_rate",
+        "record_phone_update_history",
+        "remove_phone_links_from_route",
+        "set_tariff_active",
+        "update_phone_number",
+        "update_route",
+        "update_tariff"
+      ],
+      "out_of_scope": [
+        "DB_BACKEND=postgres",
+        "production runtime enablement"
+      ],
+      "prerequisites": [
+        "write_test_harness_and_transaction_foundation"
+      ],
+      "rationale": "Required sequencing boundary: isolate transaction ownership and PostgreSQL compatibility risk before adapting this write group.",
+      "risk": "high",
+      "scope": "Rollback-only planning and future adapter work; no runtime enablement.",
+      "stage_hint": "subsequent write adaptation stage",
+      "title": "Phone, route, and tariff core writes"
+    },
+    "provider_change_and_priority_writes": {
+      "acceptance": [
+        "SQL recording and SQLite regression coverage",
+        "rollback-only PostgreSQL integration coverage"
+      ],
+      "methods": [
+        "create_provider_change",
+        "update_server_route_priority"
+      ],
+      "out_of_scope": [
+        "DB_BACKEND=postgres",
+        "production runtime enablement"
+      ],
+      "prerequisites": [
+        "write_test_harness_and_transaction_foundation"
+      ],
+      "rationale": "Required sequencing boundary: isolate transaction ownership and PostgreSQL compatibility risk before adapting this write group.",
+      "risk": "high",
+      "scope": "Rollback-only planning and future adapter work; no runtime enablement.",
+      "stage_hint": "subsequent write adaptation stage",
+      "title": "Provider-change and priority writes"
+    },
+    "routing_event_application_writes": {
+      "acceptance": [
+        "SQL recording and SQLite regression coverage",
+        "rollback-only PostgreSQL integration coverage"
+      ],
+      "methods": [
+        "create_routing_event",
+        "deactivate_routing_event",
+        "update_routing_event"
+      ],
+      "out_of_scope": [
+        "DB_BACKEND=postgres",
+        "production runtime enablement"
+      ],
+      "prerequisites": [
+        "write_test_harness_and_transaction_foundation"
+      ],
+      "rationale": "Required sequencing boundary: isolate transaction ownership and PostgreSQL compatibility risk before adapting this write group.",
+      "risk": "high",
+      "scope": "Rollback-only planning and future adapter work; no runtime enablement.",
+      "stage_hint": "subsequent write adaptation stage",
+      "title": "Routing event application writes"
+    },
+    "write_test_harness_and_transaction_foundation": {
+      "acceptance": [
+        "Rollback/SAVEPOINT leaves no writes",
+        "No production or business write adaptation",
+        "DB_BACKEND=postgres remains disabled"
+      ],
+      "methods": [
+        "set_hlr_limit_override"
+      ],
+      "out_of_scope": [
+        "DB_BACKEND=postgres",
+        "production runtime enablement"
+      ],
+      "prerequisites": [],
+      "rationale": "Stage 51 rollback-only harness and transaction foundation; it does not adapt business writes.",
+      "risk": "critical",
+      "scope": "Only rollback-only synthetic probes inside a transaction rollback or SAVEPOINT; DB_BACKEND=postgres remains disabled.",
+      "stage_hint": "Stage 51",
+      "title": "Write test harness and transaction foundation"
+    }
+  },
+  "methods": {
+    "add_phone_to_route": {
+      "batch": "phone_route_tariff_core_writes",
+      "current_commit_behavior": "commits internally",
+      "dependencies": [],
+      "mutation_kind": "mixed_read_write",
+      "notes": "Stage 50 audit inventory only; no write adaptation.",
+      "postgres_strategy": "Keep runtime disabled; use rollback-only harness, backend placeholders, and RETURNING where identity retrieval is required.",
+      "returns": "none",
+      "risk": "medium",
+      "rollback_strategy": "Not safe until harness exists; run inside explicit transaction and rollback.",
+      "side_effects": [
+        "database_write"
+      ],
+      "sqlite_postgres_blockers": [
+        "dynamic_sql",
+        "needs_integration_test",
+        "postgres_returning_required",
+        "postgres_transaction_aborted_behavior",
+        "sqlite_lastrowid",
+        "sqlite_placeholder"
+      ],
+      "test_strategy": [
+        "SQL-recording test",
+        "SQLite regression test",
+        "PostgreSQL rollback-only integration test"
+      ],
+      "transaction_contract": "multi_statement_atomic"
+    },
+    "add_phone_to_route_by_number": {
+      "batch": "phone_route_tariff_core_writes",
+      "current_commit_behavior": "never commits",
+      "dependencies": [
+        "add_phone_to_route"
+      ],
+      "mutation_kind": "mixed_read_write",
+      "notes": "Stage 50 audit inventory only; no write adaptation.",
+      "postgres_strategy": "Keep runtime disabled; use rollback-only harness, backend placeholders, and RETURNING where identity retrieval is required.",
+      "returns": "none",
+      "risk": "high",
+      "rollback_strategy": "Not safe until harness exists; run inside explicit transaction and rollback.",
+      "side_effects": [
+        "database_write"
+      ],
+      "sqlite_postgres_blockers": [
+        "multi_statement_atomicity",
+        "needs_integration_test",
+        "sqlite_placeholder"
+      ],
+      "test_strategy": [
+        "SQL-recording test",
+        "SQLite regression test",
+        "PostgreSQL rollback-only integration test"
+      ],
+      "transaction_contract": "multi_statement_atomic"
+    },
+    "create_calling_company": {
+      "batch": "company_routing_setting_writes",
+      "current_commit_behavior": "commits internally",
+      "dependencies": [
+        "create_company_routing_setting"
+      ],
+      "mutation_kind": "insert",
+      "notes": "Stage 50 audit inventory only; no write adaptation.",
+      "postgres_strategy": "Keep runtime disabled; use rollback-only harness, backend placeholders, and RETURNING where identity retrieval is required.",
+      "returns": "inserted_id",
+      "risk": "high",
+      "rollback_strategy": "Not safe until harness exists; run inside explicit transaction and rollback.",
+      "side_effects": [
+        "database_write"
+      ],
+      "sqlite_postgres_blockers": [
+        "dynamic_sql",
+        "history_change_log_coupling",
+        "multi_statement_atomicity",
+        "needs_integration_test",
+        "postgres_returning_required",
+        "postgres_transaction_aborted_behavior",
+        "sqlite_lastrowid",
+        "sqlite_placeholder"
+      ],
+      "test_strategy": [
+        "SQL-recording test",
+        "SQLite regression test",
+        "PostgreSQL rollback-only integration test"
+      ],
+      "transaction_contract": "multi_statement_atomic"
+    },
+    "create_change_reason": {
+      "batch": "dictionary_and_snapshot_writes",
+      "current_commit_behavior": "commits internally",
+      "dependencies": [],
+      "mutation_kind": "insert",
+      "notes": "Stage 50 audit inventory only; no write adaptation.",
+      "postgres_strategy": "Keep runtime disabled; use rollback-only harness, backend placeholders, and RETURNING where identity retrieval is required.",
+      "returns": "inserted_id",
+      "risk": "medium",
+      "rollback_strategy": "Not safe until harness exists; run inside explicit transaction and rollback.",
+      "side_effects": [
+        "change_log_write",
+        "database_write"
+      ],
+      "sqlite_postgres_blockers": [
+        "dynamic_sql",
+        "needs_integration_test",
+        "postgres_transaction_aborted_behavior",
+        "sqlite_placeholder"
+      ],
+      "test_strategy": [
+        "SQL-recording test",
+        "SQLite regression test",
+        "PostgreSQL rollback-only integration test"
+      ],
+      "transaction_contract": "explicit_commit"
+    },
+    "create_company_routing_setting": {
+      "batch": "company_routing_setting_writes",
+      "current_commit_behavior": "commits internally",
+      "dependencies": [],
+      "mutation_kind": "insert",
+      "notes": "Stage 50 audit inventory only; no write adaptation.",
+      "postgres_strategy": "Keep runtime disabled; use rollback-only harness, backend placeholders, and RETURNING where identity retrieval is required.",
+      "returns": "inserted_id",
+      "risk": "medium",
+      "rollback_strategy": "Not safe until harness exists; run inside explicit transaction and rollback.",
+      "side_effects": [
+        "change_log_write",
+        "database_write"
+      ],
+      "sqlite_postgres_blockers": [
+        "history_change_log_coupling",
+        "needs_integration_test",
+        "postgres_returning_required",
+        "postgres_transaction_aborted_behavior",
+        "sqlite_datetime_function",
+        "sqlite_lastrowid",
+        "sqlite_placeholder"
+      ],
+      "test_strategy": [
+        "SQL-recording test",
+        "SQLite regression test",
+        "PostgreSQL rollback-only integration test"
+      ],
+      "transaction_contract": "explicit_commit"
+    },
+    "create_country": {
+      "batch": "dictionary_and_snapshot_writes",
+      "current_commit_behavior": "commits internally",
+      "dependencies": [],
+      "mutation_kind": "insert",
+      "notes": "Stage 50 audit inventory only; no write adaptation.",
+      "postgres_strategy": "Keep runtime disabled; use rollback-only harness, backend placeholders, and RETURNING where identity retrieval is required.",
+      "returns": "inserted_id",
+      "risk": "medium",
+      "rollback_strategy": "Not safe until harness exists; run inside explicit transaction and rollback.",
+      "side_effects": [
+        "database_write"
+      ],
+      "sqlite_postgres_blockers": [
+        "dynamic_sql",
+        "needs_integration_test",
+        "postgres_transaction_aborted_behavior",
+        "sqlite_placeholder"
+      ],
+      "test_strategy": [
+        "SQL-recording test",
+        "SQLite regression test",
+        "PostgreSQL rollback-only integration test"
+      ],
+      "transaction_contract": "explicit_commit"
+    },
+    "create_currency": {
+      "batch": "dictionary_and_snapshot_writes",
+      "current_commit_behavior": "commits internally",
+      "dependencies": [],
+      "mutation_kind": "insert",
+      "notes": "Stage 50 audit inventory only; no write adaptation.",
+      "postgres_strategy": "Keep runtime disabled; use rollback-only harness, backend placeholders, and RETURNING where identity retrieval is required.",
+      "returns": "inserted_id",
+      "risk": "medium",
+      "rollback_strategy": "Not safe until harness exists; run inside explicit transaction and rollback.",
+      "side_effects": [
+        "database_write"
+      ],
+      "sqlite_postgres_blockers": [
+        "needs_integration_test",
+        "postgres_returning_required",
+        "postgres_transaction_aborted_behavior",
+        "sqlite_lastrowid",
+        "sqlite_placeholder"
+      ],
+      "test_strategy": [
+        "SQL-recording test",
+        "SQLite regression test",
+        "PostgreSQL rollback-only integration test"
+      ],
+      "transaction_contract": "explicit_commit"
+    },
+    "create_currency_rate": {
+      "batch": "phone_route_tariff_core_writes",
+      "current_commit_behavior": "commits internally",
+      "dependencies": [],
+      "mutation_kind": "insert",
+      "notes": "Stage 50 audit inventory only; no write adaptation.",
+      "postgres_strategy": "Keep runtime disabled; use rollback-only harness, backend placeholders, and RETURNING where identity retrieval is required.",
+      "returns": "inserted_id",
+      "risk": "medium",
+      "rollback_strategy": "Not safe until harness exists; run inside explicit transaction and rollback.",
+      "side_effects": [
+        "database_write"
+      ],
+      "sqlite_postgres_blockers": [
+        "needs_integration_test",
+        "postgres_returning_required",
+        "postgres_transaction_aborted_behavior",
+        "sqlite_lastrowid",
+        "sqlite_placeholder"
+      ],
+      "test_strategy": [
+        "SQL-recording test",
+        "SQLite regression test",
+        "PostgreSQL rollback-only integration test"
+      ],
+      "transaction_contract": "explicit_commit"
+    },
+    "create_phone_number": {
+      "batch": "phone_route_tariff_core_writes",
+      "current_commit_behavior": "commits internally",
+      "dependencies": [],
+      "mutation_kind": "insert",
+      "notes": "Stage 50 audit inventory only; no write adaptation.",
+      "postgres_strategy": "Keep runtime disabled; use rollback-only harness, backend placeholders, and RETURNING where identity retrieval is required.",
+      "returns": "inserted_id",
+      "risk": "medium",
+      "rollback_strategy": "Not safe until harness exists; run inside explicit transaction and rollback.",
+      "side_effects": [
+        "database_write"
+      ],
+      "sqlite_postgres_blockers": [
+        "dynamic_sql",
+        "needs_integration_test",
+        "postgres_transaction_aborted_behavior",
+        "sqlite_datetime_function",
+        "sqlite_placeholder"
+      ],
+      "test_strategy": [
+        "SQL-recording test",
+        "SQLite regression test",
+        "PostgreSQL rollback-only integration test"
+      ],
+      "transaction_contract": "explicit_commit"
+    },
+    "create_prefix": {
+      "batch": "dictionary_and_snapshot_writes",
+      "current_commit_behavior": "commits internally",
+      "dependencies": [],
+      "mutation_kind": "insert",
+      "notes": "Stage 50 audit inventory only; no write adaptation.",
+      "postgres_strategy": "Keep runtime disabled; use rollback-only harness, backend placeholders, and RETURNING where identity retrieval is required.",
+      "returns": "inserted_id",
+      "risk": "medium",
+      "rollback_strategy": "Not safe until harness exists; run inside explicit transaction and rollback.",
+      "side_effects": [
+        "database_write"
+      ],
+      "sqlite_postgres_blockers": [
+        "needs_integration_test",
+        "postgres_returning_required",
+        "postgres_transaction_aborted_behavior",
+        "sqlite_lastrowid",
+        "sqlite_placeholder"
+      ],
+      "test_strategy": [
+        "SQL-recording test",
+        "SQLite regression test",
+        "PostgreSQL rollback-only integration test"
+      ],
+      "transaction_contract": "explicit_commit"
+    },
+    "create_provider": {
+      "batch": "dictionary_and_snapshot_writes",
+      "current_commit_behavior": "commits internally",
+      "dependencies": [],
+      "mutation_kind": "insert",
+      "notes": "Stage 50 audit inventory only; no write adaptation.",
+      "postgres_strategy": "Keep runtime disabled; use rollback-only harness, backend placeholders, and RETURNING where identity retrieval is required.",
+      "returns": "inserted_id",
+      "risk": "medium",
+      "rollback_strategy": "Not safe until harness exists; run inside explicit transaction and rollback.",
+      "side_effects": [
+        "database_write"
+      ],
+      "sqlite_postgres_blockers": [
+        "dynamic_sql",
+        "needs_integration_test",
+        "postgres_transaction_aborted_behavior",
+        "sqlite_placeholder"
+      ],
+      "test_strategy": [
+        "SQL-recording test",
+        "SQLite regression test",
+        "PostgreSQL rollback-only integration test"
+      ],
+      "transaction_contract": "explicit_commit"
+    },
+    "create_provider_change": {
+      "batch": "provider_change_and_priority_writes",
+      "current_commit_behavior": "commits internally",
+      "dependencies": [],
+      "mutation_kind": "insert",
+      "notes": "Stage 50 audit inventory only; no write adaptation.",
+      "postgres_strategy": "Keep runtime disabled; use rollback-only harness, backend placeholders, and RETURNING where identity retrieval is required.",
+      "returns": "inserted_id",
+      "risk": "medium",
+      "rollback_strategy": "Not safe until harness exists; run inside explicit transaction and rollback.",
+      "side_effects": [
+        "change_log_write",
+        "database_write"
+      ],
+      "sqlite_postgres_blockers": [
+        "dynamic_sql",
+        "history_change_log_coupling",
+        "needs_integration_test",
+        "postgres_returning_required",
+        "postgres_transaction_aborted_behavior",
+        "sqlite_datetime_function",
+        "sqlite_lastrowid",
+        "sqlite_placeholder"
+      ],
+      "test_strategy": [
+        "SQL-recording test",
+        "SQLite regression test",
+        "PostgreSQL rollback-only integration test"
+      ],
+      "transaction_contract": "explicit_commit"
+    },
+    "create_route": {
+      "batch": "phone_route_tariff_core_writes",
+      "current_commit_behavior": "commits internally",
+      "dependencies": [],
+      "mutation_kind": "insert",
+      "notes": "Stage 50 audit inventory only; no write adaptation.",
+      "postgres_strategy": "Keep runtime disabled; use rollback-only harness, backend placeholders, and RETURNING where identity retrieval is required.",
+      "returns": "inserted_id",
+      "risk": "medium",
+      "rollback_strategy": "Not safe until harness exists; run inside explicit transaction and rollback.",
+      "side_effects": [
+        "database_write"
+      ],
+      "sqlite_postgres_blockers": [
+        "needs_integration_test",
+        "postgres_returning_required",
+        "postgres_transaction_aborted_behavior",
+        "sqlite_lastrowid",
+        "sqlite_placeholder"
+      ],
+      "test_strategy": [
+        "SQL-recording test",
+        "SQLite regression test",
+        "PostgreSQL rollback-only integration test"
+      ],
+      "transaction_contract": "explicit_commit"
+    },
+    "create_routing_event": {
+      "batch": "routing_event_application_writes",
+      "current_commit_behavior": "commits internally",
+      "dependencies": [],
+      "mutation_kind": "insert",
+      "notes": "Stage 50 audit inventory only; no write adaptation.",
+      "postgres_strategy": "Keep runtime disabled; use rollback-only harness, backend placeholders, and RETURNING where identity retrieval is required.",
+      "returns": "inserted_id",
+      "risk": "medium",
+      "rollback_strategy": "Not safe until harness exists; run inside explicit transaction and rollback.",
+      "side_effects": [
+        "change_log_write",
+        "database_write"
+      ],
+      "sqlite_postgres_blockers": [
+        "history_change_log_coupling",
+        "needs_integration_test",
+        "postgres_returning_required",
+        "postgres_transaction_aborted_behavior",
+        "sqlite_datetime_function",
+        "sqlite_lastrowid",
+        "sqlite_placeholder"
+      ],
+      "test_strategy": [
+        "SQL-recording test",
+        "SQLite regression test",
+        "PostgreSQL rollback-only integration test"
+      ],
+      "transaction_contract": "explicit_commit"
+    },
+    "create_server": {
+      "batch": "dictionary_and_snapshot_writes",
+      "current_commit_behavior": "commits internally",
+      "dependencies": [],
+      "mutation_kind": "insert",
+      "notes": "Stage 50 audit inventory only; no write adaptation.",
+      "postgres_strategy": "Keep runtime disabled; use rollback-only harness, backend placeholders, and RETURNING where identity retrieval is required.",
+      "returns": "inserted_id",
+      "risk": "medium",
+      "rollback_strategy": "Not safe until harness exists; run inside explicit transaction and rollback.",
+      "side_effects": [
+        "database_write"
+      ],
+      "sqlite_postgres_blockers": [
+        "dynamic_sql",
+        "needs_integration_test",
+        "postgres_transaction_aborted_behavior",
+        "sqlite_placeholder"
+      ],
+      "test_strategy": [
+        "SQL-recording test",
+        "SQLite regression test",
+        "PostgreSQL rollback-only integration test"
+      ],
+      "transaction_contract": "explicit_commit"
+    },
+    "create_tariff": {
+      "batch": "phone_route_tariff_core_writes",
+      "current_commit_behavior": "commits internally",
+      "dependencies": [],
+      "mutation_kind": "insert",
+      "notes": "Stage 50 audit inventory only; no write adaptation.",
+      "postgres_strategy": "Keep runtime disabled; use rollback-only harness, backend placeholders, and RETURNING where identity retrieval is required.",
+      "returns": "inserted_id",
+      "risk": "medium",
+      "rollback_strategy": "Not safe until harness exists; run inside explicit transaction and rollback.",
+      "side_effects": [
+        "database_write"
+      ],
+      "sqlite_postgres_blockers": [
+        "needs_integration_test",
+        "postgres_returning_required",
+        "postgres_transaction_aborted_behavior",
+        "sqlite_lastrowid",
+        "sqlite_placeholder"
+      ],
+      "test_strategy": [
+        "SQL-recording test",
+        "SQLite regression test",
+        "PostgreSQL rollback-only integration test"
+      ],
+      "transaction_contract": "explicit_commit"
+    },
+    "create_user": {
+      "batch": "app_settings_and_admin_low_risk",
+      "current_commit_behavior": "commits internally",
+      "dependencies": [],
+      "mutation_kind": "insert",
+      "notes": "Stage 50 audit inventory only; no write adaptation.",
+      "postgres_strategy": "Keep runtime disabled; use rollback-only harness, backend placeholders, and RETURNING where identity retrieval is required.",
+      "returns": "inserted_id",
+      "risk": "medium",
+      "rollback_strategy": "Not safe until harness exists; run inside explicit transaction and rollback.",
+      "side_effects": [
+        "database_write"
+      ],
+      "sqlite_postgres_blockers": [
+        "dynamic_sql",
+        "needs_integration_test",
+        "postgres_returning_required",
+        "postgres_transaction_aborted_behavior",
+        "sqlite_lastrowid",
+        "sqlite_placeholder"
+      ],
+      "test_strategy": [
+        "SQL-recording test",
+        "SQLite regression test",
+        "PostgreSQL rollback-only integration test"
+      ],
+      "transaction_contract": "explicit_commit"
+    },
+    "deactivate_company_routing_setting": {
+      "batch": "company_routing_setting_writes",
+      "current_commit_behavior": "commits internally",
+      "dependencies": [],
+      "mutation_kind": "mixed_read_write",
+      "notes": "Stage 50 audit inventory only; no write adaptation.",
+      "postgres_strategy": "Keep runtime disabled; use rollback-only harness, backend placeholders, and RETURNING where identity retrieval is required.",
+      "returns": "none",
+      "risk": "medium",
+      "rollback_strategy": "Not safe until harness exists; run inside explicit transaction and rollback.",
+      "side_effects": [
+        "change_log_write",
+        "database_write"
+      ],
+      "sqlite_postgres_blockers": [
+        "needs_integration_test",
+        "postgres_transaction_aborted_behavior",
+        "sqlite_datetime_function",
+        "sqlite_placeholder"
+      ],
+      "test_strategy": [
+        "SQL-recording test",
+        "SQLite regression test",
+        "PostgreSQL rollback-only integration test"
+      ],
+      "transaction_contract": "multi_statement_atomic"
+    },
+    "deactivate_routing_event": {
+      "batch": "routing_event_application_writes",
+      "current_commit_behavior": "commits internally",
+      "dependencies": [],
+      "mutation_kind": "mixed_read_write",
+      "notes": "Stage 50 audit inventory only; no write adaptation.",
+      "postgres_strategy": "Keep runtime disabled; use rollback-only harness, backend placeholders, and RETURNING where identity retrieval is required.",
+      "returns": "none",
+      "risk": "medium",
+      "rollback_strategy": "Not safe until harness exists; run inside explicit transaction and rollback.",
+      "side_effects": [
+        "change_log_write",
+        "database_write"
+      ],
+      "sqlite_postgres_blockers": [
+        "dynamic_sql",
+        "needs_integration_test",
+        "postgres_transaction_aborted_behavior",
+        "sqlite_datetime_function",
+        "sqlite_placeholder"
+      ],
+      "test_strategy": [
+        "SQL-recording test",
+        "SQLite regression test",
+        "PostgreSQL rollback-only integration test"
+      ],
+      "transaction_contract": "multi_statement_atomic"
+    },
+    "delete_app_setting_value": {
+      "batch": "app_settings_and_admin_low_risk",
+      "current_commit_behavior": "mixed",
+      "dependencies": [],
+      "mutation_kind": "delete",
+      "notes": "Stage 50 audit inventory only; no write adaptation.",
+      "postgres_strategy": "Keep runtime disabled; use rollback-only harness, backend placeholders, and RETURNING where identity retrieval is required.",
+      "returns": "none",
+      "risk": "medium",
+      "rollback_strategy": "Not safe until harness exists; run inside explicit transaction and rollback.",
+      "side_effects": [
+        "database_write"
+      ],
+      "sqlite_postgres_blockers": [
+        "needs_integration_test",
+        "postgres_transaction_aborted_behavior",
+        "sqlite_placeholder"
+      ],
+      "test_strategy": [
+        "SQL-recording test",
+        "SQLite regression test",
+        "PostgreSQL rollback-only integration test"
+      ],
+      "transaction_contract": "explicit_commit"
+    },
+    "ensure_phone_assignment_type_exists": {
+      "batch": "dictionary_and_snapshot_writes",
+      "current_commit_behavior": "commits internally",
+      "dependencies": [],
+      "mutation_kind": "multi_write",
+      "notes": "Stage 50 audit inventory only; no write adaptation.",
+      "postgres_strategy": "Keep runtime disabled; use rollback-only harness, backend placeholders, and RETURNING where identity retrieval is required.",
+      "returns": "none",
+      "risk": "high",
+      "rollback_strategy": "Not safe until harness exists; run inside explicit transaction and rollback.",
+      "side_effects": [
+        "database_write"
+      ],
+      "sqlite_postgres_blockers": [
+        "needs_integration_test",
+        "postgres_transaction_aborted_behavior",
+        "sqlite_placeholder"
+      ],
+      "test_strategy": [
+        "SQL-recording test",
+        "SQLite regression test",
+        "PostgreSQL rollback-only integration test"
+      ],
+      "transaction_contract": "multi_statement_atomic"
+    },
+    "ensure_phone_number_type_exists": {
+      "batch": "dictionary_and_snapshot_writes",
+      "current_commit_behavior": "commits internally",
+      "dependencies": [],
+      "mutation_kind": "multi_write",
+      "notes": "Stage 50 audit inventory only; no write adaptation.",
+      "postgres_strategy": "Keep runtime disabled; use rollback-only harness, backend placeholders, and RETURNING where identity retrieval is required.",
+      "returns": "none",
+      "risk": "high",
+      "rollback_strategy": "Not safe until harness exists; run inside explicit transaction and rollback.",
+      "side_effects": [
+        "database_write"
+      ],
+      "sqlite_postgres_blockers": [
+        "needs_integration_test",
+        "postgres_transaction_aborted_behavior",
+        "sqlite_placeholder"
+      ],
+      "test_strategy": [
+        "SQL-recording test",
+        "SQLite regression test",
+        "PostgreSQL rollback-only integration test"
+      ],
+      "transaction_contract": "multi_statement_atomic"
+    },
+    "ensure_project_exists": {
+      "batch": "dictionary_and_snapshot_writes",
+      "current_commit_behavior": "commits internally",
+      "dependencies": [],
+      "mutation_kind": "multi_write",
+      "notes": "Stage 50 audit inventory only; no write adaptation.",
+      "postgres_strategy": "Keep runtime disabled; use rollback-only harness, backend placeholders, and RETURNING where identity retrieval is required.",
+      "returns": "none",
+      "risk": "high",
+      "rollback_strategy": "Not safe until harness exists; run inside explicit transaction and rollback.",
+      "side_effects": [
+        "database_write"
+      ],
+      "sqlite_postgres_blockers": [
+        "needs_integration_test",
+        "postgres_transaction_aborted_behavior",
+        "sqlite_placeholder"
+      ],
+      "test_strategy": [
+        "SQL-recording test",
+        "SQLite regression test",
+        "PostgreSQL rollback-only integration test"
+      ],
+      "transaction_contract": "multi_statement_atomic"
+    },
+    "get_or_create_country": {
+      "batch": "dictionary_and_snapshot_writes",
+      "current_commit_behavior": "never commits",
+      "dependencies": [
+        "create_country"
+      ],
+      "mutation_kind": "mixed_read_write",
+      "notes": "Stage 50 audit inventory only; no write adaptation.",
+      "postgres_strategy": "Keep runtime disabled; use rollback-only harness, backend placeholders, and RETURNING where identity retrieval is required.",
+      "returns": "none",
+      "risk": "high",
+      "rollback_strategy": "Not safe until harness exists; run inside explicit transaction and rollback.",
+      "side_effects": [
+        "database_write"
+      ],
+      "sqlite_postgres_blockers": [
+        "multi_statement_atomicity",
+        "needs_integration_test",
+        "sqlite_placeholder"
+      ],
+      "test_strategy": [
+        "SQL-recording test",
+        "SQLite regression test",
+        "PostgreSQL rollback-only integration test"
+      ],
+      "transaction_contract": "multi_statement_atomic"
+    },
+    "get_or_create_currency": {
+      "batch": "dictionary_and_snapshot_writes",
+      "current_commit_behavior": "never commits",
+      "dependencies": [
+        "create_currency"
+      ],
+      "mutation_kind": "mixed_read_write",
+      "notes": "Stage 50 audit inventory only; no write adaptation.",
+      "postgres_strategy": "Keep runtime disabled; use rollback-only harness, backend placeholders, and RETURNING where identity retrieval is required.",
+      "returns": "none",
+      "risk": "high",
+      "rollback_strategy": "Not safe until harness exists; run inside explicit transaction and rollback.",
+      "side_effects": [
+        "database_write"
+      ],
+      "sqlite_postgres_blockers": [
+        "multi_statement_atomicity",
+        "needs_integration_test",
+        "sqlite_placeholder"
+      ],
+      "test_strategy": [
+        "SQL-recording test",
+        "SQLite regression test",
+        "PostgreSQL rollback-only integration test"
+      ],
+      "transaction_contract": "multi_statement_atomic"
+    },
+    "get_or_create_prefix": {
+      "batch": "dictionary_and_snapshot_writes",
+      "current_commit_behavior": "never commits",
+      "dependencies": [
+        "create_prefix"
+      ],
+      "mutation_kind": "mixed_read_write",
+      "notes": "Stage 50 audit inventory only; no write adaptation.",
+      "postgres_strategy": "Keep runtime disabled; use rollback-only harness, backend placeholders, and RETURNING where identity retrieval is required.",
+      "returns": "none",
+      "risk": "high",
+      "rollback_strategy": "Not safe until harness exists; run inside explicit transaction and rollback.",
+      "side_effects": [
+        "database_write"
+      ],
+      "sqlite_postgres_blockers": [
+        "multi_statement_atomicity",
+        "needs_integration_test",
+        "sqlite_placeholder"
+      ],
+      "test_strategy": [
+        "SQL-recording test",
+        "SQLite regression test",
+        "PostgreSQL rollback-only integration test"
+      ],
+      "transaction_contract": "multi_statement_atomic"
+    },
+    "get_or_create_provider": {
+      "batch": "dictionary_and_snapshot_writes",
+      "current_commit_behavior": "never commits",
+      "dependencies": [
+        "create_provider"
+      ],
+      "mutation_kind": "mixed_read_write",
+      "notes": "Stage 50 audit inventory only; no write adaptation.",
+      "postgres_strategy": "Keep runtime disabled; use rollback-only harness, backend placeholders, and RETURNING where identity retrieval is required.",
+      "returns": "none",
+      "risk": "high",
+      "rollback_strategy": "Not safe until harness exists; run inside explicit transaction and rollback.",
+      "side_effects": [
+        "database_write"
+      ],
+      "sqlite_postgres_blockers": [
+        "multi_statement_atomicity",
+        "needs_integration_test",
+        "sqlite_placeholder"
+      ],
+      "test_strategy": [
+        "SQL-recording test",
+        "SQLite regression test",
+        "PostgreSQL rollback-only integration test"
+      ],
+      "transaction_contract": "multi_statement_atomic"
+    },
+    "log_currency_rate_change": {
+      "batch": "phone_route_tariff_core_writes",
+      "current_commit_behavior": "never commits",
+      "dependencies": [],
+      "mutation_kind": "write_with_history",
+      "notes": "Stage 50 audit inventory only; no write adaptation.",
+      "postgres_strategy": "Keep runtime disabled; use rollback-only harness, backend placeholders, and RETURNING where identity retrieval is required.",
+      "returns": "none",
+      "risk": "medium",
+      "rollback_strategy": "Not safe until harness exists; run inside explicit transaction and rollback.",
+      "side_effects": [
+        "change_log_write",
+        "database_write"
+      ],
+      "sqlite_postgres_blockers": [
+        "dynamic_sql",
+        "needs_integration_test",
+        "sqlite_placeholder"
+      ],
+      "test_strategy": [
+        "SQL-recording test",
+        "SQLite regression test",
+        "PostgreSQL rollback-only integration test"
+      ],
+      "transaction_contract": "multi_statement_atomic"
+    },
+    "recalculate_current_tariffs_for_currency_rate": {
+      "batch": "phone_route_tariff_core_writes",
+      "current_commit_behavior": "never commits",
+      "dependencies": [],
+      "mutation_kind": "multi_write",
+      "notes": "Stage 50 audit inventory only; no write adaptation.",
+      "postgres_strategy": "Keep runtime disabled; use rollback-only harness, backend placeholders, and RETURNING where identity retrieval is required.",
+      "returns": "none",
+      "risk": "high",
+      "rollback_strategy": "Not safe until harness exists; run inside explicit transaction and rollback.",
+      "side_effects": [
+        "database_write"
+      ],
+      "sqlite_postgres_blockers": [
+        "dynamic_sql",
+        "needs_integration_test",
+        "sqlite_datetime_function",
+        "sqlite_placeholder"
+      ],
+      "test_strategy": [
+        "SQL-recording test",
+        "SQLite regression test",
+        "PostgreSQL rollback-only integration test"
+      ],
+      "transaction_contract": "multi_statement_atomic"
+    },
+    "record_phone_update_history": {
+      "batch": "phone_route_tariff_core_writes",
+      "current_commit_behavior": "never commits",
+      "dependencies": [],
+      "mutation_kind": "write_with_history",
+      "notes": "Stage 50 audit inventory only; no write adaptation.",
+      "postgres_strategy": "Keep runtime disabled; use rollback-only harness, backend placeholders, and RETURNING where identity retrieval is required.",
+      "returns": "none",
+      "risk": "medium",
+      "rollback_strategy": "Not safe until harness exists; run inside explicit transaction and rollback.",
+      "side_effects": [
+        "database_write",
+        "history_write"
+      ],
+      "sqlite_postgres_blockers": [
+        "dynamic_sql",
+        "needs_integration_test",
+        "sqlite_placeholder"
+      ],
+      "test_strategy": [
+        "SQL-recording test",
+        "SQLite regression test",
+        "PostgreSQL rollback-only integration test"
+      ],
+      "transaction_contract": "multi_statement_atomic"
+    },
+    "remove_phone_links_from_route": {
+      "batch": "phone_route_tariff_core_writes",
+      "current_commit_behavior": "commits internally",
+      "dependencies": [],
+      "mutation_kind": "mixed_read_write",
+      "notes": "Stage 50 audit inventory only; no write adaptation.",
+      "postgres_strategy": "Keep runtime disabled; use rollback-only harness, backend placeholders, and RETURNING where identity retrieval is required.",
+      "returns": "none",
+      "risk": "medium",
+      "rollback_strategy": "Not safe until harness exists; run inside explicit transaction and rollback.",
+      "side_effects": [
+        "database_write"
+      ],
+      "sqlite_postgres_blockers": [
+        "needs_integration_test",
+        "postgres_transaction_aborted_behavior",
+        "sqlite_datetime_function",
+        "sqlite_placeholder"
+      ],
+      "test_strategy": [
+        "SQL-recording test",
+        "SQLite regression test",
+        "PostgreSQL rollback-only integration test"
+      ],
+      "transaction_contract": "multi_statement_atomic"
+    },
+    "set_app_setting_value": {
+      "batch": "app_settings_and_admin_low_risk",
+      "current_commit_behavior": "mixed",
+      "dependencies": [],
+      "mutation_kind": "update",
+      "notes": "Stage 50 audit inventory only; no write adaptation.",
+      "postgres_strategy": "Keep runtime disabled; use rollback-only harness, backend placeholders, and RETURNING where identity retrieval is required.",
+      "returns": "none",
+      "risk": "medium",
+      "rollback_strategy": "Not safe until harness exists; run inside explicit transaction and rollback.",
+      "side_effects": [
+        "database_write"
+      ],
+      "sqlite_postgres_blockers": [
+        "needs_integration_test",
+        "postgres_transaction_aborted_behavior",
+        "sqlite_datetime_function",
+        "sqlite_placeholder"
+      ],
+      "test_strategy": [
+        "SQL-recording test",
+        "SQLite regression test",
+        "PostgreSQL rollback-only integration test"
+      ],
+      "transaction_contract": "explicit_commit"
+    },
+    "set_hlr_limit_override": {
+      "batch": "write_test_harness_and_transaction_foundation",
+      "current_commit_behavior": "never commits",
+      "dependencies": [
+        "delete_app_setting_value",
+        "set_app_setting_value"
+      ],
+      "mutation_kind": "mixed_read_write",
+      "notes": "Stage 51 never adapts this business write; every probe is rolled back by transaction rollback or SAVEPOINT.",
+      "postgres_strategy": "Stage 51 may use this only as a minimal rollback-only synthetic probe; no production adaptation or runtime enablement.",
+      "returns": "none",
+      "risk": "high",
+      "rollback_strategy": "Not safe until harness exists; run inside explicit transaction and rollback.",
+      "side_effects": [
+        "database_write"
+      ],
+      "sqlite_postgres_blockers": [
+        "multi_statement_atomicity",
+        "needs_integration_test",
+        "sqlite_placeholder"
+      ],
+      "test_strategy": [
+        "SQL-recording test",
+        "SQLite regression test",
+        "PostgreSQL rollback-only integration test"
+      ],
+      "transaction_contract": "multi_statement_atomic"
+    },
+    "set_tariff_active": {
+      "batch": "phone_route_tariff_core_writes",
+      "current_commit_behavior": "commits internally",
+      "dependencies": [],
+      "mutation_kind": "update",
+      "notes": "Stage 50 audit inventory only; no write adaptation.",
+      "postgres_strategy": "Keep runtime disabled; use rollback-only harness, backend placeholders, and RETURNING where identity retrieval is required.",
+      "returns": "none",
+      "risk": "medium",
+      "rollback_strategy": "Not safe until harness exists; run inside explicit transaction and rollback.",
+      "side_effects": [
+        "database_write"
+      ],
+      "sqlite_postgres_blockers": [
+        "needs_integration_test",
+        "postgres_transaction_aborted_behavior",
+        "sqlite_datetime_function",
+        "sqlite_placeholder"
+      ],
+      "test_strategy": [
+        "SQL-recording test",
+        "SQLite regression test",
+        "PostgreSQL rollback-only integration test"
+      ],
+      "transaction_contract": "explicit_commit"
+    },
+    "set_user_permissions": {
+      "batch": "app_settings_and_admin_low_risk",
+      "current_commit_behavior": "mixed",
+      "dependencies": [],
+      "mutation_kind": "update",
+      "notes": "Stage 50 audit inventory only; no write adaptation.",
+      "postgres_strategy": "Keep runtime disabled; use rollback-only harness, backend placeholders, and RETURNING where identity retrieval is required.",
+      "returns": "none",
+      "risk": "medium",
+      "rollback_strategy": "Not safe until harness exists; run inside explicit transaction and rollback.",
+      "side_effects": [
+        "database_write"
+      ],
+      "sqlite_postgres_blockers": [
+        "needs_integration_test",
+        "postgres_transaction_aborted_behavior",
+        "sqlite_placeholder"
+      ],
+      "test_strategy": [
+        "SQL-recording test",
+        "SQLite regression test",
+        "PostgreSQL rollback-only integration test"
+      ],
+      "transaction_contract": "explicit_commit"
+    },
+    "update_calling_company": {
+      "batch": "company_routing_setting_writes",
+      "current_commit_behavior": "commits internally",
+      "dependencies": [],
+      "mutation_kind": "multi_write",
+      "notes": "Stage 50 audit inventory only; no write adaptation.",
+      "postgres_strategy": "Keep runtime disabled; use rollback-only harness, backend placeholders, and RETURNING where identity retrieval is required.",
+      "returns": "none",
+      "risk": "high",
+      "rollback_strategy": "Not safe until harness exists; run inside explicit transaction and rollback.",
+      "side_effects": [
+        "database_write"
+      ],
+      "sqlite_postgres_blockers": [
+        "dynamic_sql",
+        "history_change_log_coupling",
+        "needs_integration_test",
+        "postgres_transaction_aborted_behavior",
+        "sqlite_placeholder"
+      ],
+      "test_strategy": [
+        "SQL-recording test",
+        "SQLite regression test",
+        "PostgreSQL rollback-only integration test"
+      ],
+      "transaction_contract": "multi_statement_atomic"
+    },
+    "update_calling_company_import_fields": {
+      "batch": "importer_and_bulk_mutation_writes",
+      "current_commit_behavior": "commits internally",
+      "dependencies": [],
+      "mutation_kind": "multi_write",
+      "notes": "Stage 50 audit inventory only; no write adaptation.",
+      "postgres_strategy": "Keep runtime disabled; use rollback-only harness, backend placeholders, and RETURNING where identity retrieval is required.",
+      "returns": "none",
+      "risk": "critical",
+      "rollback_strategy": "Not safe until harness exists; run inside explicit transaction and rollback.",
+      "side_effects": [
+        "database_write"
+      ],
+      "sqlite_postgres_blockers": [
+        "bulk_destructive_operation",
+        "dynamic_sql",
+        "history_change_log_coupling",
+        "needs_integration_test",
+        "postgres_transaction_aborted_behavior",
+        "sqlite_datetime_function",
+        "sqlite_placeholder"
+      ],
+      "test_strategy": [
+        "SQL-recording test",
+        "SQLite regression test",
+        "PostgreSQL rollback-only integration test"
+      ],
+      "transaction_contract": "multi_statement_atomic"
+    },
+    "update_company_routing_setting": {
+      "batch": "company_routing_setting_writes",
+      "current_commit_behavior": "commits internally",
+      "dependencies": [],
+      "mutation_kind": "multi_write",
+      "notes": "Stage 50 audit inventory only; no write adaptation.",
+      "postgres_strategy": "Keep runtime disabled; use rollback-only harness, backend placeholders, and RETURNING where identity retrieval is required.",
+      "returns": "none",
+      "risk": "high",
+      "rollback_strategy": "Not safe until harness exists; run inside explicit transaction and rollback.",
+      "side_effects": [
+        "change_log_write",
+        "database_write"
+      ],
+      "sqlite_postgres_blockers": [
+        "history_change_log_coupling",
+        "needs_integration_test",
+        "postgres_returning_required",
+        "postgres_transaction_aborted_behavior",
+        "sqlite_datetime_function",
+        "sqlite_lastrowid",
+        "sqlite_placeholder"
+      ],
+      "test_strategy": [
+        "SQL-recording test",
+        "SQLite regression test",
+        "PostgreSQL rollback-only integration test"
+      ],
+      "transaction_contract": "multi_statement_atomic"
+    },
+    "update_company_routing_setting_comment": {
+      "batch": "company_routing_setting_writes",
+      "current_commit_behavior": "commits internally",
+      "dependencies": [],
+      "mutation_kind": "multi_write",
+      "notes": "Stage 50 audit inventory only; no write adaptation.",
+      "postgres_strategy": "Keep runtime disabled; use rollback-only harness, backend placeholders, and RETURNING where identity retrieval is required.",
+      "returns": "none",
+      "risk": "high",
+      "rollback_strategy": "Not safe until harness exists; run inside explicit transaction and rollback.",
+      "side_effects": [
+        "change_log_write",
+        "database_write"
+      ],
+      "sqlite_postgres_blockers": [
+        "history_change_log_coupling",
+        "needs_integration_test",
+        "postgres_transaction_aborted_behavior",
+        "sqlite_datetime_function",
+        "sqlite_placeholder"
+      ],
+      "test_strategy": [
+        "SQL-recording test",
+        "SQLite regression test",
+        "PostgreSQL rollback-only integration test"
+      ],
+      "transaction_contract": "multi_statement_atomic"
+    },
+    "update_dictionary_snapshots": {
+      "batch": "dictionary_and_snapshot_writes",
+      "current_commit_behavior": "never commits",
+      "dependencies": [],
+      "mutation_kind": "multi_write",
+      "notes": "Stage 50 audit inventory only; no write adaptation.",
+      "postgres_strategy": "Keep runtime disabled; use rollback-only harness, backend placeholders, and RETURNING where identity retrieval is required.",
+      "returns": "none",
+      "risk": "high",
+      "rollback_strategy": "Not safe until harness exists; run inside explicit transaction and rollback.",
+      "side_effects": [
+        "database_write"
+      ],
+      "sqlite_postgres_blockers": [
+        "history_change_log_coupling",
+        "needs_integration_test",
+        "sqlite_placeholder"
+      ],
+      "test_strategy": [
+        "SQL-recording test",
+        "SQLite regression test",
+        "PostgreSQL rollback-only integration test"
+      ],
+      "transaction_contract": "multi_statement_atomic"
+    },
+    "update_phone_number": {
+      "batch": "phone_route_tariff_core_writes",
+      "current_commit_behavior": "commits internally",
+      "dependencies": [
+        "record_phone_update_history"
+      ],
+      "mutation_kind": "multi_write",
+      "notes": "Stage 50 audit inventory only; no write adaptation.",
+      "postgres_strategy": "Keep runtime disabled; use rollback-only harness, backend placeholders, and RETURNING where identity retrieval is required.",
+      "returns": "none",
+      "risk": "high",
+      "rollback_strategy": "Not safe until harness exists; run inside explicit transaction and rollback.",
+      "side_effects": [
+        "database_write"
+      ],
+      "sqlite_postgres_blockers": [
+        "history_change_log_coupling",
+        "multi_statement_atomicity",
+        "needs_integration_test",
+        "postgres_transaction_aborted_behavior",
+        "sqlite_datetime_function",
+        "sqlite_placeholder"
+      ],
+      "test_strategy": [
+        "SQL-recording test",
+        "SQLite regression test",
+        "PostgreSQL rollback-only integration test"
+      ],
+      "transaction_contract": "multi_statement_atomic"
+    },
+    "update_phone_number_import_fields_with_history": {
+      "batch": "importer_and_bulk_mutation_writes",
+      "current_commit_behavior": "commits internally",
+      "dependencies": [],
+      "mutation_kind": "multi_write",
+      "notes": "Stage 50 audit inventory only; no write adaptation.",
+      "postgres_strategy": "Keep runtime disabled; use rollback-only harness, backend placeholders, and RETURNING where identity retrieval is required.",
+      "returns": "none",
+      "risk": "critical",
+      "rollback_strategy": "Not safe until harness exists; run inside explicit transaction and rollback.",
+      "side_effects": [
+        "database_write",
+        "history_write"
+      ],
+      "sqlite_postgres_blockers": [
+        "bulk_destructive_operation",
+        "dynamic_sql",
+        "history_change_log_coupling",
+        "needs_integration_test",
+        "postgres_transaction_aborted_behavior",
+        "sqlite_datetime_function",
+        "sqlite_placeholder"
+      ],
+      "test_strategy": [
+        "SQL-recording test",
+        "SQLite regression test",
+        "PostgreSQL rollback-only integration test"
+      ],
+      "transaction_contract": "multi_statement_atomic"
+    },
+    "update_route": {
+      "batch": "phone_route_tariff_core_writes",
+      "current_commit_behavior": "commits internally",
+      "dependencies": [],
+      "mutation_kind": "multi_write",
+      "notes": "Stage 50 audit inventory only; no write adaptation.",
+      "postgres_strategy": "Keep runtime disabled; use rollback-only harness, backend placeholders, and RETURNING where identity retrieval is required.",
+      "returns": "none",
+      "risk": "high",
+      "rollback_strategy": "Not safe until harness exists; run inside explicit transaction and rollback.",
+      "side_effects": [
+        "database_write"
+      ],
+      "sqlite_postgres_blockers": [
+        "dynamic_sql",
+        "history_change_log_coupling",
+        "needs_integration_test",
+        "postgres_transaction_aborted_behavior",
+        "sqlite_placeholder"
+      ],
+      "test_strategy": [
+        "SQL-recording test",
+        "SQLite regression test",
+        "PostgreSQL rollback-only integration test"
+      ],
+      "transaction_contract": "multi_statement_atomic"
+    },
+    "update_route_import_fields": {
+      "batch": "importer_and_bulk_mutation_writes",
+      "current_commit_behavior": "commits internally",
+      "dependencies": [],
+      "mutation_kind": "multi_write",
+      "notes": "Stage 50 audit inventory only; no write adaptation.",
+      "postgres_strategy": "Keep runtime disabled; use rollback-only harness, backend placeholders, and RETURNING where identity retrieval is required.",
+      "returns": "none",
+      "risk": "critical",
+      "rollback_strategy": "Not safe until harness exists; run inside explicit transaction and rollback.",
+      "side_effects": [
+        "database_write"
+      ],
+      "sqlite_postgres_blockers": [
+        "bulk_destructive_operation",
+        "dynamic_sql",
+        "history_change_log_coupling",
+        "needs_integration_test",
+        "postgres_transaction_aborted_behavior",
+        "sqlite_datetime_function",
+        "sqlite_placeholder"
+      ],
+      "test_strategy": [
+        "SQL-recording test",
+        "SQLite regression test",
+        "PostgreSQL rollback-only integration test"
+      ],
+      "transaction_contract": "multi_statement_atomic"
+    },
+    "update_routing_event": {
+      "batch": "routing_event_application_writes",
+      "current_commit_behavior": "commits internally",
+      "dependencies": [],
+      "mutation_kind": "multi_write",
+      "notes": "Stage 50 audit inventory only; no write adaptation.",
+      "postgres_strategy": "Keep runtime disabled; use rollback-only harness, backend placeholders, and RETURNING where identity retrieval is required.",
+      "returns": "none",
+      "risk": "high",
+      "rollback_strategy": "Not safe until harness exists; run inside explicit transaction and rollback.",
+      "side_effects": [
+        "change_log_write",
+        "database_write"
+      ],
+      "sqlite_postgres_blockers": [
+        "history_change_log_coupling",
+        "needs_integration_test",
+        "postgres_transaction_aborted_behavior",
+        "sqlite_placeholder"
+      ],
+      "test_strategy": [
+        "SQL-recording test",
+        "SQLite regression test",
+        "PostgreSQL rollback-only integration test"
+      ],
+      "transaction_contract": "multi_statement_atomic"
+    },
+    "update_server_route_priority": {
+      "batch": "provider_change_and_priority_writes",
+      "current_commit_behavior": "commits internally",
+      "dependencies": [],
+      "mutation_kind": "multi_write",
+      "notes": "Stage 50 audit inventory only; no write adaptation.",
+      "postgres_strategy": "Keep runtime disabled; use rollback-only harness, backend placeholders, and RETURNING where identity retrieval is required.",
+      "returns": "none",
+      "risk": "high",
+      "rollback_strategy": "Not safe until harness exists; run inside explicit transaction and rollback.",
+      "side_effects": [
+        "database_write"
+      ],
+      "sqlite_postgres_blockers": [
+        "history_change_log_coupling",
+        "needs_integration_test",
+        "postgres_transaction_aborted_behavior",
+        "sqlite_datetime_function",
+        "sqlite_placeholder"
+      ],
+      "test_strategy": [
+        "SQL-recording test",
+        "SQLite regression test",
+        "PostgreSQL rollback-only integration test"
+      ],
+      "transaction_contract": "multi_statement_atomic"
+    },
+    "update_tariff": {
+      "batch": "phone_route_tariff_core_writes",
+      "current_commit_behavior": "commits internally",
+      "dependencies": [],
+      "mutation_kind": "multi_write",
+      "notes": "Stage 50 audit inventory only; no write adaptation.",
+      "postgres_strategy": "Keep runtime disabled; use rollback-only harness, backend placeholders, and RETURNING where identity retrieval is required.",
+      "returns": "none",
+      "risk": "high",
+      "rollback_strategy": "Not safe until harness exists; run inside explicit transaction and rollback.",
+      "side_effects": [
+        "database_write"
+      ],
+      "sqlite_postgres_blockers": [
+        "dynamic_sql",
+        "history_change_log_coupling",
+        "needs_integration_test",
+        "postgres_transaction_aborted_behavior",
+        "sqlite_placeholder"
+      ],
+      "test_strategy": [
+        "SQL-recording test",
+        "SQLite regression test",
+        "PostgreSQL rollback-only integration test"
+      ],
+      "transaction_contract": "multi_statement_atomic"
+    },
+    "update_user": {
+      "batch": "app_settings_and_admin_low_risk",
+      "current_commit_behavior": "commits internally",
+      "dependencies": [],
+      "mutation_kind": "multi_write",
+      "notes": "Stage 50 audit inventory only; no write adaptation.",
+      "postgres_strategy": "Keep runtime disabled; use rollback-only harness, backend placeholders, and RETURNING where identity retrieval is required.",
+      "returns": "none",
+      "risk": "high",
+      "rollback_strategy": "Not safe until harness exists; run inside explicit transaction and rollback.",
+      "side_effects": [
+        "database_write"
+      ],
+      "sqlite_postgres_blockers": [
+        "dynamic_sql",
+        "history_change_log_coupling",
+        "needs_integration_test",
+        "postgres_transaction_aborted_behavior",
+        "sqlite_datetime_function",
+        "sqlite_placeholder"
+      ],
+      "test_strategy": [
+        "SQL-recording test",
+        "SQLite regression test",
+        "PostgreSQL rollback-only integration test"
+      ],
+      "transaction_contract": "multi_statement_atomic"
+    },
+    "update_user_password": {
+      "batch": "app_settings_and_admin_low_risk",
+      "current_commit_behavior": "commits internally",
+      "dependencies": [],
+      "mutation_kind": "multi_write",
+      "notes": "Stage 50 audit inventory only; no write adaptation.",
+      "postgres_strategy": "Keep runtime disabled; use rollback-only harness, backend placeholders, and RETURNING where identity retrieval is required.",
+      "returns": "none",
+      "risk": "high",
+      "rollback_strategy": "Not safe until harness exists; run inside explicit transaction and rollback.",
+      "side_effects": [
+        "database_write"
+      ],
+      "sqlite_postgres_blockers": [
+        "dynamic_sql",
+        "history_change_log_coupling",
+        "needs_integration_test",
+        "postgres_transaction_aborted_behavior",
+        "sqlite_datetime_function",
+        "sqlite_placeholder"
+      ],
+      "test_strategy": [
+        "SQL-recording test",
+        "SQLite regression test",
+        "PostgreSQL rollback-only integration test"
+      ],
+      "transaction_contract": "multi_statement_atomic"
+    },
+    "upsert_hlr_daily_usage": {
+      "batch": "app_settings_and_admin_low_risk",
+      "current_commit_behavior": "mixed",
+      "dependencies": [],
+      "mutation_kind": "upsert",
+      "notes": "Stage 50 audit inventory only; no write adaptation.",
+      "postgres_strategy": "Keep runtime disabled; use rollback-only harness, backend placeholders, and RETURNING where identity retrieval is required.",
+      "returns": "none",
+      "risk": "medium",
+      "rollback_strategy": "Not safe until harness exists; run inside explicit transaction and rollback.",
+      "side_effects": [
+        "database_write"
+      ],
+      "sqlite_postgres_blockers": [
+        "needs_integration_test",
+        "postgres_transaction_aborted_behavior",
+        "sqlite_placeholder"
+      ],
+      "test_strategy": [
+        "SQL-recording test",
+        "SQLite regression test",
+        "PostgreSQL rollback-only integration test"
+      ],
+      "transaction_contract": "explicit_commit"
+    }
+  },
+  "recommended_next_batch": "write_test_harness_and_transaction_foundation",
+  "schema_version": 1
+}
