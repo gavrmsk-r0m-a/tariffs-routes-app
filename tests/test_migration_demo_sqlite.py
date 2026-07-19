@@ -390,3 +390,42 @@ class MigrationDemoSqliteTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+# Stage 46 history rows deliberately document read-only smoke contracts.
+class Stage46MigrationDemoFixtureTests(MigrationDemoSqliteTests):
+    def test_stage_46_history_fixture_contract(self):
+        db_path = self.make_demo_db()
+        with sqlite3.connect(db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            admin = conn.execute("SELECT id FROM users WHERE username = 'admin'").fetchone()["id"]
+            demo_phone = conn.execute("SELECT * FROM phone_numbers WHERE normalized_number = ?", ("525550000001",)).fetchone()
+            routed_phone = conn.execute("SELECT * FROM phone_numbers WHERE normalized_number = ?", ("525550000020",)).fetchone()
+            route = conn.execute("SELECT * FROM routes WHERE name = ?", ("Demo Route",)).fetchone()
+            tariff = conn.execute("""SELECT t.* FROM tariffs t JOIN countries c ON c.id=t.country_id JOIN providers p ON p.id=t.provider_id JOIN provider_prefixes pp ON pp.id=t.provider_prefix_id WHERE c.name=? AND p.name=? AND pp.prefix=?""", ("Demo Country", "Demo Provider", "123")).fetchone()
+            phone_history = conn.execute("SELECT * FROM phone_number_history WHERE reason = ?", ("Stage 46 phone status",)).fetchone()
+            added = conn.execute("SELECT * FROM route_phone_number_history WHERE reason = ?", ("Stage 46 phone linked",)).fetchone()
+            replaced = conn.execute("SELECT * FROM route_phone_number_history WHERE reason = ?", ("Stage 46 phone replaced",)).fetchone()
+            route_history = conn.execute("SELECT * FROM route_history WHERE reason = ?", ("Stage 46 route comment",)).fetchone()
+            tariff_history = conn.execute("SELECT * FROM tariff_change_history WHERE tariff_id = ? AND reason IN ('tariff.created', 'tariff.changed') ORDER BY changed_at", (tariff["id"],)).fetchall()
+            stage46_log_count = conn.execute("SELECT COUNT(*) FROM change_log WHERE change_type LIKE 'Stage 46%' OR comment LIKE 'Synthetic Stage 46%'").fetchone()[0]
+        self.assertEqual((demo_phone["id"], "updated", admin, "2026-07-17 10:00:00", "status", "problem", "used", "Synthetic Stage 46 phone history"), (phone_history["phone_number_id"], phone_history["action"], phone_history["changed_by"], phone_history["changed_at"], phone_history["field_name"], phone_history["old_value"], phone_history["new_value"], phone_history["comment"]))
+        self.assertEqual((route["id"], demo_phone["id"], None, None, "added", admin, "2026-07-17 11:00:00", "usage_type=cli", "Stage 46 phone linked", "Synthetic Stage 46 route-phone history"), (added["route_id"], added["phone_number_id"], added["old_phone_number_id"], added["new_phone_number_id"], added["action"], added["changed_by"], added["changed_at"], added["new_values"], added["reason"], added["comment"]))
+        self.assertEqual((route["id"], None, demo_phone["id"], routed_phone["id"], "replaced", admin, "2026-07-17 12:00:00", "525550000001", "525550000020", "Synthetic Stage 46 replacement history"), (replaced["route_id"], replaced["phone_number_id"], replaced["old_phone_number_id"], replaced["new_phone_number_id"], replaced["action"], replaced["changed_by"], replaced["changed_at"], replaced["old_values"], replaced["new_values"], replaced["comment"]))
+        self.assertEqual(("updated", "comment", "Temporary Stage 46 route comment", "Synthetic route", "Stage 46 route comment", admin, "2026-07-17 09:00:00"), (route_history["action"], route_history["field_name"], route_history["old_value"], route_history["new_value"], route_history["reason"], route_history["changed_by"], route_history["changed_at"]))
+        self.assertEqual(2, len(tariff_history))
+        created, changed = tariff_history
+        self.assertEqual("2026-07-17 08:00:00", created["changed_at"])
+        self.assertIsNone(created["old_price_in_provider_currency"])
+        self.assertIsNone(created["eur_price_delta"])
+        self.assertEqual(Decimal("0.2"), Decimal(str(created["new_price_in_provider_currency"])))
+        self.assertEqual(Decimal("0.2"), Decimal(str(created["new_eur_price"])))
+        self.assertEqual("2026-07-17 13:00:00", changed["changed_at"])
+        self.assertEqual(Decimal("0.2"), Decimal(str(changed["old_price_in_provider_currency"])))
+        self.assertEqual(Decimal("0.1"), Decimal(str(changed["new_price_in_provider_currency"])))
+        self.assertEqual(Decimal("-0.1"), Decimal(str(changed["eur_price_delta"])))
+        self.assertEqual(admin, changed["changed_by"])
+        self.assertEqual("used", demo_phone["status"])
+        self.assertEqual("Synthetic route", route["comment"])
+        self.assertEqual(Decimal("0.1"), Decimal(str(tariff["price_in_provider_currency"])))
+        self.assertEqual(1, tariff["is_current"])
+        self.assertEqual(0, stage46_log_count)
