@@ -7,6 +7,7 @@ on:
       - scripts/migrate_sqlite_to_postgres.py
       - scripts/postgres_preflight.py
       - scripts/postgres_repository_smoke.py
+      - scripts/postgres_repository_write_harness.py
       - scripts/audit_repository_postgres_coverage.py
       - scripts/audit_repository_postgres_write_plan.py
       - docs/postgres/repository_write_surface_plan.json
@@ -28,6 +29,7 @@ on:
       - tests/test_postgres_schema_draft.py
       - tests/test_migration_demo_sqlite.py
       - tests/test_postgres_repository_smoke.py
+      - tests/test_postgres_repository_write_harness.py
       - .github/workflows/postgres-migration-smoke.yml
 
 jobs:
@@ -74,6 +76,7 @@ jobs:
           python -m unittest tests.test_sqlite_to_postgres_migration
           python -m unittest tests.test_migration_demo_sqlite
           python -m unittest tests.test_postgres_repository_smoke
+          python -m unittest tests.test_postgres_repository_write_harness
 
       - name: Create demo SQLite database
         run: python scripts/create_migration_demo_sqlite.py --output "$RUNNER_TEMP/migration_demo.sqlite3"
@@ -103,3 +106,9 @@ jobs:
         run: |
           python scripts/postgres_repository_smoke.py \
             --postgres-url "postgresql://postgres:postgres@localhost:5432/teleroute_migration_test"
+
+      - name: Run rollback-only PostgreSQL Repository write harness
+        run: |
+          python scripts/postgres_repository_write_harness.py \
+            --postgres-url "postgresql://postgres:postgres@localhost:5432/teleroute_migration_test" \
+            --json

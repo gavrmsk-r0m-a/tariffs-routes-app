@@ -101,3 +101,7 @@ The unchanged runtime census is `app/db.py`, `app/server.py`, and `app/importer.
 ## Stage 51 boundary clarification
 
 `set_hlr_limit_override` is listed in the Stage 51 foundation batch solely as a minimal rollback-only synthetic probe. Stage 51 does **not** adapt it as a production/business write, does not enable `DB_BACKEND=postgres`, and does not start business-domain write adaptation. Every probe must run in an explicit transaction and finish with transaction rollback or `SAVEPOINT` rollback.
+
+## Stage 51 status: foundation added
+
+The CI-only rollback harness is now the transaction foundation for later write stages. It uses `set_hlr_limit_override` only as a synthetic caller-owned (`commit=False`) probe, verifies visibility before a full rollback and verifies the prior value afterward. It also documents PostgreSQL's aborted-transaction behavior and SAVEPOINT recovery. No business write adaptation or production PostgreSQL runtime is included; the first small adaptation batch remains after this harness is green.

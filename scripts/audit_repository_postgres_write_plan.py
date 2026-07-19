@@ -5,7 +5,7 @@ import argparse, ast, json, sys
 from collections import Counter
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]
-TOP={"schema_version","baseline","batches","methods","recommended_next_batch"}
+TOP={"schema_version","baseline","batches","methods","recommended_next_batch","foundation_status"}
 BASELINE={"repository_public_methods_count":112,"smoke_covered_read_count":61,"deferred_read_only_count":0,"write_or_mutating_count":50,"infrastructure_or_mixed_count":1,"read_surface_coverage_percent":100.0,"repository_smoke_checks_count":611}
 BATCH={"title","stage_hint","rationale","risk","scope","prerequisites","methods","out_of_scope","acceptance"}
 METHOD={"batch","mutation_kind","risk","transaction_contract","current_commit_behavior","sqlite_postgres_blockers","side_effects","dependencies","returns","postgres_strategy","test_strategy","rollback_strategy","notes"}
@@ -47,6 +47,7 @@ def audit(repository_file=ROOT/'app/repository.py',coverage_manifest=ROOT/'docs/
  if type(plan['schema_version']) is not int or plan['schema_version']!=1: raise ConfigError('unknown schema_version')
  exact(plan['baseline'],set(BASELINE),'baseline')
  if plan['baseline']!=BASELINE: raise ConfigError('baseline does not match expected constants')
+ if plan['foundation_status']!="foundation_added": raise ConfigError('Stage 51 foundation_status must be foundation_added')
  expected=coverage.get('write_or_mutating');
  if not isinstance(expected,dict) or len(expected)!=50: raise ConfigError('coverage write_or_mutating is invalid')
  if plan['baseline']['write_or_mutating_count']!=len(expected): raise ConfigError('baseline does not match coverage manifest')

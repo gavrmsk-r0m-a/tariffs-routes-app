@@ -73,6 +73,28 @@ class RepositoryAdapterWriteMethodsTest(unittest.TestCase):
         self.assertEqual(self.conn.execute("SELECT comment FROM servers WHERE id = ?", (server_id,)).fetchone()["comment"], "plain write path")
         self.assertEqual(self.conn.execute("SELECT description FROM change_reasons WHERE id = ?", (reason_id,)).fetchone()["description"], "plain write path")
 
+    def test_hlr_limit_override_keeps_sqlite_commit_default_and_allows_caller_transaction(self):
+        self.repo.set_hlr_limit_override("2500")
+        self.assertEqual(self.repo.get_hlr_limit_override(), "2500")
+        self.repo.set_hlr_limit_override("5151", commit=False)
+        self.assertEqual(self.repo.get_hlr_limit_override(), "5151")
+        self.conn.rollback()
+        self.assertEqual(self.repo.get_hlr_limit_override(), "2500")
+
+    def test_hlr_limit_override_records_postgres_placeholder_and_upsert(self):
+        class RecordingConnection:
+            def __init__(self): self.calls = []; self.commits = 0
+            def execute(self, sql, params=()): self.calls.append((sql, params))
+            def commit(self): self.commits += 1
+            def rollback(self): raise AssertionError("unexpected rollback")
+        connection = RecordingConnection()
+        Repository(connection, backend="postgres").set_hlr_limit_override("5151", commit=False)
+        sql, params = connection.calls[0]
+        self.assertIn("VALUES (%s, %s, CURRENT_TIMESTAMP, %s)", sql)
+        self.assertIn("ON CONFLICT(key) DO UPDATE", sql)
+        self.assertEqual(params, ("hlr_daily_limit_override", "5151", None))
+        self.assertEqual(connection.commits, 0)
+
     def test_update_calling_company_import_fields_updates_row_and_booleans(self):
         user_id = self.repo.create_user("company-import-admin", "Company Import Admin")
         country_id = self.repo.create_country("Италия", "IT")
