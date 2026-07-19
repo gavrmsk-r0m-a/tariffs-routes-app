@@ -2,7 +2,7 @@
 
 ## Executive summary
 
-Stage 44 adds a machine-verifiable, audit-only gate for the current PostgreSQL Repository read surface. The audit statically parses `app/repository.py`, `scripts/postgres_repository_smoke.py`, and `docs/postgres/repository_method_coverage.json`; it does not import Repository code, open databases, or rewrite inputs.
+Stage 44 adds a machine-verifiable, audit-only gate for the current PostgreSQL Repository read surface. Stage 45 hardens that gate with strict manifest metadata schema validation, stable configuration-error handling, and recursive runtime SQL census coverage. The audit statically parses `app/repository.py`, `scripts/postgres_repository_smoke.py`, and `docs/postgres/repository_method_coverage.json`; it does not import Repository code, execute top-level code, open databases, or rewrite inputs.
 
 - Public `Repository` methods: **112**.
 - Smoke-covered read methods: **54**.
@@ -42,7 +42,7 @@ The existing PostgreSQL Repository smoke covers adapter-ready read groups withou
 
 ## Runtime SQL outside Repository
 
-The direct runtime SQL census is intentionally informational. It proves that Repository smoke coverage is not the same as full application runtime PostgreSQL coverage while runtime modules still execute SQL directly.
+The direct runtime SQL census is intentionally informational. It proves that Repository smoke coverage is not the same as full application runtime PostgreSQL coverage while runtime modules still execute SQL directly. Stage 45 scans `app/**/*.py` recursively, excluding service/data directories such as `__pycache__`, `.venv`, `venv`, `data`, `backups`, and `logs`, while continuing to exclude `app/repository.py` by resolved path.
 
 | Runtime area | Files/functions | SQL profile |
 | --- | --- | --- |
@@ -51,6 +51,12 @@ The direct runtime SQL census is intentionally informational. It proves that Rep
 | Web runtime/admin helpers | `app/server.py` option builders, demo-data helpers, dashboard/forms/admin POST handlers | SELECT, INSERT, UPDATE, and dynamic SQL calls |
 
 Census totals: **53** SELECT calls, **65** write calls, **32** schema/PRAGMA calls, **11** dynamic/unknown calls, across **3** files: `app/db.py`, `app/importer.py`, and `app/server.py`.
+
+## Stage 45 audit hardening
+
+Stage 45 strictly validates the manifest top-level schema and every category entry. Invalid manifest configuration, parse/input errors, or an unreadable static `SMOKE_METHODS` literal return CLI exit code **2** with `status: error`; classification or coverage violations still return exit code **1** with `status: failed`; a valid audit returns exit code **0** with `status: ok`.
+
+Deferred read-only entries require `reason`, non-empty unique `blockers`, and `recommended_batch`; write/mutating entries require `reason` and an allowed `mutation_kind`; infrastructure/mixed entries require `reason`. Unknown top-level keys or metadata fields are configuration errors so schema expansion requires a future `schema_version` bump.
 
 ## Recommended next implementation Stage
 
