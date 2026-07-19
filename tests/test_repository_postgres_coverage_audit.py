@@ -1,7 +1,7 @@
-import copy, json, tempfile, unittest
+import copy, contextlib, io, json, tempfile, unittest
 from pathlib import Path
 
-from scripts.audit_repository_postgres_coverage import audit
+from scripts.audit_repository_postgres_coverage import audit, main
 
 ROOT = Path(__file__).resolve().parents[1]
 BASE_MANIFEST = ROOT / "docs/postgres/repository_method_coverage.json"
@@ -25,7 +25,10 @@ class RepositoryPostgresCoverageAuditTests(unittest.TestCase):
         d=tempfile.TemporaryDirectory(); root=Path(d.name); (root/'app').mkdir(); (root/'scripts').mkdir(); (root/'docs/postgres').mkdir(parents=True)
         (root/'app/repository.py').write_text(repo); (root/'scripts/postgres_repository_smoke.py').write_text(smoke)
         (root/'docs/postgres/repository_method_coverage.json').write_text(json.dumps(MANIFEST if manifest is None else manifest, sort_keys=True))
-        for name, text in (app_files or {}).items(): (root/'app'/name).write_text(text)
+        for name, text in (app_files or {}).items():
+            path=root/'app'/name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(text)
         return d, root
     def run_case(self, **kw):
         d, root = self.write_case(**kw); self.addCleanup(d.cleanup)
@@ -74,6 +77,52 @@ class RepositoryPostgresCoverageAuditTests(unittest.TestCase):
         for op in ['select','insert','update','pragma','dynamic_or_unknown']: self.assertIn(op, ops)
         self.assertTrue(all(c['function']=='f' for c in calls))
 
+    def test_recursive_runtime_census_excludes_non_runtime_directories(self):
+        app={
+            'nested/worker.py': 'def f(conn):\n conn.execute("SELECT 1")\n',
+            'data/ignored.py': 'def f(conn):\n conn.execute("UPDATE ignored SET value = 1")\n',
+            'backups/ignored.py': 'def f(conn):\n conn.execute("DELETE FROM ignored")\n',
+            'logs/ignored.py': 'def f(conn):\n conn.execute("INSERT INTO ignored VALUES (1)")\n',
+            '__pycache__/ignored.py': 'def f(conn):\n conn.execute("PRAGMA cache_size")\n',
+        }
+        s=self.run_case(app_files=app)
+        direct=s['direct_runtime_sql_summary']
+        self.assertIn('app/nested/worker.py', direct['files_with_direct_sql'])
+        self.assertNotIn('app/data/ignored.py', direct['files_with_direct_sql'])
+        self.assertNotIn('app/backups/ignored.py', direct['files_with_direct_sql'])
+        self.assertNotIn('app/logs/ignored.py', direct['files_with_direct_sql'])
+        self.assertNotIn('app/__pycache__/ignored.py', direct['files_with_direct_sql'])
+
+    def test_manifest_rejects_unknown_or_missing_top_level_keys(self):
+        m=copy.deepcopy(MANIFEST); m['unexpected']={}
+        with self.assertRaisesRegex(Exception, 'unknown top-level keys'):
+            self.run_case(manifest=m)
+        m=copy.deepcopy(MANIFEST); del m['write_or_mutating']
+        with self.assertRaisesRegex(Exception, 'missing top-level keys'):
+            self.run_case(manifest=m)
+
+    def test_manifest_rejects_invalid_category_and_metadata_shapes(self):
+        m=copy.deepcopy(MANIFEST); m['deferred_read_only']=[]
+        with self.assertRaisesRegex(Exception, 'deferred_read_only must be object'):
+            self.run_case(manifest=m)
+        m=copy.deepcopy(MANIFEST); m['infrastructure_or_mixed']['transaction']='not metadata'
+        with self.assertRaisesRegex(Exception, 'transaction must be object'):
+            self.run_case(manifest=m)
+        m=copy.deepcopy(MANIFEST); m['write_or_mutating']['write_one']={'reason':'writes'}
+        with self.assertRaisesRegex(Exception, 'missing metadata keys: mutation_kind'):
+            self.run_case(manifest=m)
+        m=copy.deepcopy(MANIFEST); m['deferred_read_only']['read_one']={'reason':'deferred','blockers':'not-list','recommended_batch':'x'}
+        with self.assertRaisesRegex(Exception, 'blockers must be list'):
+            self.run_case(manifest=m)
+
+    def test_manifest_rejects_unknown_metadata_keys_and_empty_strings(self):
+        m=copy.deepcopy(MANIFEST); m['write_or_mutating']['write_one']['extra']='bad'
+        with self.assertRaisesRegex(Exception, 'unknown metadata keys: extra'):
+            self.run_case(manifest=m)
+        m=copy.deepcopy(MANIFEST); m['infrastructure_or_mixed']['transaction']={'reason':' '}
+        with self.assertRaisesRegex(Exception, 'reason must be non-empty string'):
+            self.run_case(manifest=m)
+
     def test_deterministic_no_execution_and_read_only_filesystem(self):
         d, root=self.write_case(app_files={'server.py':'def f(conn):\n conn.execute("SELECT 1")\n'}); self.addCleanup(d.cleanup)
         files=[root/'app/repository.py',root/'scripts/postgres_repository_smoke.py',root/'docs/postgres/repository_method_coverage.json',root/'app/server.py']
@@ -82,6 +131,23 @@ class RepositoryPostgresCoverageAuditTests(unittest.TestCase):
         self.assertEqual(json.dumps(one,sort_keys=True), json.dumps(two,sort_keys=True))
         self.assertFalse((root/'SIDE_EFFECT').exists())
         self.assertEqual(before, {p:p.read_text() for p in files})
+
+    def test_audit_never_executes_repository_marker(self):
+        marker='AUDIT_MUST_NEVER_EXECUTE_THIS_MODULE'
+        repo=f'raise RuntimeError("{marker}")\n'+REPO
+        self.assertEqual('ok', self.run_case(repo=repo)['status'])
+
+    def test_cli_exit_codes_are_zero_one_and_two(self):
+        d, root=self.write_case(); self.addCleanup(d.cleanup)
+        args=['--repository-file', str(root/'app/repository.py'), '--smoke-script', str(root/'scripts/postgres_repository_smoke.py'), '--manifest', str(root/'docs/postgres/repository_method_coverage.json')]
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(0, main(args))
+        (root/'scripts/postgres_repository_smoke.py').write_text('SMOKE_METHODS = ("missing",)\n')
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(1, main(args))
+        (root/'docs/postgres/repository_method_coverage.json').write_text('{}')
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(2, main(args))
 
 if __name__ == '__main__':
     unittest.main()

@@ -8,6 +8,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 MANIFEST_CATEGORIES = ("deferred_read_only", "write_or_mutating", "infrastructure_or_mixed")
+MANIFEST_TOP_LEVEL_KEYS = ("schema_version", *MANIFEST_CATEGORIES)
+EXCLUDED_RUNTIME_SQL_DIRS = frozenset({"__pycache__", "backups", "data", "logs"})
 WRITE_OPS = {"insert", "update", "delete", "replace", "create", "alter", "drop", "truncate"}
 DDL_OPS = {"create", "alter", "drop", "truncate"}
 SQL_APIS = {"execute", "executemany", "executescript"}
@@ -41,10 +43,36 @@ def find_smoke_methods(tree):
 def read_manifest(path):
     try: data=json.loads(Path(path).read_text())
     except (OSError, json.JSONDecodeError) as e: raise ConfigError(f"cannot read manifest: {e}")
-    if data.get("schema_version") != 1: raise ConfigError("unknown manifest schema_version")
+    if not isinstance(data, dict): raise ConfigError("manifest top level must be object")
+    unknown=sorted(set(data)-set(MANIFEST_TOP_LEVEL_KEYS))
+    missing=sorted(set(MANIFEST_TOP_LEVEL_KEYS)-set(data))
+    if unknown: raise ConfigError(f"manifest has unknown top-level keys: {', '.join(unknown)}")
+    if missing: raise ConfigError(f"manifest is missing top-level keys: {', '.join(missing)}")
+    if data["schema_version"] != 1: raise ConfigError("unknown manifest schema_version")
     for cat in MANIFEST_CATEGORIES:
         if not isinstance(data.get(cat), dict): raise ConfigError(f"manifest {cat} must be object")
+    for name, meta in data["deferred_read_only"].items():
+        validate_metadata(name, meta, "deferred_read_only", ("reason", "blockers", "recommended_batch"))
+        if not isinstance(meta["blockers"], list) or not all(isinstance(item, str) and item for item in meta["blockers"]):
+            raise ConfigError(f"manifest deferred_read_only.{name}.blockers must be list of non-empty strings")
+    for name, meta in data["write_or_mutating"].items():
+        validate_metadata(name, meta, "write_or_mutating", ("reason", "mutation_kind"))
+    for name, meta in data["infrastructure_or_mixed"].items():
+        validate_metadata(name, meta, "infrastructure_or_mixed", ("reason",))
     return data
+
+def validate_metadata(name, meta, category, required_keys):
+    if not isinstance(meta, dict):
+        raise ConfigError(f"manifest {category}.{name} must be object")
+    unknown=sorted(set(meta)-set(required_keys))
+    missing=sorted(set(required_keys)-set(meta))
+    if unknown:
+        raise ConfigError(f"manifest {category}.{name} has unknown metadata keys: {', '.join(unknown)}")
+    if missing:
+        raise ConfigError(f"manifest {category}.{name} is missing metadata keys: {', '.join(missing)}")
+    for key in required_keys:
+        if key != "blockers" and (not isinstance(meta[key], str) or not meta[key].strip()):
+            raise ConfigError(f"manifest {category}.{name}.{key} must be non-empty string")
 
 def static_string(node):
     if isinstance(node, ast.Constant) and isinstance(node.value, str): return node.value
@@ -96,7 +124,11 @@ def enclosing_name(tree, line):
 
 def runtime_census(app_dir, repo_file):
     calls=[]
-    for path in sorted(Path(app_dir).glob("*.py")):
+    app_dir=Path(app_dir).resolve()
+    project_root=app_dir.parent
+    for path in sorted(app_dir.rglob("*.py")):
+        if any(part in EXCLUDED_RUNTIME_SQL_DIRS for part in path.relative_to(app_dir).parts):
+            continue
         if path.resolve()==Path(repo_file).resolve(): continue
         tree=parse_file(path)
         text=path.read_text().splitlines()
@@ -106,7 +138,7 @@ def runtime_census(app_dir, repo_file):
                 if chain and chain[-1] in SQL_APIS:
                     op=sql_op(static_string(n.args[0]) if n.args else None)
                     ctx=(text[n.lineno-1].strip() if n.lineno-1 < len(text) else "")[:140]
-                    calls.append({"file":str(path.relative_to(ROOT)) if path.is_relative_to(ROOT) else str(path),"function":enclosing_name(tree,n.lineno),"line":n.lineno,"api":chain[-1],"operation":op,"context":re.sub(r"\s+"," ",ctx)})
+                    calls.append({"file":str(path.relative_to(project_root)),"function":enclosing_name(tree,n.lineno),"line":n.lineno,"api":chain[-1],"operation":op,"context":re.sub(r"\s+"," ",ctx)})
     files=sorted({c['file'] for c in calls})
     calls.sort(key=lambda c: (c['file'], c['line'], c['api'], c['context']))
     return {"calls":calls,"runtime_select_calls":sum(c['operation']=='select' for c in calls),"runtime_write_calls":sum(c['operation'] in {'insert','update','delete','replace'} for c in calls),"runtime_schema_calls":sum(c['operation']=='ddl' or c['operation']=='pragma' for c in calls),"runtime_dynamic_unknown_calls":sum(c['operation']=='dynamic_or_unknown' for c in calls),"files_with_direct_sql":files}
