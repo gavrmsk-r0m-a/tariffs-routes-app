@@ -42,37 +42,6 @@
       ],
       "reason": "Routing-setting history is SELECT-only over routing_events but needs event/history shape fixtures and PostgreSQL row semantics.",
       "recommended_batch": "routing_setting_event_history"
-    },
-    "list_phone_history": {
-      "blockers": [
-        "sqlite_placeholder",
-        "integer_boolean_literal",
-        "history_shape",
-        "requires_fixture",
-        "no_postgres_semantic_test"
-      ],
-      "reason": "Route phone link history SELECT uses SQLite placeholders/integers and still lacks PostgreSQL semantic fixtures.",
-      "recommended_batch": "route_phone_tariff_history"
-    },
-    "list_route_history": {
-      "blockers": [
-        "sqlite_placeholder",
-        "history_shape",
-        "requires_fixture",
-        "no_postgres_semantic_test"
-      ],
-      "reason": "Route change history is SELECT-only but uses history table shape not covered by PostgreSQL smoke.",
-      "recommended_batch": "route_phone_tariff_history"
-    },
-    "list_tariff_history": {
-      "blockers": [
-        "sqlite_placeholder",
-        "history_shape",
-        "requires_fixture",
-        "no_postgres_semantic_test"
-      ],
-      "reason": "Tariff history is SELECT-only with ordering and row shape needing PostgreSQL fixtures.",
-      "recommended_batch": "route_phone_tariff_history"
     }
   },
   "infrastructure_or_mixed": {

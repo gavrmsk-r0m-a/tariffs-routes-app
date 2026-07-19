@@ -1011,3 +1011,38 @@ class RepositoryRoutingEventsAdapterTest(unittest.TestCase):
                 self.assertIsNone(repo.get_routing_event(-1))
             finally:
                 conn.close()
+
+class RepositoryHistoryPostgresSqlTest(unittest.TestCase):
+    class CaptureConnection:
+        def create_function(self, *args):
+            pass
+
+        def execute(self, sql, params=()):
+            self.sql, self.params = sql, params
+            return []
+
+    def test_postgres_history_queries_use_placeholders_and_preserve_parameter_order(self):
+        for method, args, expected_tables, expected_params in (
+            ("list_phone_history", (17,), ("phone_number_history", "route_phone_number_history", "UNION ALL"), (17, 17, 17, 17)),
+            ("list_route_history", (18,), ("route_history", "route_phone_number_history", "UNION ALL"), (18, 18)),
+            ("list_tariff_history", (19,), ("tariff_change_history", "tch.*", "user_name"), (19,)),
+        ):
+            conn = self.CaptureConnection()
+            self.assertEqual([], getattr(Repository(conn, backend="postgres"), method)(*args))
+            sql = " ".join(conn.sql.split())
+            self.assertNotIn("?", sql)
+            self.assertIn("%s", sql)
+            for expected in expected_tables:
+                self.assertIn(expected, sql)
+            self.assertEqual(expected_params, conn.params)
+
+    def test_sqlite_history_queries_keep_question_mark_placeholders(self):
+        for method, args, expected_params in (
+            ("list_phone_history", (17,), (17, 17, 17, 17)),
+            ("list_route_history", (18,), (18, 18)),
+            ("list_tariff_history", (19,), (19,)),
+        ):
+            conn = self.CaptureConnection()
+            self.assertEqual([], getattr(Repository(conn), method)(*args))
+            self.assertIn("?", conn.sql)
+            self.assertEqual(expected_params, conn.params)

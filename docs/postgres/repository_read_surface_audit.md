@@ -1,18 +1,18 @@
-# PostgreSQL read-surface audit — Stage 44
+# PostgreSQL read-surface audit — Stage 46
 
 ## Executive summary
 
 Stage 44 adds a machine-verifiable, audit-only gate for the current PostgreSQL Repository read surface. Stage 45 hardens that gate with strict manifest metadata schema validation, stable configuration-error handling, and recursive runtime SQL census coverage. The audit statically parses `app/repository.py`, `scripts/postgres_repository_smoke.py`, and `docs/postgres/repository_method_coverage.json`; it does not import Repository code, execute top-level code, open databases, or rewrite inputs.
 
 - Public `Repository` methods: **112**.
-- Smoke-covered read methods: **54**.
-- Deferred read-only methods: **7**.
+- Smoke-covered read methods: **57**.
+- Deferred read-only methods: **4**.
 - Write/mutating methods: **50**.
 - Infrastructure/mixed methods: **1**.
 - Unclassified methods: **0**.
 - Duplicate classifications: **0**.
-- Current local PostgreSQL Repository smoke semantic checks: **459**.
-- Classified Repository read-surface coverage: **88.52%** (54 smoke-covered reads out of 61 classified read-only methods). This is not full application runtime readiness.
+- Current local PostgreSQL Repository smoke semantic checks: **490**.
+- Classified Repository read-surface coverage: **93.44%** (57 smoke-covered reads out of 61 classified read-only methods). This is not full application runtime readiness.
 
 ## Covered Repository read surface
 
@@ -32,9 +32,6 @@ The existing PostgreSQL Repository smoke covers adapter-ready read groups withou
 
 | Method | Purpose | Blockers | Recommended batch |
 | --- | --- | --- | --- |
-| `list_phone_history` | Route phone link history. | `sqlite_placeholder`, `integer_boolean_literal`, `history_shape`, `requires_fixture`, `no_postgres_semantic_test` | `route_phone_tariff_history` |
-| `list_route_history` | Route change history. | `sqlite_placeholder`, `history_shape`, `requires_fixture`, `no_postgres_semantic_test` | `route_phone_tariff_history` |
-| `list_tariff_history` | Tariff change history. | `sqlite_placeholder`, `history_shape`, `requires_fixture`, `no_postgres_semantic_test` | `route_phone_tariff_history` |
 | `list_calling_company_history` | Calling-company history with JSON snapshots. | `sqlite_placeholder`, `json_text_vs_jsonb`, `history_shape`, `requires_fixture`, `no_postgres_semantic_test` | `company_history_json` |
 | `list_calling_company_events` | Calling-company event list/search page. | `sqlite_placeholder`, `json_text_vs_jsonb`, `search_text_matches`, `pagination_contract`, `requires_fixture`, `no_postgres_semantic_test` | `company_event_search_and_count` |
 | `count_calling_company_events` | Count companion for calling-company event search. | `sqlite_placeholder`, `search_text_matches`, `requires_fixture`, `no_postgres_semantic_test` | `company_event_search_and_count` |
@@ -58,25 +55,11 @@ Stage 45 strictly validates the manifest top-level schema and every category ent
 
 Deferred read-only entries require `reason`, non-empty unique `blockers`, and `recommended_batch`; write/mutating entries require `reason` and an allowed `mutation_kind`; infrastructure/mixed entries require `reason`. Unknown top-level keys or metadata fields are configuration errors so schema expansion requires a future `schema_version` bump.
 
-## Recommended next implementation Stage
+## Stage 46 history smoke
 
-Recommended next implementation batch: **`route_phone_tariff_history`**.
+Stage 46 moves `list_phone_history`, `list_route_history`, and `list_tariff_history` into the PostgreSQL read-only smoke. The deterministic synthetic fixture contains phone, route-phone replacement/addition, route, and tariff-created/tariff-changed history records without changing the current Demo Phone, Demo Route, or Demo Tariff state. The smoke now has **490** semantic checks.
 
-Methods:
-
-- `list_phone_history`
-- `list_route_history`
-- `list_tariff_history`
-
-Why this batch is next:
-
-- It is the smallest coherent deferred read batch.
-- It keeps work inside Repository read methods and avoids direct runtime SQL extraction.
-- Its blockers are mostly placeholder/boolean/history-fixture contracts, not JSONB search semantics or pagination.
-
-Main blockers to resolve are SQLite placeholders, integer boolean literals where present, deterministic history fixtures, and PostgreSQL semantic assertions for the returned history shape.
-
-Methods intentionally left for later: `list_calling_company_history`, `list_calling_company_events`, `count_calling_company_events`, and `list_company_routing_setting_history`, because they introduce JSON/text-vs-JSONB, search/count, pagination, or routing-event history shape work.
+The next deferred Repository method is **`list_company_routing_setting_history`**.
 
 ## Runtime boundary
 
