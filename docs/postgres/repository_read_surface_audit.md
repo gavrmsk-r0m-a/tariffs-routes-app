@@ -56,9 +56,7 @@ Deferred read-only entries require `reason`, non-empty unique `blockers`, and `r
 
 ## Stage 46 history smoke
 
-Stage 46 moves `list_phone_history`, `list_route_history`, and `list_tariff_history` into the PostgreSQL read-only smoke. The deterministic synthetic fixture contains phone, route-phone replacement/addition, route, and tariff-created/tariff-changed history records without changing the current Demo Phone, Demo Route, or Demo Tariff state. The smoke now has **497** semantic checks.
-
-The next deferred Repository method is **`list_company_routing_setting_history`**.
+Stage 46 moves `list_phone_history`, `list_route_history`, and `list_tariff_history` into the PostgreSQL read-only smoke. The deterministic synthetic fixture contains phone, route-phone replacement/addition, route, and tariff-created/tariff-changed history records without changing the current Demo Phone, Demo Route, or Demo Tariff state. The smoke has **497** semantic checks at this stage.
 
 ## Runtime boundary
 
@@ -66,4 +64,8 @@ PostgreSQL full runtime is still not ready. Repository writes are not adapted, d
 
 ## Stage 47 company routing-setting event history smoke
 
-Stage 47 moves `list_company_routing_setting_history` into the read-only smoke. It preserves company-scoped history semantics across current and historical settings, filters to active `campaign_setting` events with backend-aware placeholders/booleans, and validates exact aliases, ordering, and TEXT/JSONB snapshot behavior. The current local smoke has **522** semantic checks. The next deferred method is **`list_calling_company_history`** in `company_history_json`, a SELECT-only JSON history read without search/pagination.
+Stage 47 moves `list_company_routing_setting_history` into the read-only smoke. It preserves company-scoped history semantics across current and historical settings, filters to active `campaign_setting` events with backend-aware placeholders/booleans, and validates exact aliases, ordering, and TEXT/JSONB snapshot behavior. The current local smoke has **522** semantic checks.
+
+## Recommended next implementation Stage
+
+The next batch is **`company_history_json`**, starting with `list_calling_company_history`, a SELECT-only JSON history read without search or pagination. After that, use a separate **`company_event_search_and_count`** batch for `list_calling_company_events` and `count_calling_company_events` so JSON/search/pagination and count parity can be adapted together.
