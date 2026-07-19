@@ -41,6 +41,7 @@ SMOKE_METHODS = (
     "list_company_routing_settings", "get_company_routing_setting",
     "list_provider_changes", "list_routing_events", "get_routing_event",
     "list_phone_history", "list_route_history", "list_tariff_history",
+    "list_company_routing_setting_history",
 )
 
 STAGE_34_METHODS = (
@@ -93,6 +94,10 @@ STAGE_46_METHODS = (
     "list_phone_history",
     "list_route_history",
     "list_tariff_history",
+)
+
+STAGE_47_METHODS = (
+    "list_company_routing_setting_history",
 )
 
 EXISTS_CHECKS = (
@@ -782,6 +787,39 @@ def run_stage_46_checks(repo: Repository, check) -> None:
     check("stage_46_tariff_current_state", lambda: _check(_decimal_equals(repo.get_tariff(tariff["id"])["price_in_provider_currency"], "0.1") and _is_database_true(repo.get_tariff(tariff["id"])["is_current"]), "history must not change tariff state"))
 
 
+def run_stage_47_checks(repo: Repository, check) -> None:
+    """Check active campaign-setting event history is company-scoped and adapter-safe."""
+    expected_keys = ["id", "event_at", "apply_scope", "reason", "country_id", "server_id", "provider_id", "affected_route_id", "old_route_id", "new_route_id", "calling_company_id", "company_change_type", "old_company_routing_mode", "new_company_routing_mode", "old_company_route_id", "new_company_route_id", "old_company_has_autorotation", "new_company_has_autorotation", "has_overflow", "overflow_route_id", "comment", "snapshot_json", "is_active", "deactivation_reason", "deactivated_at", "deactivated_by", "created_at", "created_by", "updated_at", "updated_by", "user_name", "country_name", "company_server_name", "company_id_external", "company_name", "old_route_name", "old_provider_name", "new_route_name", "new_provider_name"]
+    settings = check("stage_47_settings_seed", lambda: repo.list_company_routing_settings({"include_history": True}))
+    companies = check("stage_47_companies_seed", repo.list_calling_companies)
+    demo_company = check("stage_47_demo_company_seed", lambda: next(row for row in (companies or []) if row["company_id_external"] == "demo-company-1"))
+    manual_company = check("stage_47_manual_company_seed", lambda: next(row for row in (companies or []) if row["company_id_external"] == "ci-manual-company"))
+    demo_setting = check("stage_47_demo_setting_seed", lambda: next(row for row in (settings or []) if row["calling_company_id"] == demo_company["id"]))
+    manual_settings = check("stage_47_manual_settings_seed", lambda: [row for row in (settings or []) if row["calling_company_id"] == manual_company["id"]])
+    demo_rows = check("stage_47_demo_history", lambda: repo.list_company_routing_setting_history(demo_setting["id"]))
+    manual_rows = check("stage_47_manual_current_history", lambda: repo.list_company_routing_setting_history(next(row["id"] for row in manual_settings if _is_database_true(row["is_active"]))))
+    manual_old_rows = check("stage_47_manual_historical_history", lambda: repo.list_company_routing_setting_history(next(row["id"] for row in manual_settings if _is_database_false(row["is_active"]))))
+    check("stage_47_demo_history_type", lambda: _check(isinstance(demo_rows, list), "history must return a list"))
+    check("stage_47_demo_history_shape", lambda: _check(demo_rows and list(demo_rows[0].keys()) == expected_keys, "history shape/order changed"))
+    check("stage_47_demo_active_only", lambda: _check("Stage 47 demo campaign inactive" not in {row["reason"] for row in demo_rows}, "inactive event leaked"))
+    check("stage_47_demo_company_scope", lambda: _check(all(row["company_id_external"] == "demo-company-1" and row["apply_scope"] == "campaign_setting" and _is_database_true(row["is_active"]) for row in demo_rows), "demo rows are not active company campaign events"))
+    check("stage_47_demo_order", lambda: _check([row["reason"] for row in demo_rows[:2]] == ["Stage 47 demo campaign active", "Stage 43 campaign setting"], "event order changed"))
+    active = next((row for row in demo_rows if row["reason"] == "Stage 47 demo campaign active"), None)
+    stage43 = next((row for row in demo_rows if row["reason"] == "Stage 43 campaign setting"), None)
+    check("stage_47_demo_active_present", lambda: _check(active is not None, "active demo event missing"))
+    check("stage_47_demo_active_aliases", lambda: _check(active and active["country_name"] == "Demo Country" and active["company_server_name"] == "demo-server-1" and active["company_name"] == "Demo Company" and active["old_route_name"] == active["new_route_name"] == "Demo Route" and active["old_provider_name"] == active["new_provider_name"] == "Demo Provider", "demo aliases wrong"))
+    check("stage_47_demo_active_values", lambda: _check(active and active["company_change_type"] == "disable_autorotation" and active["old_company_routing_mode"] == "mixed" and active["new_company_routing_mode"] == "campaign_route" and _is_database_true(active["old_company_has_autorotation"]) and _is_database_false(active["new_company_has_autorotation"]) and active["user_name"] == "Admin" and active["comment"] == "Synthetic Stage 47 active demo campaign event", "demo event values wrong"))
+    check("stage_47_demo_snapshot", lambda: _check(active and _snapshot_object(active["snapshot_json"]).get("stage") == 47 and _snapshot_object(active["snapshot_json"]).get("company") == "demo-company-1" and _snapshot_object(active["snapshot_json"]).get("state") == "active", "demo snapshot wrong"))
+    check("stage_47_stage43_visible", lambda: _check(stage43 and stage43["company_id_external"] == "demo-company-1" and stage43["old_route_name"] == stage43["new_route_name"] == "Demo Route" and stage43["user_name"] == "Admin", "Stage 43 event missing"))
+    check("stage_47_manual_version_equivalence", lambda: _check([(row["id"], row["reason"]) for row in manual_rows] == [(row["id"], row["reason"]) for row in manual_old_rows], "current/historical settings differ"))
+    manual = next((row for row in manual_rows if row["reason"] == "Stage 47 manual campaign active"), None)
+    check("stage_47_manual_scope", lambda: _check(manual and all("Demo Company" not in row["company_name"] for row in manual_rows), "manual company scope wrong"))
+    check("stage_47_manual_values", lambda: _check(manual and manual["country_name"] == "CI Manual Company Country" and manual["company_server_name"] == "ci-manual-server-1" and manual["company_id_external"] == "ci-manual-company" and manual["company_name"] == "CI Manual Company" and manual["company_change_type"] == "disable_autorotation" and manual["old_company_routing_mode"] == "autorotation" and manual["new_company_routing_mode"] == "server_priority" and manual["old_route_name"] is manual["new_route_name"] is manual["old_provider_name"] is manual["new_provider_name"] is None and _is_database_true(manual["old_company_has_autorotation"]) and _is_database_false(manual["new_company_has_autorotation"]) and manual["user_name"] == "Admin", "manual event values wrong"))
+    check("stage_47_manual_snapshot", lambda: _check(manual and _snapshot_object(manual["snapshot_json"]).get("state") == "active", "manual snapshot wrong"))
+    check("stage_47_missing_setting", lambda: _check(repo.list_company_routing_setting_history(-1) == [], "missing setting must return []"))
+    check("stage_47_event_sort", lambda: _check([(row["event_at"], row["id"]) for row in demo_rows] == sorted(((row["event_at"], row["id"]) for row in demo_rows), reverse=True), "history must be newest first"))
+
+
 def run_repository_checks(repo: Repository, postgres_url: str) -> dict:
     summary = empty_summary(postgres_url)
     checks: list[tuple[str, object]] = []
@@ -844,6 +882,7 @@ def run_repository_checks(repo: Repository, postgres_url: str) -> dict:
     run_stage_42_checks(repo, check)
     run_stage_43_checks(repo, check)
     run_stage_46_checks(repo, check)
+    run_stage_47_checks(repo, check)
 
     summary.update(status="ok" if not failures else "failed", checks_count=len(checks) + len(failures), failures=failures)
     return summary

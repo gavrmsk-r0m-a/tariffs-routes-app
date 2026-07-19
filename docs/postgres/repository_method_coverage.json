@@ -32,16 +32,6 @@
       ],
       "reason": "Calling-company history is SELECT-only but includes JSON snapshot payloads whose text/jsonb shape must be adapted and tested.",
       "recommended_batch": "company_history_json"
-    },
-    "list_company_routing_setting_history": {
-      "blockers": [
-        "sqlite_placeholder",
-        "history_shape",
-        "requires_fixture",
-        "no_postgres_semantic_test"
-      ],
-      "reason": "Routing-setting history is SELECT-only over routing_events but needs event/history shape fixtures and PostgreSQL row semantics.",
-      "recommended_batch": "routing_setting_event_history"
     }
   },
   "infrastructure_or_mixed": {

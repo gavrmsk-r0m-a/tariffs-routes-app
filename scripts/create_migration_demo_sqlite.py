@@ -31,6 +31,9 @@ STAGE46_PHONE_CHANGED_AT = "2026-07-17 10:00:00"
 STAGE46_ROUTE_PHONE_ADDED_AT = "2026-07-17 11:00:00"
 STAGE46_ROUTE_PHONE_REPLACED_AT = "2026-07-17 12:00:00"
 STAGE46_TARIFF_CHANGED_AT = "2026-07-17 13:00:00"
+STAGE47_DEMO_ACTIVE_AT = "2026-07-18 08:00:00"
+STAGE47_DEMO_INACTIVE_AT = "2026-07-18 09:00:00"
+STAGE47_MANUAL_ACTIVE_AT = "2026-07-18 10:00:00"
 
 
 def q(conn: sqlite3.Connection, sql: str, params: tuple = ()) -> int:
@@ -244,6 +247,25 @@ def create_demo_sqlite(output: str | Path) -> Path:
                 has_autorotation, is_active, comment, valid_from, valid_to, created_at, created_by, updated_at, updated_by)
             VALUES (?, ?, ?, NULL, ?, 1, 0, ?, ?, ?, ?, ?, ?, ?)
         """, (manual_company_id, manual_country_id, manual_server_id, "autorotation", "Synthetic historical autorotation setting", HISTORY_FROM, NOW, HISTORY_FROM, admin_id, NOW, admin_id))
+        # Stage 47 adds routing-event history only; no company settings or links change.
+        for event_at, reason, company, country, old_mode, new_mode, old_route, new_route, old_auto, new_auto, state, active, deactivation_reason in (
+            (STAGE47_DEMO_ACTIVE_AT, "Stage 47 demo campaign active", company_id, country_id, "mixed", "campaign_route", route_id, route_id, 1, 0, "active", 1, None),
+            (STAGE47_DEMO_INACTIVE_AT, "Stage 47 demo campaign inactive", company_id, country_id, "campaign_route", "mixed", route_id, route_id, 0, 1, "inactive", 0, "Synthetic Stage 47 archive"),
+            (STAGE47_MANUAL_ACTIVE_AT, "Stage 47 manual campaign active", manual_company_id, manual_country_id, "autorotation", "server_priority", None, None, 1, 0, "active", 1, None),
+        ):
+            company_external = "demo-company-1" if company == company_id else "ci-manual-company"
+            comment = "Synthetic Stage 47 active demo campaign event" if reason == "Stage 47 demo campaign active" else ("Synthetic Stage 47 inactive demo campaign event" if state == "inactive" else "Synthetic Stage 47 active manual campaign event")
+            q(conn, """
+                INSERT INTO routing_events(event_at, apply_scope, reason, country_id, server_id, provider_id,
+                    affected_route_id, old_route_id, new_route_id, calling_company_id, company_change_type,
+                    old_company_routing_mode, new_company_routing_mode, old_company_route_id, new_company_route_id,
+                    old_company_has_autorotation, new_company_has_autorotation, has_overflow, overflow_route_id,
+                    comment, snapshot_json, is_active, deactivation_reason, deactivated_at, deactivated_by,
+                    created_at, created_by, updated_at, updated_by)
+                VALUES (?, 'campaign_setting', ?, ?, NULL, NULL, NULL, NULL, NULL, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL,
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (event_at, reason, country, company, "disable_autorotation" if old_auto else "enable_autorotation", old_mode, new_mode, old_route, new_route, old_auto, new_auto, comment, json.dumps({"stage": 47, "scope": "campaign_setting", "company": company_external, "state": state}, sort_keys=True), active, deactivation_reason, NOW if not active else None, admin_id if not active else None, event_at, admin_id, event_at, admin_id))
+
         inactive_company_country_id = q(conn, "INSERT INTO countries(name, code, is_active, created_at, updated_at) VALUES (?, ?, 1, ?, ?)", ("CI Inactive Company Country", "CN", NOW, NOW))
         inactive_company_server_id = q(conn, "INSERT INTO servers(name, comment, is_active, created_at, updated_at) VALUES (?, ?, 1, ?, ?)", ("ci-inactive-server-1", "Synthetic inactive company server", NOW, NOW))
         q(conn, """

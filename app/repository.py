@@ -2334,8 +2334,9 @@ class Repository:
         setting = self.get_company_routing_setting(setting_id)
         if not setting:
             return []
+        p = placeholder(self.backend)
         return list(self.conn.execute(
-            """
+            f"""
             SELECT re.*, u.display_name AS user_name, c.name AS country_name, s.name AS company_server_name,
                    cc.company_id_external, cc.company_name,
                    old_route.name AS old_route_name, old_provider.name AS old_provider_name,
@@ -2350,11 +2351,11 @@ class Repository:
             LEFT JOIN routes new_route ON new_route.id = re.new_company_route_id
             LEFT JOIN providers new_provider ON new_provider.id = new_route.provider_id
             WHERE re.apply_scope = 'campaign_setting'
-              AND re.calling_company_id = ?
-              AND re.is_active = 1
+              AND re.calling_company_id = {p}
+              AND re.is_active = {p}
             ORDER BY re.event_at DESC, re.id DESC
             """,
-            (setting["calling_company_id"],),
+            (setting["calling_company_id"], to_db_bool(True, self.backend)),
         ))
 
     def create_company_routing_setting(
