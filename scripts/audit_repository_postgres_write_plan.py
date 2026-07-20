@@ -72,9 +72,11 @@ def audit(repository_file=ROOT/'app/repository.py',coverage_manifest=ROOT/'docs/
   for name in smoked:
    if name not in writes: errors.append(f'rollback-smoked method is not write_or_mutating: {name}')
    if name not in repo: errors.append(f'rollback-smoked method is stale: {name}')
+  expected_smoked={'set_hlr_limit_override','set_app_setting_value','delete_app_setting_value','upsert_hlr_daily_usage','create_user','update_user','update_user_password','set_user_permissions'}
+  if set(smoked) != expected_smoked: errors.append('rollback_smoke_covered_methods must contain exactly the Stage 51-53 methods')
   if 'set_hlr_limit_override' not in smoked or methods.get('set_hlr_limit_override',{}).get('batch')!='write_test_harness_and_transaction_foundation': errors.append('set_hlr_limit_override must remain a foundation rollback probe')
-  for name in ('set_app_setting_value','delete_app_setting_value','upsert_hlr_daily_usage'):
-   if name not in smoked or methods.get(name,{}).get('batch')!='app_settings_and_admin_low_risk': errors.append(f'{name} must be an app-settings rollback probe')
+  for name in ('set_app_setting_value','delete_app_setting_value','upsert_hlr_daily_usage','create_user','update_user','update_user_password','set_user_permissions'):
+   if name not in smoked or methods.get(name,{}).get('batch')!='app_settings_and_admin_low_risk': errors.append(f'{name} must be an app-settings/admin rollback probe')
  missing=sorted(writes-names); dup=sorted(k for k,v in counts.items() if v!=1); stale=sorted(names-set(repo)); nonwrite=sorted(names-writes); empty=sorted(k for k,b in batches.items() if not isinstance(b,dict) or not b.get('methods')); unknown=[]; required=[]; commits=[]; rollbacks=[]; calls=[]; dynamic=[]
  for name,meta in methods.items():
   if not isinstance(meta,dict): required.append(name); continue

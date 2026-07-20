@@ -16,10 +16,14 @@ Two read-only transaction probes deliberately query a missing table. The aborted
 
 ## Summary and failures
 
-The JSON summary contains `status`, a masked `postgres_url`, `checks_count`, `failures`, and per-probe status. `status: ok` means all five probes completed and rollback restoration succeeded. A write-probe failure means the database must be inspected before any later write adaptation. An aborted or SAVEPOINT failure means transaction semantics are not validated and later write stages must not proceed.
+The JSON summary contains `status`, a masked `postgres_url`, `checks_count`, `failures`, and per-probe status. `status: ok` means all six probes completed and rollback restoration succeeded. A write-probe failure means the database must be inspected before any later write adaptation. An aborted or SAVEPOINT failure means transaction semantics are not validated and later write stages must not proceed.
 
 ## Stage 52 app-settings and HLR usage probes
 
 Stage 52 extends the same rollback-only transaction boundary with `app_setting_probe` and `hlr_daily_usage_probe`. The app-setting probe writes and deletes `__stage52_app_setting_probe__`, verifies each state through Repository reads, and verifies the exact pre-probe value after rollback. The usage probe incrementally upserts `2099-12-31`, verifies first and second values with Decimal-safe comparisons, and verifies the exact prior usage state after rollback.
 
 The harness still never calls `conn.commit()`: every probe rolls back in `finally`, including failure paths. It uses no DDL, migrations, runtime backend switch, or direct SQL state assertions. Consequently no probe app-setting value or `hlr_daily_usage` row/change can remain after a completed rollback.
+
+## Stage 53 user/admin probe
+
+`user_admin_probe` uses the deterministic `__stage53_user_admin_probe__` username. In one explicit transaction it creates an admin user, verifies transaction-local identity and authentication, updates profile data, upserts routes/settings permissions, changes the password, and verifies the old-to-new authentication switch. All four Repository writes use `commit=False`. Its `finally` block rolls back, then Repository reads prove that neither the user nor its permissions remain.

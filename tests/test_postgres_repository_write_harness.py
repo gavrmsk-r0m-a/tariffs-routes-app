@@ -63,6 +63,22 @@ class FakeRepo:
                       "credits_spent_today": Decimal(str(current["credits_spent_today"] or 0)) + Decimal(str(credits_delta or 0)) if credits_delta is not None else current["credits_spent_today"],
                       "last_check_count": checked_count_delta, "last_check_credits": credits_delta, "updated_at": last_check_at}
         self.calls.append((usage_date, checked_count_delta, credits_delta, last_check_at, kwargs))
+    def get_user_by_username(self, username):
+        if getattr(self, "user_rollback", None) is not None and self.conn.rollbacks > self.user_rollback:
+            return None
+        return getattr(self, "user", None)
+    def create_user(self, username, **kwargs):
+        self.calls.append(("create_user", username, kwargs)); self.user_rollback = self.conn.rollbacks; self.user = {"id": 53, "username": username, "display_name": kwargs["display_name"], "email": kwargs["email"], "role_key": kwargs["role"], "is_active": True, "must_change_password": kwargs["must_change_password"]}; self.password = kwargs["password"]; return 53
+    def update_user(self, user_id, **kwargs):
+        self.calls.append(("update_user", user_id, kwargs)); self.user.update(display_name=kwargs["display_name"], email=kwargs["email"], role_key=kwargs["role_key"], is_active=kwargs["is_active"])
+    def set_user_permissions(self, user_id, permissions, **kwargs):
+        self.calls.append(("set_user_permissions", user_id, permissions, kwargs)); self.permissions = {key: dict(value) for key, value in permissions.items()}
+    def get_user_section_permission(self, user_id, section): return getattr(self, "permissions", {}).get(section)
+    def get_user_permissions(self, user_id): return {} if getattr(self, "user_rollback", None) is not None and self.conn.rollbacks > self.user_rollback else getattr(self, "permissions", {})
+    def update_user_password(self, user_id, password, **kwargs):
+        self.calls.append(("update_user_password", user_id, password, kwargs)); self.password = password; self.user["must_change_password"] = kwargs["must_change_password"]
+    def authenticate_user(self, username, password): return self.user if getattr(self, "user", None) and password == getattr(self, "password", None) else None
+
 
 
 class WriteHarnessTest(unittest.TestCase):
@@ -123,6 +139,15 @@ class WriteHarnessTest(unittest.TestCase):
         with self.assertRaisesRegex(AssertionError, "updated_at"):
             harness._assert_usage({**expected, "updated_at": datetime(2099, 12, 31, 10, 5)}, expected)
 
+    def test_stage53_user_admin_probe_is_rollback_only_and_uses_caller_owned_writes(self):
+        conn, repo = FakeConnection(), FakeRepo(None); repo.conn = conn
+        harness.run_user_admin_probe(repo, conn)
+        writes = [call for call in repo.calls if isinstance(call[0], str) and call[0] in {"create_user", "update_user", "set_user_permissions", "update_user_password"}]
+        self.assertEqual([call[0] for call in writes], ["create_user", "update_user", "set_user_permissions", "update_user_password"])
+        self.assertTrue(all(call[-1]["commit"] is False for call in writes))
+        self.assertEqual(conn.commits, 0)
+        self.assertGreaterEqual(conn.rollbacks, 3)
+
     def test_missing_url_is_parser_error(self):
         with patch.dict("os.environ", {}, clear=True), self.assertRaises(SystemExit) as caught:
             harness.main([])
@@ -139,7 +164,7 @@ class WriteHarnessTest(unittest.TestCase):
             summary = json.loads(output.read_text())
         self.assertEqual(summary["status"], "ok")
         self.assertEqual(set(summary), {"status", "postgres_url", "checks_count", "failures", "probes"})
-        self.assertEqual(summary["probes"], {"rollback_probe": "ok", "aborted_transaction_probe": "ok", "savepoint_probe": "ok", "app_setting_probe": "ok", "hlr_daily_usage_probe": "ok"})
+        self.assertEqual(summary["probes"], {"rollback_probe": "ok", "aborted_transaction_probe": "ok", "savepoint_probe": "ok", "app_setting_probe": "ok", "hlr_daily_usage_probe": "ok", "user_admin_probe": "ok"})
 
     def test_repository_uses_postgres_backend(self):
         class Driver:

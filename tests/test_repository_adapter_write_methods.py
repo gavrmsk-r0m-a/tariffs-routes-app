@@ -188,3 +188,48 @@ class RepositoryAdapterWriteMethodsTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class Stage53UserAdminWriteMethodsTest(unittest.TestCase):
+    class Cursor:
+        lastrowid = 91
+        def __init__(self, row=None): self.row = row
+        def fetchone(self): return self.row
+        def fetchall(self): return []
+    class RecordingConnection:
+        def __init__(self): self.calls=[]; self.commits=0; self.rollbacks=0
+        def execute(self, sql, params=()):
+            self.calls.append((sql, params))
+            if 'information_schema.columns' in sql: return Stage53UserAdminWriteMethodsTest.Cursor()
+            if sql.startswith('SELECT id FROM users'): return Stage53UserAdminWriteMethodsTest.Cursor()
+            if 'RETURNING id' in sql: return Stage53UserAdminWriteMethodsTest.Cursor({'id': 91})
+            return Stage53UserAdminWriteMethodsTest.Cursor()
+        def commit(self): self.commits += 1
+        def rollback(self): self.rollbacks += 1
+
+    def test_postgres_user_admin_writes_use_adapter_contracts(self):
+        conn = self.RecordingConnection(); repo = Repository(conn, backend='postgres')
+        with patch.object(repo, '_user_columns', return_value={'role_key','role','email','must_change_password','password_hash','password_salt','auth_provider'}):
+            self.assertEqual(repo.create_user('stage53', password='pw', must_change_password=True, commit=False), 91)
+            repo.update_user(91, display_name=' Updated ', role_key='admin', is_active=True, username='stage53', email='a@example.test', commit=False)
+            repo.update_user_password(91, 'new', must_change_password=False, commit=False)
+            repo.set_user_permissions(91, {'routes': {'can_read': True, 'can_write': True, 'can_export': False}}, commit=False)
+        sql = '\n'.join(call[0] for call in conn.calls)
+        self.assertIn('SELECT id FROM users WHERE username = %s', sql)
+        self.assertIn('INSERT INTO users', sql); self.assertIn('RETURNING id', sql)
+        self.assertIn('UPDATE users SET display_name = %s, is_active = %s', sql)
+        self.assertIn('password_hash = %s, password_salt = %s', sql)
+        self.assertIn('VALUES (%s, %s, %s, %s, %s)', sql); self.assertIn('ON CONFLICT(user_id, section_key) DO UPDATE', sql)
+        self.assertEqual(conn.commits, 0)
+
+    def test_sqlite_user_admin_writes_commit_and_rollback_when_caller_owned(self):
+        conn = sqlite3.connect(':memory:'); conn.row_factory = sqlite3.Row; init_db(conn); repo = Repository(conn)
+        user_id = repo.create_user('stage53-sqlite', password='old', must_change_password=True)
+        self.assertTrue(repo.authenticate_user('stage53-sqlite', 'old'))
+        repo.update_user(user_id, display_name='Updated', role_key='admin', is_active=True, email='after@example.test', commit=False)
+        repo.set_user_permissions(user_id, {'routes': {'can_read': True, 'can_write': True, 'can_export': False}}, commit=False)
+        repo.update_user_password(user_id, 'new', must_change_password=False, commit=False)
+        self.assertTrue(repo.authenticate_user('stage53-sqlite', 'new')); self.assertFalse(repo.authenticate_user('stage53-sqlite', 'old'))
+        conn.rollback()
+        self.assertEqual(repo.get_user(user_id)['display_name'], 'stage53-sqlite')
+        self.assertEqual(repo.get_user_permissions(user_id), {})
+        conn.close()

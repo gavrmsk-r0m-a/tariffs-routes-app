@@ -109,3 +109,7 @@ The CI-only rollback harness is now the transaction foundation for later write s
 ## Stage 52 status: first app-settings rollback smoke
 
 Stage 52 rollback-smokes `set_app_setting_value`, `delete_app_setting_value`, and `upsert_hlr_daily_usage` on PostgreSQL, alongside the unchanged foundation-only `set_hlr_limit_override` probe. The machine-readable plan records all four methods. This is not production runtime enablement: `DB_BACKEND=postgres` remains disabled, and user/admin writes are still not adapted. A reviewed next candidate may be user/admin low-risk or dictionary writes.
+
+## Stage 53 status: user/admin rollback smoke
+
+`create_user`, `update_user`, `update_user_password`, and `set_user_permissions` are PostgreSQL-compatible and rollback-smoked only through the CI harness. The `app_settings_and_admin_low_risk` batch now has seven rollback-smoked methods; the separate foundation batch retains `set_hlr_limit_override`. There is still no production PostgreSQL runtime or `DB_BACKEND=postgres` enablement. A next candidate is dictionary writes, or a smaller dedicated audit before dictionaries.
