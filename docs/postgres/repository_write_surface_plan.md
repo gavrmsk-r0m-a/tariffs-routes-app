@@ -105,3 +105,7 @@ The unchanged runtime census is `app/db.py`, `app/server.py`, and `app/importer.
 ## Stage 51 status: foundation added
 
 The CI-only rollback harness is now the transaction foundation for later write stages. It uses `set_hlr_limit_override` only as a synthetic caller-owned (`commit=False`) probe, verifies visibility before a full rollback and verifies the prior value afterward. It also documents PostgreSQL's aborted-transaction behavior and SAVEPOINT recovery. No business write adaptation or production PostgreSQL runtime is included; the first small adaptation batch remains after this harness is green.
+
+## Stage 52 status: first app-settings rollback smoke
+
+Stage 52 rollback-smokes `set_app_setting_value`, `delete_app_setting_value`, and `upsert_hlr_daily_usage` on PostgreSQL, alongside the unchanged foundation-only `set_hlr_limit_override` probe. The machine-readable plan records all four methods. This is not production runtime enablement: `DB_BACKEND=postgres` remains disabled, and user/admin writes are still not adapted. A reviewed next candidate may be user/admin low-risk or dictionary writes.

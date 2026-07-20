@@ -702,3 +702,7 @@ Read coverage is 100%, while 50 Repository write methods remain. Stage 50 adds a
 Stage 51 adds a CI-only PostgreSQL write harness after migration and the 611-check read-only smoke. It opens an explicit read-write transaction, uses the HLR override only as a synthetic `commit=False` caller-owned write, confirms the value inside that transaction, and rolls it back before verifying that the previous value remains. The harness never calls `conn.commit()`.
 
 It separately verifies PostgreSQL's aborted-transaction rule after a deliberate missing-table `SELECT`, and verifies that `ROLLBACK TO SAVEPOINT` permits subsequent work before the whole transaction is rolled back. `DB_BACKEND=postgres` remains disabled; there is no runtime connection factory or production PostgreSQL path. Stage 52 may be the first small write adaptation batch only after this harness is green; read-only smoke remains **611** checks.
+
+## Stage 52 PostgreSQL app-settings and HLR usage rollback smoke
+
+`set_app_setting_value`, `delete_app_setting_value`, and `upsert_hlr_daily_usage` now use backend-aware placeholders and PostgreSQL-compatible UPSERTs only for rollback-only harness coverage. The harness verifies transaction-local visibility and full rollback restoration for app settings and HLR daily usage; it never commits. Read-only smoke remains **611** checks and the coverage audit remains **112 / 61 / 0 / 50 / 1 / 100.0%**. `DB_BACKEND=postgres` remains disabled and no runtime write enablement is included.

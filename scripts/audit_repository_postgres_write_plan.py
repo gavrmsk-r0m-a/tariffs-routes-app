@@ -5,7 +5,7 @@ import argparse, ast, json, sys
 from collections import Counter
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]
-TOP={"schema_version","baseline","batches","methods","recommended_next_batch","foundation_status"}
+TOP={"schema_version","baseline","batches","methods","recommended_next_batch","foundation_status","rollback_smoke_covered_methods"}
 BASELINE={"repository_public_methods_count":112,"smoke_covered_read_count":61,"deferred_read_only_count":0,"write_or_mutating_count":50,"infrastructure_or_mixed_count":1,"read_surface_coverage_percent":100.0,"repository_smoke_checks_count":611}
 BATCH={"title","stage_hint","rationale","risk","scope","prerequisites","methods","out_of_scope","acceptance"}
 METHOD={"batch","mutation_kind","risk","transaction_contract","current_commit_behavior","sqlite_postgres_blockers","side_effects","dependencies","returns","postgres_strategy","test_strategy","rollback_strategy","notes"}
@@ -54,6 +54,8 @@ def audit(repository_file=ROOT/'app/repository.py',coverage_manifest=ROOT/'docs/
  batches,methods=plan['batches'],plan['methods']
  if not isinstance(batches,dict) or not isinstance(methods,dict): raise ConfigError('batches and methods must be objects')
  errors=[]; listed=[]
+ smoked=plan['rollback_smoke_covered_methods']
+ if not strings(smoked): errors.append('rollback_smoke_covered_methods must be a non-empty unique list of strings')
  for bid,b in batches.items():
   try: exact(b,BATCH,f'batch {bid}')
   except ConfigError as e: errors.append(str(e)); continue
@@ -66,6 +68,13 @@ def audit(repository_file=ROOT/'app/repository.py',coverage_manifest=ROOT/'docs/
   if b.get('stage_hint')!='Stage 51' or 'rollback-only' not in str(b.get('rationale','')).lower() or 'harness' not in str(b.get('rationale','')).lower(): errors.append('recommended next batch is not a Stage 51 rollback-only harness')
   if any(bid!=next_batch and next_batch not in batch.get('prerequisites',[]) for bid,batch in batches.items()): errors.append('recommended next batch is not prerequisite for every other batch')
  repo=repo_methods(repository_file); writes=set(expected); counts=Counter(listed); names=set(methods)|set(listed)
+ if isinstance(smoked,list):
+  for name in smoked:
+   if name not in writes: errors.append(f'rollback-smoked method is not write_or_mutating: {name}')
+   if name not in repo: errors.append(f'rollback-smoked method is stale: {name}')
+  if 'set_hlr_limit_override' not in smoked or methods.get('set_hlr_limit_override',{}).get('batch')!='write_test_harness_and_transaction_foundation': errors.append('set_hlr_limit_override must remain a foundation rollback probe')
+  for name in ('set_app_setting_value','delete_app_setting_value','upsert_hlr_daily_usage'):
+   if name not in smoked or methods.get(name,{}).get('batch')!='app_settings_and_admin_low_risk': errors.append(f'{name} must be an app-settings rollback probe')
  missing=sorted(writes-names); dup=sorted(k for k,v in counts.items() if v!=1); stale=sorted(names-set(repo)); nonwrite=sorted(names-writes); empty=sorted(k for k,b in batches.items() if not isinstance(b,dict) or not b.get('methods')); unknown=[]; required=[]; commits=[]; rollbacks=[]; calls=[]; dynamic=[]
  for name,meta in methods.items():
   if not isinstance(meta,dict): required.append(name); continue
@@ -87,7 +96,7 @@ def audit(repository_file=ROOT/'app/repository.py',coverage_manifest=ROOT/'docs/
    seen.add(x); active.add(x); [visit(y) for y in edges[x]]; active.remove(x)
  [visit(x) for x in sorted(edges)]
  bad=missing+dup+stale+nonwrite+empty+unknown+required+commits+rollbacks+calls+cycles+errors
- return {'status':'ok' if not bad else 'failed','planned_write_methods_count':len(methods),'expected_write_methods_count':len(writes),'missing_write_methods':missing,'duplicate_planned_methods':dup,'stale_planned_methods':stale,'non_write_methods_in_plan':nonwrite,'empty_batches':empty,'unknown_batches':sorted(unknown),'missing_required_fields':sorted(required),'dependency_cycles':sorted(set(cycles)),'unacknowledged_commit_methods':sorted(commits),'unacknowledged_rollback_methods':sorted(rollbacks),'unacknowledged_transitive_write_calls':sorted(calls),'dynamic_sql_methods':sorted(dynamic),'batch_summary':{k:len(v.get('methods',[])) for k,v in sorted(batches.items())},'recommended_next_batch':next_batch,'errors':sorted(errors)}
+ return {'status':'ok' if not bad else 'failed','planned_write_methods_count':len(methods),'expected_write_methods_count':len(writes),'rollback_smoke_covered_methods_count':len(smoked) if isinstance(smoked,list) else 0,'missing_write_methods':missing,'duplicate_planned_methods':dup,'stale_planned_methods':stale,'non_write_methods_in_plan':nonwrite,'empty_batches':empty,'unknown_batches':sorted(unknown),'missing_required_fields':sorted(required),'dependency_cycles':sorted(set(cycles)),'unacknowledged_commit_methods':sorted(commits),'unacknowledged_rollback_methods':sorted(rollbacks),'unacknowledged_transitive_write_calls':sorted(calls),'dynamic_sql_methods':sorted(dynamic),'batch_summary':{k:len(v.get('methods',[])) for k,v in sorted(batches.items())},'recommended_next_batch':next_batch,'errors':sorted(errors)}
 def main(argv=None):
  p=argparse.ArgumentParser(); p.add_argument('--repository-file',default=ROOT/'app/repository.py'); p.add_argument('--coverage-manifest',default=ROOT/'docs/postgres/repository_method_coverage.json'); p.add_argument('--write-plan',default=ROOT/'docs/postgres/repository_write_surface_plan.json'); p.add_argument('--format',choices=('text','json'),default='text'); p.add_argument('--output'); a=p.parse_args(argv)
  try: summary=audit(a.repository_file,a.coverage_manifest,a.write_plan); code=0 if summary['status']=='ok' else 1

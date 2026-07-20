@@ -501,11 +501,12 @@ class Repository:
         return str(row["value"])
 
     def set_app_setting_value(self, key: str, value: str | None, updated_by: int | None = None, *, commit: bool = True) -> None:
+        p = placeholder(self.backend)
         try:
             self.conn.execute(
-                """
+                f"""
                 INSERT INTO app_settings(key, value, updated_at, updated_by)
-                VALUES (?, ?, CURRENT_TIMESTAMP, ?)
+                VALUES ({p}, {p}, CURRENT_TIMESTAMP, {p})
                 ON CONFLICT(key) DO UPDATE SET
                     value = excluded.value,
                     updated_at = excluded.updated_at,
@@ -521,8 +522,9 @@ class Repository:
             raise
 
     def delete_app_setting_value(self, key: str, *, commit: bool = True) -> None:
+        p = placeholder(self.backend)
         try:
-            self.conn.execute("DELETE FROM app_settings WHERE key = ?", (key,))
+            self.conn.execute(f"DELETE FROM app_settings WHERE key = {p}", (key,))
             if commit:
                 self.conn.commit()
         except Exception:
@@ -556,8 +558,12 @@ class Repository:
         }
 
     def upsert_hlr_daily_usage(self, usage_date: str, checked_count_delta: int, credits_delta: object | None = None, last_check_at: str | None = None, *, commit: bool = True) -> dict[str, object]:
+        p = placeholder(self.backend)
         try:
-            existing = self.conn.execute("SELECT checked_count, credits_spent FROM hlr_daily_usage WHERE usage_date = ?", (usage_date,)).fetchone()
+            existing = self.conn.execute(
+                f"SELECT checked_count, credits_spent FROM hlr_daily_usage WHERE usage_date = {p}",
+                (usage_date,),
+            ).fetchone()
             previous_checked = int(existing["checked_count"] or 0) if existing else 0
             previous_credits = existing["credits_spent"] if existing else None
             if credits_delta is None:
@@ -567,9 +573,9 @@ class Repository:
                 if float(next_credits).is_integer():
                     next_credits = int(next_credits)
             self.conn.execute(
-                """
+                f"""
                 INSERT INTO hlr_daily_usage(usage_date, checked_count, credits_spent, last_check_count, last_check_credits, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?)
+                VALUES ({p}, {p}, {p}, {p}, {p}, {p})
                 ON CONFLICT(usage_date) DO UPDATE SET
                     checked_count = excluded.checked_count,
                     credits_spent = excluded.credits_spent,

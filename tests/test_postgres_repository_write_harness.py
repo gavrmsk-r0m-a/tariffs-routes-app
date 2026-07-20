@@ -2,6 +2,8 @@ import importlib.util
 import json
 import tempfile
 import unittest
+from datetime import datetime
+from decimal import Decimal
 from pathlib import Path
 from unittest.mock import patch
 
@@ -43,6 +45,24 @@ class FakeRepo:
         return self.value
     def set_hlr_limit_override(self, value, **kwargs):
         self.calls.append((value, kwargs)); self.value = value
+    def get_app_setting_value(self, key):
+        return getattr(self, "setting", None)
+    def set_app_setting_value(self, key, value, updated_by=None, **kwargs):
+        self.calls.append((key, value, updated_by, kwargs)); self.setting = value
+    def delete_app_setting_value(self, key, **kwargs):
+        self.calls.append((key, kwargs)); self.setting = None
+    def get_hlr_daily_usage(self, usage_date):
+        if getattr(self, "usage_transaction_rollbacks", self.conn.rollbacks) < self.conn.rollbacks:
+            return {"checked_today": 0, "credits_spent_today": None, "last_check_count": 0, "last_check_credits": None, "updated_at": None}
+        return getattr(self, "usage", {"checked_today": 0, "credits_spent_today": None, "last_check_count": 0, "last_check_credits": None, "updated_at": None})
+    def upsert_hlr_daily_usage(self, usage_date, checked_count_delta, credits_delta=None, last_check_at=None, **kwargs):
+        if not hasattr(self, "usage_transaction_rollbacks"):
+            self.usage_transaction_rollbacks = self.conn.rollbacks
+        current = self.get_hlr_daily_usage(usage_date)
+        self.usage = {"checked_today": current["checked_today"] + checked_count_delta,
+                      "credits_spent_today": Decimal(str(current["credits_spent_today"] or 0)) + Decimal(str(credits_delta or 0)) if credits_delta is not None else current["credits_spent_today"],
+                      "last_check_count": checked_count_delta, "last_check_credits": credits_delta, "updated_at": last_check_at}
+        self.calls.append((usage_date, checked_count_delta, credits_delta, last_check_at, kwargs))
 
 
 class WriteHarnessTest(unittest.TestCase):
@@ -76,6 +96,33 @@ class WriteHarnessTest(unittest.TestCase):
         self.assertIn("ROLLBACK TO SAVEPOINT stage51_probe", savepoint.commands)
         self.assertEqual(savepoint.commits, 0)
 
+    def test_stage52_app_setting_probe_is_rollback_only(self):
+        conn, repo = FakeConnection(), FakeRepo(None); repo.conn = conn
+        harness.run_app_setting_probe(repo, conn)
+        self.assertIn((harness.APP_SETTING_PROBE_KEY, "stage52-value", None, {"commit": False}), repo.calls)
+        self.assertEqual(conn.commits, 0)
+        self.assertGreaterEqual(conn.rollbacks, 3)
+
+    def test_stage52_hlr_usage_probe_is_decimal_safe_and_rollback_only(self):
+        conn, repo = FakeConnection(), FakeRepo(None); repo.conn = conn
+        harness.run_hlr_daily_usage_probe(repo, conn)
+        self.assertEqual(repo.calls[-1][1:4], (2, "0.25", "2099-12-31 10:05"))
+        self.assertEqual(conn.commits, 0)
+        self.assertGreaterEqual(conn.rollbacks, 3)
+
+    def test_stage52_usage_timestamp_assertion_accepts_postgres_datetime(self):
+        expected = {
+            "checked_today": 3,
+            "credits_spent_today": "0.75",
+            "last_check_count": 3,
+            "last_check_credits": "0.75",
+            "updated_at": "2099-12-31 10:00",
+        }
+        harness._assert_usage({**expected, "updated_at": "2099-12-31 10:00"}, expected)
+        harness._assert_usage({**expected, "updated_at": datetime(2099, 12, 31, 10, 0)}, expected)
+        with self.assertRaisesRegex(AssertionError, "updated_at"):
+            harness._assert_usage({**expected, "updated_at": datetime(2099, 12, 31, 10, 5)}, expected)
+
     def test_missing_url_is_parser_error(self):
         with patch.dict("os.environ", {}, clear=True), self.assertRaises(SystemExit) as caught:
             harness.main([])
@@ -92,7 +139,7 @@ class WriteHarnessTest(unittest.TestCase):
             summary = json.loads(output.read_text())
         self.assertEqual(summary["status"], "ok")
         self.assertEqual(set(summary), {"status", "postgres_url", "checks_count", "failures", "probes"})
-        self.assertEqual(summary["probes"], {"rollback_probe": "ok", "aborted_transaction_probe": "ok", "savepoint_probe": "ok"})
+        self.assertEqual(summary["probes"], {"rollback_probe": "ok", "aborted_transaction_probe": "ok", "savepoint_probe": "ok", "app_setting_probe": "ok", "hlr_daily_usage_probe": "ok"})
 
     def test_repository_uses_postgres_backend(self):
         class Driver:
