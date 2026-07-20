@@ -126,6 +126,16 @@ def _assert_usage(actual: dict[str, object], expected: dict[str, object]) -> Non
         if field in {"credits_spent_today", "last_check_credits"} and value is not None:
             if Decimal(str(actual[field])) != Decimal(str(value)):
                 raise AssertionError(f"HLR usage {field} was {actual[field]!r}, expected {value!r}")
+        elif field == "updated_at" and value is not None:
+            timestamp = actual[field]
+            if timestamp == value:
+                continue
+            if hasattr(timestamp, "strftime"):
+                if timestamp.strftime("%Y-%m-%d %H:%M") == value:
+                    continue
+            elif str(timestamp).startswith(value):
+                continue
+            raise AssertionError(f"HLR usage {field} was {timestamp!r}, expected {value!r}")
         elif actual[field] != value:
             raise AssertionError(f"HLR usage {field} was {actual[field]!r}, expected {value!r}")
 

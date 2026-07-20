@@ -2,6 +2,7 @@ import importlib.util
 import json
 import tempfile
 import unittest
+from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
 from unittest.mock import patch
@@ -108,6 +109,19 @@ class WriteHarnessTest(unittest.TestCase):
         self.assertEqual(repo.calls[-1][1:4], (2, "0.25", "2099-12-31 10:05"))
         self.assertEqual(conn.commits, 0)
         self.assertGreaterEqual(conn.rollbacks, 3)
+
+    def test_stage52_usage_timestamp_assertion_accepts_postgres_datetime(self):
+        expected = {
+            "checked_today": 3,
+            "credits_spent_today": "0.75",
+            "last_check_count": 3,
+            "last_check_credits": "0.75",
+            "updated_at": "2099-12-31 10:00",
+        }
+        harness._assert_usage({**expected, "updated_at": "2099-12-31 10:00"}, expected)
+        harness._assert_usage({**expected, "updated_at": datetime(2099, 12, 31, 10, 0)}, expected)
+        with self.assertRaisesRegex(AssertionError, "updated_at"):
+            harness._assert_usage({**expected, "updated_at": datetime(2099, 12, 31, 10, 5)}, expected)
 
     def test_missing_url_is_parser_error(self):
         with patch.dict("os.environ", {}, clear=True), self.assertRaises(SystemExit) as caught:
