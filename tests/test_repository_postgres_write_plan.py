@@ -9,9 +9,9 @@ class WritePlanTests(unittest.TestCase):
  def bad(self,p): self.assertEqual('failed',self.execute_plan(p)['status'])
  def name(self): return next(iter(self.plan['methods']))
  def test_actual_baseline_write_plan_passes(self):
-  summary=self.execute_plan(self.plan); self.assertEqual('ok',summary['status']); self.assertEqual(4,summary['rollback_smoke_covered_methods_count'])
+  summary=self.execute_plan(self.plan); self.assertEqual('ok',summary['status']); self.assertEqual(8,summary['rollback_smoke_covered_methods_count'])
  def test_invalid_rollback_smoke_tracking_fails(self):
-  for value in ([], ['set_app_setting_value','set_app_setting_value'], ['list_countries'], ['stale_method']):
+  for value in ([], ['set_app_setting_value','set_app_setting_value'], ['list_countries'], ['stale_method'], ['set_hlr_limit_override','set_app_setting_value','delete_app_setting_value','upsert_hlr_daily_usage']):
    p=copy.deepcopy(self.plan); p['rollback_smoke_covered_methods']=value; self.bad(p)
  def test_missing_rollback_smoke_tracking_is_config_error(self):
   p=copy.deepcopy(self.plan); del p['rollback_smoke_covered_methods']

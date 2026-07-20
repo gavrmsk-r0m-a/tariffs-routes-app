@@ -393,44 +393,42 @@ class Repository:
                 self.conn.execute("UPDATE phone_numbers SET assignment_label = ? WHERE assignment_type = ?", (new_label, row["code"]))
         return counts
 
-    def create_user(self, username: str, role: str = "admin", display_name: str | None = None, password: str | None = None, email: str | None = None, must_change_password: bool = False) -> int:
+    def create_user(self, username: str, role: str = "admin", display_name: str | None = None, password: str | None = None, email: str | None = None, must_change_password: bool = False, *, commit: bool = True) -> int:
         username = username.strip()
-        existing = self.conn.execute("SELECT id FROM users WHERE username = ?", (username,)).fetchone()
+        p = placeholder(self.backend)
+        existing = self.conn.execute(f"SELECT id FROM users WHERE username = {p}", (username,)).fetchone()
         if existing:
             return int(existing["id"])
         columns = self._user_columns()
         role_key = self._role_key(role)
         insert_columns = ["username", "display_name", "is_active"]
-        values: list[object] = [username, display_name or username, 1]
+        values: list[object] = [username, display_name or username, to_db_bool(True, self.backend)]
         if "role_key" in columns:
-            insert_columns.append("role_key")
-            values.append(role_key)
+            insert_columns.append("role_key"); values.append(role_key)
         if "role" in columns:
-            insert_columns.append("role")
-            values.append(role_key)
+            insert_columns.append("role"); values.append(role_key)
         if "email" in columns:
-            insert_columns.append("email")
-            values.append((email or "").strip() or None)
+            insert_columns.append("email"); values.append((email or "").strip() or None)
         if "must_change_password" in columns:
-            insert_columns.append("must_change_password")
-            values.append(1 if must_change_password else 0)
+            insert_columns.append("must_change_password"); values.append(to_db_bool(must_change_password, self.backend))
         if "password_hash" in columns and "password_salt" in columns:
             password_hash, password_salt = hash_password(password) if password is not None else (None, None)
-            insert_columns.extend(["password_hash", "password_salt"])
-            values.extend([password_hash, password_salt])
+            insert_columns.extend(["password_hash", "password_salt"]); values.extend([password_hash, password_salt])
         elif "password_hash" in columns:
-            insert_columns.append("password_hash")
-            values.append(hash_password(password)[0] if password is not None else None)
+            insert_columns.append("password_hash"); values.append(hash_password(password)[0] if password is not None else None)
         if "auth_provider" in columns:
-            insert_columns.append("auth_provider")
-            values.append("local")
-        placeholders = ", ".join("?" for _ in insert_columns)
-        cur = self.conn.execute(
-            f"INSERT INTO users({', '.join(insert_columns)}) VALUES ({placeholders})",
-            tuple(values),
-        )
-        self.conn.commit()
-        return int(cur.lastrowid)
+            insert_columns.append("auth_provider"); values.append("local")
+        sql = prepare_insert_returning_id(
+            f"INSERT INTO users({', '.join(insert_columns)}) VALUES ({', '.join(p for _ in insert_columns)})", self.backend)
+        try:
+            user_id = extract_inserted_id(self.conn.execute(sql, tuple(values)), self.backend)
+            if commit:
+                self.conn.commit()
+            return user_id
+        except Exception:
+            if commit:
+                self.conn.rollback()
+            raise
 
     def list_users(self, active_only: bool = False) -> list[sqlite3.Row]:
         p = placeholder(self.backend)
@@ -662,21 +660,17 @@ class Repository:
         }
 
     def set_user_permissions(self, user_id: int, permissions: dict[str, dict[str, object]], *, commit: bool = True) -> None:
+        p = placeholder(self.backend)
         try:
             for section_key, values in permissions.items():
-                can_read_value = 1 if values.get("can_read") else 0
-                can_write_value = 1 if values.get("can_write") else 0
-                can_export_value = 1 if values.get("can_export") else 0
                 self.conn.execute(
-                    """
+                    f"""
                     INSERT INTO user_permissions(user_id, section_key, can_read, can_write, can_export)
-                    VALUES (?, ?, ?, ?, ?)
+                    VALUES ({p}, {p}, {p}, {p}, {p})
                     ON CONFLICT(user_id, section_key) DO UPDATE SET
-                        can_read = excluded.can_read,
-                        can_write = excluded.can_write,
-                        can_export = excluded.can_export
+                        can_read = excluded.can_read, can_write = excluded.can_write, can_export = excluded.can_export
                     """,
-                    (user_id, section_key, can_read_value, can_write_value, can_export_value),
+                    (user_id, section_key, to_db_bool(bool(values.get("can_read")), self.backend), to_db_bool(bool(values.get("can_write")), self.backend), to_db_bool(bool(values.get("can_export")), self.backend)),
                 )
             if commit:
                 self.conn.commit()
@@ -685,36 +679,45 @@ class Repository:
                 self.conn.rollback()
             raise
 
-    def update_user_password(self, user_id: int, password: str, *, must_change_password: bool = False) -> None:
+    def update_user_password(self, user_id: int, password: str, *, must_change_password: bool = False, commit: bool = True) -> None:
         columns = self._user_columns()
         if not {"password_hash", "password_salt"}.issubset(columns):
             return
+        p = placeholder(self.backend)
         password_hash, password_salt = hash_password(password)
-        must_clause = ", must_change_password = ?" if "must_change_password" in columns else ""
-        params: tuple[object, ...] = (password_hash, password_salt, 1 if must_change_password else 0, user_id) if must_clause else (password_hash, password_salt, user_id)
-        self.conn.execute(f"UPDATE users SET password_hash = ?, password_salt = ?, updated_at = CURRENT_TIMESTAMP{must_clause} WHERE id = ?", params)
-        self.conn.commit()
+        must_clause = f", must_change_password = {p}" if "must_change_password" in columns else ""
+        params: tuple[object, ...] = (password_hash, password_salt, to_db_bool(must_change_password, self.backend), user_id) if must_clause else (password_hash, password_salt, user_id)
+        try:
+            self.conn.execute(f"UPDATE users SET password_hash = {p}, password_salt = {p}, updated_at = CURRENT_TIMESTAMP{must_clause} WHERE id = {p}", params)
+            if commit:
+                self.conn.commit()
+        except Exception:
+            if commit:
+                self.conn.rollback()
+            raise
 
-    def update_user(self, user_id: int, *, display_name: str, role_key: str, is_active: bool, username: str | None = None, email: str | None = None) -> None:
-        columns = self._user_columns()
-        assignments = ["display_name = ?", "is_active = ?", "updated_at = CURRENT_TIMESTAMP"]
-        values: list[object] = [display_name.strip(), 1 if is_active else 0]
+    def update_user(self, user_id: int, *, display_name: str, role_key: str, is_active: bool, username: str | None = None, email: str | None = None, commit: bool = True) -> None:
+        columns = self._user_columns(); p = placeholder(self.backend)
+        assignments = [f"display_name = {p}", f"is_active = {p}", "updated_at = CURRENT_TIMESTAMP"]
+        values: list[object] = [display_name.strip(), to_db_bool(is_active, self.backend)]
         if username is not None:
-            assignments.append("username = ?")
-            values.append(username.strip())
+            assignments.append(f"username = {p}"); values.append(username.strip())
         if "email" in columns:
-            assignments.append("email = ?")
-            values.append((email or "").strip() or None)
+            assignments.append(f"email = {p}"); values.append((email or "").strip() or None)
         normalized_role = self._role_key(role_key)
         if "role_key" in columns:
-            assignments.append("role_key = ?")
-            values.append(normalized_role)
+            assignments.append(f"role_key = {p}"); values.append(normalized_role)
         if "role" in columns:
-            assignments.append("role = ?")
-            values.append(normalized_role)
+            assignments.append(f"role = {p}"); values.append(normalized_role)
         values.append(user_id)
-        self.conn.execute(f"UPDATE users SET {', '.join(assignments)} WHERE id = ?", tuple(values))
-        self.conn.commit()
+        try:
+            self.conn.execute(f"UPDATE users SET {', '.join(assignments)} WHERE id = {p}", tuple(values))
+            if commit:
+                self.conn.commit()
+        except Exception:
+            if commit:
+                self.conn.rollback()
+            raise
 
     def create_country(self, name: str, code: str | None = None) -> int:
         p = placeholder(self.backend)

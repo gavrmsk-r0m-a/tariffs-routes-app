@@ -706,3 +706,7 @@ It separately verifies PostgreSQL's aborted-transaction rule after a deliberate 
 ## Stage 52 PostgreSQL app-settings and HLR usage rollback smoke
 
 `set_app_setting_value`, `delete_app_setting_value`, and `upsert_hlr_daily_usage` now use backend-aware placeholders and PostgreSQL-compatible UPSERTs only for rollback-only harness coverage. The harness verifies transaction-local visibility and full rollback restoration for app settings and HLR daily usage; it never commits. Read-only smoke remains **611** checks and the coverage audit remains **112 / 61 / 0 / 50 / 1 / 100.0%**. `DB_BACKEND=postgres` remains disabled and no runtime write enablement is included.
+
+## Stage 53 PostgreSQL user/admin rollback write smoke
+
+Stage 53 rollback-smokes the user/admin create, update, password, and permissions writes on PostgreSQL in a single caller-owned transaction. It verifies transaction-local visibility and authentication change, then full rollback removal of the probe user and permissions. The read-only smoke remains **611** checks and the coverage audit remains **112 / 61 / 0 / 50 / 1 / 100.0%**. `DB_BACKEND=postgres` is still disabled; this is not runtime write enablement.

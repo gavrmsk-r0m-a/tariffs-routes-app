@@ -24,6 +24,7 @@ DEFAULT_PROBE_KEY = "__stage51_rollback_probe__"
 DEFAULT_PROBE_VALUE = "5151"
 APP_SETTING_PROBE_KEY = "__stage52_app_setting_probe__"
 HLR_DAILY_USAGE_PROBE_DATE = "2099-12-31"
+USER_ADMIN_PROBE_USERNAME = "__stage53_user_admin_probe__"
 
 
 def empty_summary(postgres_url: str) -> dict:
@@ -32,7 +33,7 @@ def empty_summary(postgres_url: str) -> dict:
         "checks_count": 0, "failures": [],
         "probes": {name: "skipped" for name in (
             "rollback_probe", "aborted_transaction_probe", "savepoint_probe",
-            "app_setting_probe", "hlr_daily_usage_probe",
+            "app_setting_probe", "hlr_daily_usage_probe", "user_admin_probe",
         )},
     }
 
@@ -164,6 +165,43 @@ def run_hlr_daily_usage_probe(repo: Repository, conn, usage_date: str = HLR_DAIL
         conn.rollback()
 
 
+
+def run_user_admin_probe(repo: Repository, conn, username: str = USER_ADMIN_PROBE_USERNAME) -> None:
+    """Exercise all Stage 53 user/admin writes inside one rolled-back transaction."""
+    before = repo.get_user_by_username(username)
+    if before is not None:
+        raise AssertionError(f"{username}: probe username collision")
+    user_id = None
+    conn.rollback()
+    conn.execute("BEGIN")
+    try:
+        user_id = repo.create_user(username, role="admin", display_name="Stage 53 Probe", password="stage53-old-password", email="stage53-before@example.test", must_change_password=True, commit=False)
+        user = repo.get_user_by_username(username)
+        if not user or user["id"] != user_id or user["display_name"] != "Stage 53 Probe" or user["email"] != "stage53-before@example.test" or not bool(user["is_active"]) or not repo.authenticate_user(username, "stage53-old-password"):
+            raise AssertionError(f"{username}: created user is not visible inside the transaction")
+        repo.update_user(user_id, display_name="Stage 53 Probe Updated", role_key="admin", is_active=True, username=username, email="stage53-after@example.test", commit=False)
+        user = repo.get_user_by_username(username)
+        if not user or user["display_name"] != "Stage 53 Probe Updated" or user["email"] != "stage53-after@example.test" or user["role_key"] != "admin" or not bool(user["is_active"]):
+            raise AssertionError(f"{username}: updated user is not visible inside the transaction")
+        repo.set_user_permissions(user_id, {"routes": {"can_read": True, "can_write": True, "can_export": False}, "settings": {"can_read": True, "can_write": False, "can_export": False}}, commit=False)
+        route = repo.get_user_section_permission(user_id, "routes")
+        permissions = repo.get_user_permissions(user_id)
+        if not route or not (bool(route["can_read"]) and bool(route["can_write"]) and not bool(route["can_export"])) or "settings" not in permissions:
+            raise AssertionError(f"{username}: permissions are not visible inside the transaction")
+        repo.update_user_password(user_id, "stage53-new-password", must_change_password=False, commit=False)
+        user = repo.get_user_by_username(username)
+        if not repo.authenticate_user(username, "stage53-new-password") or repo.authenticate_user(username, "stage53-old-password") or bool(user["must_change_password"]):
+            raise AssertionError(f"{username}: password update is not visible inside the transaction")
+    finally:
+        conn.rollback()
+    try:
+        if repo.get_user_by_username(username) is not None:
+            raise AssertionError(f"{username}: rollback did not remove probe user")
+        if user_id is not None and repo.get_user_permissions(user_id):
+            raise AssertionError(f"{username}: rollback did not remove probe permissions")
+    finally:
+        conn.rollback()
+
 def run_harness(postgres_url: str, probe_key: str = DEFAULT_PROBE_KEY, probe_value: str = DEFAULT_PROBE_VALUE) -> dict:
     """Run all probes; psycopg imports remain local so unit tests need no driver."""
     summary = empty_summary(postgres_url)
@@ -192,6 +230,7 @@ def run_harness(postgres_url: str, probe_key: str = DEFAULT_PROBE_KEY, probe_val
         check("savepoint_probe", lambda: run_savepoint_probe(conn))
         check("app_setting_probe", lambda: run_app_setting_probe(repo, conn))
         check("hlr_daily_usage_probe", lambda: run_hlr_daily_usage_probe(repo, conn))
+        check("user_admin_probe", lambda: run_user_admin_probe(repo, conn))
     except Exception as exc:
         summary["failures"].append({"check": "connect", "error": sanitize_error(exc, postgres_url)})
     finally:
