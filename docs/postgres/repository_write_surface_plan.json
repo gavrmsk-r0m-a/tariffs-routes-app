@@ -753,7 +753,7 @@
       "current_commit_behavior": "mixed",
       "dependencies": [],
       "mutation_kind": "delete",
-      "notes": "Stage 50 audit inventory only; no write adaptation.",
+      "notes": "Stage 52 PostgreSQL rollback-only probe: backend-aware placeholders and UPSERT; commit=False leaves rollback ownership with the harness. Runtime remains disabled.",
       "postgres_strategy": "Keep runtime disabled; use rollback-only harness, backend placeholders, and RETURNING where identity retrieval is required.",
       "returns": "none",
       "risk": "medium",
@@ -1065,7 +1065,7 @@
       "current_commit_behavior": "mixed",
       "dependencies": [],
       "mutation_kind": "update",
-      "notes": "Stage 50 audit inventory only; no write adaptation.",
+      "notes": "Stage 52 PostgreSQL rollback-only probe: backend-aware placeholders and UPSERT; commit=False leaves rollback ownership with the harness. Runtime remains disabled.",
       "postgres_strategy": "Keep runtime disabled; use rollback-only harness, backend placeholders, and RETURNING where identity retrieval is required.",
       "returns": "none",
       "risk": "medium",
@@ -1562,7 +1562,7 @@
       "current_commit_behavior": "mixed",
       "dependencies": [],
       "mutation_kind": "upsert",
-      "notes": "Stage 50 audit inventory only; no write adaptation.",
+      "notes": "Stage 52 PostgreSQL rollback-only probe: backend-aware placeholders and UPSERT; commit=False leaves rollback ownership with the harness. Runtime remains disabled.",
       "postgres_strategy": "Keep runtime disabled; use rollback-only harness, backend placeholders, and RETURNING where identity retrieval is required.",
       "returns": "none",
       "risk": "medium",
@@ -1585,5 +1585,11 @@
   },
   "recommended_next_batch": "write_test_harness_and_transaction_foundation",
   "schema_version": 1,
-  "foundation_status": "foundation_added"
+  "foundation_status": "foundation_added",
+  "rollback_smoke_covered_methods": [
+    "set_hlr_limit_override",
+    "set_app_setting_value",
+    "delete_app_setting_value",
+    "upsert_hlr_daily_usage"
+  ]
 }

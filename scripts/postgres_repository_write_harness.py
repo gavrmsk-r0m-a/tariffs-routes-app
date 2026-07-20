@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 """Rollback-only PostgreSQL write probes for the Repository transaction model.
 
-This CI-only utility never calls ``commit``.  Its sole write is the existing
-HLR limit override and it is always invoked with ``commit=False`` and undone
-by the surrounding connection rollback.
+This CI-only utility never calls ``commit``.  Every write is invoked with
+``commit=False`` and undone by the surrounding connection rollback.
 """
 from __future__ import annotations
 
@@ -11,6 +10,7 @@ import argparse
 import json
 import os
 import sys
+from decimal import Decimal
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -22,13 +22,18 @@ from scripts.postgres_repository_smoke import mask_postgres_url, sanitize_error
 
 DEFAULT_PROBE_KEY = "__stage51_rollback_probe__"
 DEFAULT_PROBE_VALUE = "5151"
+APP_SETTING_PROBE_KEY = "__stage52_app_setting_probe__"
+HLR_DAILY_USAGE_PROBE_DATE = "2099-12-31"
 
 
 def empty_summary(postgres_url: str) -> dict:
     return {
         "status": "failed", "postgres_url": mask_postgres_url(postgres_url),
         "checks_count": 0, "failures": [],
-        "probes": {"rollback_probe": "skipped", "aborted_transaction_probe": "skipped", "savepoint_probe": "skipped"},
+        "probes": {name: "skipped" for name in (
+            "rollback_probe", "aborted_transaction_probe", "savepoint_probe",
+            "app_setting_probe", "hlr_daily_usage_probe",
+        )},
     }
 
 
@@ -95,6 +100,60 @@ def run_savepoint_probe(conn) -> None:
         conn.rollback()
 
 
+def run_app_setting_probe(repo: Repository, conn, key: str = APP_SETTING_PROBE_KEY) -> None:
+    """Exercise app-settings visibility and restoration in one rollback-only transaction."""
+    before = repo.get_app_setting_value(key)
+    conn.rollback()
+    conn.execute("BEGIN")
+    try:
+        repo.set_app_setting_value(key, "stage52-value", updated_by=None, commit=False)
+        if repo.get_app_setting_value(key) != "stage52-value":
+            raise AssertionError(f"{key}: setting is not visible inside the transaction")
+        repo.delete_app_setting_value(key, commit=False)
+        if repo.get_app_setting_value(key) is not None:
+            raise AssertionError(f"{key}: deleted setting remains visible inside the transaction")
+    finally:
+        conn.rollback()
+    try:
+        if repo.get_app_setting_value(key) != before:
+            raise AssertionError(f"{key}: rollback did not restore the prior setting value")
+    finally:
+        conn.rollback()
+
+
+def _assert_usage(actual: dict[str, object], expected: dict[str, object]) -> None:
+    for field, value in expected.items():
+        if field in {"credits_spent_today", "last_check_credits"} and value is not None:
+            if Decimal(str(actual[field])) != Decimal(str(value)):
+                raise AssertionError(f"HLR usage {field} was {actual[field]!r}, expected {value!r}")
+        elif actual[field] != value:
+            raise AssertionError(f"HLR usage {field} was {actual[field]!r}, expected {value!r}")
+
+
+def run_hlr_daily_usage_probe(repo: Repository, conn, usage_date: str = HLR_DAILY_USAGE_PROBE_DATE) -> None:
+    """Exercise HLR usage increments and prove the row is restored by rollback."""
+    before = repo.get_hlr_daily_usage(usage_date)
+    conn.rollback()
+    conn.execute("BEGIN")
+    try:
+        repo.upsert_hlr_daily_usage(usage_date, 3, "0.75", "2099-12-31 10:00", commit=False)
+        _assert_usage(repo.get_hlr_daily_usage(usage_date), {
+            "checked_today": 3, "credits_spent_today": "0.75", "last_check_count": 3,
+            "last_check_credits": "0.75", "updated_at": "2099-12-31 10:00",
+        })
+        repo.upsert_hlr_daily_usage(usage_date, 2, "0.25", "2099-12-31 10:05", commit=False)
+        _assert_usage(repo.get_hlr_daily_usage(usage_date), {
+            "checked_today": 5, "credits_spent_today": "1.0", "last_check_count": 2,
+            "last_check_credits": "0.25", "updated_at": "2099-12-31 10:05",
+        })
+    finally:
+        conn.rollback()
+    try:
+        _assert_usage(repo.get_hlr_daily_usage(usage_date), before)
+    finally:
+        conn.rollback()
+
+
 def run_harness(postgres_url: str, probe_key: str = DEFAULT_PROBE_KEY, probe_value: str = DEFAULT_PROBE_VALUE) -> dict:
     """Run all probes; psycopg imports remain local so unit tests need no driver."""
     summary = empty_summary(postgres_url)
@@ -121,6 +180,8 @@ def run_harness(postgres_url: str, probe_key: str = DEFAULT_PROBE_KEY, probe_val
         check("rollback_probe", lambda: run_rollback_probe(repo, conn, probe_key, probe_value))
         check("aborted_transaction_probe", lambda: run_aborted_transaction_probe(conn))
         check("savepoint_probe", lambda: run_savepoint_probe(conn))
+        check("app_setting_probe", lambda: run_app_setting_probe(repo, conn))
+        check("hlr_daily_usage_probe", lambda: run_hlr_daily_usage_probe(repo, conn))
     except Exception as exc:
         summary["failures"].append({"check": "connect", "error": sanitize_error(exc, postgres_url)})
     finally:

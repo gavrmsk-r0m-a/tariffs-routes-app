@@ -95,6 +95,49 @@ class RepositoryAdapterWriteMethodsTest(unittest.TestCase):
         self.assertEqual(params, ("hlr_daily_limit_override", "5151", None))
         self.assertEqual(connection.commits, 0)
 
+    def test_stage52_app_settings_use_postgres_placeholders_and_commit_contract(self):
+        class RecordingConnection:
+            def __init__(self): self.calls=[]; self.commits=0; self.rollbacks=0
+            def execute(self, sql, params=()): self.calls.append((sql, params))
+            def commit(self): self.commits += 1
+            def rollback(self): self.rollbacks += 1
+        connection = RecordingConnection(); repo = Repository(connection, backend="postgres")
+        repo.set_app_setting_value("key", "value", 7)
+        self.assertIn("VALUES (%s, %s, CURRENT_TIMESTAMP, %s)", connection.calls[0][0])
+        self.assertIn("ON CONFLICT(key) DO UPDATE", connection.calls[0][0])
+        self.assertEqual(connection.calls[0][1], ("key", "value", 7)); self.assertEqual(connection.commits, 1)
+        repo.delete_app_setting_value("key", commit=False)
+        self.assertEqual(connection.calls[-1], ("DELETE FROM app_settings WHERE key = %s", ("key",)))
+        self.assertEqual(connection.commits, 1)
+
+    def test_stage52_hlr_usage_uses_postgres_placeholders_and_returns_usage(self):
+        class Cursor:
+            def fetchone(self): return None
+        class RecordingConnection:
+            def __init__(self): self.calls=[]; self.commits=0
+            def execute(self, sql, params=()): self.calls.append((sql, params)); return Cursor()
+            def commit(self): self.commits += 1
+            def rollback(self): raise AssertionError("unexpected rollback")
+        connection = RecordingConnection(); repo = Repository(connection, backend="postgres")
+        with patch.object(repo, "get_hlr_daily_usage", return_value={"usage_date": "2099-12-31"}) as getter:
+            result = repo.upsert_hlr_daily_usage("2099-12-31", 3, "0.75", "2099-12-31 10:00", commit=False)
+        self.assertIn("WHERE usage_date = %s", connection.calls[0][0])
+        self.assertIn("VALUES (%s, %s, %s, %s, %s, %s)", connection.calls[1][0])
+        self.assertIn("ON CONFLICT(usage_date) DO UPDATE", connection.calls[1][0])
+        self.assertEqual(connection.calls[1][1], ("2099-12-31", 3, 0.75, 3, "0.75", "2099-12-31 10:00"))
+        self.assertEqual(connection.commits, 0); getter.assert_called_once_with("2099-12-31")
+        self.assertEqual(result, {"usage_date": "2099-12-31"})
+
+    def test_stage52_sqlite_app_settings_and_hlr_usage_keep_caller_owned_commit(self):
+        self.repo.set_app_setting_value("stage52", "value", commit=False)
+        self.assertEqual(self.repo.get_app_setting_value("stage52"), "value")
+        self.conn.rollback()
+        self.assertIsNone(self.repo.get_app_setting_value("stage52"))
+        usage = self.repo.upsert_hlr_daily_usage("2099-12-31", 3, "0.75", "2099-12-31 10:00", commit=False)
+        self.assertEqual(usage["checked_today"], 3)
+        self.conn.rollback()
+        self.assertEqual(self.repo.get_hlr_daily_usage("2099-12-31")["checked_today"], 0)
+
     def test_update_calling_company_import_fields_updates_row_and_booleans(self):
         user_id = self.repo.create_user("company-import-admin", "Company Import Admin")
         country_id = self.repo.create_country("Италия", "IT")
