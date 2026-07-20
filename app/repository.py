@@ -719,24 +719,39 @@ class Repository:
                 self.conn.rollback()
             raise
 
-    def create_country(self, name: str, code: str | None = None) -> int:
+    def create_country(self, name: str, code: str | None = None, *, commit: bool = True) -> int:
         p = placeholder(self.backend)
         sql = prepare_insert_returning_id(
             f"INSERT INTO countries(name, code, is_active) VALUES ({p}, {p}, {p})",
             self.backend,
         )
-        cur = self.conn.execute(sql, (name, code, to_db_bool(True, self.backend)))
-        country_id = extract_inserted_id(cur, self.backend)
-        self.conn.commit()
-        return country_id
+        try:
+            cur = self.conn.execute(sql, (name, code, to_db_bool(True, self.backend)))
+            country_id = extract_inserted_id(cur, self.backend)
+            if commit:
+                self.conn.commit()
+            return country_id
+        except Exception:
+            if commit:
+                self.conn.rollback()
+            raise
 
-    def create_currency(self, code: str, name: str, symbol: str | None = None) -> int:
-        cur = self.conn.execute(
-            "INSERT INTO currencies(code, name, symbol, is_active) VALUES (?, ?, ?, 1)",
-            (code, name, symbol),
+    def create_currency(self, code: str, name: str, symbol: str | None = None, *, commit: bool = True) -> int:
+        p = placeholder(self.backend)
+        sql = prepare_insert_returning_id(
+            f"INSERT INTO currencies(code, name, symbol, is_active) VALUES ({p}, {p}, {p}, {p})",
+            self.backend,
         )
-        self.conn.commit()
-        return int(cur.lastrowid)
+        try:
+            cur = self.conn.execute(sql, (code, name, symbol, to_db_bool(True, self.backend)))
+            currency_id = extract_inserted_id(cur, self.backend)
+            if commit:
+                self.conn.commit()
+            return currency_id
+        except Exception:
+            if commit:
+                self.conn.rollback()
+            raise
 
     def create_provider(
         self,
@@ -744,6 +759,8 @@ class Repository:
         provider_type: str = "unknown",
         default_currency_id: int | None = None,
         comment: str | None = None,
+        *,
+        commit: bool = True,
     ) -> int:
         p = placeholder(self.backend)
         sql = prepare_insert_returning_id(
@@ -753,25 +770,40 @@ class Repository:
             """,
             self.backend,
         )
-        cur = self.conn.execute(
-            sql,
-            (name, normalize_provider_name(name), provider_type, default_currency_id, to_db_bool(True, self.backend), comment),
-        )
-        provider_id = extract_inserted_id(cur, self.backend)
-        self.conn.commit()
-        return provider_id
+        try:
+            cur = self.conn.execute(
+                sql,
+                (name, normalize_provider_name(name), provider_type, default_currency_id, to_db_bool(True, self.backend), comment),
+            )
+            provider_id = extract_inserted_id(cur, self.backend)
+            if commit:
+                self.conn.commit()
+            return provider_id
+        except Exception:
+            if commit:
+                self.conn.rollback()
+            raise
 
-    def create_prefix(self, provider_id: int, prefix: str | None, name: str | None = None) -> int:
+    def create_prefix(self, provider_id: int, prefix: str | None, name: str | None = None, *, commit: bool = True) -> int:
         prefix = normalize_real_prefix(prefix)
-        cur = self.conn.execute(
-            """
+        p = placeholder(self.backend)
+        sql = prepare_insert_returning_id(
+            f"""
             INSERT INTO provider_prefixes(provider_id, prefix, name, is_active)
-            VALUES (?, ?, ?, 1)
+            VALUES ({p}, {p}, {p}, {p})
             """,
-            (provider_id, prefix or None, name),
+            self.backend,
         )
-        self.conn.commit()
-        return int(cur.lastrowid)
+        try:
+            cur = self.conn.execute(sql, (provider_id, prefix or None, name, to_db_bool(True, self.backend)))
+            prefix_id = extract_inserted_id(cur, self.backend)
+            if commit:
+                self.conn.commit()
+            return prefix_id
+        except Exception:
+            if commit:
+                self.conn.rollback()
+            raise
 
     def create_route(
         self,

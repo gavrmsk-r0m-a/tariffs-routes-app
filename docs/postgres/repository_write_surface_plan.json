@@ -366,10 +366,10 @@
     },
     "create_country": {
       "batch": "dictionary_and_snapshot_writes",
-      "current_commit_behavior": "commits internally",
+      "current_commit_behavior": "mixed",
       "dependencies": [],
       "mutation_kind": "insert",
-      "notes": "Stage 50 audit inventory only; no write adaptation.",
+      "notes": "Stage 54 PostgreSQL rollback-only dictionary create probe: backend-aware placeholders, PostgreSQL RETURNING identity retrieval, and commit=False caller ownership. Runtime remains disabled.",
       "postgres_strategy": "Keep runtime disabled; use rollback-only harness, backend placeholders, and RETURNING where identity retrieval is required.",
       "returns": "inserted_id",
       "risk": "medium",
@@ -388,14 +388,14 @@
         "SQLite regression test",
         "PostgreSQL rollback-only integration test"
       ],
-      "transaction_contract": "explicit_commit"
+      "transaction_contract": "optional_commit_parameter"
     },
     "create_currency": {
       "batch": "dictionary_and_snapshot_writes",
-      "current_commit_behavior": "commits internally",
+      "current_commit_behavior": "mixed",
       "dependencies": [],
       "mutation_kind": "insert",
-      "notes": "Stage 50 audit inventory only; no write adaptation.",
+      "notes": "Stage 54 PostgreSQL rollback-only dictionary create probe: backend-aware placeholders, PostgreSQL RETURNING identity retrieval, and commit=False caller ownership. Runtime remains disabled.",
       "postgres_strategy": "Keep runtime disabled; use rollback-only harness, backend placeholders, and RETURNING where identity retrieval is required.",
       "returns": "inserted_id",
       "risk": "medium",
@@ -415,7 +415,7 @@
         "SQLite regression test",
         "PostgreSQL rollback-only integration test"
       ],
-      "transaction_contract": "explicit_commit"
+      "transaction_contract": "optional_commit_parameter"
     },
     "create_currency_rate": {
       "batch": "phone_route_tariff_core_writes",
@@ -473,10 +473,10 @@
     },
     "create_prefix": {
       "batch": "dictionary_and_snapshot_writes",
-      "current_commit_behavior": "commits internally",
+      "current_commit_behavior": "mixed",
       "dependencies": [],
       "mutation_kind": "insert",
-      "notes": "Stage 50 audit inventory only; no write adaptation.",
+      "notes": "Stage 54 PostgreSQL rollback-only dictionary create probe: backend-aware placeholders, PostgreSQL RETURNING identity retrieval, and commit=False caller ownership. Runtime remains disabled.",
       "postgres_strategy": "Keep runtime disabled; use rollback-only harness, backend placeholders, and RETURNING where identity retrieval is required.",
       "returns": "inserted_id",
       "risk": "medium",
@@ -496,14 +496,14 @@
         "SQLite regression test",
         "PostgreSQL rollback-only integration test"
       ],
-      "transaction_contract": "explicit_commit"
+      "transaction_contract": "optional_commit_parameter"
     },
     "create_provider": {
       "batch": "dictionary_and_snapshot_writes",
-      "current_commit_behavior": "commits internally",
+      "current_commit_behavior": "mixed",
       "dependencies": [],
       "mutation_kind": "insert",
-      "notes": "Stage 50 audit inventory only; no write adaptation.",
+      "notes": "Stage 54 PostgreSQL rollback-only dictionary create probe: backend-aware placeholders, PostgreSQL RETURNING identity retrieval, and commit=False caller ownership. Runtime remains disabled.",
       "postgres_strategy": "Keep runtime disabled; use rollback-only harness, backend placeholders, and RETURNING where identity retrieval is required.",
       "returns": "inserted_id",
       "risk": "medium",
@@ -522,7 +522,7 @@
         "SQLite regression test",
         "PostgreSQL rollback-only integration test"
       ],
-      "transaction_contract": "explicit_commit"
+      "transaction_contract": "optional_commit_parameter"
     },
     "create_provider_change": {
       "batch": "provider_change_and_priority_writes",
@@ -1594,6 +1594,10 @@
     "create_user",
     "update_user",
     "update_user_password",
-    "set_user_permissions"
+    "set_user_permissions",
+    "create_country",
+    "create_currency",
+    "create_provider",
+    "create_prefix"
   ]
 }

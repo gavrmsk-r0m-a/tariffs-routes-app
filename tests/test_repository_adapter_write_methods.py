@@ -138,6 +138,41 @@ class RepositoryAdapterWriteMethodsTest(unittest.TestCase):
         self.conn.rollback()
         self.assertEqual(self.repo.get_hlr_daily_usage("2099-12-31")["checked_today"], 0)
 
+    def test_stage54_dictionary_creates_use_postgres_returning_and_caller_commit_contract(self):
+        class Cursor:
+            def fetchone(self): return {"id": 91}
+        class RecordingConnection:
+            def __init__(self): self.calls=[]; self.commits=0; self.rollbacks=0
+            def execute(self, sql, params=()): self.calls.append((sql, params)); return Cursor()
+            def commit(self): self.commits += 1
+            def rollback(self): self.rollbacks += 1
+        conn = RecordingConnection(); repo = Repository(conn, backend="postgres")
+        self.assertEqual(repo.create_country("Stage 54", "S54", commit=False), 91)
+        self.assertEqual(repo.create_currency("S54", "Stage 54 Currency", "S54", commit=False), 91)
+        self.assertEqual(repo.create_provider(" Stage 54 Provider ", provider_type="voice", default_currency_id=91, comment="probe", commit=False), 91)
+        self.assertEqual(repo.create_prefix(91, " 9954 ", "Stage 54 Prefix", commit=False), 91)
+        sql = "\n".join(call[0] for call in conn.calls)
+        self.assertIn("INSERT INTO countries(name, code, is_active) VALUES (%s, %s, %s) RETURNING id", sql)
+        self.assertIn("INSERT INTO currencies(code, name, symbol, is_active) VALUES (%s, %s, %s, %s) RETURNING id", sql)
+        self.assertIn("INSERT INTO providers", sql); self.assertIn("INSERT INTO provider_prefixes", sql)
+        self.assertEqual(conn.calls[2][1], (" Stage 54 Provider ", "stage 54 provider", "voice", 91, True, "probe"))
+        self.assertEqual(conn.calls[3][1], (91, "9954", "Stage 54 Prefix", True))
+        self.assertEqual(conn.commits, 0)
+        repo.create_country("Committed", "SC")
+        self.assertEqual(conn.commits, 1)
+
+    def test_stage54_sqlite_dictionary_creates_roll_back_when_caller_owns_transaction(self):
+        country_id = self.repo.create_country("Stage 54 Country", "S54", commit=False)
+        currency_id = self.repo.create_currency("S54", "Stage 54 Currency", "S54", commit=False)
+        provider_id = self.repo.create_provider("Stage 54 Provider", default_currency_id=currency_id, commit=False)
+        prefix_id = self.repo.create_prefix(provider_id, "9954", "Stage 54 Prefix", commit=False)
+        self.assertTrue(all(identifier > 0 for identifier in (country_id, currency_id, provider_id, prefix_id)))
+        self.conn.rollback()
+        self.assertIsNone(self.conn.execute("SELECT 1 FROM countries WHERE id = ?", (country_id,)).fetchone())
+        self.assertIsNone(self.conn.execute("SELECT 1 FROM currencies WHERE id = ?", (currency_id,)).fetchone())
+        self.assertIsNone(self.conn.execute("SELECT 1 FROM providers WHERE id = ?", (provider_id,)).fetchone())
+        self.assertIsNone(self.conn.execute("SELECT 1 FROM provider_prefixes WHERE id = ?", (prefix_id,)).fetchone())
+
     def test_update_calling_company_import_fields_updates_row_and_booleans(self):
         user_id = self.repo.create_user("company-import-admin", "Company Import Admin")
         country_id = self.repo.create_country("Италия", "IT")

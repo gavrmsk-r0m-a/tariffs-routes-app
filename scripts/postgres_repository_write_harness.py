@@ -25,6 +25,10 @@ DEFAULT_PROBE_VALUE = "5151"
 APP_SETTING_PROBE_KEY = "__stage52_app_setting_probe__"
 HLR_DAILY_USAGE_PROBE_DATE = "2099-12-31"
 USER_ADMIN_PROBE_USERNAME = "__stage53_user_admin_probe__"
+COUNTRY_PROBE_NAME, COUNTRY_PROBE_CODE = "__stage54_country_probe__", "S54"
+CURRENCY_PROBE_CODE, CURRENCY_PROBE_NAME, CURRENCY_PROBE_SYMBOL = "S54", "Stage 54 Currency", "S54"
+PROVIDER_PROBE_NAME, PROVIDER_PROBE_TYPE, PROVIDER_PROBE_COMMENT = "__stage54_provider_probe__", "voice", "Stage 54 rollback probe"
+PREFIX_PROBE_VALUE, PREFIX_PROBE_NAME = "9954", "Stage 54 Prefix"
 
 
 def empty_summary(postgres_url: str) -> dict:
@@ -34,6 +38,7 @@ def empty_summary(postgres_url: str) -> dict:
         "probes": {name: "skipped" for name in (
             "rollback_probe", "aborted_transaction_probe", "savepoint_probe",
             "app_setting_probe", "hlr_daily_usage_probe", "user_admin_probe",
+            "dictionary_create_probe",
         )},
     }
 
@@ -202,6 +207,43 @@ def run_user_admin_probe(repo: Repository, conn, username: str = USER_ADMIN_PROB
     finally:
         conn.rollback()
 
+
+def _dictionary_probe_rows(conn) -> tuple[object, object, object, object]:
+    """Read only the deterministic Stage 54 rows with PostgreSQL placeholders."""
+    country = conn.execute("SELECT id, is_active FROM countries WHERE name = %s AND code = %s", (COUNTRY_PROBE_NAME, COUNTRY_PROBE_CODE)).fetchone()
+    currency = conn.execute("SELECT id, is_active FROM currencies WHERE code = %s", (CURRENCY_PROBE_CODE,)).fetchone()
+    provider = conn.execute("SELECT id, default_currency_id, is_active FROM providers WHERE name = %s", (PROVIDER_PROBE_NAME,)).fetchone()
+    prefix = conn.execute("SELECT id, provider_id, prefix, is_active FROM provider_prefixes WHERE prefix = %s AND name = %s", (PREFIX_PROBE_VALUE, PREFIX_PROBE_NAME)).fetchone()
+    return country, currency, provider, prefix
+
+
+def run_dictionary_create_probe(repo: Repository, conn) -> None:
+    """Create core dictionary rows in one transaction and prove rollback removes them."""
+    if any(_dictionary_probe_rows(conn)):
+        raise AssertionError("Stage 54 dictionary probe values already exist")
+    conn.rollback()
+    try:
+        conn.execute("BEGIN")
+        country_id = repo.create_country(COUNTRY_PROBE_NAME, COUNTRY_PROBE_CODE, commit=False)
+        currency_id = repo.create_currency(CURRENCY_PROBE_CODE, CURRENCY_PROBE_NAME, CURRENCY_PROBE_SYMBOL, commit=False)
+        provider_id = repo.create_provider(PROVIDER_PROBE_NAME, provider_type=PROVIDER_PROBE_TYPE, default_currency_id=currency_id, comment=PROVIDER_PROBE_COMMENT, commit=False)
+        prefix_id = repo.create_prefix(provider_id, PREFIX_PROBE_VALUE, PREFIX_PROBE_NAME, commit=False)
+        country, currency, provider, prefix = _dictionary_probe_rows(conn)
+        if not country or country["id"] != country_id or not bool(country["is_active"]):
+            raise AssertionError("country is not visible and active inside the transaction")
+        if not currency or currency["id"] != currency_id or not bool(currency["is_active"]):
+            raise AssertionError("currency is not visible and active inside the transaction")
+        if not provider or provider["id"] != provider_id or provider["default_currency_id"] != currency_id or not bool(provider["is_active"]):
+            raise AssertionError("provider is not visible and active inside the transaction")
+        if not prefix or prefix["id"] != prefix_id or prefix["provider_id"] != provider_id or prefix["prefix"] != PREFIX_PROBE_VALUE or not bool(prefix["is_active"]):
+            raise AssertionError("prefix is not visible and active inside the transaction")
+    finally:
+        conn.rollback()
+    try:
+        if any(_dictionary_probe_rows(conn)):
+            raise AssertionError("rollback did not remove Stage 54 dictionary probe rows")
+    finally:
+        conn.rollback()
 def run_harness(postgres_url: str, probe_key: str = DEFAULT_PROBE_KEY, probe_value: str = DEFAULT_PROBE_VALUE) -> dict:
     """Run all probes; psycopg imports remain local so unit tests need no driver."""
     summary = empty_summary(postgres_url)
@@ -231,6 +273,7 @@ def run_harness(postgres_url: str, probe_key: str = DEFAULT_PROBE_KEY, probe_val
         check("app_setting_probe", lambda: run_app_setting_probe(repo, conn))
         check("hlr_daily_usage_probe", lambda: run_hlr_daily_usage_probe(repo, conn))
         check("user_admin_probe", lambda: run_user_admin_probe(repo, conn))
+        check("dictionary_create_probe", lambda: run_dictionary_create_probe(repo, conn))
     except Exception as exc:
         summary["failures"].append({"check": "connect", "error": sanitize_error(exc, postgres_url)})
     finally:

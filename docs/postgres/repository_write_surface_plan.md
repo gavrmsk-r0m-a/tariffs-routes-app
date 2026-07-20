@@ -113,3 +113,7 @@ Stage 52 rollback-smokes `set_app_setting_value`, `delete_app_setting_value`, an
 ## Stage 53 status: user/admin rollback smoke
 
 `create_user`, `update_user`, `update_user_password`, and `set_user_permissions` are PostgreSQL-compatible and rollback-smoked only through the CI harness. The `app_settings_and_admin_low_risk` batch now has seven rollback-smoked methods; the separate foundation batch retains `set_hlr_limit_override`. There is still no production PostgreSQL runtime or `DB_BACKEND=postgres` enablement. A next candidate is dictionary writes, or a smaller dedicated audit before dictionaries.
+
+## Stage 54 status: core dictionary creates rollback-smoked
+
+`create_country`, `create_currency`, `create_provider`, and `create_prefix` are PostgreSQL-compatible and rollback-smoked through the CI-only dictionary probe. Their `get_or_create_*` counterparts and dictionary snapshot writes are not adapted. Production PostgreSQL runtime remains disabled; a future candidate is the dictionary `get_or_create` methods or the `ensure_*` dictionary methods.
