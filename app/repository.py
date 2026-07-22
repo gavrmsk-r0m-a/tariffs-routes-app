@@ -3673,18 +3673,19 @@ class Repository:
         old_values: dict,
         new_values: dict,
     ) -> str:
-        country = self.conn.execute("SELECT name FROM countries WHERE id = ?", (country_id,)).fetchone()
-        server = self.conn.execute("SELECT name FROM servers WHERE id = ?", (server_id,)).fetchone()
+        p = placeholder(self.backend)
+        country = self.conn.execute(f"SELECT name FROM countries WHERE id = {p}", (country_id,)).fetchone()
+        server = self.conn.execute(f"SELECT name FROM servers WHERE id = {p}", (server_id,)).fetchone()
 
         def route_details(route_id: int | None) -> tuple[str, str, str]:
             if not route_id:
                 return "—", "—", "—"
             route = self.conn.execute(
-                """
+                f"""
                 SELECT r.name AS route_name, p.name AS provider_name
                 FROM routes r
                 JOIN providers p ON p.id = r.provider_id
-                WHERE r.id = ?
+                WHERE r.id = {p}
                 """,
                 (route_id,),
             ).fetchone()
@@ -3716,81 +3717,89 @@ class Repository:
         current_route_id: int,
         comment: str | None,
         changed_by: int,
+        commit: bool = True,
     ) -> None:
-        existing = self.conn.execute(
-            """
-            SELECT id, country_id, server_id, current_route_id, previous_route_id, comment
-            FROM server_route_priorities
-            WHERE id = ?
-            """,
-            (priority_id,),
-        ).fetchone()
-        if not existing:
-            raise BusinessRuleError("Приоритет по серверу не найден")
+        p = placeholder(self.backend)
+        try:
+            existing = self.conn.execute(
+                f"""
+                SELECT id, country_id, server_id, current_route_id, previous_route_id, comment
+                FROM server_route_priorities
+                WHERE id = {p}
+                """,
+                (priority_id,),
+            ).fetchone()
+            if not existing:
+                raise BusinessRuleError("Приоритет по серверу не найден")
 
-        route = self.conn.execute(
-            "SELECT id, country_id FROM routes WHERE id = ?",
-            (current_route_id,),
-        ).fetchone()
-        if not route:
-            raise BusinessRuleError("Маршрут не найден")
-        if int(route["country_id"]) != int(existing["country_id"]):
-            raise BusinessRuleError("Маршрут должен принадлежать GEO приоритета")
+            route = self.conn.execute(
+                f"SELECT id, country_id FROM routes WHERE id = {p}",
+                (current_route_id,),
+            ).fetchone()
+            if not route:
+                raise BusinessRuleError("Маршрут не найден")
+            if int(route["country_id"]) != int(existing["country_id"]):
+                raise BusinessRuleError("Маршрут должен принадлежать GEO приоритета")
 
-        old_values = {
-            "current_route_id": existing["current_route_id"],
-            "previous_route_id": existing["previous_route_id"],
-            "comment": existing["comment"],
-        }
-        route_changed = int(existing["current_route_id"]) != int(current_route_id)
-        if route_changed:
-            self.conn.execute(
-                """
+            old_values = {
+                "current_route_id": existing["current_route_id"],
+                "previous_route_id": existing["previous_route_id"],
+                "comment": existing["comment"],
+            }
+            route_changed = int(existing["current_route_id"]) != int(current_route_id)
+            if route_changed:
+                self.conn.execute(
+                    f"""
                 UPDATE server_route_priorities
                 SET previous_route_id = current_route_id,
-                    current_route_id = ?,
+                    current_route_id = {p},
                     changed_at = CURRENT_TIMESTAMP,
-                    changed_by = ?,
-                    comment = ?,
+                    changed_by = {p},
+                    comment = {p},
                     updated_at = CURRENT_TIMESTAMP,
-                    updated_by = ?
-                WHERE id = ?
+                    updated_by = {p}
+                WHERE id = {p}
                 """,
-                (current_route_id, changed_by, comment, changed_by, priority_id),
-            )
-        else:
-            self.conn.execute(
-                """
+                    (current_route_id, changed_by, comment, changed_by, priority_id),
+                )
+            else:
+                self.conn.execute(
+                    f"""
                 UPDATE server_route_priorities
                 SET changed_at = CURRENT_TIMESTAMP,
-                    changed_by = ?,
-                    comment = ?,
+                changed_by = {p},
+                comment = {p},
                     updated_at = CURRENT_TIMESTAMP,
-                    updated_by = ?
-                WHERE id = ?
+                updated_by = {p}
+                WHERE id = {p}
                 """,
-                (changed_by, comment, changed_by, priority_id),
-            )
-        new_values = {
-            "current_route_id": current_route_id,
-            "previous_route_id": existing["current_route_id"] if route_changed else existing["previous_route_id"],
-            "comment": comment,
-        }
-        self._change_log(
-            "server_route_priority",
-            priority_id,
-            "server_route_priority.current_route_updated",
-            changed_by,
-            old_values=old_values,
-            new_values=new_values,
-            summary=self._server_route_priority_summary(
-                country_id=existing["country_id"],
-                server_id=existing["server_id"],
+                    (changed_by, comment, changed_by, priority_id),
+                )
+            new_values = {
+                "current_route_id": current_route_id,
+                "previous_route_id": existing["current_route_id"] if route_changed else existing["previous_route_id"],
+                "comment": comment,
+            }
+            self._change_log(
+                "server_route_priority",
+                priority_id,
+                "server_route_priority.current_route_updated",
+                changed_by,
                 old_values=old_values,
                 new_values=new_values,
-            ),
-        )
-        self.conn.commit()
+                summary=self._server_route_priority_summary(
+                    country_id=existing["country_id"],
+                    server_id=existing["server_id"],
+                    old_values=old_values,
+                    new_values=new_values,
+                ),
+            )
+            if commit:
+                self.conn.commit()
+        except Exception:
+            if commit:
+                self.conn.rollback()
+            raise
 
     def list_countries(self) -> list[dict]:
         return rows_to_dicts(self.conn.execute("SELECT * FROM countries ORDER BY name"))

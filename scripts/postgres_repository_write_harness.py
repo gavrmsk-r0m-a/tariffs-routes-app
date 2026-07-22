@@ -41,6 +41,8 @@ PHONE_ASSIGNMENT_NAME = "Stage 56 Assignment Probe"
 SERVER_PROBE_NAME = "__stage57_server_probe__"
 CHANGE_REASON_PROBE_NAME = "__stage58_change_reason_probe__"
 CHANGE_REASON_PROBE_COMMENT = "Stage 58 change reason rollback probe"
+PRIORITY_CHANGED_COMMENT = "__stage60_priority_changed_comment__"
+PRIORITY_SAME_ROUTE_COMMENT = "__stage60_priority_same_route_comment__"
 
 
 def empty_summary(postgres_url: str) -> dict:
@@ -53,6 +55,7 @@ def empty_summary(postgres_url: str) -> dict:
             "dictionary_create_probe", "dictionary_get_or_create_probe",
             "dictionary_ensure_probe", "dictionary_server_probe",
             "dictionary_change_reason_probe", "dictionary_snapshot_probe",
+            "provider_change_priority_probe",
         )},
     }
 
@@ -477,6 +480,77 @@ def run_dictionary_snapshot_probe(repo: Repository, conn) -> None:
         conn.rollback()
 
 
+def run_provider_change_priority_probe(repo: Repository, conn) -> None:
+    """Exercise both server-priority update branches and prove rollback cleanup.
+
+    The fixture preparation deliberately uses direct SQL only inside the
+    transaction.  This probe does not exercise provider-change creation.
+    """
+    user = conn.execute("SELECT id FROM users ORDER BY id LIMIT 1").fetchone()
+    country = conn.execute("SELECT id FROM countries ORDER BY id LIMIT 1").fetchone()
+    server = conn.execute("SELECT id FROM servers WHERE is_active = true ORDER BY id LIMIT 1").fetchone()
+    if not server:
+        server = conn.execute("SELECT id FROM servers WHERE is_active = 1 ORDER BY id LIMIT 1").fetchone()
+    if not user or not country or not server:
+        raise AssertionError("Stage 60 demo fixture is missing a user, country, or active server")
+    routes = conn.execute("SELECT id FROM routes WHERE country_id = %s ORDER BY id LIMIT 2", (country["id"],)).fetchall()
+    if len(routes) != 2:
+        raise AssertionError("Stage 60 demo fixture requires two routes in one country")
+    route_before_id, route_after_id = routes[0]["id"], routes[1]["id"]
+    previous = conn.execute(
+        "SELECT * FROM server_route_priorities WHERE country_id = %s AND server_id = %s",
+        (country["id"], server["id"]),
+    ).fetchone()
+    priority_id = None
+    conn.rollback()
+    try:
+        conn.execute("BEGIN")
+        if previous:
+            priority_id = previous["id"]
+            conn.execute(
+                "UPDATE server_route_priorities SET current_route_id=%s, previous_route_id=NULL, comment=%s, changed_by=%s, updated_by=%s WHERE id=%s",
+                (route_before_id, "__stage60_priority_before__", user["id"], user["id"], priority_id),
+            )
+        else:
+            priority_id = conn.execute(
+                "INSERT INTO server_route_priorities (country_id, server_id, current_route_id, previous_route_id, reason, comment, created_by, updated_by) VALUES (%s, %s, %s, NULL, %s, %s, %s, %s) RETURNING id",
+                (country["id"], server["id"], route_before_id, "__stage60_priority_reason__", "__stage60_priority_before__", user["id"], user["id"]),
+            ).fetchone()["id"]
+        repo.update_server_route_priority(priority_id=priority_id, current_route_id=route_after_id, comment=PRIORITY_CHANGED_COMMENT, changed_by=user["id"], commit=False)
+        changed = conn.execute("SELECT current_route_id, previous_route_id, comment, changed_by, updated_by FROM server_route_priorities WHERE id=%s", (priority_id,)).fetchone()
+        if not changed or (changed["current_route_id"], changed["previous_route_id"], changed["comment"], changed["changed_by"], changed["updated_by"]) != (route_after_id, route_before_id, PRIORITY_CHANGED_COMMENT, user["id"], user["id"]):
+            raise AssertionError("Stage 60 route-changed priority state is not visible inside the transaction")
+        log = conn.execute("SELECT * FROM change_log WHERE entity_type=%s AND entity_id=%s AND change_type=%s ORDER BY id DESC LIMIT 1", ("server_route_priority", priority_id, "server_route_priority.current_route_updated")).fetchone()
+        if not log or log["changed_by"] != user["id"] or str(route_after_id) not in str(log["new_values"]) or PRIORITY_CHANGED_COMMENT not in str(log["new_values"]):
+            raise AssertionError("Stage 60 route-changed change_log row is not visible inside the transaction")
+        repo.update_server_route_priority(priority_id=priority_id, current_route_id=route_after_id, comment=PRIORITY_SAME_ROUTE_COMMENT, changed_by=user["id"], commit=False)
+        same = conn.execute("SELECT current_route_id, previous_route_id, comment FROM server_route_priorities WHERE id=%s", (priority_id,)).fetchone()
+        if not same or (same["current_route_id"], same["previous_route_id"], same["comment"]) != (route_after_id, route_before_id, PRIORITY_SAME_ROUTE_COMMENT):
+            raise AssertionError("Stage 60 same-route priority state is not visible inside the transaction")
+        log = conn.execute("SELECT new_values, summary FROM change_log WHERE entity_type=%s AND entity_id=%s AND change_type=%s ORDER BY id DESC LIMIT 1", ("server_route_priority", priority_id, "server_route_priority.current_route_updated")).fetchone()
+        if not log or PRIORITY_SAME_ROUTE_COMMENT not in f"{log['new_values']} {log['summary']}":
+            raise AssertionError("Stage 60 same-route change_log row is not visible inside the transaction")
+        conn.execute("SAVEPOINT stage60_bad_route")
+        try:
+            repo.update_server_route_priority(priority_id=priority_id, current_route_id=-999999999, comment="bad", changed_by=user["id"], commit=False)
+        except Exception as exc:
+            if exc.__class__.__name__ != "BusinessRuleError":
+                raise
+        else:
+            raise AssertionError("Stage 60 missing-route validation did not fail")
+        finally:
+            conn.execute("ROLLBACK TO SAVEPOINT stage60_bad_route")
+            conn.execute("RELEASE SAVEPOINT stage60_bad_route")
+    finally:
+        conn.rollback()
+    try:
+        if conn.execute("SELECT 1 FROM server_route_priorities WHERE comment IN (%s, %s)", (PRIORITY_CHANGED_COMMENT, PRIORITY_SAME_ROUTE_COMMENT)).fetchone():
+            raise AssertionError("Stage 60 priority comments remain after rollback")
+        if conn.execute("SELECT 1 FROM change_log WHERE entity_type=%s AND (new_values::text LIKE %s OR new_values::text LIKE %s)", ("server_route_priority", "%stage60_priority_changed_comment%", "%stage60_priority_same_route_comment%")).fetchone():
+            raise AssertionError("Stage 60 change_log rows remain after rollback")
+    finally:
+        conn.rollback()
+
 def run_harness(postgres_url: str, probe_key: str = DEFAULT_PROBE_KEY, probe_value: str = DEFAULT_PROBE_VALUE) -> dict:
     """Run all probes; psycopg imports remain local so unit tests need no driver."""
     summary = empty_summary(postgres_url)
@@ -512,6 +586,7 @@ def run_harness(postgres_url: str, probe_key: str = DEFAULT_PROBE_KEY, probe_val
         check("dictionary_server_probe", lambda: run_dictionary_server_probe(repo, conn))
         check("dictionary_change_reason_probe", lambda: run_dictionary_change_reason_probe(repo, conn))
         check("dictionary_snapshot_probe", lambda: run_dictionary_snapshot_probe(repo, conn))
+        check("provider_change_priority_probe", lambda: run_provider_change_priority_probe(repo, conn))
     except Exception as exc:
         summary["failures"].append({"check": "connect", "error": sanitize_error(exc, postgres_url)})
     finally:
