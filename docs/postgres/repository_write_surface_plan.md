@@ -133,3 +133,7 @@ Stage 52 rollback-smokes `set_app_setting_value`, `delete_app_setting_value`, an
 ## Stage 58 status
 
 `create_change_reason` is rollback-smoked in `dictionary_and_snapshot_writes`. Its private `_change_log` dependency is backend-aware for placeholders only and is not a public rollback-smoked method. Direct country/currency/provider/prefix creates remain rollback-smoked from Stage 54, `get_or_create_*` methods from Stage 55, `ensure_*` methods from Stage 56, and `create_server` from Stage 57. `update_dictionary_snapshots` remains unadapted. Production PostgreSQL runtime remains disabled.
+
+## Stage 59 status
+
+`update_dictionary_snapshots` is PostgreSQL placeholder-compatible and rollback-smoked through `dictionary_snapshot_probe`. All public `dictionary_and_snapshot_writes` methods are now rollback-smoked; `_change_log` remains a private helper and is not rollback-smoked. Production PostgreSQL runtime remains disabled.

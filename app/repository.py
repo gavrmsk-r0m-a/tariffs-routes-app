@@ -375,22 +375,23 @@ class Repository:
 
     def update_dictionary_snapshots(self, kind: str, entity_id: int, old_label: str | None, new_label: str | None) -> dict[str, int]:
         counts = self.dictionary_rename_preview(kind, entity_id)
+        p = placeholder(self.backend)
         if kind == "countries":
-            self.conn.execute("UPDATE phone_numbers SET country_label = ? WHERE country_id = ?", (new_label, entity_id))
+            self.conn.execute(f"UPDATE phone_numbers SET country_label = {p} WHERE country_id = {p}", (new_label, entity_id))
         elif kind == "providers":
-            self.conn.execute("UPDATE phone_numbers SET provider_label = ? WHERE provider_id = ?", (new_label, entity_id))
+            self.conn.execute(f"UPDATE phone_numbers SET provider_label = {p} WHERE provider_id = {p}", (new_label, entity_id))
         elif kind == "currencies":
-            code = self.conn.execute("SELECT code FROM currencies WHERE id = ?", (entity_id,)).fetchone()
-            self.conn.execute("UPDATE phone_numbers SET currency_label = ? WHERE currency_id = ?", (code["code"] if code else new_label, entity_id))
+            code = self.conn.execute(f"SELECT code FROM currencies WHERE id = {p}", (entity_id,)).fetchone()
+            self.conn.execute(f"UPDATE phone_numbers SET currency_label = {p} WHERE currency_id = {p}", (code["code"] if code else new_label, entity_id))
         elif kind == "phone-types" and old_label != new_label:
-            self.conn.execute("UPDATE phone_numbers SET phone_type = ? WHERE phone_type = ?", (new_label, old_label))
+            self.conn.execute(f"UPDATE phone_numbers SET phone_type = {p} WHERE phone_type = {p}", (new_label, old_label))
         elif kind == "projects" and old_label != new_label:
-            self.conn.execute("UPDATE phone_numbers SET project_label = ? WHERE project_label = ?", (new_label, old_label))
-            self.conn.execute("UPDATE routes SET project_label = ? WHERE project_label = ?", (new_label, old_label))
+            self.conn.execute(f"UPDATE phone_numbers SET project_label = {p} WHERE project_label = {p}", (new_label, old_label))
+            self.conn.execute(f"UPDATE routes SET project_label = {p} WHERE project_label = {p}", (new_label, old_label))
         elif kind == "phone-assignments":
-            row = self.conn.execute("SELECT code FROM phone_assignment_types WHERE id = ?", (entity_id,)).fetchone()
+            row = self.conn.execute(f"SELECT code FROM phone_assignment_types WHERE id = {p}", (entity_id,)).fetchone()
             if row:
-                self.conn.execute("UPDATE phone_numbers SET assignment_label = ? WHERE assignment_type = ?", (new_label, row["code"]))
+                self.conn.execute(f"UPDATE phone_numbers SET assignment_label = {p} WHERE assignment_type = {p}", (new_label, row["code"]))
         return counts
 
     def create_user(self, username: str, role: str = "admin", display_name: str | None = None, password: str | None = None, email: str | None = None, must_change_password: bool = False, *, commit: bool = True) -> int:

@@ -1284,23 +1284,23 @@
       "current_commit_behavior": "never commits",
       "dependencies": [],
       "mutation_kind": "multi_write",
-      "notes": "Stage 50 audit inventory only; no write adaptation.",
-      "postgres_strategy": "Keep runtime disabled; use rollback-only harness, backend placeholders, and RETURNING where identity retrieval is required.",
+      "notes": "Stage 59: backend-aware placeholders; all snapshot branches rollback-smoked in caller-owned transaction.",
+      "postgres_strategy": "Use backend-aware placeholders; preserve caller-owned transaction and preview counts.",
       "returns": "none",
       "risk": "high",
-      "rollback_strategy": "Not safe until harness exists; run inside explicit transaction and rollback.",
+      "rollback_strategy": "Caller-owned transaction; probe always rolls back and verifies labels are restored.",
       "side_effects": [
         "database_write"
       ],
       "sqlite_postgres_blockers": [
         "history_change_log_coupling",
-        "needs_integration_test",
-        "sqlite_placeholder"
+        "needs_integration_test"
       ],
       "test_strategy": [
         "SQL-recording test",
         "SQLite regression test",
-        "PostgreSQL rollback-only integration test"
+        "PostgreSQL rollback-only integration test",
+        "Stage 59 dictionary_snapshot_probe"
       ],
       "transaction_contract": "multi_statement_atomic"
     },
@@ -1607,6 +1607,7 @@
     "ensure_phone_number_type_exists",
     "ensure_phone_assignment_type_exists",
     "create_server",
-    "create_change_reason"
+    "create_change_reason",
+    "update_dictionary_snapshots"
   ]
 }
