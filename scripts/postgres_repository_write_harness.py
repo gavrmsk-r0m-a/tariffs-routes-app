@@ -34,6 +34,10 @@ GOC_COUNTRY_PROBE_NAME = "__stage55_goc_country_probe__"
 GOC_CURRENCY_PROBE_CODE = "S55"
 GOC_PROVIDER_PROBE_NAME = "__stage55_goc_provider_probe__"
 GOC_PREFIX_PROBE_VALUE = "9955"
+PROJECT_PROBE_NAME = "__stage56_project_probe__"
+PHONE_NUMBER_TYPE_PROBE_NAME = "__stage56_phone_number_type_probe__"
+PHONE_ASSIGNMENT_CODE = "__stage56_assignment_probe__"
+PHONE_ASSIGNMENT_NAME = "Stage 56 Assignment Probe"
 
 
 def empty_summary(postgres_url: str) -> dict:
@@ -44,6 +48,7 @@ def empty_summary(postgres_url: str) -> dict:
             "rollback_probe", "aborted_transaction_probe", "savepoint_probe",
             "app_setting_probe", "hlr_daily_usage_probe", "user_admin_probe",
             "dictionary_create_probe", "dictionary_get_or_create_probe",
+            "dictionary_ensure_probe",
         )},
     }
 
@@ -295,6 +300,50 @@ def run_dictionary_get_or_create_probe(repo: Repository, conn) -> None:
         conn.rollback()
 
 
+def _dictionary_ensure_probe_rows(conn) -> tuple[object, object, object]:
+    """Read only the deterministic Stage 56 rows with PostgreSQL placeholders."""
+    project = conn.execute("SELECT name, is_active FROM projects WHERE name = %s", (PROJECT_PROBE_NAME,)).fetchone()
+    phone_type = conn.execute("SELECT name, is_active FROM phone_number_types WHERE name = %s", (PHONE_NUMBER_TYPE_PROBE_NAME,)).fetchone()
+    assignment = conn.execute("SELECT code, name, is_active FROM phone_assignment_types WHERE code = %s", (PHONE_ASSIGNMENT_CODE,)).fetchone()
+    return project, phone_type, assignment
+
+
+def run_dictionary_ensure_probe(repo: Repository, conn) -> None:
+    """Exercise insert-ignore dictionary ensures and prove rollback cleanup."""
+    if any(_dictionary_ensure_probe_rows(conn)):
+        raise AssertionError("Stage 56 dictionary ensure probe values already exist")
+    conn.rollback()
+    try:
+        conn.execute("BEGIN")
+        project_inserted = repo.ensure_project_exists(PROJECT_PROBE_NAME, commit=False)
+        project_existing = repo.ensure_project_exists(PROJECT_PROBE_NAME, commit=False)
+        project, _, _ = _dictionary_ensure_probe_rows(conn)
+        if project_inserted != 1 or project_existing != 0 or not project or not bool(project["is_active"]):
+            raise AssertionError("project insert/ignore path is not visible and active inside the transaction")
+
+        phone_type_inserted = repo.ensure_phone_number_type_exists(PHONE_NUMBER_TYPE_PROBE_NAME, commit=False)
+        phone_type_existing = repo.ensure_phone_number_type_exists(PHONE_NUMBER_TYPE_PROBE_NAME, commit=False)
+        _, phone_type, _ = _dictionary_ensure_probe_rows(conn)
+        if phone_type_inserted != 1 or phone_type_existing != 0 or not phone_type or not bool(phone_type["is_active"]):
+            raise AssertionError("phone number type insert/ignore path is not visible and active inside the transaction")
+
+        assignment_inserted = repo.ensure_phone_assignment_type_exists(PHONE_ASSIGNMENT_CODE, PHONE_ASSIGNMENT_NAME, commit=False)
+        assignment_existing = repo.ensure_phone_assignment_type_exists(PHONE_ASSIGNMENT_CODE, PHONE_ASSIGNMENT_NAME, commit=False)
+        _, _, assignment = _dictionary_ensure_probe_rows(conn)
+        if (assignment_inserted != 1 or assignment_existing != 0 or not assignment
+                or assignment["code"] != PHONE_ASSIGNMENT_CODE
+                or assignment["name"] != PHONE_ASSIGNMENT_NAME
+                or not bool(assignment["is_active"])):
+            raise AssertionError("phone assignment type insert/ignore path is not visible and active inside the transaction")
+    finally:
+        conn.rollback()
+    try:
+        if any(_dictionary_ensure_probe_rows(conn)):
+            raise AssertionError("rollback did not remove Stage 56 dictionary ensure probe rows")
+    finally:
+        conn.rollback()
+
+
 def run_harness(postgres_url: str, probe_key: str = DEFAULT_PROBE_KEY, probe_value: str = DEFAULT_PROBE_VALUE) -> dict:
     """Run all probes; psycopg imports remain local so unit tests need no driver."""
     summary = empty_summary(postgres_url)
@@ -326,6 +375,7 @@ def run_harness(postgres_url: str, probe_key: str = DEFAULT_PROBE_KEY, probe_val
         check("user_admin_probe", lambda: run_user_admin_probe(repo, conn))
         check("dictionary_create_probe", lambda: run_dictionary_create_probe(repo, conn))
         check("dictionary_get_or_create_probe", lambda: run_dictionary_get_or_create_probe(repo, conn))
+        check("dictionary_ensure_probe", lambda: run_dictionary_ensure_probe(repo, conn))
     except Exception as exc:
         summary["failures"].append({"check": "connect", "error": sanitize_error(exc, postgres_url)})
     finally:

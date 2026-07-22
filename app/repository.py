@@ -3837,24 +3837,39 @@ class Repository:
 
     def ensure_project_exists(self, name: str, commit: bool = True) -> int:
         sql = insert_ignore_statement("projects", ["name", "is_active"], ["name"], self.backend)
-        cur = self.conn.execute(sql, (name, to_db_bool(True, self.backend)))
-        if commit:
-            self.conn.commit()
-        return int(cur.rowcount)
+        try:
+            cur = self.conn.execute(sql, (name, to_db_bool(True, self.backend)))
+            if commit:
+                self.conn.commit()
+            return int(cur.rowcount)
+        except Exception:
+            if commit:
+                self.conn.rollback()
+            raise
 
     def ensure_phone_number_type_exists(self, name: str, commit: bool = True) -> int:
         sql = insert_ignore_statement("phone_number_types", ["name", "is_active"], ["name"], self.backend)
-        cur = self.conn.execute(sql, (name, to_db_bool(True, self.backend)))
-        if commit:
-            self.conn.commit()
-        return int(cur.rowcount)
+        try:
+            cur = self.conn.execute(sql, (name, to_db_bool(True, self.backend)))
+            if commit:
+                self.conn.commit()
+            return int(cur.rowcount)
+        except Exception:
+            if commit:
+                self.conn.rollback()
+            raise
 
     def ensure_phone_assignment_type_exists(self, code: str, name: str | None = None, commit: bool = True) -> int:
         sql = insert_ignore_statement("phone_assignment_types", ["code", "name", "is_active"], ["code"], self.backend)
-        cur = self.conn.execute(sql, (code, name if name is not None else code, to_db_bool(True, self.backend)))
-        if commit:
-            self.conn.commit()
-        return int(cur.rowcount)
+        try:
+            cur = self.conn.execute(sql, (code, name if name is not None else code, to_db_bool(True, self.backend)))
+            if commit:
+                self.conn.commit()
+            return int(cur.rowcount)
+        except Exception:
+            if commit:
+                self.conn.rollback()
+            raise
 
     def get_server_by_name(self, name: str) -> dict | None:
         p = placeholder(self.backend)

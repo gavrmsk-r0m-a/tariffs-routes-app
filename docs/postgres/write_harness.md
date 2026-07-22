@@ -35,3 +35,7 @@ The harness still never calls `conn.commit()`: every probe rolls back in `finall
 ## Stage 55 dictionary get-or-create probe
 
 `dictionary_get_or_create_probe` uses separate deterministic Stage 55 values. Within one explicit transaction it calls each dictionary `get_or_create_*` method twice, proving both the create path and existing-row path return the same identity. It also verifies active rows, the normalized provider name and currency relationship, the normalized prefix relationship, and that the Russian no-prefix text returns `None` without a prefix row. All calls use `commit=False`; `finally` rolls back on success or failure, and read-only checks then prove no Stage 55 country, currency, provider, or prefix rows remain. The harness still never calls `conn.commit()`.
+
+## Stage 56 dictionary ensure probe
+
+`dictionary_ensure_probe` uses separate deterministic project, phone-number-type, and phone-assignment-type values. It calls each `ensure_*` method twice with `commit=False`, proving the first insert path returns `1` and the existing/ignore path returns `0`. Read-only PostgreSQL queries verify the transaction-local rows are active and that the assignment code and name are preserved. Its `finally` rollback runs on both success and failure, and post-rollback read-only checks prove that no Stage 56 dictionary rows remain. The harness never calls `conn.commit()`.
