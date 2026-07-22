@@ -16,7 +16,7 @@ Two read-only transaction probes deliberately query a missing table. The aborted
 
 ## Summary and failures
 
-The JSON summary contains `status`, a masked `postgres_url`, `checks_count`, `failures`, and per-probe status. `status: ok` means all six probes completed and rollback restoration succeeded. A write-probe failure means the database must be inspected before any later write adaptation. An aborted or SAVEPOINT failure means transaction semantics are not validated and later write stages must not proceed.
+The JSON summary contains `status`, a masked `postgres_url`, `checks_count`, `failures`, and per-probe status. `status: ok` means all seven probes completed and rollback restoration succeeded. A write-probe failure means the database must be inspected before any later write adaptation. An aborted or SAVEPOINT failure means transaction semantics are not validated and later write stages must not proceed.
 
 ## Stage 52 app-settings and HLR usage probes
 
@@ -27,3 +27,7 @@ The harness still never calls `conn.commit()`: every probe rolls back in `finall
 ## Stage 53 user/admin probe
 
 `user_admin_probe` uses the deterministic `__stage53_user_admin_probe__` username. In one explicit transaction it creates an admin user, verifies transaction-local identity and authentication, updates profile data, upserts routes/settings permissions, changes the password, and verifies the old-to-new authentication switch. All four Repository writes use `commit=False`. Its `finally` block rolls back, then Repository reads prove that neither the user nor its permissions remain.
+
+## Stage 54 dictionary-create probe
+
+`dictionary_create_probe` uses deterministic Stage 54 values to create a country, currency, provider (with that currency as default), and provider prefix in that order. All four Repository calls pass `commit=False`. Read-only PostgreSQL queries verify each active entity and its transaction-local relationships before `finally` rolls the transaction back. A second read-only check confirms that no Stage 54 country, currency, provider, or prefix row remains. The harness still never calls `conn.commit()`.

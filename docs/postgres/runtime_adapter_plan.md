@@ -710,3 +710,7 @@ It separately verifies PostgreSQL's aborted-transaction rule after a deliberate 
 ## Stage 53 PostgreSQL user/admin rollback write smoke
 
 Stage 53 rollback-smokes the user/admin create, update, password, and permissions writes on PostgreSQL in a single caller-owned transaction. It verifies transaction-local visibility and authentication change, then full rollback removal of the probe user and permissions. The read-only smoke remains **611** checks and the coverage audit remains **112 / 61 / 0 / 50 / 1 / 100.0%**. `DB_BACKEND=postgres` is still disabled; this is not runtime write enablement.
+
+## Stage 54 PostgreSQL core dictionary rollback write smoke
+
+Stage 54 rollback-smokes `create_country`, `create_currency`, `create_provider`, and `create_prefix` in one PostgreSQL transaction and proves that all four rows disappear after rollback. Read-only smoke remains **611** checks and the coverage audit remains **112 / 61 / 0 / 50 / 1 / 100.0%**. `DB_BACKEND=postgres` remains disabled, and this introduces no production runtime write enablement.

@@ -21,8 +21,16 @@ class FakeConnection:
         self.commits = 0
         self.fail_restore = fail_restore
         self.closed = False
-    def execute(self, sql):
+        self.dictionary = {}
+    class Cursor:
+        def __init__(self, row=None): self.row = row
+        def fetchone(self): return self.row
+    def execute(self, sql, params=()):
         self.commands.append(sql)
+        if "FROM countries WHERE name" in sql: return self.Cursor(self.dictionary.get("country"))
+        if "FROM currencies WHERE code" in sql: return self.Cursor(self.dictionary.get("currency"))
+        if "FROM providers WHERE name" in sql: return self.Cursor(self.dictionary.get("provider"))
+        if "FROM provider_prefixes WHERE prefix" in sql: return self.Cursor(self.dictionary.get("prefix"))
         if sql == "BEGIN":
             self.aborted = False
         if "definitely_missing" in sql:
@@ -32,7 +40,7 @@ class FakeConnection:
             self.aborted = False
         if sql == "SELECT 1" and self.aborted:
             raise RuntimeError("current transaction is aborted")
-    def rollback(self): self.rollbacks += 1; self.aborted = False
+    def rollback(self): self.rollbacks += 1; self.aborted = False; self.dictionary = {}
     def commit(self): self.commits += 1; raise AssertionError("harness must never commit")
     def close(self): self.closed = True
 
@@ -78,6 +86,14 @@ class FakeRepo:
     def update_user_password(self, user_id, password, **kwargs):
         self.calls.append(("update_user_password", user_id, password, kwargs)); self.password = password; self.user["must_change_password"] = kwargs["must_change_password"]
     def authenticate_user(self, username, password): return self.user if getattr(self, "user", None) and password == getattr(self, "password", None) else None
+    def create_country(self, name, code, **kwargs):
+        self.calls.append(("create_country", name, code, kwargs)); self.conn.dictionary["country"] = {"id": 54, "is_active": True}; return 54
+    def create_currency(self, code, name, symbol, **kwargs):
+        self.calls.append(("create_currency", code, name, symbol, kwargs)); self.conn.dictionary["currency"] = {"id": 55, "is_active": True}; return 55
+    def create_provider(self, name, **kwargs):
+        self.calls.append(("create_provider", name, kwargs)); self.conn.dictionary["provider"] = {"id": 56, "default_currency_id": kwargs["default_currency_id"], "is_active": True}; return 56
+    def create_prefix(self, provider_id, prefix, name, **kwargs):
+        self.calls.append(("create_prefix", provider_id, prefix, name, kwargs)); self.conn.dictionary["prefix"] = {"id": 57, "provider_id": provider_id, "prefix": prefix, "is_active": True}; return 57
 
 
 
@@ -148,6 +164,17 @@ class WriteHarnessTest(unittest.TestCase):
         self.assertEqual(conn.commits, 0)
         self.assertGreaterEqual(conn.rollbacks, 3)
 
+    def test_stage54_dictionary_probe_is_rollback_only_and_uses_caller_owned_writes(self):
+        conn, repo = FakeConnection(), FakeRepo(None); repo.conn = conn
+        harness.run_dictionary_create_probe(repo, conn)
+        writes = [call for call in repo.calls if call[0] in {"create_country", "create_currency", "create_provider", "create_prefix"}]
+        self.assertEqual([call[0] for call in writes], ["create_country", "create_currency", "create_provider", "create_prefix"])
+        self.assertTrue(all(call[-1]["commit"] is False for call in writes))
+        self.assertEqual(writes[2][2]["provider_type"], "voip")
+        self.assertEqual(conn.dictionary, {})
+        self.assertEqual(conn.commits, 0)
+        self.assertGreaterEqual(conn.rollbacks, 3)
+
     def test_missing_url_is_parser_error(self):
         with patch.dict("os.environ", {}, clear=True), self.assertRaises(SystemExit) as caught:
             harness.main([])
@@ -164,7 +191,7 @@ class WriteHarnessTest(unittest.TestCase):
             summary = json.loads(output.read_text())
         self.assertEqual(summary["status"], "ok")
         self.assertEqual(set(summary), {"status", "postgres_url", "checks_count", "failures", "probes"})
-        self.assertEqual(summary["probes"], {"rollback_probe": "ok", "aborted_transaction_probe": "ok", "savepoint_probe": "ok", "app_setting_probe": "ok", "hlr_daily_usage_probe": "ok", "user_admin_probe": "ok"})
+        self.assertEqual(summary["probes"], {"rollback_probe": "ok", "aborted_transaction_probe": "ok", "savepoint_probe": "ok", "app_setting_probe": "ok", "hlr_daily_usage_probe": "ok", "user_admin_probe": "ok", "dictionary_create_probe": "ok"})
 
     def test_repository_uses_postgres_backend(self):
         class Driver:
