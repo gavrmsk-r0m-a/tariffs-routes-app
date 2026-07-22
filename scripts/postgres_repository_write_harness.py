@@ -27,7 +27,8 @@ HLR_DAILY_USAGE_PROBE_DATE = "2099-12-31"
 USER_ADMIN_PROBE_USERNAME = "__stage53_user_admin_probe__"
 COUNTRY_PROBE_NAME, COUNTRY_PROBE_CODE = "__stage54_country_probe__", "S54"
 CURRENCY_PROBE_CODE, CURRENCY_PROBE_NAME, CURRENCY_PROBE_SYMBOL = "S54", "Stage 54 Currency", "S54"
-PROVIDER_PROBE_NAME, PROVIDER_PROBE_TYPE, PROVIDER_PROBE_COMMENT = "__stage54_provider_probe__", "voice", "Stage 54 rollback probe"
+# ``providers.provider_type`` is constrained by the migrated PostgreSQL schema.
+PROVIDER_PROBE_NAME, PROVIDER_PROBE_TYPE, PROVIDER_PROBE_COMMENT = "__stage54_provider_probe__", "voip", "Stage 54 rollback probe"
 PREFIX_PROBE_VALUE, PREFIX_PROBE_NAME = "9954", "Stage 54 Prefix"
 
 

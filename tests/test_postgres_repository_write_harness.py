@@ -170,6 +170,7 @@ class WriteHarnessTest(unittest.TestCase):
         writes = [call for call in repo.calls if call[0] in {"create_country", "create_currency", "create_provider", "create_prefix"}]
         self.assertEqual([call[0] for call in writes], ["create_country", "create_currency", "create_provider", "create_prefix"])
         self.assertTrue(all(call[-1]["commit"] is False for call in writes))
+        self.assertEqual(writes[2][2]["provider_type"], "voip")
         self.assertEqual(conn.dictionary, {})
         self.assertEqual(conn.commits, 0)
         self.assertGreaterEqual(conn.rollbacks, 3)
