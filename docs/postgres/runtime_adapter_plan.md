@@ -714,3 +714,7 @@ Stage 53 rollback-smokes the user/admin create, update, password, and permission
 ## Stage 54 PostgreSQL core dictionary rollback write smoke
 
 Stage 54 rollback-smokes `create_country`, `create_currency`, `create_provider`, and `create_prefix` in one PostgreSQL transaction and proves that all four rows disappear after rollback. Read-only smoke remains **611** checks and the coverage audit remains **112 / 61 / 0 / 50 / 1 / 100.0%**. `DB_BACKEND=postgres` remains disabled, and this introduces no production runtime write enablement.
+
+## Stage 55 — dictionary get-or-create rollback smoke
+
+The four dictionary `get_or_create_*` writes are PostgreSQL rollback-smoked only, including their create and existing paths. Read-only smoke remains 611 checks and the coverage audit remains 112/61/0/50/1/100%. `DB_BACKEND=postgres` remains disabled: this does not enable runtime PostgreSQL writes.

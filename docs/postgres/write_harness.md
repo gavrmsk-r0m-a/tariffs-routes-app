@@ -31,3 +31,7 @@ The harness still never calls `conn.commit()`: every probe rolls back in `finall
 ## Stage 54 dictionary-create probe
 
 `dictionary_create_probe` uses deterministic Stage 54 values to create a country, currency, provider (with that currency as default), and provider prefix in that order. All four Repository calls pass `commit=False`. Read-only PostgreSQL queries verify each active entity and its transaction-local relationships before `finally` rolls the transaction back. A second read-only check confirms that no Stage 54 country, currency, provider, or prefix row remains. The harness still never calls `conn.commit()`.
+
+## Stage 55 dictionary get-or-create probe
+
+`dictionary_get_or_create_probe` uses separate deterministic Stage 55 values. Within one explicit transaction it calls each dictionary `get_or_create_*` method twice, proving both the create path and existing-row path return the same identity. It also verifies active rows, the normalized provider name and currency relationship, the normalized prefix relationship, and that the Russian no-prefix text returns `None` without a prefix row. All calls use `commit=False`; `finally` rolls back on success or failure, and read-only checks then prove no Stage 55 country, currency, provider, or prefix rows remain. The harness still never calls `conn.commit()`.

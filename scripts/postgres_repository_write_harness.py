@@ -17,7 +17,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from app.repository import Repository
+from app.repository import Repository, normalize_provider_name
 from scripts.postgres_repository_smoke import mask_postgres_url, sanitize_error
 
 DEFAULT_PROBE_KEY = "__stage51_rollback_probe__"
@@ -30,6 +30,10 @@ CURRENCY_PROBE_CODE, CURRENCY_PROBE_NAME, CURRENCY_PROBE_SYMBOL = "S54", "Stage 
 # ``providers.provider_type`` is constrained by the migrated PostgreSQL schema.
 PROVIDER_PROBE_NAME, PROVIDER_PROBE_TYPE, PROVIDER_PROBE_COMMENT = "__stage54_provider_probe__", "voip", "Stage 54 rollback probe"
 PREFIX_PROBE_VALUE, PREFIX_PROBE_NAME = "9954", "Stage 54 Prefix"
+GOC_COUNTRY_PROBE_NAME = "__stage55_goc_country_probe__"
+GOC_CURRENCY_PROBE_CODE = "S55"
+GOC_PROVIDER_PROBE_NAME = "__stage55_goc_provider_probe__"
+GOC_PREFIX_PROBE_VALUE = "9955"
 
 
 def empty_summary(postgres_url: str) -> dict:
@@ -39,7 +43,7 @@ def empty_summary(postgres_url: str) -> dict:
         "probes": {name: "skipped" for name in (
             "rollback_probe", "aborted_transaction_probe", "savepoint_probe",
             "app_setting_probe", "hlr_daily_usage_probe", "user_admin_probe",
-            "dictionary_create_probe",
+            "dictionary_create_probe", "dictionary_get_or_create_probe",
         )},
     }
 
@@ -245,6 +249,52 @@ def run_dictionary_create_probe(repo: Repository, conn) -> None:
             raise AssertionError("rollback did not remove Stage 54 dictionary probe rows")
     finally:
         conn.rollback()
+def _dictionary_get_or_create_probe_rows(conn) -> tuple[object, object, object, object]:
+    """Read only the deterministic Stage 55 rows with PostgreSQL placeholders."""
+    country = conn.execute("SELECT id, is_active FROM countries WHERE name = %s", (GOC_COUNTRY_PROBE_NAME,)).fetchone()
+    currency = conn.execute("SELECT id, is_active FROM currencies WHERE code = %s", (GOC_CURRENCY_PROBE_CODE,)).fetchone()
+    provider = conn.execute("SELECT id, normalized_name, default_currency_id, is_active FROM providers WHERE name = %s", (GOC_PROVIDER_PROBE_NAME,)).fetchone()
+    prefix = conn.execute("SELECT id, provider_id, prefix, is_active FROM provider_prefixes WHERE prefix = %s", (GOC_PREFIX_PROBE_VALUE,)).fetchone()
+    return country, currency, provider, prefix
+
+
+def run_dictionary_get_or_create_probe(repo: Repository, conn) -> None:
+    """Exercise create and existing dictionary paths, then prove rollback cleanup."""
+    if any(_dictionary_get_or_create_probe_rows(conn)):
+        raise AssertionError("Stage 55 dictionary get-or-create probe values already exist")
+    conn.rollback()
+    try:
+        conn.execute("BEGIN")
+        country_id = repo.get_or_create_country(GOC_COUNTRY_PROBE_NAME, commit=False)
+        country_id_again = repo.get_or_create_country(GOC_COUNTRY_PROBE_NAME, commit=False)
+        country, _, _, _ = _dictionary_get_or_create_probe_rows(conn)
+        if country_id_again != country_id or not country or country["id"] != country_id or not bool(country["is_active"]):
+            raise AssertionError("country create/existing path is not visible and active inside the transaction")
+        currency_id = repo.get_or_create_currency(GOC_CURRENCY_PROBE_CODE, commit=False)
+        currency_id_again = repo.get_or_create_currency(GOC_CURRENCY_PROBE_CODE, commit=False)
+        _, currency, _, _ = _dictionary_get_or_create_probe_rows(conn)
+        if currency_id_again != currency_id or not currency or currency["id"] != currency_id or not bool(currency["is_active"]):
+            raise AssertionError("currency create/existing path is not visible and active inside the transaction")
+        provider_id = repo.get_or_create_provider(GOC_PROVIDER_PROBE_NAME, currency_id=currency_id, commit=False)
+        provider_id_again = repo.get_or_create_provider(GOC_PROVIDER_PROBE_NAME, currency_id=currency_id, commit=False)
+        _, _, provider, _ = _dictionary_get_or_create_probe_rows(conn)
+        if provider_id_again != provider_id or not provider or provider["id"] != provider_id or not bool(provider["is_active"]) or provider["normalized_name"] != normalize_provider_name(GOC_PROVIDER_PROBE_NAME) or provider.get("default_currency_id") != currency_id:
+            raise AssertionError("provider create/existing path is not visible and active inside the transaction")
+        prefix_id = repo.get_or_create_prefix(provider_id, GOC_PREFIX_PROBE_VALUE, commit=False)
+        prefix_id_again = repo.get_or_create_prefix(provider_id, GOC_PREFIX_PROBE_VALUE, commit=False)
+        no_prefix_id = repo.get_or_create_prefix(provider_id, "без префикса", commit=False)
+        _, _, _, prefix = _dictionary_get_or_create_probe_rows(conn)
+        if prefix_id_again != prefix_id or no_prefix_id is not None or not prefix or prefix["id"] != prefix_id or prefix["provider_id"] != provider_id or prefix["prefix"] != GOC_PREFIX_PROBE_VALUE or not bool(prefix["is_active"]):
+            raise AssertionError("prefix create/existing path is not visible and active inside the transaction")
+    finally:
+        conn.rollback()
+    try:
+        if any(_dictionary_get_or_create_probe_rows(conn)):
+            raise AssertionError("rollback did not remove Stage 55 dictionary get-or-create probe rows")
+    finally:
+        conn.rollback()
+
+
 def run_harness(postgres_url: str, probe_key: str = DEFAULT_PROBE_KEY, probe_value: str = DEFAULT_PROBE_VALUE) -> dict:
     """Run all probes; psycopg imports remain local so unit tests need no driver."""
     summary = empty_summary(postgres_url)
@@ -275,6 +325,7 @@ def run_harness(postgres_url: str, probe_key: str = DEFAULT_PROBE_KEY, probe_val
         check("hlr_daily_usage_probe", lambda: run_hlr_daily_usage_probe(repo, conn))
         check("user_admin_probe", lambda: run_user_admin_probe(repo, conn))
         check("dictionary_create_probe", lambda: run_dictionary_create_probe(repo, conn))
+        check("dictionary_get_or_create_probe", lambda: run_dictionary_get_or_create_probe(repo, conn))
     except Exception as exc:
         summary["failures"].append({"check": "connect", "error": sanitize_error(exc, postgres_url)})
     finally:
