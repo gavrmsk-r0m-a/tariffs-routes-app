@@ -855,7 +855,7 @@
         "create_country"
       ],
       "mutation_kind": "mixed_read_write",
-      "notes": "Stage 50 audit inventory only; no write adaptation.",
+      "notes": "Stage 55 PostgreSQL rollback-only dictionary get-or-create probe: backend-aware placeholders, create and existing paths, and commit=False caller ownership. Runtime remains disabled.",
       "postgres_strategy": "Keep runtime disabled; use rollback-only harness, backend placeholders, and RETURNING where identity retrieval is required.",
       "returns": "none",
       "risk": "high",
@@ -882,7 +882,7 @@
         "create_currency"
       ],
       "mutation_kind": "mixed_read_write",
-      "notes": "Stage 50 audit inventory only; no write adaptation.",
+      "notes": "Stage 55 PostgreSQL rollback-only dictionary get-or-create probe: backend-aware placeholders, create and existing paths, and commit=False caller ownership. Runtime remains disabled.",
       "postgres_strategy": "Keep runtime disabled; use rollback-only harness, backend placeholders, and RETURNING where identity retrieval is required.",
       "returns": "none",
       "risk": "high",
@@ -909,7 +909,7 @@
         "create_prefix"
       ],
       "mutation_kind": "mixed_read_write",
-      "notes": "Stage 50 audit inventory only; no write adaptation.",
+      "notes": "Stage 55 PostgreSQL rollback-only dictionary get-or-create probe: backend-aware placeholders, create and existing paths, and commit=False caller ownership. Runtime remains disabled.",
       "postgres_strategy": "Keep runtime disabled; use rollback-only harness, backend placeholders, and RETURNING where identity retrieval is required.",
       "returns": "none",
       "risk": "high",
@@ -936,7 +936,7 @@
         "create_provider"
       ],
       "mutation_kind": "mixed_read_write",
-      "notes": "Stage 50 audit inventory only; no write adaptation.",
+      "notes": "Stage 55 PostgreSQL rollback-only dictionary get-or-create probe: backend-aware placeholders, create and existing paths, and commit=False caller ownership. Runtime remains disabled.",
       "postgres_strategy": "Keep runtime disabled; use rollback-only harness, backend placeholders, and RETURNING where identity retrieval is required.",
       "returns": "none",
       "risk": "high",
@@ -1598,6 +1598,10 @@
     "create_country",
     "create_currency",
     "create_provider",
-    "create_prefix"
+    "create_prefix",
+    "get_or_create_country",
+    "get_or_create_currency",
+    "get_or_create_provider",
+    "get_or_create_prefix"
   ]
 }

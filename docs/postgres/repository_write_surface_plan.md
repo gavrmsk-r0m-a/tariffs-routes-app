@@ -117,3 +117,7 @@ Stage 52 rollback-smokes `set_app_setting_value`, `delete_app_setting_value`, an
 ## Stage 54 status: core dictionary creates rollback-smoked
 
 `create_country`, `create_currency`, `create_provider`, and `create_prefix` are PostgreSQL-compatible and rollback-smoked through the CI-only dictionary probe. Their `get_or_create_*` counterparts and dictionary snapshot writes are not adapted. Production PostgreSQL runtime remains disabled; a future candidate is the dictionary `get_or_create` methods or the `ensure_*` dictionary methods.
+
+## Stage 55 status: dictionary get-or-create rollback-smoked
+
+`get_or_create_country`, `get_or_create_currency`, `get_or_create_provider`, and `get_or_create_prefix` are PostgreSQL-compatible and rollback-smoked through the CI-only dictionary get-or-create probe. The direct dictionary create methods remain the Stage 54 rollback-smoked set. `ensure_*` methods and `update_dictionary_snapshots` remain unadapted, and there is still no production PostgreSQL runtime or `DB_BACKEND=postgres` enablement.

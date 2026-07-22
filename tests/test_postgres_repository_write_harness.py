@@ -94,6 +94,23 @@ class FakeRepo:
         self.calls.append(("create_provider", name, kwargs)); self.conn.dictionary["provider"] = {"id": 56, "default_currency_id": kwargs["default_currency_id"], "is_active": True}; return 56
     def create_prefix(self, provider_id, prefix, name, **kwargs):
         self.calls.append(("create_prefix", provider_id, prefix, name, kwargs)); self.conn.dictionary["prefix"] = {"id": 57, "provider_id": provider_id, "prefix": prefix, "is_active": True}; return 57
+    def get_or_create_country(self, name, **kwargs):
+        self.calls.append(("get_or_create_country", name, kwargs))
+        if "country" not in self.conn.dictionary: self.conn.dictionary["country"] = {"id": 155, "is_active": True}
+        return self.conn.dictionary["country"]["id"]
+    def get_or_create_currency(self, code, **kwargs):
+        self.calls.append(("get_or_create_currency", code, kwargs))
+        if "currency" not in self.conn.dictionary: self.conn.dictionary["currency"] = {"id": 156, "is_active": True}
+        return self.conn.dictionary["currency"]["id"]
+    def get_or_create_provider(self, name, currency_id=None, **kwargs):
+        self.calls.append(("get_or_create_provider", name, currency_id, kwargs))
+        if "provider" not in self.conn.dictionary: self.conn.dictionary["provider"] = {"id": 157, "normalized_name": harness.normalize_provider_name(name), "default_currency_id": currency_id, "is_active": True}
+        return self.conn.dictionary["provider"]["id"]
+    def get_or_create_prefix(self, provider_id, prefix, **kwargs):
+        self.calls.append(("get_or_create_prefix", provider_id, prefix, kwargs))
+        if prefix == "без префикса": return None
+        if "prefix" not in self.conn.dictionary: self.conn.dictionary["prefix"] = {"id": 158, "provider_id": provider_id, "prefix": prefix, "is_active": True}
+        return self.conn.dictionary["prefix"]["id"]
 
 
 
@@ -175,6 +192,26 @@ class WriteHarnessTest(unittest.TestCase):
         self.assertEqual(conn.commits, 0)
         self.assertGreaterEqual(conn.rollbacks, 3)
 
+    def test_stage55_dictionary_get_or_create_probe_is_rollback_only(self):
+        conn, repo = FakeConnection(), FakeRepo(None); repo.conn = conn
+        harness.run_dictionary_get_or_create_probe(repo, conn)
+        calls = [call for call in repo.calls if call[0].startswith("get_or_create_")]
+        self.assertEqual([call[0] for call in calls], ["get_or_create_country", "get_or_create_country", "get_or_create_currency", "get_or_create_currency", "get_or_create_provider", "get_or_create_provider", "get_or_create_prefix", "get_or_create_prefix", "get_or_create_prefix"])
+        self.assertTrue(all(call[-1]["commit"] is False for call in calls))
+        self.assertEqual(conn.dictionary, {})
+        self.assertEqual(conn.commits, 0)
+        self.assertGreaterEqual(conn.rollbacks, 3)
+
+    def test_stage55_dictionary_get_or_create_probe_rolls_back_on_failure(self):
+        conn, repo = FakeConnection(), FakeRepo(None); repo.conn = conn
+        def fail(*args, **kwargs):
+            raise RuntimeError("Stage 55 probe failure")
+        repo.get_or_create_currency = fail
+        with self.assertRaisesRegex(RuntimeError, "Stage 55 probe failure"):
+            harness.run_dictionary_get_or_create_probe(repo, conn)
+        self.assertGreaterEqual(conn.rollbacks, 2)
+        self.assertEqual(conn.commits, 0)
+
     def test_missing_url_is_parser_error(self):
         with patch.dict("os.environ", {}, clear=True), self.assertRaises(SystemExit) as caught:
             harness.main([])
@@ -191,7 +228,7 @@ class WriteHarnessTest(unittest.TestCase):
             summary = json.loads(output.read_text())
         self.assertEqual(summary["status"], "ok")
         self.assertEqual(set(summary), {"status", "postgres_url", "checks_count", "failures", "probes"})
-        self.assertEqual(summary["probes"], {"rollback_probe": "ok", "aborted_transaction_probe": "ok", "savepoint_probe": "ok", "app_setting_probe": "ok", "hlr_daily_usage_probe": "ok", "user_admin_probe": "ok", "dictionary_create_probe": "ok"})
+        self.assertEqual(summary["probes"], {"rollback_probe": "ok", "aborted_transaction_probe": "ok", "savepoint_probe": "ok", "app_setting_probe": "ok", "hlr_daily_usage_probe": "ok", "user_admin_probe": "ok", "dictionary_create_probe": "ok", "dictionary_get_or_create_probe": "ok"})
 
     def test_repository_uses_postgres_backend(self):
         class Driver:

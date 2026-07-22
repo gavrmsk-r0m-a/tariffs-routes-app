@@ -268,3 +268,59 @@ class Stage53UserAdminWriteMethodsTest(unittest.TestCase):
         self.assertEqual(repo.get_user(user_id)['display_name'], 'stage53-sqlite')
         self.assertEqual(repo.get_user_permissions(user_id), {})
         conn.close()
+
+# Stage 55 keeps get-or-create PostgreSQL adapter coverage separate from Stage 54 creates.
+class RepositoryStage55GetOrCreateTest(unittest.TestCase):
+    def test_postgres_selects_use_placeholders_and_missing_paths_forward_commit(self):
+        class Cursor:
+            def __init__(self, row): self.row = row
+            def fetchone(self): return self.row
+        class Connection:
+            def __init__(self): self.calls = []; self.commits = 0
+            def execute(self, sql, params=()): self.calls.append((sql, params)); return Cursor(None)
+            def commit(self): self.commits += 1
+        conn = Connection(); repo = Repository(conn, backend="postgres")
+        with patch.object(repo, "create_country", return_value=1) as country, patch.object(repo, "create_currency", return_value=2) as currency, patch.object(repo, "create_provider", return_value=3) as provider, patch.object(repo, "create_prefix", return_value=4) as prefix:
+            self.assertEqual(repo.get_or_create_country("Country", commit=False), 1)
+            self.assertEqual(repo.get_or_create_currency("S55", commit=False), 2)
+            self.assertEqual(repo.get_or_create_provider(" Provider ", 2, commit=False), 3)
+            self.assertEqual(repo.get_or_create_prefix(3, " 9955 ", commit=False), 4)
+            self.assertIsNone(repo.get_or_create_prefix(3, "без префикса", commit=False))
+        self.assertTrue(all("?" not in sql and "%s" in sql for sql, _ in conn.calls))
+        self.assertEqual(conn.calls[2][1], ("provider",))
+        self.assertEqual(conn.calls[3][1], (3, "9955"))
+        country.assert_called_once_with("Country", commit=False)
+        currency.assert_called_once_with("S55", "S55", commit=False)
+        provider.assert_called_once_with(" Provider ", default_currency_id=2, commit=False)
+        prefix.assert_called_once_with(3, "9955", commit=False)
+        self.assertEqual(conn.commits, 0)
+
+    def test_postgres_existing_paths_return_ids_without_write_or_commit(self):
+        class Cursor:
+            def fetchone(self): return {"id": 55}
+        class Connection:
+            def __init__(self): self.calls = []; self.commits = 0
+            def execute(self, sql, params=()): self.calls.append((sql, params)); return Cursor()
+            def commit(self): self.commits += 1
+        conn = Connection(); repo = Repository(conn, backend="postgres")
+        self.assertEqual(repo.get_or_create_country("Country"), 55)
+        self.assertEqual(repo.get_or_create_currency("S55"), 55)
+        self.assertEqual(repo.get_or_create_provider("Provider"), 55)
+        self.assertEqual(repo.get_or_create_prefix(55, "9955"), 55)
+        self.assertEqual(conn.commits, 0)
+
+    def test_sqlite_get_or_create_rows_roll_back_when_caller_owns_transaction(self):
+        conn = sqlite3.connect(":memory:"); conn.row_factory = sqlite3.Row; init_db(conn)
+        repo = Repository(conn)
+        country = repo.get_or_create_country("Stage 55 Country", commit=False)
+        currency = repo.get_or_create_currency("S55", commit=False)
+        provider = repo.get_or_create_provider("Stage 55 Provider", currency, commit=False)
+        prefix = repo.get_or_create_prefix(provider, "9955", commit=False)
+        self.assertEqual(repo.get_or_create_country("Stage 55 Country", commit=False), country)
+        self.assertIsNone(repo.get_or_create_prefix(provider, "без префикса", commit=False))
+        conn.rollback()
+        self.assertIsNone(conn.execute("SELECT 1 FROM countries WHERE id = ?", (country,)).fetchone())
+        self.assertIsNone(conn.execute("SELECT 1 FROM currencies WHERE id = ?", (currency,)).fetchone())
+        self.assertIsNone(conn.execute("SELECT 1 FROM providers WHERE id = ?", (provider,)).fetchone())
+        self.assertIsNone(conn.execute("SELECT 1 FROM provider_prefixes WHERE id = ?", (prefix,)).fetchone())
+        conn.close()

@@ -4143,28 +4143,32 @@ class Repository:
         self.conn.commit()
         return reason_id
 
-    def get_or_create_country(self, name: str) -> int:
-        row = self.conn.execute("SELECT id FROM countries WHERE name = ?", (name,)).fetchone()
-        return int(row["id"]) if row else self.create_country(name)
+    def get_or_create_country(self, name: str, *, commit: bool = True) -> int:
+        param = placeholder(self.backend)
+        row = self.conn.execute(f"SELECT id FROM countries WHERE name = {param}", (name,)).fetchone()
+        return int(row["id"]) if row else self.create_country(name, commit=commit)
 
-    def get_or_create_currency(self, code: str) -> int:
-        row = self.conn.execute("SELECT id FROM currencies WHERE code = ?", (code,)).fetchone()
-        return int(row["id"]) if row else self.create_currency(code, code)
+    def get_or_create_currency(self, code: str, *, commit: bool = True) -> int:
+        param = placeholder(self.backend)
+        row = self.conn.execute(f"SELECT id FROM currencies WHERE code = {param}", (code,)).fetchone()
+        return int(row["id"]) if row else self.create_currency(code, code, commit=commit)
 
-    def get_or_create_provider(self, name: str, currency_id: int | None = None) -> int:
+    def get_or_create_provider(self, name: str, currency_id: int | None = None, *, commit: bool = True) -> int:
         normalized = normalize_provider_name(name)
-        row = self.conn.execute("SELECT id FROM providers WHERE normalized_name = ?", (normalized,)).fetchone()
-        return int(row["id"]) if row else self.create_provider(name, default_currency_id=currency_id)
+        param = placeholder(self.backend)
+        row = self.conn.execute(f"SELECT id FROM providers WHERE normalized_name = {param}", (normalized,)).fetchone()
+        return int(row["id"]) if row else self.create_provider(name, default_currency_id=currency_id, commit=commit)
 
-    def get_or_create_prefix(self, provider_id: int, prefix: str | None) -> int | None:
+    def get_or_create_prefix(self, provider_id: int, prefix: str | None, *, commit: bool = True) -> int | None:
         if is_no_prefix_text(prefix):
             return None
         normalized_prefix = normalize_real_prefix(prefix)
+        param = placeholder(self.backend)
         row = self.conn.execute(
-            "SELECT id FROM provider_prefixes WHERE provider_id = ? AND COALESCE(prefix, '') = COALESCE(?, '')",
+            f"SELECT id FROM provider_prefixes WHERE provider_id = {param} AND COALESCE(prefix, '') = COALESCE({param}, '')",
             (provider_id, normalized_prefix),
         ).fetchone()
-        return int(row["id"]) if row else self.create_prefix(provider_id, normalized_prefix)
+        return int(row["id"]) if row else self.create_prefix(provider_id, normalized_prefix, commit=commit)
 
     def _change_log(
         self,
