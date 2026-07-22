@@ -39,3 +39,7 @@ The harness still never calls `conn.commit()`: every probe rolls back in `finall
 ## Stage 56 dictionary ensure probe
 
 `dictionary_ensure_probe` uses separate deterministic project, phone-number-type, and phone-assignment-type values. It calls each `ensure_*` method twice with `commit=False`, proving the first insert path returns `1` and the existing/ignore path returns `0`. Read-only PostgreSQL queries verify the transaction-local rows are active and that the assignment code and name are preserved. Its `finally` rollback runs on both success and failure, and post-rollback read-only checks prove that no Stage 56 dictionary rows remain. The harness never calls `conn.commit()`.
+
+## Stage 57 dictionary server probe
+
+`dictionary_server_probe` creates `__stage57_server_probe__` through `create_server(..., commit=False)` inside an explicit PostgreSQL transaction. Read-only `%s`-placeholder checks prove that the returned identity, name, and active flag are visible before the `finally` rollback. A post-rollback read confirms no probe server row remains. The harness never calls `conn.commit()`.

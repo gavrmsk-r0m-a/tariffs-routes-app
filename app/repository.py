@@ -1183,16 +1183,22 @@ class Repository:
             )
         self.conn.commit()
 
-    def create_server(self, name: str, comment: str | None = None) -> int:
+    def create_server(self, name: str, comment: str | None = None, *, commit: bool = True) -> int:
         p = placeholder(self.backend)
         sql = prepare_insert_returning_id(
             f"INSERT INTO servers(name, comment, is_active) VALUES ({p}, {p}, {p})",
             self.backend,
         )
-        cur = self.conn.execute(sql, (name, comment, to_db_bool(True, self.backend)))
-        server_id = extract_inserted_id(cur, self.backend)
-        self.conn.commit()
-        return server_id
+        try:
+            cur = self.conn.execute(sql, (name, comment, to_db_bool(True, self.backend)))
+            server_id = extract_inserted_id(cur, self.backend)
+            if commit:
+                self.conn.commit()
+            return server_id
+        except Exception:
+            if commit:
+                self.conn.rollback()
+            raise
 
 
     def get_phone_number(self, phone_id: int) -> sqlite3.Row | None:
