@@ -73,6 +73,49 @@ class RepositoryAdapterWriteMethodsTest(unittest.TestCase):
         self.assertEqual(self.conn.execute("SELECT comment FROM servers WHERE id = ?", (server_id,)).fetchone()["comment"], "plain write path")
         self.assertEqual(self.conn.execute("SELECT description FROM change_reasons WHERE id = ?", (reason_id,)).fetchone()["description"], "plain write path")
 
+    def test_change_reason_caller_transaction_rolls_back_reason_and_audit_row(self):
+        reason_id = self.repo.create_change_reason("Rollback reason", comment="rollback", commit=False)
+        self.assertIsNotNone(self.conn.execute("SELECT id FROM change_reasons WHERE id = ?", (reason_id,)).fetchone())
+        self.assertIsNotNone(self.conn.execute("SELECT id FROM change_log WHERE entity_type = ? AND entity_id = ?", ("change_reason", reason_id)).fetchone())
+        self.conn.rollback()
+        self.assertIsNone(self.conn.execute("SELECT id FROM change_reasons WHERE id = ?", (reason_id,)).fetchone())
+        self.assertIsNone(self.conn.execute("SELECT id FROM change_log WHERE entity_type = ? AND entity_id = ?", ("change_reason", reason_id)).fetchone())
+
+    def test_change_reason_uses_postgres_placeholders_and_commit_contract(self):
+        class Cursor:
+            def fetchone(self): return {"id": 901}
+        class RecordingConnection:
+            def __init__(self): self.calls=[]; self.commits=0; self.rollbacks=0
+            def execute(self, sql, params=()): self.calls.append((sql, params)); return Cursor()
+            def commit(self): self.commits += 1
+            def rollback(self): self.rollbacks += 1
+        connection = RecordingConnection(); repo = Repository(connection, backend="postgres")
+        self.assertEqual(repo.create_change_reason(" Причина ", comment="комментарий"), 901)
+        self.assertIn("VALUES (%s, %s, %s) RETURNING id", connection.calls[0][0])
+        self.assertEqual(connection.calls[0][1], ("Причина", "комментарий", True))
+        self.assertIn("VALUES (%s, %s, %s, %s, %s, %s, %s, %s)", connection.calls[1][0])
+        self.assertNotIn("?", connection.calls[1][0])
+        self.assertEqual(connection.calls[1][1][-1], "ui")
+        self.assertIn('"name": "Причина"', connection.calls[1][1][5])
+        self.assertEqual(connection.commits, 1)
+        repo.create_change_reason("No commit", commit=False)
+        self.assertEqual(connection.commits, 1)
+
+    def test_change_reason_rolls_back_only_when_it_owns_transaction(self):
+        class FailingConnection:
+            def __init__(self): self.rollbacks=0
+            def execute(self, sql, params=()): raise RuntimeError("write failed")
+            def commit(self): raise AssertionError("unexpected commit")
+            def rollback(self): self.rollbacks += 1
+        owned = FailingConnection()
+        with self.assertRaisesRegex(RuntimeError, "write failed"):
+            Repository(owned, backend="postgres").create_change_reason("broken")
+        self.assertEqual(owned.rollbacks, 1)
+        caller_owned = FailingConnection()
+        with self.assertRaisesRegex(RuntimeError, "write failed"):
+            Repository(caller_owned, backend="postgres").create_change_reason("broken", commit=False)
+        self.assertEqual(caller_owned.rollbacks, 0)
+
     def test_hlr_limit_override_keeps_sqlite_commit_default_and_allows_caller_transaction(self):
         self.repo.set_hlr_limit_override("2500")
         self.assertEqual(self.repo.get_hlr_limit_override(), "2500")

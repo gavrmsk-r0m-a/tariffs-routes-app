@@ -39,6 +39,8 @@ PHONE_NUMBER_TYPE_PROBE_NAME = "__stage56_phone_number_type_probe__"
 PHONE_ASSIGNMENT_CODE = "__stage56_assignment_probe__"
 PHONE_ASSIGNMENT_NAME = "Stage 56 Assignment Probe"
 SERVER_PROBE_NAME = "__stage57_server_probe__"
+CHANGE_REASON_PROBE_NAME = "__stage58_change_reason_probe__"
+CHANGE_REASON_PROBE_COMMENT = "Stage 58 change reason rollback probe"
 
 
 def empty_summary(postgres_url: str) -> dict:
@@ -50,6 +52,7 @@ def empty_summary(postgres_url: str) -> dict:
             "app_setting_probe", "hlr_daily_usage_probe", "user_admin_probe",
             "dictionary_create_probe", "dictionary_get_or_create_probe",
             "dictionary_ensure_probe", "dictionary_server_probe",
+            "dictionary_change_reason_probe",
         )},
     }
 
@@ -374,6 +377,58 @@ def run_dictionary_server_probe(repo: Repository, conn) -> None:
         conn.rollback()
 
 
+def _dictionary_change_reason_probe_rows(conn, reason_id=None):
+    """Read the deterministic Stage 58 change reason and its audit row."""
+    reason = conn.execute(
+        "SELECT id, name, description, is_active FROM change_reasons WHERE name = %s",
+        (CHANGE_REASON_PROBE_NAME,),
+    ).fetchone()
+    log = None
+    if reason_id is not None:
+        log = conn.execute(
+            "SELECT entity_type, entity_id, change_type, changed_by, new_values, source "
+            "FROM change_log WHERE entity_type = %s AND entity_id = %s AND change_type = %s",
+            ("change_reason", reason_id, "change_reason.created"),
+        ).fetchone()
+    return reason, log
+
+
+def run_dictionary_change_reason_probe(repo: Repository, conn) -> None:
+    """Create a change reason and audit row, then prove rollback removes both."""
+    if _dictionary_change_reason_probe_rows(conn)[0] is not None:
+        raise AssertionError("Stage 58 change reason probe value already exists")
+    reason_id = None
+    conn.rollback()
+    try:
+        conn.execute("BEGIN")
+        reason_id = repo.create_change_reason(
+            CHANGE_REASON_PROBE_NAME, created_by=None,
+            comment=CHANGE_REASON_PROBE_COMMENT, is_active=True, commit=False,
+        )
+        reason, log = _dictionary_change_reason_probe_rows(conn, reason_id)
+        if (not reason or reason["id"] != reason_id or reason["name"] != CHANGE_REASON_PROBE_NAME
+                or reason["description"] != CHANGE_REASON_PROBE_COMMENT or not bool(reason["is_active"])):
+            raise AssertionError("change reason is not visible and active inside the transaction")
+        if (not log or log["entity_type"] != "change_reason" or log["entity_id"] != reason_id
+                or log["change_type"] != "change_reason.created" or log["changed_by"] is not None
+                or ("source" in log and log["source"] != "ui")):
+            raise AssertionError("change reason audit row is not visible inside the transaction")
+        values = log.get("new_values") if hasattr(log, "get") else log["new_values"]
+        if isinstance(values, str):
+            if CHANGE_REASON_PROBE_NAME not in values:
+                raise AssertionError("change reason audit values do not include the name")
+        elif not isinstance(values, dict) or values.get("name") != CHANGE_REASON_PROBE_NAME:
+            raise AssertionError("change reason audit values do not include the name")
+    finally:
+        conn.rollback()
+    try:
+        reason, log = _dictionary_change_reason_probe_rows(conn, reason_id)
+        if reason is not None or log is not None:
+            raise AssertionError("rollback did not remove Stage 58 change reason probe rows")
+    finally:
+        conn.rollback()
+
+
 def run_harness(postgres_url: str, probe_key: str = DEFAULT_PROBE_KEY, probe_value: str = DEFAULT_PROBE_VALUE) -> dict:
     """Run all probes; psycopg imports remain local so unit tests need no driver."""
     summary = empty_summary(postgres_url)
@@ -407,6 +462,7 @@ def run_harness(postgres_url: str, probe_key: str = DEFAULT_PROBE_KEY, probe_val
         check("dictionary_get_or_create_probe", lambda: run_dictionary_get_or_create_probe(repo, conn))
         check("dictionary_ensure_probe", lambda: run_dictionary_ensure_probe(repo, conn))
         check("dictionary_server_probe", lambda: run_dictionary_server_probe(repo, conn))
+        check("dictionary_change_reason_probe", lambda: run_dictionary_change_reason_probe(repo, conn))
     except Exception as exc:
         summary["failures"].append({"check": "connect", "error": sanitize_error(exc, postgres_url)})
     finally:

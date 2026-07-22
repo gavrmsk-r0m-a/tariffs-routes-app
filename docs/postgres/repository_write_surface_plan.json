@@ -309,10 +309,10 @@
     },
     "create_change_reason": {
       "batch": "dictionary_and_snapshot_writes",
-      "current_commit_behavior": "commits internally",
+      "current_commit_behavior": "mixed",
       "dependencies": [],
       "mutation_kind": "insert",
-      "notes": "Stage 50 audit inventory only; no write adaptation.",
+      "notes": "Stage 58: PostgreSQL-compatible caller-owned rollback smoke; _change_log placeholder dependency adapted.",
       "postgres_strategy": "Keep runtime disabled; use rollback-only harness, backend placeholders, and RETURNING where identity retrieval is required.",
       "returns": "inserted_id",
       "risk": "medium",
@@ -332,7 +332,7 @@
         "SQLite regression test",
         "PostgreSQL rollback-only integration test"
       ],
-      "transaction_contract": "explicit_commit"
+      "transaction_contract": "optional_commit_parameter"
     },
     "create_company_routing_setting": {
       "batch": "company_routing_setting_writes",
@@ -1606,6 +1606,7 @@
     "ensure_project_exists",
     "ensure_phone_number_type_exists",
     "ensure_phone_assignment_type_exists",
-    "create_server"
+    "create_server",
+    "create_change_reason"
   ]
 }
