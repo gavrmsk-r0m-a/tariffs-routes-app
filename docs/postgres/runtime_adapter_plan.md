@@ -726,3 +726,7 @@ Stage 56 rollback-smokes the three dictionary ensure writes on PostgreSQL: `ensu
 ## Stage 57 PostgreSQL dictionary server rollback write smoke
 
 Stage 57 rollback-smokes `create_server` on PostgreSQL using a caller-owned transaction and verifies no server probe row remains after rollback. Read-only smoke remains **611** checks and the coverage audit remains **112 / 61 / 0 / 50 / 1 / 100.0%**. `DB_BACKEND=postgres` remains disabled and this adds no runtime write enablement.
+
+## Stage 58: rollback-only change reasons
+
+`create_change_reason` is PostgreSQL rollback-smoked with `_change_log` adapted as a private placeholder-only dependency. Read-only smoke remains at 611 checks and the coverage audit remains 112/61/0/50/1/100%. `DB_BACKEND=postgres` stays disabled; this does not enable production runtime writes.

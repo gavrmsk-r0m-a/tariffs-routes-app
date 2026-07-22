@@ -9,18 +9,21 @@ class WritePlanTests(unittest.TestCase):
  def bad(self,p): self.assertEqual('failed',self.execute_plan(p)['status'])
  def name(self): return next(iter(self.plan['methods']))
  def test_actual_baseline_write_plan_passes(self):
-  summary=self.execute_plan(self.plan); self.assertEqual('ok',summary['status']); self.assertEqual(20,summary['rollback_smoke_covered_methods_count'])
+  summary=self.execute_plan(self.plan); self.assertEqual('ok',summary['status']); self.assertEqual(21,summary['rollback_smoke_covered_methods_count'])
  def test_invalid_rollback_smoke_tracking_fails(self):
   for value in ([], ['set_app_setting_value','set_app_setting_value'], ['list_countries'], ['stale_method'], ['set_hlr_limit_override','set_app_setting_value','delete_app_setting_value','upsert_hlr_daily_usage']):
    p=copy.deepcopy(self.plan); p['rollback_smoke_covered_methods']=value; self.bad(p)
  def test_dictionary_rollback_method_in_wrong_batch_fails(self):
   p=copy.deepcopy(self.plan); p['methods']['ensure_project_exists']['batch']='app_settings_and_admin_low_risk'; self.bad(p)
- def test_missing_stage57_rollback_method_fails(self):
-  p=copy.deepcopy(self.plan); p['rollback_smoke_covered_methods'].remove('create_server'); self.bad(p)
+ def test_missing_stage58_rollback_method_fails(self):
+  p=copy.deepcopy(self.plan); p['rollback_smoke_covered_methods'].remove('create_change_reason'); self.bad(p)
  def test_stage57_server_in_wrong_batch_fails(self):
   p=copy.deepcopy(self.plan); p['methods']['create_server']['batch']='app_settings_and_admin_low_risk'; self.bad(p)
- def test_stage57_deferred_dictionary_methods_cannot_be_smoked(self):
-  p=copy.deepcopy(self.plan); p['rollback_smoke_covered_methods'].append('create_change_reason'); self.bad(p)
+ def test_private_and_deferred_dictionary_methods_cannot_be_smoked(self):
+  for name in ('_change_log', 'update_dictionary_snapshots'):
+   p=copy.deepcopy(self.plan); p['rollback_smoke_covered_methods'].append(name); self.bad(p)
+ def test_stage58_change_reason_in_wrong_batch_fails(self):
+  p=copy.deepcopy(self.plan); p['methods']['create_change_reason']['batch']='app_settings_and_admin_low_risk'; self.bad(p)
  def test_missing_rollback_smoke_tracking_is_config_error(self):
   p=copy.deepcopy(self.plan); del p['rollback_smoke_covered_methods']
   with tempfile.TemporaryDirectory() as d:

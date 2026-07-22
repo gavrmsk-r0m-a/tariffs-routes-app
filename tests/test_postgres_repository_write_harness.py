@@ -35,6 +35,8 @@ class FakeConnection:
         if "FROM phone_number_types WHERE name" in sql: return self.Cursor(self.dictionary.get("phone_type"))
         if "FROM phone_assignment_types WHERE code" in sql: return self.Cursor(self.dictionary.get("assignment"))
         if "FROM servers WHERE name" in sql: return self.Cursor(self.dictionary.get("server"))
+        if "FROM change_reasons WHERE name" in sql: return self.Cursor(self.dictionary.get("change_reason"))
+        if "FROM change_log WHERE entity_type" in sql: return self.Cursor(self.dictionary.get("change_log"))
         if sql == "BEGIN":
             self.aborted = False
         if "definitely_missing" in sql:
@@ -117,6 +119,11 @@ class FakeRepo:
         return self.conn.dictionary["prefix"]["id"]
     def create_server(self, name, comment=None, **kwargs):
         self.calls.append(("create_server", name, comment, kwargs)); self.conn.dictionary["server"] = {"id": 159, "name": name, "is_active": True}; return 159
+    def create_change_reason(self, name, created_by=None, comment=None, is_active=True, **kwargs):
+        self.calls.append(("create_change_reason", name, created_by, comment, is_active, kwargs))
+        self.conn.dictionary["change_reason"] = {"id": 160, "name": name, "description": comment, "is_active": is_active}
+        self.conn.dictionary["change_log"] = {"entity_type": "change_reason", "entity_id": 160, "change_type": "change_reason.created", "changed_by": created_by, "new_values": {"name": name}, "source": "ui"}
+        return 160
     def ensure_project_exists(self, name, **kwargs):
         self.calls.append(("ensure_project_exists", name, kwargs))
         if "project" in self.conn.dictionary: return 0
@@ -264,6 +271,22 @@ class WriteHarnessTest(unittest.TestCase):
         self.assertGreaterEqual(conn.rollbacks, 2)
         self.assertEqual(conn.commits, 0)
 
+    def test_stage58_change_reason_probe_is_rollback_only_and_verifies_audit_cleanup(self):
+        conn, repo = FakeConnection(), FakeRepo(None); repo.conn = conn
+        harness.run_dictionary_change_reason_probe(repo, conn)
+        self.assertEqual(repo.calls[-1], ("create_change_reason", harness.CHANGE_REASON_PROBE_NAME, None, harness.CHANGE_REASON_PROBE_COMMENT, True, {"commit": False}))
+        self.assertEqual(conn.dictionary, {})
+        self.assertEqual(conn.commits, 0)
+        self.assertGreaterEqual(conn.rollbacks, 3)
+
+    def test_stage58_change_reason_probe_rolls_back_on_failure(self):
+        conn, repo = FakeConnection(), FakeRepo(None); repo.conn = conn
+        repo.create_change_reason = lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("Stage 58 probe failure"))
+        with self.assertRaisesRegex(RuntimeError, "Stage 58 probe failure"):
+            harness.run_dictionary_change_reason_probe(repo, conn)
+        self.assertGreaterEqual(conn.rollbacks, 2)
+        self.assertEqual(conn.commits, 0)
+
     def test_missing_url_is_parser_error(self):
         with patch.dict("os.environ", {}, clear=True), self.assertRaises(SystemExit) as caught:
             harness.main([])
@@ -280,7 +303,7 @@ class WriteHarnessTest(unittest.TestCase):
             summary = json.loads(output.read_text())
         self.assertEqual(summary["status"], "ok")
         self.assertEqual(set(summary), {"status", "postgres_url", "checks_count", "failures", "probes"})
-        self.assertEqual(summary["probes"], {"rollback_probe": "ok", "aborted_transaction_probe": "ok", "savepoint_probe": "ok", "app_setting_probe": "ok", "hlr_daily_usage_probe": "ok", "user_admin_probe": "ok", "dictionary_create_probe": "ok", "dictionary_get_or_create_probe": "ok", "dictionary_ensure_probe": "ok", "dictionary_server_probe": "ok"})
+        self.assertEqual(summary["probes"], {"rollback_probe": "ok", "aborted_transaction_probe": "ok", "savepoint_probe": "ok", "app_setting_probe": "ok", "hlr_daily_usage_probe": "ok", "user_admin_probe": "ok", "dictionary_create_probe": "ok", "dictionary_get_or_create_probe": "ok", "dictionary_ensure_probe": "ok", "dictionary_server_probe": "ok", "dictionary_change_reason_probe": "ok"})
 
     def test_repository_uses_postgres_backend(self):
         class Driver:

@@ -43,3 +43,7 @@ The harness still never calls `conn.commit()`: every probe rolls back in `finall
 ## Stage 57 dictionary server probe
 
 `dictionary_server_probe` creates `__stage57_server_probe__` through `create_server(..., commit=False)` inside an explicit PostgreSQL transaction. Read-only `%s`-placeholder checks prove that the returned identity, name, and active flag are visible before the `finally` rollback. A post-rollback read confirms no probe server row remains. The harness never calls `conn.commit()`.
+
+## Stage 58: change-reason dictionary probe
+
+`dictionary_change_reason_probe` creates `__stage58_change_reason_probe__` with its deterministic comment through `create_change_reason(..., commit=False)`. It verifies that both the `change_reasons` row and the `change_log` `change_reason.created` side effect are visible within the explicit PostgreSQL transaction. The probe always rolls back and confirms that neither row remains; the harness never calls `conn.commit()`.

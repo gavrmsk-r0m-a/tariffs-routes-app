@@ -4152,17 +4152,31 @@ class Repository:
             )
         )
 
-    def create_change_reason(self, name: str, created_by: int | None = None, comment: str | None = None, is_active: bool = True) -> int:
+    def create_change_reason(
+        self,
+        name: str,
+        created_by: int | None = None,
+        comment: str | None = None,
+        is_active: bool = True,
+        *,
+        commit: bool = True,
+    ) -> int:
         p = placeholder(self.backend)
         sql = prepare_insert_returning_id(
             f"INSERT INTO change_reasons(name, description, is_active) VALUES ({p}, {p}, {p})",
             self.backend,
         )
-        cur = self.conn.execute(sql, (name.strip(), comment, to_db_bool(is_active, self.backend)))
-        reason_id = extract_inserted_id(cur, self.backend)
-        self._change_log("change_reason", reason_id, "change_reason.created", created_by, new_values={"name": name.strip()})
-        self.conn.commit()
-        return reason_id
+        try:
+            cur = self.conn.execute(sql, (name.strip(), comment, to_db_bool(is_active, self.backend)))
+            reason_id = extract_inserted_id(cur, self.backend)
+            self._change_log("change_reason", reason_id, "change_reason.created", created_by, new_values={"name": name.strip()})
+            if commit:
+                self.conn.commit()
+            return int(reason_id)
+        except Exception:
+            if commit:
+                self.conn.rollback()
+            raise
 
     def get_or_create_country(self, name: str, *, commit: bool = True) -> int:
         param = placeholder(self.backend)
@@ -4203,10 +4217,11 @@ class Repository:
         summary: str | None = None,
         source: str = "ui",
     ) -> None:
+        p = placeholder(self.backend)
         self.conn.execute(
-            """
+            f"""
             INSERT INTO change_log(entity_type, entity_id, change_type, changed_by, old_values, new_values, summary, source)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p})
             """,
             (
                 entity_type,
