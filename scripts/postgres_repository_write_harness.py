@@ -38,6 +38,7 @@ PROJECT_PROBE_NAME = "__stage56_project_probe__"
 PHONE_NUMBER_TYPE_PROBE_NAME = "__stage56_phone_number_type_probe__"
 PHONE_ASSIGNMENT_CODE = "__stage56_assignment_probe__"
 PHONE_ASSIGNMENT_NAME = "Stage 56 Assignment Probe"
+SERVER_PROBE_NAME = "__stage57_server_probe__"
 
 
 def empty_summary(postgres_url: str) -> dict:
@@ -48,7 +49,7 @@ def empty_summary(postgres_url: str) -> dict:
             "rollback_probe", "aborted_transaction_probe", "savepoint_probe",
             "app_setting_probe", "hlr_daily_usage_probe", "user_admin_probe",
             "dictionary_create_probe", "dictionary_get_or_create_probe",
-            "dictionary_ensure_probe",
+            "dictionary_ensure_probe", "dictionary_server_probe",
         )},
     }
 
@@ -344,6 +345,35 @@ def run_dictionary_ensure_probe(repo: Repository, conn) -> None:
         conn.rollback()
 
 
+def _dictionary_server_probe_row(conn):
+    """Read only the deterministic Stage 57 server row with PostgreSQL placeholders."""
+    return conn.execute(
+        "SELECT id, name, is_active FROM servers WHERE name = %s",
+        (SERVER_PROBE_NAME,),
+    ).fetchone()
+
+
+def run_dictionary_server_probe(repo: Repository, conn) -> None:
+    """Create one server in a caller-owned transaction and prove rollback cleanup."""
+    if _dictionary_server_probe_row(conn) is not None:
+        raise AssertionError("Stage 57 dictionary server probe value already exists")
+    conn.rollback()
+    try:
+        conn.execute("BEGIN")
+        server_id = repo.create_server(SERVER_PROBE_NAME, commit=False)
+        server = _dictionary_server_probe_row(conn)
+        if (not server or server["id"] != server_id or server["name"] != SERVER_PROBE_NAME
+                or not bool(server["is_active"])):
+            raise AssertionError("server is not visible and active inside the transaction")
+    finally:
+        conn.rollback()
+    try:
+        if _dictionary_server_probe_row(conn) is not None:
+            raise AssertionError("rollback did not remove Stage 57 dictionary server probe row")
+    finally:
+        conn.rollback()
+
+
 def run_harness(postgres_url: str, probe_key: str = DEFAULT_PROBE_KEY, probe_value: str = DEFAULT_PROBE_VALUE) -> dict:
     """Run all probes; psycopg imports remain local so unit tests need no driver."""
     summary = empty_summary(postgres_url)
@@ -376,6 +406,7 @@ def run_harness(postgres_url: str, probe_key: str = DEFAULT_PROBE_KEY, probe_val
         check("dictionary_create_probe", lambda: run_dictionary_create_probe(repo, conn))
         check("dictionary_get_or_create_probe", lambda: run_dictionary_get_or_create_probe(repo, conn))
         check("dictionary_ensure_probe", lambda: run_dictionary_ensure_probe(repo, conn))
+        check("dictionary_server_probe", lambda: run_dictionary_server_probe(repo, conn))
     except Exception as exc:
         summary["failures"].append({"check": "connect", "error": sanitize_error(exc, postgres_url)})
     finally:

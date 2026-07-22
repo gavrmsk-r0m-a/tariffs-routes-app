@@ -722,3 +722,7 @@ The four dictionary `get_or_create_*` writes are PostgreSQL rollback-smoked only
 ## Stage 56 PostgreSQL dictionary ensure rollback write smoke
 
 Stage 56 rollback-smokes the three dictionary ensure writes on PostgreSQL: `ensure_project_exists`, `ensure_phone_number_type_exists`, and `ensure_phone_assignment_type_exists`. It verifies insert and existing/ignore paths and rollback cleanup only in the CI harness. The read-only smoke remains **611** checks and the coverage audit remains **112 / 61 / 0 / 50 / 1 / 100.0%**. `DB_BACKEND=postgres` remains disabled; this introduces no runtime write enablement.
+
+## Stage 57 PostgreSQL dictionary server rollback write smoke
+
+Stage 57 rollback-smokes `create_server` on PostgreSQL using a caller-owned transaction and verifies no server probe row remains after rollback. Read-only smoke remains **611** checks and the coverage audit remains **112 / 61 / 0 / 50 / 1 / 100.0%**. `DB_BACKEND=postgres` remains disabled and this adds no runtime write enablement.

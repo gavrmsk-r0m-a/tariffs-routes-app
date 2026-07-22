@@ -370,3 +370,44 @@ class RepositoryStage55GetOrCreateTest(unittest.TestCase):
         self.assertIsNone(conn.execute("SELECT 1 FROM providers WHERE id = ?", (provider,)).fetchone())
         self.assertIsNone(conn.execute("SELECT 1 FROM provider_prefixes WHERE id = ?", (prefix,)).fetchone())
         conn.close()
+
+class RepositoryStage57ServerWriteTest(unittest.TestCase):
+    def test_postgres_create_server_uses_returning_bool_and_commit_contract(self):
+        class Cursor:
+            def fetchone(self): return {"id": 57}
+        class Connection:
+            def __init__(self): self.calls=[]; self.commits=0; self.rollbacks=0
+            def execute(self, sql, params=()): self.calls.append((sql, params)); return Cursor()
+            def commit(self): self.commits += 1
+            def rollback(self): self.rollbacks += 1
+        conn = Connection(); repo = Repository(conn, backend="postgres")
+        self.assertEqual(repo.create_server("Stage 57", "probe", commit=False), 57)
+        self.assertIn("INSERT INTO servers(name, comment, is_active) VALUES (%s, %s, %s) RETURNING id", conn.calls[0][0])
+        self.assertEqual(conn.calls[0][1], ("Stage 57", "probe", True))
+        self.assertEqual(conn.commits, 0)
+        self.assertEqual(repo.create_server("Committed"), 57)
+        self.assertEqual(conn.commits, 1)
+
+    def test_postgres_create_server_rolls_back_only_when_it_owns_commit(self):
+        class Connection:
+            def __init__(self): self.commits=0; self.rollbacks=0
+            def execute(self, sql, params=()): raise RuntimeError("insert failed")
+            def commit(self): self.commits += 1
+            def rollback(self): self.rollbacks += 1
+        conn = Connection(); repo = Repository(conn, backend="postgres")
+        with self.assertRaisesRegex(RuntimeError, "insert failed"):
+            repo.create_server("failure")
+        self.assertEqual(conn.rollbacks, 1)
+        with self.assertRaisesRegex(RuntimeError, "insert failed"):
+            repo.create_server("caller failure", commit=False)
+        self.assertEqual(conn.rollbacks, 1)
+
+    def test_sqlite_create_server_caller_transaction_rolls_back(self):
+        conn = sqlite3.connect(":memory:"); conn.row_factory = sqlite3.Row; init_db(conn)
+        repo = Repository(conn)
+        server_id = repo.create_server("Stage 57 SQLite", "probe", commit=False)
+        row = conn.execute("SELECT name, is_active FROM servers WHERE id = ?", (server_id,)).fetchone()
+        self.assertEqual((row["name"], row["is_active"]), ("Stage 57 SQLite", 1))
+        conn.rollback()
+        self.assertIsNone(conn.execute("SELECT 1 FROM servers WHERE id = ?", (server_id,)).fetchone())
+        conn.close()
