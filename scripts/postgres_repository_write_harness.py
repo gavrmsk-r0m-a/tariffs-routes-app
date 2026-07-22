@@ -52,7 +52,7 @@ def empty_summary(postgres_url: str) -> dict:
             "app_setting_probe", "hlr_daily_usage_probe", "user_admin_probe",
             "dictionary_create_probe", "dictionary_get_or_create_probe",
             "dictionary_ensure_probe", "dictionary_server_probe",
-            "dictionary_change_reason_probe",
+            "dictionary_change_reason_probe", "dictionary_snapshot_probe",
         )},
     }
 
@@ -429,6 +429,54 @@ def run_dictionary_change_reason_probe(repo: Repository, conn) -> None:
         conn.rollback()
 
 
+def run_dictionary_snapshot_probe(repo: Repository, conn) -> None:
+    """Exercise every snapshot branch using transaction-local fixture updates only."""
+    phone = conn.execute("SELECT * FROM phone_numbers ORDER BY id LIMIT 1").fetchone()
+    route = conn.execute("SELECT * FROM routes ORDER BY id LIMIT 1").fetchone()
+    rows = {
+        "countries": conn.execute("SELECT id, name FROM countries ORDER BY id LIMIT 1").fetchone(),
+        "providers": conn.execute("SELECT id, name FROM providers ORDER BY id LIMIT 1").fetchone(),
+        "currencies": conn.execute("SELECT id, code FROM currencies ORDER BY id LIMIT 1").fetchone(),
+        "phone-types": conn.execute("SELECT id, name FROM phone_number_types ORDER BY id LIMIT 1").fetchone(),
+        "projects": conn.execute("SELECT id, name FROM projects ORDER BY id LIMIT 1").fetchone(),
+        "phone-assignments": conn.execute("SELECT id, code, name FROM phone_assignment_types ORDER BY id LIMIT 1").fetchone(),
+    }
+    if not phone or not route or any(row is None for row in rows.values()):
+        missing = [name for name, row in rows.items() if row is None]
+        raise AssertionError(f"Stage 59 demo fixture is missing required rows: {', '.join(missing) or 'phone_numbers/routes'}")
+    phone_id, route_id = phone["id"], route["id"]
+    before_phone, before_route = dict(phone), dict(route)
+    conn.rollback()
+    labels = {"country": "__stage59_new_country_label__", "provider": "__stage59_new_provider_label__", "currency": "__stage59_unused_currency_label__", "phone_type": "__stage59_new_phone_type__", "project": "__stage59_new_project_label__", "assignment": "__stage59_new_assignment_label__"}
+    try:
+        conn.execute("BEGIN")
+        conn.execute("UPDATE phone_numbers SET country_id=%s, provider_id=%s, currency_id=%s, phone_type=%s, project_label=%s, assignment_type=%s, country_label=%s, provider_label=%s, currency_label=%s, assignment_label=%s WHERE id=%s", (rows["countries"]["id"], rows["providers"]["id"], rows["currencies"]["id"], rows["phone-types"]["name"], rows["projects"]["name"], rows["phone-assignments"]["code"], "__stage59_old_country_label__", "__stage59_old_provider_label__", "__stage59_old_currency_label__", "__stage59_old_assignment_label__", phone_id))
+        conn.execute("UPDATE routes SET project_label=%s WHERE id=%s", (rows["projects"]["name"], route_id))
+        checks = (("countries", "name", "country_label", labels["country"]), ("providers", "name", "provider_label", labels["provider"]), ("currencies", "code", "currency_label", rows["currencies"]["code"]), ("phone-types", "name", "phone_type", labels["phone_type"]), ("projects", "name", "project_label", labels["project"]), ("phone-assignments", "name", "assignment_label", labels["assignment"]))
+        for kind, old_field, field, expected in checks:
+            result = repo.update_dictionary_snapshots(kind, rows[kind]["id"], rows[kind][old_field], labels.get(field.replace('_label', ''), labels.get(field, labels["currency"])))
+            current = conn.execute(f"SELECT {field} FROM phone_numbers WHERE id=%s", (phone_id,)).fetchone()
+            if (not isinstance(result, dict) or current[field] != expected
+                    or (kind == "countries" and result.get("Купленные номера", 0) < 1)):
+                raise AssertionError(f"{kind}: snapshot update is not visible inside the transaction")
+        route_current = conn.execute("SELECT project_label FROM routes WHERE id=%s", (route_id,)).fetchone()
+        if route_current["project_label"] != labels["project"]:
+            raise AssertionError("projects: route snapshot update is not visible inside the transaction")
+        repo.update_dictionary_snapshots("__stage59_unknown_kind__", 999999999, "old", "new")
+    finally:
+        conn.rollback()
+    try:
+        after_phone = conn.execute("SELECT * FROM phone_numbers WHERE id=%s", (phone_id,)).fetchone()
+        after_route = conn.execute("SELECT * FROM routes WHERE id=%s", (route_id,)).fetchone()
+        if dict(after_phone) != before_phone or dict(after_route) != before_route:
+            raise AssertionError("Stage 59 rollback did not restore selected fixture rows")
+        residual = conn.execute("SELECT 1 FROM phone_numbers WHERE country_label LIKE %s OR provider_label LIKE %s OR currency_label LIKE %s OR assignment_label LIKE %s OR phone_type LIKE %s OR project_label LIKE %s UNION ALL SELECT 1 FROM routes WHERE project_label LIKE %s", ("__stage59_%",) * 7).fetchone()
+        if residual:
+            raise AssertionError("Stage 59 labels remain after rollback")
+    finally:
+        conn.rollback()
+
+
 def run_harness(postgres_url: str, probe_key: str = DEFAULT_PROBE_KEY, probe_value: str = DEFAULT_PROBE_VALUE) -> dict:
     """Run all probes; psycopg imports remain local so unit tests need no driver."""
     summary = empty_summary(postgres_url)
@@ -463,6 +511,7 @@ def run_harness(postgres_url: str, probe_key: str = DEFAULT_PROBE_KEY, probe_val
         check("dictionary_ensure_probe", lambda: run_dictionary_ensure_probe(repo, conn))
         check("dictionary_server_probe", lambda: run_dictionary_server_probe(repo, conn))
         check("dictionary_change_reason_probe", lambda: run_dictionary_change_reason_probe(repo, conn))
+        check("dictionary_snapshot_probe", lambda: run_dictionary_snapshot_probe(repo, conn))
     except Exception as exc:
         summary["failures"].append({"check": "connect", "error": sanitize_error(exc, postgres_url)})
     finally:

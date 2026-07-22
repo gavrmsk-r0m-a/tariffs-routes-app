@@ -454,3 +454,56 @@ class RepositoryStage57ServerWriteTest(unittest.TestCase):
         conn.rollback()
         self.assertIsNone(conn.execute("SELECT 1 FROM servers WHERE id = ?", (server_id,)).fetchone())
         conn.close()
+
+class RepositoryStage59DictionarySnapshotsTest(unittest.TestCase):
+    def test_postgres_branches_use_backend_placeholders_and_never_commit(self):
+        class Cursor:
+            def __init__(self, row=None): self.row = row
+            def fetchone(self): return self.row
+        class Connection:
+            def __init__(self): self.calls=[]; self.commits=0
+            def execute(self, sql, params=()):
+                self.calls.append((sql, params))
+                if "SELECT code FROM currencies" in sql: return Cursor({"code": "EUR"})
+                if "SELECT code FROM phone_assignment_types" in sql: return Cursor({"code": "assigned"})
+                return Cursor({"count": 1})
+            def commit(self): self.commits += 1
+        conn=Connection(); repo=Repository(conn, backend="postgres")
+        for kind, entity, old, new in (("countries",1,"Country","New country"),("providers",2,"Provider","New provider"),("currencies",3,"EUR","unused"),("phone-types",4,"Old type","New type"),("projects",5,"Old project","New project"),("phone-assignments",6,"Old assignment","New assignment"),("unknown",7,"old","new")):
+            with patch.object(repo, "dictionary_rename_preview", return_value={"Купленные номера": 1}) as preview:
+                self.assertEqual(repo.update_dictionary_snapshots(kind, entity, old, new), {"Купленные номера": 1})
+                preview.assert_called_once_with(kind, entity)
+        sql="\n".join(query for query, _ in conn.calls)
+        self.assertIn("UPDATE phone_numbers SET country_label = %s", sql)
+        self.assertIn("UPDATE phone_numbers SET provider_label = %s", sql)
+        self.assertIn("SELECT code FROM currencies WHERE id = %s", sql)
+        self.assertIn("UPDATE routes SET project_label = %s", sql)
+        self.assertIn("SELECT code FROM phone_assignment_types WHERE id = %s", sql)
+        self.assertNotIn("?", sql)
+        self.assertEqual(conn.commits, 0)
+
+    def test_sqlite_snapshot_branches_and_rollback_preserve_rows(self):
+        conn=sqlite3.connect(":memory:"); conn.row_factory=sqlite3.Row; init_db(conn); repo=Repository(conn)
+        country=repo.create_country("Stage 59 Country", "S59")
+        provider=repo.create_provider("Stage 59 Provider")
+        currency=repo.create_currency("S59", "Stage 59 Currency")
+        conn.execute("INSERT INTO phone_number_types(name, is_active) VALUES ('old type', 1)")
+        phone_type=conn.execute("SELECT id FROM phone_number_types WHERE name='old type'").fetchone()["id"]
+        conn.execute("INSERT INTO projects(name, is_active) VALUES ('old project', 1)")
+        project=conn.execute("SELECT id FROM projects WHERE name='old project'").fetchone()["id"]
+        conn.execute("INSERT INTO phone_assignment_types(code, name, is_active) VALUES ('old-assignment', 'Old assignment', 1)")
+        assignment=conn.execute("SELECT id FROM phone_assignment_types WHERE code='old-assignment'").fetchone()["id"]
+        conn.execute("INSERT INTO phone_numbers(country_id,provider_id,currency_id,number,normalized_number,created_by,country_label,provider_label,currency_label,phone_type,project_label,assignment_type,assignment_label) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)", (country,provider,currency,"1234567","1234567",1,"old country","old provider","old currency","old type","old project","old-assignment","old assignment"))
+        phone=conn.execute("SELECT id FROM phone_numbers").fetchone()["id"]
+        conn.execute("INSERT INTO routes(country_id,provider_id,name,project_label,cli_source_type,cli_source_label,created_by) VALUES (?,?,?,?,?,?,?)", (country,provider,"stage59 route","old project","other","none",1))
+        route=conn.execute("SELECT id FROM routes").fetchone()["id"]; conn.commit()
+        before_phone=dict(conn.execute("SELECT * FROM phone_numbers WHERE id=?",(phone,)).fetchone()); before_route=dict(conn.execute("SELECT * FROM routes WHERE id=?",(route,)).fetchone())
+        repo.update_dictionary_snapshots("countries",country,"Stage 59 Country","new country"); repo.update_dictionary_snapshots("providers",provider,"Stage 59 Provider","new provider"); repo.update_dictionary_snapshots("currencies",currency,"S59","unused"); repo.update_dictionary_snapshots("phone-types",phone_type,"old type","new type"); repo.update_dictionary_snapshots("projects",project,"old project","new project"); repo.update_dictionary_snapshots("phone-assignments",assignment,"Old assignment","new assignment")
+        row=conn.execute("SELECT * FROM phone_numbers WHERE id=?",(phone,)).fetchone()
+        self.assertEqual((row["country_label"],row["provider_label"],row["currency_label"],row["phone_type"],row["project_label"],row["assignment_label"]),("new country","new provider","S59","new type","new project","new assignment"))
+        self.assertEqual(conn.execute("SELECT project_label FROM routes WHERE id=?",(route,)).fetchone()["project_label"],"new project")
+        repo.update_dictionary_snapshots("unknown", 999, "old", "new")
+        conn.rollback()
+        self.assertEqual(dict(conn.execute("SELECT * FROM phone_numbers WHERE id=?",(phone,)).fetchone()),before_phone)
+        self.assertEqual(dict(conn.execute("SELECT * FROM routes WHERE id=?",(route,)).fetchone()),before_route)
+        conn.close()
