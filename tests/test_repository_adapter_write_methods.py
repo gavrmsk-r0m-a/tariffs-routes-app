@@ -173,6 +173,52 @@ class RepositoryAdapterWriteMethodsTest(unittest.TestCase):
         self.assertIsNone(self.conn.execute("SELECT 1 FROM providers WHERE id = ?", (provider_id,)).fetchone())
         self.assertIsNone(self.conn.execute("SELECT 1 FROM provider_prefixes WHERE id = ?", (prefix_id,)).fetchone())
 
+    def test_stage56_sqlite_dictionary_ensures_ignore_duplicates_and_roll_back(self):
+        self.assertEqual(self.repo.ensure_project_exists("Stage 56 Project", commit=False), 1)
+        self.assertEqual(self.repo.ensure_project_exists("Stage 56 Project", commit=False), 0)
+        self.assertEqual(self.repo.ensure_phone_number_type_exists("Stage 56 Type", commit=False), 1)
+        self.assertEqual(self.repo.ensure_phone_number_type_exists("Stage 56 Type", commit=False), 0)
+        self.assertEqual(self.repo.ensure_phone_assignment_type_exists("stage56", commit=False), 1)
+        self.assertEqual(self.repo.ensure_phone_assignment_type_exists("stage56", commit=False), 0)
+        self.conn.rollback()
+        self.assertIsNone(self.conn.execute("SELECT 1 FROM projects WHERE name = ?", ("Stage 56 Project",)).fetchone())
+        self.assertIsNone(self.conn.execute("SELECT 1 FROM phone_number_types WHERE name = ?", ("Stage 56 Type",)).fetchone())
+        self.assertIsNone(self.conn.execute("SELECT 1 FROM phone_assignment_types WHERE code = ?", ("stage56",)).fetchone())
+
+    def test_stage56_postgres_dictionary_ensures_use_insert_ignore_and_commit_contract(self):
+        class Cursor:
+            rowcount = 1
+        class RecordingConnection:
+            def __init__(self, fail=False): self.calls=[]; self.commits=0; self.rollbacks=0; self.fail=fail
+            def execute(self, sql, params=()):
+                self.calls.append((sql, params))
+                if self.fail: raise RuntimeError("write failed")
+                return Cursor()
+            def commit(self): self.commits += 1
+            def rollback(self): self.rollbacks += 1
+
+        conn = RecordingConnection(); repo = Repository(conn, backend="postgres")
+        self.assertEqual(repo.ensure_project_exists("Project"), 1)
+        self.assertEqual(repo.ensure_phone_number_type_exists("Number type", commit=False), 1)
+        self.assertEqual(repo.ensure_phone_assignment_type_exists("assignment", None, False), 1)
+        sql = "\n".join(call[0] for call in conn.calls)
+        self.assertEqual(sql.count("ON CONFLICT"), 3)
+        self.assertIn("INSERT INTO projects(name, is_active) VALUES (%s, %s) ON CONFLICT (name) DO NOTHING", sql)
+        self.assertIn("INSERT INTO phone_number_types(name, is_active) VALUES (%s, %s) ON CONFLICT (name) DO NOTHING", sql)
+        self.assertIn("INSERT INTO phone_assignment_types(code, name, is_active) VALUES (%s, %s, %s) ON CONFLICT (code) DO NOTHING", sql)
+        self.assertEqual(conn.calls[-1][1], ("assignment", "assignment", True))
+        self.assertEqual(conn.commits, 1)
+
+        for method, args in (("ensure_project_exists", ("Project",)), ("ensure_phone_number_type_exists", ("Type",)), ("ensure_phone_assignment_type_exists", ("assignment",))):
+            failing = RecordingConnection(fail=True)
+            with self.assertRaisesRegex(RuntimeError, "write failed"):
+                getattr(Repository(failing, backend="postgres"), method)(*args)
+            self.assertEqual(failing.rollbacks, 1)
+            caller_owned = RecordingConnection(fail=True)
+            with self.assertRaisesRegex(RuntimeError, "write failed"):
+                getattr(Repository(caller_owned, backend="postgres"), method)(*args, commit=False)
+            self.assertEqual(caller_owned.rollbacks, 0)
+
     def test_update_calling_company_import_fields_updates_row_and_booleans(self):
         user_id = self.repo.create_user("company-import-admin", "Company Import Admin")
         country_id = self.repo.create_country("Италия", "IT")

@@ -775,14 +775,14 @@
     },
     "ensure_phone_assignment_type_exists": {
       "batch": "dictionary_and_snapshot_writes",
-      "current_commit_behavior": "commits internally",
+      "current_commit_behavior": "mixed",
       "dependencies": [],
       "mutation_kind": "multi_write",
-      "notes": "Stage 50 audit inventory only; no write adaptation.",
-      "postgres_strategy": "Keep runtime disabled; use rollback-only harness, backend placeholders, and RETURNING where identity retrieval is required.",
-      "returns": "none",
+      "notes": "Stage 56 PostgreSQL-compatible insert-ignore write; commit=True rolls back on failure and commit=False leaves rollback to the caller.",
+      "postgres_strategy": "Use backend-aware insert-ignore SQL and boolean values in the rollback-only harness; production runtime remains disabled.",
+      "returns": "int rowcount (1 inserted, 0 existing/ignored)",
       "risk": "high",
-      "rollback_strategy": "Not safe until harness exists; run inside explicit transaction and rollback.",
+      "rollback_strategy": "commit=True rolls back on exception; commit=False is caller-owned and the harness always rolls back.",
       "side_effects": [
         "database_write"
       ],
@@ -800,14 +800,14 @@
     },
     "ensure_phone_number_type_exists": {
       "batch": "dictionary_and_snapshot_writes",
-      "current_commit_behavior": "commits internally",
+      "current_commit_behavior": "mixed",
       "dependencies": [],
       "mutation_kind": "multi_write",
-      "notes": "Stage 50 audit inventory only; no write adaptation.",
-      "postgres_strategy": "Keep runtime disabled; use rollback-only harness, backend placeholders, and RETURNING where identity retrieval is required.",
-      "returns": "none",
+      "notes": "Stage 56 PostgreSQL-compatible insert-ignore write; commit=True rolls back on failure and commit=False leaves rollback to the caller.",
+      "postgres_strategy": "Use backend-aware insert-ignore SQL and boolean values in the rollback-only harness; production runtime remains disabled.",
+      "returns": "int rowcount (1 inserted, 0 existing/ignored)",
       "risk": "high",
-      "rollback_strategy": "Not safe until harness exists; run inside explicit transaction and rollback.",
+      "rollback_strategy": "commit=True rolls back on exception; commit=False is caller-owned and the harness always rolls back.",
       "side_effects": [
         "database_write"
       ],
@@ -825,14 +825,14 @@
     },
     "ensure_project_exists": {
       "batch": "dictionary_and_snapshot_writes",
-      "current_commit_behavior": "commits internally",
+      "current_commit_behavior": "mixed",
       "dependencies": [],
       "mutation_kind": "multi_write",
-      "notes": "Stage 50 audit inventory only; no write adaptation.",
-      "postgres_strategy": "Keep runtime disabled; use rollback-only harness, backend placeholders, and RETURNING where identity retrieval is required.",
-      "returns": "none",
+      "notes": "Stage 56 PostgreSQL-compatible insert-ignore write; commit=True rolls back on failure and commit=False leaves rollback to the caller.",
+      "postgres_strategy": "Use backend-aware insert-ignore SQL and boolean values in the rollback-only harness; production runtime remains disabled.",
+      "returns": "int rowcount (1 inserted, 0 existing/ignored)",
       "risk": "high",
-      "rollback_strategy": "Not safe until harness exists; run inside explicit transaction and rollback.",
+      "rollback_strategy": "commit=True rolls back on exception; commit=False is caller-owned and the harness always rolls back.",
       "side_effects": [
         "database_write"
       ],
@@ -1602,6 +1602,9 @@
     "get_or_create_country",
     "get_or_create_currency",
     "get_or_create_provider",
-    "get_or_create_prefix"
+    "get_or_create_prefix",
+    "ensure_project_exists",
+    "ensure_phone_number_type_exists",
+    "ensure_phone_assignment_type_exists"
   ]
 }
