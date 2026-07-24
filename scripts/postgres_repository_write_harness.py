@@ -487,19 +487,21 @@ def run_provider_change_priority_probe(repo: Repository, conn) -> None:
     transaction.  This probe does not exercise provider-change creation.
     """
     user = conn.execute("SELECT id FROM users ORDER BY id LIMIT 1").fetchone()
-    country = conn.execute("SELECT id FROM countries ORDER BY id LIMIT 1").fetchone()
+    country = conn.execute(
+        "SELECT country_id FROM routes GROUP BY country_id HAVING COUNT(*) >= 2 ORDER BY country_id LIMIT 1"
+    ).fetchone()
     server = conn.execute("SELECT id FROM servers WHERE is_active = true ORDER BY id LIMIT 1").fetchone()
     if not server:
         server = conn.execute("SELECT id FROM servers WHERE is_active = 1 ORDER BY id LIMIT 1").fetchone()
     if not user or not country or not server:
         raise AssertionError("Stage 60 demo fixture is missing a user, country, or active server")
-    routes = conn.execute("SELECT id FROM routes WHERE country_id = %s ORDER BY id LIMIT 2", (country["id"],)).fetchall()
+    routes = conn.execute("SELECT id FROM routes WHERE country_id = %s ORDER BY id LIMIT 2", (country["country_id"],)).fetchall()
     if len(routes) != 2:
         raise AssertionError("Stage 60 demo fixture requires two routes in one country")
     route_before_id, route_after_id = routes[0]["id"], routes[1]["id"]
     previous = conn.execute(
         "SELECT * FROM server_route_priorities WHERE country_id = %s AND server_id = %s",
-        (country["id"], server["id"]),
+        (country["country_id"], server["id"]),
     ).fetchone()
     priority_id = None
     conn.rollback()
@@ -514,7 +516,7 @@ def run_provider_change_priority_probe(repo: Repository, conn) -> None:
         else:
             priority_id = conn.execute(
                 "INSERT INTO server_route_priorities (country_id, server_id, current_route_id, previous_route_id, reason, comment, created_by, updated_by) VALUES (%s, %s, %s, NULL, %s, %s, %s, %s) RETURNING id",
-                (country["id"], server["id"], route_before_id, "__stage60_priority_reason__", "__stage60_priority_before__", user["id"], user["id"]),
+                (country["country_id"], server["id"], route_before_id, "__stage60_priority_reason__", "__stage60_priority_before__", user["id"], user["id"]),
             ).fetchone()["id"]
         repo.update_server_route_priority(priority_id=priority_id, current_route_id=route_after_id, comment=PRIORITY_CHANGED_COMMENT, changed_by=user["id"], commit=False)
         changed = conn.execute("SELECT current_route_id, previous_route_id, comment, changed_by, updated_by FROM server_route_priorities WHERE id=%s", (priority_id,)).fetchone()
