@@ -738,3 +738,7 @@ Stage 57 rollback-smokes `create_server` on PostgreSQL using a caller-owned tran
 ## Stage 60 — server-priority rollback smoke
 
 `update_server_route_priority` and its required private summary helper are rollback-smoked on PostgreSQL. The read-only smoke remains 611 checks, and the coverage audit remains 112/61/0/50/1/100%. `DB_BACKEND=postgres` stays disabled: this is a CI-only rollback harness adaptation, not runtime write enablement.
+
+## Stage 61 — provider-change rollback smoke
+
+`create_provider_change` is rollback-smoked on PostgreSQL only, including changed and unchanged provider paths, priority update/insert side effects, SAVEPOINT-contained validations, audit visibility, and cleanup. The `provider_change_and_priority_writes` batch is complete. Read-only smoke remains **611** checks and coverage remains **112 / 61 / 0 / 50 / 1 / 100.0%**. `DB_BACKEND=postgres` remains disabled; this adds no runtime write enablement.

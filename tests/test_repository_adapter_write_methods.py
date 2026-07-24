@@ -482,6 +482,28 @@ class RepositoryStage57ServerWriteTest(unittest.TestCase):
         self.assertIsNone(conn.execute("SELECT 1 FROM servers WHERE id = ?", (server_id,)).fetchone())
         conn.close()
 
+    def test_provider_change_caller_transaction_updates_priorities_and_rolls_back(self):
+        conn = sqlite3.connect(":memory:"); conn.row_factory = sqlite3.Row; init_db(conn); repo = Repository(conn)
+        country = repo.create_country("Stage 61 Country", "S61")
+        before_provider = repo.create_provider("Stage 61 Before")
+        after_provider = repo.create_provider("Stage 61 After")
+        conn.execute("INSERT INTO routes(country_id, provider_id, name, cli_source_type, cli_source_label, created_by) VALUES (?, ?, ?, ?, ?, ?)", (country, before_provider, "before", "other", "none", 1))
+        before_route = conn.execute("SELECT id FROM routes WHERE name = 'before'").fetchone()["id"]
+        conn.execute("INSERT INTO routes(country_id, provider_id, name, cli_source_type, cli_source_label, created_by) VALUES (?, ?, ?, ?, ?, ?)", (country, after_provider, "after", "other", "none", 1))
+        after_route = conn.execute("SELECT id FROM routes WHERE name = 'after'").fetchone()["id"]
+        existing, new = repo.create_server("stage61-existing"), repo.create_server("stage61-new")
+        conn.execute("INSERT INTO server_route_priorities(country_id, server_id, current_route_id, created_by, updated_by) VALUES (?, ?, ?, ?, ?)", (country, existing, before_route, 1, 1))
+        conn.commit()
+        change_id = repo.create_provider_change(changed_at="2026-07-22 12:00:00", country_id=country, provider_before_id=before_provider, provider_after_id=after_provider, created_by=1, route_before_id=before_route, route_after_id=after_route, reason_text="stage61", comment="stage61 changed", server_ids=[existing, new], commit=False)
+        self.assertIsInstance(change_id, int)
+        self.assertEqual(conn.execute("SELECT COUNT(*) FROM provider_change_log_servers WHERE provider_change_log_id = ?", (change_id,)).fetchone()[0], 2)
+        self.assertEqual(tuple(conn.execute("SELECT current_route_id, previous_route_id FROM server_route_priorities WHERE country_id = ? AND server_id = ?", (country, existing)).fetchone()), (after_route, before_route))
+        self.assertIsNotNone(conn.execute("SELECT 1 FROM server_route_priorities WHERE country_id = ? AND server_id = ?", (country, new)).fetchone())
+        conn.rollback()
+        self.assertIsNone(conn.execute("SELECT 1 FROM provider_change_logs WHERE id = ?", (change_id,)).fetchone())
+        self.assertEqual(conn.execute("SELECT current_route_id FROM server_route_priorities WHERE country_id = ? AND server_id = ?", (country, existing)).fetchone()[0], before_route)
+        conn.close()
+
 class RepositoryStage59DictionarySnapshotsTest(unittest.TestCase):
     def test_postgres_branches_use_backend_placeholders_and_never_commit(self):
         class Cursor:

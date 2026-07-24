@@ -72,12 +72,12 @@ def audit(repository_file=ROOT/'app/repository.py',coverage_manifest=ROOT/'docs/
   for name in smoked:
    if name not in writes: errors.append(f'rollback-smoked method is not write_or_mutating: {name}')
    if name not in repo: errors.append(f'rollback-smoked method is stale: {name}')
-  expected_smoked={'set_hlr_limit_override','set_app_setting_value','delete_app_setting_value','upsert_hlr_daily_usage','create_user','update_user','update_user_password','set_user_permissions','create_country','create_currency','create_provider','create_prefix','get_or_create_country','get_or_create_currency','get_or_create_provider','get_or_create_prefix','ensure_project_exists','ensure_phone_number_type_exists','ensure_phone_assignment_type_exists','create_server','create_change_reason','update_dictionary_snapshots','update_server_route_priority'}
-  if set(smoked) != expected_smoked: errors.append('rollback_smoke_covered_methods must contain exactly the Stage 51-60 methods')
-  if '_change_log' in smoked or '_server_route_priority_summary' in smoked: errors.append('private helpers must not be rollback-smoked')
+  expected_smoked={'set_hlr_limit_override','set_app_setting_value','delete_app_setting_value','upsert_hlr_daily_usage','create_user','update_user','update_user_password','set_user_permissions','create_country','create_currency','create_provider','create_prefix','get_or_create_country','get_or_create_currency','get_or_create_provider','get_or_create_prefix','ensure_project_exists','ensure_phone_number_type_exists','ensure_phone_assignment_type_exists','create_server','create_change_reason','update_dictionary_snapshots','update_server_route_priority','create_provider_change'}
+  if set(smoked) != expected_smoked: errors.append('rollback_smoke_covered_methods must contain exactly the Stage 51-61 methods')
+  if any(name in smoked for name in ('_route_prefix_id','_current_tariff','_change_log','_server_route_priority_summary')): errors.append('private helpers must not be rollback-smoked')
   if 'update_dictionary_snapshots' not in smoked: errors.append('update_dictionary_snapshots must be rollback-smoked')
   if 'update_server_route_priority' not in smoked or methods.get('update_server_route_priority',{}).get('batch')!='provider_change_and_priority_writes': errors.append('update_server_route_priority must be a provider-change/priority rollback probe')
-  if 'create_provider_change' in smoked: errors.append('create_provider_change must not be rollback-smoked before Stage 61')
+  if 'create_provider_change' not in smoked or methods.get('create_provider_change',{}).get('batch')!='provider_change_and_priority_writes': errors.append('create_provider_change must be a provider-change/priority rollback probe')
   if 'set_hlr_limit_override' not in smoked or methods.get('set_hlr_limit_override',{}).get('batch')!='write_test_harness_and_transaction_foundation': errors.append('set_hlr_limit_override must remain a foundation rollback probe')
   for name in ('set_app_setting_value','delete_app_setting_value','upsert_hlr_daily_usage','create_user','update_user','update_user_password','set_user_permissions'):
    if name not in smoked or methods.get(name,{}).get('batch')!='app_settings_and_admin_low_risk': errors.append(f'{name} must be an app-settings/admin rollback probe')
