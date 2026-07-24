@@ -3430,6 +3430,12 @@ class Repository:
             existing = self.conn.execute(f"SELECT * FROM routing_events WHERE id = {p}", (event_id,)).fetchone()
             if not existing:
                 raise BusinessRuleError("Событие маршрутизации не найдено")
+            # psycopg returns TIMESTAMPTZ columns as datetime objects, whereas
+            # SQLite exposes their TEXT values.  Keep the audit payload's
+            # existing-row shape while making it JSON-serializable for the
+            # backend-aware _change_log helper.
+            if self.backend == "postgres":
+                existing = json.loads(json.dumps(dict(existing), default=str))
             if not existing["is_active"]:
                 raise BusinessRuleError("Событие уже деактивировано")
             reason = self._require_text(reason, "Причина деактивации обязательна")

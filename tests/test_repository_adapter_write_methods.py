@@ -1,4 +1,5 @@
 import sqlite3
+from datetime import datetime, timezone
 import unittest
 from unittest.mock import patch
 
@@ -589,6 +590,18 @@ class RepositoryStage62RoutingEventDeactivateTest(unittest.TestCase):
         self.assertEqual(conn.rollbacks,1)
         with self.assertRaisesRegex(RuntimeError,"update failed"): repo.deactivate_routing_event(62, reason="stage62", deactivated_by=1, commit=False)
         self.assertEqual(conn.rollbacks,1)
+
+    def test_postgres_audit_old_values_serializes_timestamps(self):
+        class Cursor:
+            def fetchone(self): return {"id": 62, "is_active": True, "event_at": datetime(2026, 7, 22, 13, tzinfo=timezone.utc)}
+        class Connection:
+            def execute(self, sql, params=()): return Cursor()
+            def commit(self): pass
+            def rollback(self): pass
+        repo=Repository(Connection(), backend="postgres")
+        with patch.object(repo, "_change_log") as log:
+            repo.deactivate_routing_event(62, reason="stage62", deactivated_by=1, commit=False)
+        self.assertEqual(log.call_args.kwargs["old_values"]["event_at"], "2026-07-22 13:00:00+00:00")
 
     def test_validations_and_sqlite_rollback(self):
         conn=sqlite3.connect(":memory:"); conn.row_factory=sqlite3.Row; init_db(conn); repo=Repository(conn)
