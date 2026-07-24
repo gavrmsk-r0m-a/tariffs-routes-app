@@ -742,3 +742,7 @@ Stage 57 rollback-smokes `create_server` on PostgreSQL using a caller-owned tran
 ## Stage 61 — provider-change rollback smoke
 
 `create_provider_change` is rollback-smoked on PostgreSQL only, including changed and unchanged provider paths, priority update/insert side effects, SAVEPOINT-contained validations, audit visibility, and cleanup. The `provider_change_and_priority_writes` batch is complete. Read-only smoke remains **611** checks and coverage remains **112 / 61 / 0 / 50 / 1 / 100.0%**. `DB_BACKEND=postgres` remains disabled; this adds no runtime write enablement.
+
+## Stage 62 — routing-event deactivation rollback smoke
+
+`deactivate_routing_event` is rollback-smoked on PostgreSQL with backend placeholders, a bound false boolean, optional `commit=False`, audit visibility, and SAVEPOINT-contained validation checks. This starts `routing_event_application_writes`; no production runtime write path is enabled. Read-only smoke remains **611** checks, coverage remains **112 / 61 / 0 / 50 / 1 / 100.0%**, and `DB_BACKEND=postgres` remains disabled.
