@@ -16,7 +16,7 @@ Two read-only transaction probes deliberately query a missing table. The aborted
 
 ## Summary and failures
 
-The JSON summary contains `status`, a masked `postgres_url`, `checks_count`, `failures`, and per-probe status. `status: ok` means all seven probes completed and rollback restoration succeeded. A write-probe failure means the database must be inspected before any later write adaptation. An aborted or SAVEPOINT failure means transaction semantics are not validated and later write stages must not proceed.
+The JSON summary contains `status`, a masked `postgres_url`, `checks_count`, `failures`, and per-probe status. `status: ok` means all 13 probes completed and rollback restoration succeeded. A write-probe failure means the database must be inspected before any later write adaptation. An aborted or SAVEPOINT failure means transaction semantics are not validated and later write stages must not proceed.
 
 ## Stage 52 app-settings and HLR usage probes
 
@@ -51,3 +51,7 @@ The harness still never calls `conn.commit()`: every probe rolls back in `finall
 ## Stage 59: dictionary snapshot probe
 
 `dictionary_snapshot_probe` uses only transaction-local direct SQL fixture setup, then invokes `update_dictionary_snapshots` for countries, providers, currencies, phone-types, projects, and phone-assignments (plus the unknown-kind path). It verifies every update is visible in the open transaction and always rolls back in `finally`; post-rollback checks require the selected phone and route rows to match their original values and reject residual `__stage59_` labels. The harness never calls `conn.commit()`.
+
+## Stage 60: provider-change/priority probe
+
+`provider_change_priority_probe` starts the `provider_change_and_priority_writes` batch without adapting `create_provider_change`. It prepares a transaction-local server-priority fixture with direct PostgreSQL SQL, invokes `update_server_route_priority(..., commit=False)` for the route-changed branch, and verifies the new `current_route_id`, the old route in `previous_route_id`, audit values, and the visible `change_log` side effect. It then invokes the same-route/comment branch and proves that both route identifiers are retained while the comment and latest audit entry change. A missing-route validation failure is isolated with a SAVEPOINT. The probe always rolls back in `finally` and rejects residual Stage 60 comments or audit rows afterward; it never calls `conn.commit()`.

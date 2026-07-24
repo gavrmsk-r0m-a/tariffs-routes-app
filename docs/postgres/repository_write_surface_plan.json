@@ -1449,10 +1449,10 @@
     },
     "update_server_route_priority": {
       "batch": "provider_change_and_priority_writes",
-      "current_commit_behavior": "commits internally",
+      "current_commit_behavior": "mixed",
       "dependencies": [],
       "mutation_kind": "multi_write",
-      "notes": "Stage 50 audit inventory only; no write adaptation.",
+      "notes": "Stage 60: backend-aware placeholders and optional commit=False are rollback-smoked; create_provider_change remains unadapted.",
       "postgres_strategy": "Keep runtime disabled; use rollback-only harness, backend placeholders, and RETURNING where identity retrieval is required.",
       "returns": "none",
       "risk": "high",
@@ -1464,15 +1464,14 @@
         "history_change_log_coupling",
         "needs_integration_test",
         "postgres_transaction_aborted_behavior",
-        "sqlite_datetime_function",
-        "sqlite_placeholder"
+        "sqlite_datetime_function"
       ],
       "test_strategy": [
         "SQL-recording test",
         "SQLite regression test",
         "PostgreSQL rollback-only integration test"
       ],
-      "transaction_contract": "multi_statement_atomic"
+      "transaction_contract": "optional_commit_parameter"
     },
     "update_tariff": {
       "batch": "phone_route_tariff_core_writes",
@@ -1608,6 +1607,7 @@
     "ensure_phone_assignment_type_exists",
     "create_server",
     "create_change_reason",
-    "update_dictionary_snapshots"
+    "update_dictionary_snapshots",
+    "update_server_route_priority"
   ]
 }

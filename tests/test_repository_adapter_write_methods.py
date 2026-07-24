@@ -116,6 +116,33 @@ class RepositoryAdapterWriteMethodsTest(unittest.TestCase):
             Repository(caller_owned, backend="postgres").create_change_reason("broken", commit=False)
         self.assertEqual(caller_owned.rollbacks, 0)
 
+    def test_server_priority_update_uses_postgres_placeholders_and_optional_commit(self):
+        class Cursor:
+            def __init__(self, row=None): self.row = row
+            def fetchone(self): return self.row
+        class RecordingConnection:
+            def __init__(self): self.calls=[]; self.commits=0; self.rollbacks=0
+            def execute(self, sql, params=()):
+                self.calls.append((sql, params))
+                if "FROM server_route_priorities" in sql:
+                    return Cursor({"id": 7, "country_id": 1, "server_id": 2, "current_route_id": 3, "previous_route_id": None, "comment": "before"})
+                if "FROM routes WHERE id" in sql:
+                    return Cursor({"id": 4, "country_id": 1})
+                return Cursor()
+            def commit(self): self.commits += 1
+            def rollback(self): self.rollbacks += 1
+        connection = RecordingConnection()
+        repo = Repository(connection, backend="postgres")
+        with patch.object(repo, "_server_route_priority_summary", return_value="summary"):
+            repo.update_server_route_priority(priority_id=7, current_route_id=4, comment="changed", changed_by=9, commit=False)
+        sql = "\n".join(call[0] for call in connection.calls)
+        self.assertIn("current_route_id = %s", sql)
+        self.assertIn("previous_route_id = current_route_id", sql)
+        self.assertNotIn("?", sql)
+        self.assertEqual(connection.commits, 0)
+        repo.update_server_route_priority(priority_id=7, current_route_id=4, comment="changed", changed_by=9)
+        self.assertEqual(connection.commits, 1)
+
     def test_hlr_limit_override_keeps_sqlite_commit_default_and_allows_caller_transaction(self):
         self.repo.set_hlr_limit_override("2500")
         self.assertEqual(self.repo.get_hlr_limit_override(), "2500")

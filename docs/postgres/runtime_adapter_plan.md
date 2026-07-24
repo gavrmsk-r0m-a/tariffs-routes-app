@@ -734,3 +734,7 @@ Stage 57 rollback-smokes `create_server` on PostgreSQL using a caller-owned tran
 ## Stage 59: dictionary snapshot rollback smoke
 
 `update_dictionary_snapshots` is rollback-smoked on PostgreSQL, including all six snapshot branches. The read-only smoke remains at 611 checks and the coverage audit remains 112/61/0/50/1/100%. `DB_BACKEND=postgres` remains disabled and this stage does not enable runtime writes.
+
+## Stage 60 — server-priority rollback smoke
+
+`update_server_route_priority` and its required private summary helper are rollback-smoked on PostgreSQL. The read-only smoke remains 611 checks, and the coverage audit remains 112/61/0/50/1/100%. `DB_BACKEND=postgres` stays disabled: this is a CI-only rollback harness adaptation, not runtime write enablement.
