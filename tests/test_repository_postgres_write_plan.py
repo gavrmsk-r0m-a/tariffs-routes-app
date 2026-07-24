@@ -9,12 +9,17 @@ class WritePlanTests(unittest.TestCase):
  def bad(self,p): self.assertEqual('failed',self.execute_plan(p)['status'])
  def name(self): return next(iter(self.plan['methods']))
  def test_actual_baseline_write_plan_passes(self):
-  summary=self.execute_plan(self.plan); self.assertEqual('ok',summary['status']); self.assertEqual(24,summary['rollback_smoke_covered_methods_count'])
+  summary=self.execute_plan(self.plan); self.assertEqual('ok',summary['status']); self.assertEqual(25,summary['rollback_smoke_covered_methods_count'])
  def test_invalid_rollback_smoke_tracking_fails(self):
   for value in ([], ['set_app_setting_value','set_app_setting_value'], ['list_countries'], ['stale_method'], ['set_hlr_limit_override','set_app_setting_value','delete_app_setting_value','upsert_hlr_daily_usage']):
    p=copy.deepcopy(self.plan); p['rollback_smoke_covered_methods']=value; self.bad(p)
  def test_dictionary_rollback_method_in_wrong_batch_fails(self):
   p=copy.deepcopy(self.plan); p['methods']['ensure_project_exists']['batch']='app_settings_and_admin_low_risk'; self.bad(p)
+ def test_stage62_routing_event_smoke_rules(self):
+  p=copy.deepcopy(self.plan); p['rollback_smoke_covered_methods'].remove('deactivate_routing_event'); self.bad(p)
+  p=copy.deepcopy(self.plan); p['methods']['deactivate_routing_event']['batch']='app_settings_and_admin_low_risk'; self.bad(p)
+  for name in ('create_routing_event','update_routing_event','list_countries','deactivate_routing_event'):
+   p=copy.deepcopy(self.plan); p['rollback_smoke_covered_methods'].append(name); self.bad(p)
  def test_missing_stage59_rollback_method_fails(self):
   p=copy.deepcopy(self.plan); p['rollback_smoke_covered_methods'].remove('update_dictionary_snapshots'); self.bad(p)
  def test_stage57_server_in_wrong_batch_fails(self):
