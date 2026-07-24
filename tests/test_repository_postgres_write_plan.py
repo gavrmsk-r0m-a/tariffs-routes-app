@@ -9,7 +9,7 @@ class WritePlanTests(unittest.TestCase):
  def bad(self,p): self.assertEqual('failed',self.execute_plan(p)['status'])
  def name(self): return next(iter(self.plan['methods']))
  def test_actual_baseline_write_plan_passes(self):
-  summary=self.execute_plan(self.plan); self.assertEqual('ok',summary['status']); self.assertEqual(23,summary['rollback_smoke_covered_methods_count'])
+  summary=self.execute_plan(self.plan); self.assertEqual('ok',summary['status']); self.assertEqual(24,summary['rollback_smoke_covered_methods_count'])
  def test_invalid_rollback_smoke_tracking_fails(self):
   for value in ([], ['set_app_setting_value','set_app_setting_value'], ['list_countries'], ['stale_method'], ['set_hlr_limit_override','set_app_setting_value','delete_app_setting_value','upsert_hlr_daily_usage']):
    p=copy.deepcopy(self.plan); p['rollback_smoke_covered_methods']=value; self.bad(p)
@@ -20,7 +20,7 @@ class WritePlanTests(unittest.TestCase):
  def test_stage57_server_in_wrong_batch_fails(self):
   p=copy.deepcopy(self.plan); p['methods']['create_server']['batch']='app_settings_and_admin_low_risk'; self.bad(p)
  def test_private_and_deferred_dictionary_methods_cannot_be_smoked(self):
-  for name in ('_change_log','_server_route_priority_summary'):
+  for name in ('_route_prefix_id','_current_tariff','_change_log','_server_route_priority_summary'):
    p=copy.deepcopy(self.plan); p['rollback_smoke_covered_methods'].append(name); self.bad(p)
  def test_stage58_change_reason_in_wrong_batch_fails(self):
   p=copy.deepcopy(self.plan); p['methods']['create_change_reason']['batch']='app_settings_and_admin_low_risk'; self.bad(p)

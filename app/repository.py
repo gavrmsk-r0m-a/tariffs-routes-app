@@ -3527,20 +3527,22 @@ class Repository:
     def _route_prefix_id(self, route_id: int | None) -> int | None:
         if not route_id:
             return None
-        row = self.conn.execute("SELECT provider_prefix_id FROM routes WHERE id = ?", (route_id,)).fetchone()
+        p = placeholder(self.backend)
+        row = self.conn.execute(f"SELECT provider_prefix_id FROM routes WHERE id = {p}", (route_id,)).fetchone()
         return int(row["provider_prefix_id"]) if row and row["provider_prefix_id"] is not None else None
 
     def _current_tariff(self, country_id: int, provider_id: int, provider_prefix_id: int | None) -> sqlite3.Row | None:
+        p = placeholder(self.backend)
         return self.conn.execute(
-            """
+            f"""
             SELECT * FROM tariffs
-            WHERE country_id = ? AND provider_id = ?
-              AND COALESCE(provider_prefix_id, 0) = COALESCE(?, 0)
-              AND is_current = 1
+            WHERE country_id = {p} AND provider_id = {p}
+              AND COALESCE(provider_prefix_id, 0) = COALESCE({p}, 0)
+              AND is_current = {p}
             ORDER BY created_at DESC, id DESC
             LIMIT 1
             """,
-            (country_id, provider_id, provider_prefix_id),
+            (country_id, provider_id, provider_prefix_id, to_db_bool(True, self.backend)),
         ).fetchone()
 
     def create_provider_change(
@@ -3558,31 +3560,33 @@ class Repository:
         reason_text: str | None = None,
         comment: str | None = None,
         server_ids: list[int] | None = None,
+        commit: bool = True,
     ) -> int:
         provider_changed = provider_before_id != provider_after_id
         if not reason_text or not reason_text.strip():
             raise BusinessRuleError("Причина замены обязательна")
         if provider_changed and not server_ids:
             raise BusinessRuleError("Сервер обязателен при смене провайдера")
-        for route_id, provider_id, label in (
-            (route_before_id, provider_before_id, "Маршрут до"),
-            (route_after_id, provider_after_id, "Маршрут после"),
-        ):
-            if route_id:
-                route = self.conn.execute("SELECT provider_id FROM routes WHERE id = ?", (route_id,)).fetchone()
-                if route is None:
-                    raise BusinessRuleError(f"{label} не найден")
-                if int(route["provider_id"]) != int(provider_id):
-                    raise BusinessRuleError(f"{label} не принадлежит выбранному провайдеру")
-        provider_prefix_before_id = provider_prefix_before_id if provider_prefix_before_id is not None else self._route_prefix_id(route_before_id)
-        provider_prefix_after_id = provider_prefix_after_id if provider_prefix_after_id is not None else self._route_prefix_id(route_after_id)
-        tariff_before = self._current_tariff(country_id, provider_before_id, provider_prefix_before_id)
-        tariff_after = self._current_tariff(country_id, provider_after_id, provider_prefix_after_id)
-        price_delta_eur = None
-        if tariff_before and tariff_after:
-            price_delta_eur = eur_price(tariff_after["eur_price"], "1") - eur_price(tariff_before["eur_price"], "1")
-        cur = self.conn.execute(
-            """
+        p = placeholder(self.backend)
+        try:
+            for route_id, provider_id, label in (
+                (route_before_id, provider_before_id, "Маршрут до"),
+                (route_after_id, provider_after_id, "Маршрут после"),
+            ):
+                if route_id:
+                    route = self.conn.execute(f"SELECT provider_id FROM routes WHERE id = {p}", (route_id,)).fetchone()
+                    if route is None:
+                        raise BusinessRuleError(f"{label} не найден")
+                    if int(route["provider_id"]) != int(provider_id):
+                        raise BusinessRuleError(f"{label} не принадлежит выбранному провайдеру")
+            provider_prefix_before_id = provider_prefix_before_id if provider_prefix_before_id is not None else self._route_prefix_id(route_before_id)
+            provider_prefix_after_id = provider_prefix_after_id if provider_prefix_after_id is not None else self._route_prefix_id(route_after_id)
+            tariff_before = self._current_tariff(country_id, provider_before_id, provider_prefix_before_id)
+            tariff_after = self._current_tariff(country_id, provider_after_id, provider_prefix_after_id)
+            price_delta_eur = None
+            if tariff_before and tariff_after:
+                price_delta_eur = eur_price(tariff_after["eur_price"], "1") - eur_price(tariff_before["eur_price"], "1")
+            sql = f"""
             INSERT INTO provider_change_logs(
                 changed_at, country_id, route_before_id, provider_before_id, provider_prefix_before_id,
                 tariff_before_id, price_before_provider_currency_id, price_before_in_provider_currency,
@@ -3592,9 +3596,9 @@ class Repository:
                 price_after_conversion_rate_to_eur, price_after_conversion_rate_date, price_after_eur,
                 price_delta_eur, provider_changed, reason_text, comment, telegram_status, created_by
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'not_sent', ?)
-            """,
-            (
+            VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, 'not_sent', {p})
+            """
+            cur = self.conn.execute(prepare_insert_returning_id(sql, self.backend), (
                 changed_at,
                 country_id,
                 route_before_id,
@@ -3616,54 +3620,58 @@ class Repository:
                 tariff_after["conversion_rate_date"] if tariff_after else None,
                 tariff_after["eur_price"] if tariff_after else None,
                 str(price_delta_eur) if price_delta_eur is not None else None,
-                1 if provider_changed else 0,
+                to_db_bool(provider_changed, self.backend),
                 reason_text,
                 comment,
                 created_by,
-            ),
-        )
-        change_id = int(cur.lastrowid)
-        for server_id in server_ids or []:
-            self.conn.execute(
-                "INSERT INTO provider_change_log_servers(provider_change_log_id, server_id) VALUES (?, ?)",
+            ))
+            change_id = extract_inserted_id(cur, self.backend)
+            for server_id in server_ids or []:
+                self.conn.execute(
+                f"INSERT INTO provider_change_log_servers(provider_change_log_id, server_id) VALUES ({p}, {p})",
                 (change_id, server_id),
-            )
-            if provider_changed and route_after_id:
-                existing = self.conn.execute(
-                    "SELECT id, current_route_id FROM server_route_priorities WHERE country_id = ? AND server_id = ?",
+                )
+                if provider_changed and route_after_id:
+                    existing = self.conn.execute(
+                    f"SELECT id, current_route_id FROM server_route_priorities WHERE country_id = {p} AND server_id = {p}",
                     (country_id, server_id),
-                ).fetchone()
-                if existing:
-                    self.conn.execute(
-                        """
+                    ).fetchone()
+                    if existing:
+                        self.conn.execute(
+                        f"""
                         UPDATE server_route_priorities
                         SET previous_route_id = current_route_id,
-                            current_route_id = ?, has_overflow = 0, overflow_route_id = NULL,
-                            provider_change_log_id = ?, changed_at = CURRENT_TIMESTAMP,
-                            changed_by = ?, reason = ?, comment = ?, updated_by = ?, updated_at = CURRENT_TIMESTAMP
-                        WHERE id = ?
+                            current_route_id = {p}, has_overflow = {p}, overflow_route_id = NULL,
+                            provider_change_log_id = {p}, changed_at = CURRENT_TIMESTAMP,
+                            changed_by = {p}, reason = {p}, comment = {p}, updated_by = {p}, updated_at = CURRENT_TIMESTAMP
+                        WHERE id = {p}
                         """,
-                        (route_after_id, change_id, created_by, reason_text, comment, created_by, existing["id"]),
-                    )
-                else:
-                    self.conn.execute(
-                        """
+                        (route_after_id, to_db_bool(False, self.backend), change_id, created_by, reason_text, comment, created_by, existing["id"]),
+                        )
+                    else:
+                        self.conn.execute(
+                        f"""
                         INSERT INTO server_route_priorities(
                             country_id, server_id, current_route_id, provider_change_log_id,
                             changed_at, changed_by, reason, comment, created_by
-                        ) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, ?, ?, ?, ?)
+                        ) VALUES ({p}, {p}, {p}, {p}, CURRENT_TIMESTAMP, {p}, {p}, {p}, {p})
                         """,
                         (country_id, server_id, route_after_id, change_id, created_by, reason_text, comment, created_by),
-                    )
-        self._change_log(
+                        )
+            self._change_log(
             "provider_change_log",
             change_id,
             "provider_change_log.created",
             created_by,
             new_values={"provider_changed": provider_changed, "server_ids": server_ids or []},
-        )
-        self.conn.commit()
-        return change_id
+            )
+            if commit:
+                self.conn.commit()
+            return int(change_id)
+        except Exception:
+            if commit:
+                self.conn.rollback()
+            raise
 
     def _server_route_priority_summary(
         self,

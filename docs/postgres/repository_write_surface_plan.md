@@ -141,3 +141,7 @@ Stage 52 rollback-smokes `set_app_setting_value`, `delete_app_setting_value`, an
 ## Stage 60 status
 
 `update_server_route_priority` is rollback-smoked on PostgreSQL with backend-aware placeholders and an optional `commit=False` caller-owned transaction. This starts `provider_change_and_priority_writes`; `create_provider_change` remains unadapted. `dictionary_and_snapshot_writes` remains complete, production runtime remains disabled, and no `DB_BACKEND=postgres` runtime enablement is included.
+
+## Stage 61 status
+
+`create_provider_change` is PostgreSQL-compatible and rollback-smoked with caller-owned `commit=False`; its `_route_prefix_id` and `_current_tariff` dependencies use backend-aware placeholders. `provider_change_and_priority_writes` is complete: `update_server_route_priority` was rollback-smoked in Stage 60 and `create_provider_change` in Stage 61. `dictionary_and_snapshot_writes` remains complete. Production runtime and `DB_BACKEND=postgres` remain disabled.

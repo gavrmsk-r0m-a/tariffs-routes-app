@@ -43,6 +43,9 @@ CHANGE_REASON_PROBE_NAME = "__stage58_change_reason_probe__"
 CHANGE_REASON_PROBE_COMMENT = "Stage 58 change reason rollback probe"
 PRIORITY_CHANGED_COMMENT = "__stage60_priority_changed_comment__"
 PRIORITY_SAME_ROUTE_COMMENT = "__stage60_priority_same_route_comment__"
+PROVIDER_CHANGE_REASON = "__stage61_provider_change_reason__"
+PROVIDER_CHANGE_CHANGED_COMMENT = "__stage61_provider_change_changed_comment__"
+PROVIDER_CHANGE_NOOP_COMMENT = "__stage61_provider_change_noop_comment__"
 
 
 def empty_summary(postgres_url: str) -> dict:
@@ -55,7 +58,7 @@ def empty_summary(postgres_url: str) -> dict:
             "dictionary_create_probe", "dictionary_get_or_create_probe",
             "dictionary_ensure_probe", "dictionary_server_probe",
             "dictionary_change_reason_probe", "dictionary_snapshot_probe",
-            "provider_change_priority_probe",
+            "provider_change_priority_probe", "provider_change_create_probe",
         )},
     }
 
@@ -553,6 +556,77 @@ def run_provider_change_priority_probe(repo: Repository, conn) -> None:
     finally:
         conn.rollback()
 
+
+def run_provider_change_create_probe(repo: Repository, conn) -> None:
+    """Exercise provider-change creation branches in one rollback-only transaction."""
+    user = conn.execute("SELECT id FROM users ORDER BY id LIMIT 1").fetchone()
+    pair = conn.execute("""
+        SELECT r1.country_id, r1.id AS route_before_id, r1.provider_id AS provider_before_id,
+               r2.id AS route_after_id, r2.provider_id AS provider_after_id
+        FROM routes r1 JOIN routes r2 ON r2.country_id=r1.country_id AND r2.provider_id<>r1.provider_id
+        ORDER BY r1.country_id, r1.id, r2.id LIMIT 1
+    """).fetchone()
+    servers = conn.execute("SELECT id FROM servers WHERE is_active=true ORDER BY id LIMIT 2").fetchall()
+    if len(servers) < 2: servers = conn.execute("SELECT id FROM servers WHERE is_active=1 ORDER BY id LIMIT 2").fetchall()
+    if not user or not pair or len(servers) < 2:
+        raise AssertionError("Stage 61 fixture requires a user, provider-changing route pair, and two active servers")
+    existing_id, new_id = servers[0]["id"], servers[1]["id"]
+    conn.rollback()
+    try:
+        conn.execute("BEGIN")
+        existing_priority = conn.execute("SELECT id FROM server_route_priorities WHERE country_id=%s AND server_id=%s", (pair["country_id"], existing_id)).fetchone()
+        if existing_priority:
+            conn.execute("UPDATE server_route_priorities SET current_route_id=%s, previous_route_id=NULL, comment=%s, created_by=%s, updated_by=%s WHERE id=%s", (pair["route_before_id"], "__stage61_priority_before__", user["id"], user["id"], existing_priority["id"]))
+        else:
+            conn.execute("""INSERT INTO server_route_priorities
+                (country_id, server_id, current_route_id, previous_route_id, comment, created_by, updated_by)
+                VALUES (%s, %s, %s, NULL, %s, %s, %s)""",
+                (pair["country_id"], existing_id, pair["route_before_id"], "__stage61_priority_before__", user["id"], user["id"]))
+        if conn.execute("SELECT 1 FROM server_route_priorities WHERE country_id=%s AND server_id=%s", (pair["country_id"], new_id)).fetchone():
+            candidates = conn.execute("SELECT s.id FROM servers s WHERE s.is_active=true AND s.id<>%s AND NOT EXISTS (SELECT 1 FROM server_route_priorities p WHERE p.country_id=%s AND p.server_id=s.id) ORDER BY s.id LIMIT 1", (existing_id, pair["country_id"])).fetchone()
+            if not candidates: raise AssertionError("Stage 61 fixture requires a server without a country priority")
+            new_id = candidates["id"]
+        args = dict(changed_at="2026-07-22 12:00:00", country_id=pair["country_id"],
+                    provider_before_id=pair["provider_before_id"], provider_after_id=pair["provider_after_id"],
+                    route_before_id=pair["route_before_id"], route_after_id=pair["route_after_id"],
+                    reason_text=PROVIDER_CHANGE_REASON, comment=PROVIDER_CHANGE_CHANGED_COMMENT,
+                    server_ids=[existing_id, new_id], created_by=user["id"], commit=False)
+        change_id = repo.create_provider_change(**args)
+        log = conn.execute("SELECT * FROM provider_change_logs WHERE id=%s", (change_id,)).fetchone()
+        if not log or not bool(log["provider_changed"]) or log["comment"] != PROVIDER_CHANGE_CHANGED_COMMENT or log["telegram_status"] != "not_sent":
+            raise AssertionError("Stage 61 changed provider log is not visible")
+        linked = conn.execute("SELECT server_id FROM provider_change_log_servers WHERE provider_change_log_id=%s", (change_id,)).fetchall()
+        if {row["server_id"] for row in linked} != {existing_id, new_id}:
+            raise AssertionError("Stage 61 provider-change server links are not visible")
+        existing = conn.execute("SELECT * FROM server_route_priorities WHERE country_id=%s AND server_id=%s", (pair["country_id"], existing_id)).fetchone()
+        inserted = conn.execute("SELECT * FROM server_route_priorities WHERE country_id=%s AND server_id=%s", (pair["country_id"], new_id)).fetchone()
+        if not existing or (existing["current_route_id"], existing["previous_route_id"], existing["provider_change_log_id"], bool(existing["has_overflow"])) != (pair["route_after_id"], pair["route_before_id"], change_id, False):
+            raise AssertionError("Stage 61 existing priority update is not visible")
+        if not inserted or (inserted["current_route_id"], inserted["provider_change_log_id"], inserted["comment"]) != (pair["route_after_id"], change_id, PROVIDER_CHANGE_CHANGED_COMMENT):
+            raise AssertionError("Stage 61 new priority insert is not visible")
+        audit = conn.execute("SELECT * FROM change_log WHERE entity_type=%s AND entity_id=%s AND change_type=%s", ("provider_change_log", change_id, "provider_change_log.created")).fetchone()
+        if not audit or audit["changed_by"] != user["id"] or "provider_changed" not in str(audit["new_values"]):
+            raise AssertionError("Stage 61 changed provider audit is not visible")
+        noop_id = repo.create_provider_change(**{**args, "provider_after_id": pair["provider_before_id"], "route_after_id": pair["route_before_id"], "comment": PROVIDER_CHANGE_NOOP_COMMENT, "server_ids": None})
+        noop = conn.execute("SELECT provider_changed, comment FROM provider_change_logs WHERE id=%s", (noop_id,)).fetchone()
+        if not noop or bool(noop["provider_changed"]) or noop["comment"] != PROVIDER_CHANGE_NOOP_COMMENT or conn.execute("SELECT 1 FROM provider_change_log_servers WHERE provider_change_log_id=%s", (noop_id,)).fetchone() or conn.execute("SELECT 1 FROM server_route_priorities WHERE provider_change_log_id=%s", (noop_id,)).fetchone():
+            raise AssertionError("Stage 61 no-op provider-change state is incorrect")
+        for name, overrides, message in (("reason", {"reason_text": ""}, "Причина замены обязательна"), ("servers", {"server_ids": None}, "Сервер обязателен при смене провайдера"), ("mismatch", {"provider_before_id": pair["provider_after_id"]}, "не принадлежит выбранному провайдеру")):
+            conn.execute(f"SAVEPOINT stage61_bad_{name}")
+            try:
+                repo.create_provider_change(**{**args, **overrides})
+            except Exception as exc:
+                if exc.__class__.__name__ != "BusinessRuleError" or message not in str(exc): raise
+            else: raise AssertionError(f"Stage 61 {name} validation did not fail")
+            finally:
+                conn.execute(f"ROLLBACK TO SAVEPOINT stage61_bad_{name}"); conn.execute(f"RELEASE SAVEPOINT stage61_bad_{name}")
+    finally:
+        conn.rollback()
+    try:
+        if conn.execute("SELECT 1 FROM provider_change_logs WHERE reason_text=%s OR comment IN (%s, %s)", (PROVIDER_CHANGE_REASON, PROVIDER_CHANGE_CHANGED_COMMENT, PROVIDER_CHANGE_NOOP_COMMENT)).fetchone() or conn.execute("SELECT 1 FROM server_route_priorities WHERE comment=%s", (PROVIDER_CHANGE_CHANGED_COMMENT,)).fetchone() or conn.execute("SELECT 1 FROM change_log WHERE entity_type=%s AND new_values::text LIKE %s", ("provider_change_log", "%stage61_%")).fetchone():
+            raise AssertionError("Stage 61 rows remain after rollback")
+    finally:
+        conn.rollback()
 def run_harness(postgres_url: str, probe_key: str = DEFAULT_PROBE_KEY, probe_value: str = DEFAULT_PROBE_VALUE) -> dict:
     """Run all probes; psycopg imports remain local so unit tests need no driver."""
     summary = empty_summary(postgres_url)
@@ -589,6 +663,7 @@ def run_harness(postgres_url: str, probe_key: str = DEFAULT_PROBE_KEY, probe_val
         check("dictionary_change_reason_probe", lambda: run_dictionary_change_reason_probe(repo, conn))
         check("dictionary_snapshot_probe", lambda: run_dictionary_snapshot_probe(repo, conn))
         check("provider_change_priority_probe", lambda: run_provider_change_priority_probe(repo, conn))
+        check("provider_change_create_probe", lambda: run_provider_change_create_probe(repo, conn))
     except Exception as exc:
         summary["failures"].append({"check": "connect", "error": sanitize_error(exc, postgres_url)})
     finally:

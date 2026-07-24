@@ -526,10 +526,10 @@
     },
     "create_provider_change": {
       "batch": "provider_change_and_priority_writes",
-      "current_commit_behavior": "commits internally",
+      "current_commit_behavior": "mixed",
       "dependencies": [],
       "mutation_kind": "insert",
-      "notes": "Stage 50 audit inventory only; no write adaptation.",
+      "notes": "Stage 61: backend placeholders, RETURNING identity retrieval, optional commit, and rollback-only PostgreSQL smoke.",
       "postgres_strategy": "Keep runtime disabled; use rollback-only harness, backend placeholders, and RETURNING where identity retrieval is required.",
       "returns": "inserted_id",
       "risk": "medium",
@@ -539,21 +539,15 @@
         "database_write"
       ],
       "sqlite_postgres_blockers": [
-        "dynamic_sql",
         "history_change_log_coupling",
-        "needs_integration_test",
-        "postgres_returning_required",
-        "postgres_transaction_aborted_behavior",
-        "sqlite_datetime_function",
-        "sqlite_lastrowid",
-        "sqlite_placeholder"
+        "needs_integration_test"
       ],
       "test_strategy": [
         "SQL-recording test",
         "SQLite regression test",
         "PostgreSQL rollback-only integration test"
       ],
-      "transaction_contract": "explicit_commit"
+      "transaction_contract": "optional_commit_parameter"
     },
     "create_route": {
       "batch": "phone_route_tariff_core_writes",
@@ -1608,6 +1602,7 @@
     "create_server",
     "create_change_reason",
     "update_dictionary_snapshots",
-    "update_server_route_priority"
+    "update_server_route_priority",
+    "create_provider_change"
   ]
 }
