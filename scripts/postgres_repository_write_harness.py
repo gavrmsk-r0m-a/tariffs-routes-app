@@ -55,6 +55,10 @@ ROUTING_EVENT_UPDATED_COMMENT = "__stage63_routing_event_updated_comment__"
 CAMPAIGN_EVENT_ORIGINAL_COMMENT = "__stage63_campaign_event_original_comment__"
 CAMPAIGN_EVENT_UPDATED_COMMENT = "__stage63_campaign_event_updated_comment__"
 ROUTING_EVENT_UPDATE_CHANGED_AT = "2026-07-22 14:00:00"
+NONE_COMMENT = "__stage64_routing_event_none_comment__"
+SERVER_PRIORITY_COMMENT = "__stage64_routing_event_server_priority_comment__"
+SERVER_PRIORITY_OVERFLOW_COMMENT = "__stage64_routing_event_overflow_comment__"
+EVENT_AT = "2026-07-22 15:00:00"
 
 
 def empty_summary(postgres_url: str) -> dict:
@@ -69,6 +73,7 @@ def empty_summary(postgres_url: str) -> dict:
             "dictionary_change_reason_probe", "dictionary_snapshot_probe",
             "provider_change_priority_probe", "provider_change_create_probe",
             "routing_event_deactivate_probe", "routing_event_update_probe",
+            "routing_event_create_core_probe",
         )},
     }
 
@@ -784,6 +789,110 @@ def run_routing_event_update_probe(repo: Repository, conn) -> None:
         conn.rollback()
 
 
+def run_routing_event_create_core_probe(repo: Repository, conn) -> None:
+    """Partially probe only the Stage 64 ``none`` and ``server_priority`` branches."""
+    event_ids = []
+    conn.rollback()
+    conn.execute("BEGIN")
+    try:
+        user = conn.execute("SELECT id FROM users ORDER BY id LIMIT 1").fetchone()
+        routes = conn.execute(
+            "SELECT id, country_id, provider_id FROM routes WHERE provider_id IS NOT NULL AND is_actual = %s ORDER BY country_id, id",
+            (True,),
+        ).fetchall()
+        servers = conn.execute("SELECT id FROM servers WHERE is_active = %s ORDER BY id LIMIT 2", (True,)).fetchall()
+        if not user or not routes or len(servers) < 2:
+            raise AssertionError("Stage 64 fixture requires a user, an active route, and two active servers")
+        user_id, route = user["id"], routes[0]
+
+        none_id = repo.create_routing_event(
+            event_at=EVENT_AT, apply_scope="none", reason="Другое",
+            country_id=route["country_id"], provider_id=route["provider_id"],
+            affected_route_id=route["id"], comment=NONE_COMMENT,
+            created_by=user_id, commit=False,
+        )
+        event_ids.append(none_id)
+        none = conn.execute("SELECT * FROM routing_events WHERE id = %s", (none_id,)).fetchone()
+        if not none or none["apply_scope"] != "none" or none["comment"] != NONE_COMMENT or not bool(none["is_active"]):
+            raise AssertionError("Stage 64 none routing event was not persisted inside the transaction")
+        if any(none[field] is not None for field in ("server_id", "old_route_id", "new_route_id", "calling_company_id")):
+            raise AssertionError("Stage 64 none routing event retained scope-specific fields")
+        if conn.execute("SELECT 1 FROM routing_event_servers WHERE routing_event_id = %s", (none_id,)).fetchone():
+            raise AssertionError("Stage 64 none routing event unexpectedly linked a server")
+        log = conn.execute("SELECT * FROM change_log WHERE entity_type = %s AND entity_id = %s AND change_type = %s", ("routing_event", none_id, "routing_event.created")).fetchone()
+        if not log or log["changed_by"] != user_id or NONE_COMMENT not in str(log["new_values"]) or NONE_COMMENT not in log["summary"]:
+            raise AssertionError("Stage 64 none change_log row is incomplete")
+
+        country_routes = [item for item in routes if item["country_id"] == route["country_id"]]
+        if len(country_routes) < 2:
+            raise AssertionError("Stage 64 fixture requires two active routes in one country")
+        old_route, new_route = country_routes[0], country_routes[1]
+        existing_server, insert_server = servers[0]["id"], servers[1]["id"]
+        conn.execute("DELETE FROM server_route_priorities WHERE country_id = %s AND server_id IN (%s, %s)", (route["country_id"], existing_server, insert_server))
+        existing_id = conn.execute(
+            """INSERT INTO server_route_priorities
+               (country_id, server_id, current_route_id, previous_route_id, has_overflow, overflow_route_id,
+                changed_at, changed_by, reason, comment, created_by, updated_by)
+               VALUES (%s, %s, %s, NULL, %s, NULL, %s, %s, %s, %s, %s, %s) RETURNING id""",
+            (route["country_id"], existing_server, old_route["id"], False, EVENT_AT, user_id,
+             "Stage 64 setup", "__stage64_priority_before__", user_id, user_id),
+        ).fetchone()["id"]
+        priority_event_id = repo.create_routing_event(
+            event_at=EVENT_AT, apply_scope="server_priority", reason="Массовый отбои/занято",
+            country_id=route["country_id"], server_ids=[existing_server, insert_server],
+            new_route_id=new_route["id"], comment=SERVER_PRIORITY_COMMENT,
+            created_by=user_id, commit=False,
+        )
+        event_ids.append(priority_event_id)
+        event = conn.execute("SELECT * FROM routing_events WHERE id = %s", (priority_event_id,)).fetchone()
+        links = conn.execute("SELECT * FROM routing_event_servers WHERE routing_event_id = %s ORDER BY server_id", (priority_event_id,)).fetchall()
+        priorities = conn.execute("SELECT * FROM server_route_priorities WHERE country_id = %s AND server_id IN (%s, %s) ORDER BY server_id", (route["country_id"], existing_server, insert_server)).fetchall()
+        if event["provider_id"] != new_route["provider_id"] or event["server_id"] is not None or event["comment"] != SERVER_PRIORITY_COMMENT:
+            raise AssertionError("Stage 64 server-priority event fields are incomplete")
+        if len(links) != 2 or any(link["status"] != "applied" or link["server_route_priority_id"] is None for link in links):
+            raise AssertionError("Stage 64 server-priority links do not cover update and insert")
+        if len(priorities) != 2 or any(row["current_route_id"] != new_route["id"] or bool(row["has_overflow"]) for row in priorities):
+            raise AssertionError("Stage 64 server priorities were not updated/inserted")
+        updated = next(row for row in priorities if row["id"] == existing_id)
+        if updated["previous_route_id"] != old_route["id"]:
+            raise AssertionError("Stage 64 updated priority did not preserve previous route")
+        if conn.execute("SELECT COUNT(*) AS count FROM change_log WHERE entity_type = %s AND change_type = %s AND new_values::text LIKE %s", ("server_route_priority", "routing_event.applied_to_server_priority", "%stage64%" )).fetchone()["count"] < 2:
+            raise AssertionError("Stage 64 priority change_log rows are missing")
+
+        validations = (
+            ("bad_scope", dict(apply_scope="bad"), "Некорректная область применения"),
+            ("none_provider", dict(apply_scope="none", reason="Другое", comment=NONE_COMMENT), "Провайдер обязателен"),
+            ("none_comment", dict(apply_scope="none", reason="Другое", provider_id=route["provider_id"]), "Требуется понятный комментарий"),
+            ("missing_server", dict(apply_scope="server_priority", reason="Массовый отбои/занято", country_id=route["country_id"], new_route_id=new_route["id"]), "Сервер обязателен для серверного приоритета"),
+            ("missing_geo_route", dict(apply_scope="server_priority", reason="Массовый отбои/занято", server_id=existing_server), "GEO, сервер и новый маршрут обязательны для серверного приоритета"),
+            ("overflow_provider", dict(apply_scope="server_priority", reason="Массовый отбои/занято", country_id=route["country_id"], server_id=existing_server, new_route_id=old_route["id"], has_overflow=True, overflow_route_id=new_route["id"]), "Провайдер перелива обязателен"),
+            ("noop", dict(apply_scope="server_priority", reason="Массовый отбои/занято", country_id=route["country_id"], server_id=existing_server, new_route_id=new_route["id"]), "Выбранный маршрут уже установлен для всех выбранных серверов"),
+        )
+        for name, arguments, expected in validations:
+            conn.execute(f"SAVEPOINT stage64_{name}")
+            try:
+                repo.create_routing_event(event_at=EVENT_AT, comment=arguments.pop("comment", SERVER_PRIORITY_COMMENT), created_by=user_id, commit=False, **arguments)
+            except BusinessRuleError as exc:
+                if str(exc) != expected:
+                    raise
+            else:
+                raise AssertionError(f"Stage 64 {name} validation did not fail")
+            finally:
+                conn.execute(f"ROLLBACK TO SAVEPOINT stage64_{name}")
+                conn.execute(f"RELEASE SAVEPOINT stage64_{name}")
+    finally:
+        conn.rollback()
+    try:
+        if conn.execute("SELECT 1 FROM routing_events WHERE comment IN (%s, %s, %s) OR snapshot_json::text LIKE %s", (NONE_COMMENT, SERVER_PRIORITY_COMMENT, SERVER_PRIORITY_OVERFLOW_COMMENT, "%stage64%" )).fetchone():
+            raise AssertionError("Stage 64 routing events remain after rollback")
+        if conn.execute("SELECT 1 FROM server_route_priorities WHERE comment LIKE %s", ("%stage64%",)).fetchone():
+            raise AssertionError("Stage 64 priorities remain after rollback")
+        if conn.execute("SELECT 1 FROM change_log WHERE old_values::text LIKE %s OR new_values::text LIKE %s", ("%stage64%", "%stage64%" )).fetchone():
+            raise AssertionError("Stage 64 change_log rows remain after rollback")
+    finally:
+        conn.rollback()
+
+
 def run_harness(postgres_url: str, probe_key: str = DEFAULT_PROBE_KEY, probe_value: str = DEFAULT_PROBE_VALUE) -> dict:
     """Run all probes; psycopg imports remain local so unit tests need no driver."""
     summary = empty_summary(postgres_url)
@@ -823,6 +932,7 @@ def run_harness(postgres_url: str, probe_key: str = DEFAULT_PROBE_KEY, probe_val
         check("provider_change_create_probe", lambda: run_provider_change_create_probe(repo, conn))
         check("routing_event_deactivate_probe", lambda: run_routing_event_deactivate_probe(repo, conn))
         check("routing_event_update_probe", lambda: run_routing_event_update_probe(repo, conn))
+        check("routing_event_create_core_probe", lambda: run_routing_event_create_core_probe(repo, conn))
     except Exception as exc:
         summary["failures"].append({"check": "connect", "error": sanitize_error(exc, postgres_url)})
     finally:

@@ -80,7 +80,9 @@ def audit(repository_file=ROOT/'app/repository.py',coverage_manifest=ROOT/'docs/
   if 'create_provider_change' not in smoked or methods.get('create_provider_change',{}).get('batch')!='provider_change_and_priority_writes': errors.append('create_provider_change must be a provider-change/priority rollback probe')
   if 'deactivate_routing_event' not in smoked or methods.get('deactivate_routing_event',{}).get('batch')!='routing_event_application_writes': errors.append('deactivate_routing_event must be a routing-event rollback probe')
   if 'update_routing_event' not in smoked or methods.get('update_routing_event',{}).get('batch')!='routing_event_application_writes': errors.append('update_routing_event must be a routing-event rollback probe')
-  if 'create_routing_event' in smoked: errors.append('create_routing_event must remain unadapted')
+  if 'create_routing_event' in smoked: errors.append('create_routing_event must not be fully rollback-smoked before Stage 65 campaign_setting coverage')
+  create_event_notes=methods.get('create_routing_event',{}).get('notes','')
+  if not all(marker in create_event_notes for marker in ('Stage 64 partial PostgreSQL rollback-only core coverage','campaign_setting remains pending Stage 65','not fully rollback-smoked yet')): errors.append('create_routing_event must retain the Stage 64 partial-coverage note')
   if any(name in smoked for name in ('create_company_routing_setting','update_company_routing_setting','update_company_routing_setting_comment','deactivate_company_routing_setting')): errors.append('company routing-setting methods must remain unadapted')
   if 'set_hlr_limit_override' not in smoked or methods.get('set_hlr_limit_override',{}).get('batch')!='write_test_harness_and_transaction_foundation': errors.append('set_hlr_limit_override must remain a foundation rollback probe')
   for name in ('set_app_setting_value','delete_app_setting_value','upsert_hlr_daily_usage','create_user','update_user','update_user_password','set_user_permissions'):

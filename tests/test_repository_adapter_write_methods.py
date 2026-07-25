@@ -82,6 +82,41 @@ class RepositoryAdapterWriteMethodsTest(unittest.TestCase):
         self.assertIsNone(self.conn.execute("SELECT id FROM change_reasons WHERE id = ?", (reason_id,)).fetchone())
         self.assertIsNone(self.conn.execute("SELECT id FROM change_log WHERE entity_type = ? AND entity_id = ?", ("change_reason", reason_id)).fetchone())
 
+    def test_create_routing_event_none_supports_caller_owned_sqlite_transaction(self):
+        user_id = self.conn.execute("SELECT id FROM users ORDER BY id LIMIT 1").fetchone()["id"]
+        country_id = self.repo.create_country("Stage 64 GEO", "S64")
+        provider_id = self.repo.create_provider("Stage 64 provider")
+        route_id = self.repo.create_route(
+            country_id=country_id, provider_id=provider_id, name="Stage 64 route",
+            cli_source_type="other", cli_source_label="Stage 64", created_by=user_id,
+        )
+        event_id = self.repo.create_routing_event(
+            event_at="2026-07-22 15:00:00", apply_scope="none", reason="Другое",
+            country_id=country_id, provider_id=provider_id, affected_route_id=route_id,
+            comment="__stage64_routing_event_none_comment__", created_by=user_id, commit=False,
+        )
+        self.assertIsNotNone(self.conn.execute("SELECT id FROM routing_events WHERE id = ?", (event_id,)).fetchone())
+        self.assertIsNotNone(self.conn.execute("SELECT id FROM change_log WHERE entity_type = ? AND entity_id = ?", ("routing_event", event_id)).fetchone())
+        self.conn.rollback()
+        self.assertIsNone(self.conn.execute("SELECT id FROM routing_events WHERE id = ?", (event_id,)).fetchone())
+        self.assertIsNone(self.conn.execute("SELECT id FROM change_log WHERE entity_type = ? AND entity_id = ?", ("routing_event", event_id)).fetchone())
+
+    def test_create_routing_event_rolls_back_only_when_it_owns_transaction(self):
+        class FailingConnection:
+            def __init__(self): self.rollbacks = 0
+            def execute(self, sql, params=()): raise RuntimeError("routing event failed")
+            def commit(self): raise AssertionError("unexpected commit")
+            def rollback(self): self.rollbacks += 1
+        kwargs = dict(event_at="2026-07-22 15:00:00", apply_scope="none", reason="Другое", provider_id=1, affected_route_id=1, comment="marker", created_by=1)
+        owned = FailingConnection()
+        with self.assertRaisesRegex(RuntimeError, "routing event failed"):
+            Repository(owned, backend="postgres").create_routing_event(**kwargs)
+        self.assertEqual(owned.rollbacks, 1)
+        caller_owned = FailingConnection()
+        with self.assertRaisesRegex(RuntimeError, "routing event failed"):
+            Repository(caller_owned, backend="postgres").create_routing_event(commit=False, **kwargs)
+        self.assertEqual(caller_owned.rollbacks, 0)
+
     def test_change_reason_uses_postgres_placeholders_and_commit_contract(self):
         class Cursor:
             def fetchone(self): return {"id": 901}

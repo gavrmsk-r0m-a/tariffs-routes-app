@@ -22,6 +22,10 @@ class WritePlanTests(unittest.TestCase):
   p=copy.deepcopy(self.plan); p['methods']['update_routing_event']['batch']='app_settings_and_admin_low_risk'; self.bad(p)
   for name in ('create_routing_event','list_countries','deactivate_routing_event','_sync_company_routing_comment_from_event','_active_company_routing_setting','create_company_routing_setting'):
    p=copy.deepcopy(self.plan); p['rollback_smoke_covered_methods'].append(name); self.bad(p)
+ def test_stage64_create_routing_event_remains_partial(self):
+  p=copy.deepcopy(self.plan); p['methods']['create_routing_event']['notes']='missing partial coverage marker'; self.bad(p)
+  p=copy.deepcopy(self.plan); p['rollback_smoke_covered_methods'].append('_server_priority_affected_servers'); self.bad(p)
+  p=copy.deepcopy(self.plan); p['rollback_smoke_covered_methods'].append('update_company_routing_setting_comment'); self.bad(p)
  def test_missing_stage59_rollback_method_fails(self):
   p=copy.deepcopy(self.plan); p['rollback_smoke_covered_methods'].remove('update_dictionary_snapshots'); self.bad(p)
  def test_stage57_server_in_wrong_batch_fails(self):
