@@ -65,3 +65,9 @@ The harness still never calls `conn.commit()`: every probe rolls back in `finall
 `routing_event_deactivate_probe` starts `routing_event_application_writes` without enabling runtime PostgreSQL. It inserts a deterministic `apply_scope="none"` routing event with direct SQL only inside an explicit rollback-only transaction, then calls `deactivate_routing_event(..., commit=False)`. The probe verifies the active-to-inactive transition, deactivation reason and actor fields, timestamps, and the `change_log` audit row.
 
 Missing-event, already-inactive, and empty-reason validations run in separate SAVEPOINTs so expected `BusinessRuleError` paths do not abort the enclosing PostgreSQL transaction. A `finally` rollback always executes; cleanup queries reject all Stage 62 routing-event and audit markers. The harness never calls `conn.commit()`.
+
+## Stage 63: routing-event update probe
+
+`routing_event_update_probe` continues `routing_event_application_writes` without enabling PostgreSQL runtime. Inside an explicit transaction it inserts deterministic routing events with direct SQL and calls `update_routing_event(..., commit=False)`. The probe observes a normal comment update, its `updated_by`/`updated_at` values, and the `routing_event.comment_updated` `change_log` side effect. A second call with the same comment proves the no-op path adds no audit row.
+
+A campaign-setting fixture is also created with direct SQL. It covers `_sync_company_routing_comment_from_event` and `_active_company_routing_setting` only as private dependencies: the event comment and matching active `company_routing_settings.comment` must both update. Missing-event, empty-comment, and optimistic-lock failures are isolated with SAVEPOINTs. The `finally` rollback executes on success or failure, and cleanup checks reject every Stage 63 routing-event, company-setting, and audit marker. The harness never calls `conn.commit()` and does not use public company-routing write methods.

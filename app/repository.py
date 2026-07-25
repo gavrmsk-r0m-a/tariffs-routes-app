@@ -2768,14 +2768,15 @@ class Repository:
         return f"{row['provider_name']} / {row['name']}" if row else str(route_id)
 
     def _active_company_routing_setting(self, calling_company_id: int) -> sqlite3.Row | None:
+        p = placeholder(self.backend)
         return self.conn.execute(
-            """
+            f"""
             SELECT *
             FROM company_routing_settings
-            WHERE calling_company_id = ? AND is_active = 1 AND valid_to IS NULL
+            WHERE calling_company_id = {p} AND is_active = {p} AND valid_to IS NULL
             ORDER BY id DESC LIMIT 1
             """,
-            (calling_company_id,),
+            (calling_company_id, to_db_bool(True, self.backend)),
         ).fetchone()
 
     def _company_routing_mode_for_state(self, route_id: int | None, has_autorotation: bool) -> str:
@@ -3363,31 +3364,54 @@ class Repository:
                 return data
         return None
 
-    def update_routing_event(self, event_id: int, *, updated_by: int, **kwargs) -> None:
-        existing = self.conn.execute("SELECT * FROM routing_events WHERE id = ?", (event_id,)).fetchone()
-        if not existing:
-            raise BusinessRuleError("Событие маршрутизации не найдено")
-        updated_at_original = kwargs.get("updated_at_original")
-        if updated_at_original is not None and updated_at_original != existing["updated_at"]:
-            raise BusinessRuleError("Запись была изменена другим пользователем. Обновите страницу и повторите действие.")
-        comment = self._require_text(kwargs.get("comment"), "Комментарий обязателен")
-        if comment == existing["comment"]:
-            return
-        self.conn.execute(
-            """
-            UPDATE routing_events
-            SET comment = ?, updated_by = ?, updated_at = strftime('%Y-%m-%d %H:%M:%f', 'now')
-            WHERE id = ?
-            """,
-            (comment, updated_by, event_id),
-        )
-        self._change_log(
-            "routing_event", event_id, "routing_event.comment_updated", updated_by,
-            old_values={"comment": existing["comment"]}, new_values={"comment": comment},
-            summary="Комментарий события изменён",
-        )
-        self._sync_company_routing_comment_from_event(existing, comment=comment, updated_by=updated_by)
-        self.conn.commit()
+    def update_routing_event(self, event_id: int, *, updated_by: int, commit: bool = True, **kwargs) -> None:
+        p = placeholder(self.backend)
+        try:
+            existing = self.conn.execute(f"SELECT * FROM routing_events WHERE id = {p}", (event_id,)).fetchone()
+            if not existing:
+                raise BusinessRuleError("Событие маршрутизации не найдено")
+            updated_at_original = kwargs.get("updated_at_original")
+            current_updated_at = existing["updated_at"]
+            if updated_at_original is not None:
+                if self.backend == "postgres":
+                    def normalized_timestamp(value):
+                        if isinstance(value, datetime):
+                            return value.isoformat(sep=" ")
+                        text = str(value).strip().replace("T", " ")
+                        if text.endswith("Z"):
+                            text = f"{text[:-1]}+00:00"
+                        try:
+                            return datetime.fromisoformat(text).isoformat(sep=" ")
+                        except ValueError:
+                            return text
+                    timestamps_match = normalized_timestamp(updated_at_original) == normalized_timestamp(current_updated_at)
+                else:
+                    timestamps_match = updated_at_original == current_updated_at
+                if not timestamps_match:
+                    raise BusinessRuleError("Запись была изменена другим пользователем. Обновите страницу и повторите действие.")
+            comment = self._require_text(kwargs.get("comment"), "Комментарий обязателен")
+            if comment == existing["comment"]:
+                return
+            self.conn.execute(
+                f"""
+                UPDATE routing_events
+                SET comment = {p}, updated_by = {p}, updated_at = CURRENT_TIMESTAMP
+                WHERE id = {p}
+                """,
+                (comment, updated_by, event_id),
+            )
+            self._change_log(
+                "routing_event", event_id, "routing_event.comment_updated", updated_by,
+                old_values={"comment": existing["comment"]}, new_values={"comment": comment},
+                summary="Комментарий события изменён",
+            )
+            self._sync_company_routing_comment_from_event(existing, comment=comment, updated_by=updated_by)
+            if commit:
+                self.conn.commit()
+        except Exception:
+            if commit:
+                self.conn.rollback()
+            raise
 
     def _sync_company_routing_comment_from_event(self, event: sqlite3.Row, *, comment: str, updated_by: int) -> None:
         if event["apply_scope"] != "campaign_setting" or event["calling_company_id"] is None:
@@ -3395,31 +3419,32 @@ class Repository:
         active = self._active_company_routing_setting(event["calling_company_id"])
         if active is None:
             return
+        p = placeholder(self.backend)
         later_event = self.conn.execute(
-            """
+            f"""
             SELECT id
             FROM routing_events
             WHERE apply_scope = 'campaign_setting'
-              AND calling_company_id = ?
-              AND is_active = 1
-              AND (event_at > ? OR (event_at = ? AND id > ?))
+              AND calling_company_id = {p}
+              AND is_active = {p}
+              AND (event_at > {p} OR (event_at = {p} AND id > {p}))
             LIMIT 1
             """,
-            (event["calling_company_id"], event["event_at"], event["event_at"], event["id"]),
+            (event["calling_company_id"], to_db_bool(True, self.backend), event["event_at"], event["event_at"], event["id"]),
         ).fetchone()
         if later_event is not None:
             return
         if (
             active["routing_mode"] != event["new_company_routing_mode"]
             or active["route_id"] != event["new_company_route_id"]
-            or active["has_autorotation"] != event["new_company_has_autorotation"]
+            or bool(active["has_autorotation"]) != bool(event["new_company_has_autorotation"])
         ):
             return
         self.conn.execute(
-            """
+            f"""
             UPDATE company_routing_settings
-            SET comment = ?, updated_by = ?, updated_at = CURRENT_TIMESTAMP
-            WHERE id = ?
+            SET comment = {p}, updated_by = {p}, updated_at = CURRENT_TIMESTAMP
+            WHERE id = {p}
             """,
             (comment, updated_by, active["id"]),
         )
