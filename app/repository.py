@@ -2288,25 +2288,26 @@ class Repository:
         routing_mode: str,
         has_autorotation: bool,
     ) -> None:
+        p = placeholder(self.backend)
         if routing_mode not in {"server_priority", "campaign_route", "autorotation", "mixed"}:
             raise BusinessRuleError("Некорректный режим маршрутизации")
         if routing_mode == "campaign_route" and not route_id:
             raise BusinessRuleError("Для режима campaign_route обязателен маршрут")
         if routing_mode == "autorotation" and not has_autorotation:
             raise BusinessRuleError("Для режима autorotation должна быть включена авторотация")
-        company = self.conn.execute("SELECT id, country_id, server_id FROM calling_companies WHERE id = ?", (calling_company_id,)).fetchone()
+        company = self.conn.execute(f"SELECT id, country_id, server_id FROM calling_companies WHERE id = {p}", (calling_company_id,)).fetchone()
         if not company:
             raise BusinessRuleError("Кампания прозвона не найдена")
         if int(company["country_id"]) != int(country_id):
             raise BusinessRuleError("GEO схемы маршрутизации должен совпадать с GEO выбранной кампании")
         if int(company["server_id"]) != int(server_id):
             raise BusinessRuleError("Сервер схемы маршрутизации должен совпадать с сервером выбранной кампании")
-        if not self.conn.execute("SELECT id FROM countries WHERE id = ?", (country_id,)).fetchone():
+        if not self.conn.execute(f"SELECT id FROM countries WHERE id = {p}", (country_id,)).fetchone():
             raise BusinessRuleError("GEO не найден")
-        if not self.conn.execute("SELECT id FROM servers WHERE id = ?", (server_id,)).fetchone():
+        if not self.conn.execute(f"SELECT id FROM servers WHERE id = {p}", (server_id,)).fetchone():
             raise BusinessRuleError("Сервер не найден")
         if route_id:
-            route = self.conn.execute("SELECT id, country_id FROM routes WHERE id = ?", (route_id,)).fetchone()
+            route = self.conn.execute(f"SELECT id, country_id FROM routes WHERE id = {p}", (route_id,)).fetchone()
             if not route:
                 raise BusinessRuleError("Маршрут не найден")
             if int(route["country_id"]) != int(country_id):
@@ -2321,14 +2322,15 @@ class Repository:
         old_values: dict | None = None,
         new_values: dict | None = None,
     ) -> str:
-        company = self.conn.execute("SELECT company_id_external, company_name FROM calling_companies WHERE id = ?", (calling_company_id,)).fetchone()
-        country = self.conn.execute("SELECT name FROM countries WHERE id = ?", (country_id,)).fetchone()
-        server = self.conn.execute("SELECT name FROM servers WHERE id = ?", (server_id,)).fetchone()
+        p = placeholder(self.backend)
+        company = self.conn.execute(f"SELECT company_id_external, company_name FROM calling_companies WHERE id = {p}", (calling_company_id,)).fetchone()
+        country = self.conn.execute(f"SELECT name FROM countries WHERE id = {p}", (country_id,)).fetchone()
+        server = self.conn.execute(f"SELECT name FROM servers WHERE id = {p}", (server_id,)).fetchone()
 
         def route_label(route_id: int | None) -> str:
             if not route_id:
                 return "—"
-            route = self.conn.execute("SELECT name FROM routes WHERE id = ?", (route_id,)).fetchone()
+            route = self.conn.execute(f"SELECT name FROM routes WHERE id = {p}", (route_id,)).fetchone()
             return f"{route_id} / {route['name']}" if route else str(route_id)
 
         parts = [
@@ -2480,49 +2482,54 @@ class Repository:
         comment: str | None,
         created_by: int,
         effective_at: str | None = None,
+        commit: bool = True,
     ) -> int:
-        self._validate_company_routing_values(
-            calling_company_id=calling_company_id,
-            country_id=country_id,
-            server_id=server_id,
-            route_id=route_id,
-            routing_mode=routing_mode,
-            has_autorotation=has_autorotation,
-        )
-        if self.conn.execute(
-            "SELECT id FROM company_routing_settings WHERE calling_company_id = ? AND is_active = 1 AND valid_to IS NULL",
-            (calling_company_id,),
-        ).fetchone():
-            raise BusinessRuleError("У кампании уже есть активная схема маршрутизации")
-        now = effective_at or self.conn.execute("SELECT CURRENT_TIMESTAMP").fetchone()[0]
-        cur = self.conn.execute(
-            """
-            INSERT INTO company_routing_settings(
-                calling_company_id, country_id, server_id, route_id, routing_mode,
-                has_autorotation, is_active, comment, valid_from, created_by, updated_by
-            ) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)
-            """,
-            (calling_company_id, country_id, server_id, route_id, routing_mode, 1 if has_autorotation else 0, comment, now, created_by, created_by),
-        )
-        setting_id = int(cur.lastrowid)
-        new_values = {
-            "routing_mode": routing_mode,
-            "route_id": route_id,
-            "has_autorotation": 1 if has_autorotation else 0,
-            "country_id": country_id,
-            "server_id": server_id,
-            "valid_from": now,
-        }
-        self._change_log(
-            "company_routing_setting",
-            setting_id,
-            "company_routing_setting.created",
-            created_by,
-            new_values=new_values,
-            summary=self._company_routing_summary(calling_company_id=calling_company_id, country_id=country_id, server_id=server_id, new_values=new_values),
-        )
-        self.conn.commit()
-        return setting_id
+        p = placeholder(self.backend)
+        try:
+            self._validate_company_routing_values(
+                calling_company_id=calling_company_id,
+                country_id=country_id,
+                server_id=server_id,
+                route_id=route_id,
+                routing_mode=routing_mode,
+                has_autorotation=has_autorotation,
+            )
+            if self._active_company_routing_setting(calling_company_id):
+                raise BusinessRuleError("У кампании уже есть активная схема маршрутизации")
+            now = effective_at or self.conn.execute("SELECT CURRENT_TIMESTAMP").fetchone()[0]
+            sql = prepare_insert_returning_id(
+                f"""
+                INSERT INTO company_routing_settings(
+                    calling_company_id, country_id, server_id, route_id, routing_mode,
+                    has_autorotation, is_active, comment, valid_from, created_by, updated_by
+                ) VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p})
+                """,
+                self.backend,
+            )
+            cur = self.conn.execute(
+                sql,
+                (calling_company_id, country_id, server_id, route_id, routing_mode,
+                 to_db_bool(has_autorotation, self.backend), to_db_bool(True, self.backend),
+                 comment, now, created_by, created_by),
+            )
+            setting_id = extract_inserted_id(cur, self.backend)
+            new_values = {
+                "routing_mode": routing_mode, "route_id": route_id,
+                "has_autorotation": to_db_bool(has_autorotation, self.backend),
+                "country_id": country_id, "server_id": server_id, "valid_from": now,
+            }
+            self._change_log(
+                "company_routing_setting", setting_id, "company_routing_setting.created", created_by,
+                new_values=new_values,
+                summary=self._company_routing_summary(calling_company_id=calling_company_id, country_id=country_id, server_id=server_id, new_values=new_values),
+            )
+            if commit:
+                self.conn.commit()
+            return int(setting_id)
+        except Exception:
+            if commit:
+                self.conn.rollback()
+            raise
 
     def update_company_routing_setting_comment(self, *, setting_id: int, comment: str | None, updated_by: int) -> int:
         existing = self.conn.execute("SELECT * FROM company_routing_settings WHERE id = ?", (setting_id,)).fetchone()
@@ -2573,147 +2580,108 @@ class Repository:
         comment: str | None,
         updated_by: int,
         effective_at: str | None = None,
+        commit: bool = True,
     ) -> int:
-        existing = self.conn.execute("SELECT * FROM company_routing_settings WHERE id = ?", (setting_id,)).fetchone()
-        if not existing:
-            raise BusinessRuleError("Схема маршрутизации кампании не найдена")
-        if not existing["is_active"] or existing["valid_to"] is not None:
-            raise BusinessRuleError("Можно редактировать только активную схему маршрутизации")
-        self._validate_company_routing_values(
-            calling_company_id=existing["calling_company_id"],
-            country_id=country_id,
-            server_id=server_id,
-            route_id=route_id,
-            routing_mode=routing_mode,
-            has_autorotation=has_autorotation,
-        )
-        new_autorotation = 1 if has_autorotation else 0
-        routing_changed = any(
-            int(existing[key]) != int(value) if key in {"country_id", "server_id"} else existing[key] != value
-            for key, value in {
-                "country_id": country_id,
-                "server_id": server_id,
-                "route_id": route_id,
-                "routing_mode": routing_mode,
-                "has_autorotation": new_autorotation,
-            }.items()
-        )
-        old_values = {
-            "routing_mode": existing["routing_mode"],
-            "route_id": existing["route_id"],
-            "has_autorotation": existing["has_autorotation"],
-            "country_id": existing["country_id"],
-            "server_id": existing["server_id"],
-            "comment": existing["comment"],
-        }
-        if not routing_changed:
+        p = placeholder(self.backend)
+        try:
+            existing = self.conn.execute(f"SELECT * FROM company_routing_settings WHERE id = {p}", (setting_id,)).fetchone()
+            if not existing:
+                raise BusinessRuleError("Схема маршрутизации кампании не найдена")
+            if not existing["is_active"] or existing["valid_to"] is not None:
+                raise BusinessRuleError("Можно редактировать только активную схему маршрутизации")
+            self._validate_company_routing_values(
+                calling_company_id=existing["calling_company_id"], country_id=country_id,
+                server_id=server_id, route_id=route_id, routing_mode=routing_mode,
+                has_autorotation=has_autorotation,
+            )
+            new_autorotation = to_db_bool(has_autorotation, self.backend)
+            routing_changed = any(
+                int(existing[key]) != int(value) if key in {"country_id", "server_id"} else existing[key] != value
+                for key, value in {"country_id": country_id, "server_id": server_id, "route_id": route_id,
+                                   "routing_mode": routing_mode, "has_autorotation": new_autorotation}.items()
+            )
+            old_values = {key: existing[key] for key in ("routing_mode", "route_id", "has_autorotation", "country_id", "server_id", "comment")}
+            if not routing_changed:
+                self.conn.execute(
+                    f"UPDATE company_routing_settings SET comment = {p}, updated_at = CURRENT_TIMESTAMP, updated_by = {p} WHERE id = {p}",
+                    (comment, updated_by, setting_id),
+                )
+                new_values = {**old_values, "comment": comment}
+                self._change_log(
+                    "company_routing_setting", setting_id, "company_routing_setting.updated", updated_by,
+                    old_values=old_values, new_values=new_values,
+                    summary=self._company_routing_summary(calling_company_id=existing["calling_company_id"], country_id=country_id, server_id=server_id, old_values=old_values, new_values=new_values),
+                )
+                if commit:
+                    self.conn.commit()
+                return setting_id
+
+            now = effective_at or self.conn.execute("SELECT CURRENT_TIMESTAMP").fetchone()[0]
             self.conn.execute(
-                "UPDATE company_routing_settings SET comment = ?, updated_at = CURRENT_TIMESTAMP, updated_by = ? WHERE id = ?",
-                (comment, updated_by, setting_id),
+                f"""UPDATE company_routing_settings
+                    SET valid_to = {p}, is_active = {p}, updated_at = CURRENT_TIMESTAMP, updated_by = {p}
+                    WHERE id = {p}""",
+                (now, to_db_bool(False, self.backend), updated_by, setting_id),
             )
+            sql = prepare_insert_returning_id(
+                f"""INSERT INTO company_routing_settings(
+                    calling_company_id, country_id, server_id, route_id, routing_mode,
+                    has_autorotation, is_active, comment, valid_from, created_by, updated_by
+                ) VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p})""",
+                self.backend,
+            )
+            cur = self.conn.execute(
+                sql, (existing["calling_company_id"], country_id, server_id, route_id, routing_mode,
+                      new_autorotation, to_db_bool(True, self.backend), comment, now, updated_by, updated_by),
+            )
+            new_id = extract_inserted_id(cur, self.backend)
+            closed_old_values = {**old_values, "valid_to": now}
+            new_values = {"routing_mode": routing_mode, "route_id": route_id, "has_autorotation": new_autorotation,
+                          "country_id": country_id, "server_id": server_id, "comment": comment, "valid_from": now}
             self._change_log(
-                "company_routing_setting",
-                setting_id,
-                "company_routing_setting.updated",
-                updated_by,
-                old_values=old_values,
-                new_values={**old_values, "comment": comment},
-                summary=self._company_routing_summary(
-                    calling_company_id=existing["calling_company_id"],
-                    country_id=country_id,
-                    server_id=server_id,
-                    old_values=old_values,
-                    new_values={**old_values, "comment": comment},
-                ),
+                "company_routing_setting", new_id, "company_routing_setting.version_created", updated_by,
+                old_values=closed_old_values, new_values=new_values,
+                summary=self._company_routing_summary(calling_company_id=existing["calling_company_id"], country_id=country_id, server_id=server_id, old_values=closed_old_values, new_values=new_values),
             )
-            self.conn.commit()
-            return setting_id
+            if commit:
+                self.conn.commit()
+            return int(new_id)
+        except Exception:
+            if commit:
+                self.conn.rollback()
+            raise
 
-        now = effective_at or self.conn.execute("SELECT CURRENT_TIMESTAMP").fetchone()[0]
-        self.conn.execute(
-            """
-            UPDATE company_routing_settings
-            SET valid_to = ?, is_active = 0, updated_at = CURRENT_TIMESTAMP, updated_by = ?
-            WHERE id = ?
-            """,
-            (now, updated_by, setting_id),
-        )
-        cur = self.conn.execute(
-            """
-            INSERT INTO company_routing_settings(
-                calling_company_id, country_id, server_id, route_id, routing_mode,
-                has_autorotation, is_active, comment, valid_from, created_by, updated_by
-            ) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)
-            """,
-            (existing["calling_company_id"], country_id, server_id, route_id, routing_mode, new_autorotation, comment, now, updated_by, updated_by),
-        )
-        new_id = int(cur.lastrowid)
-        closed_old_values = {**old_values, "valid_to": now}
-        new_values = {
-            "routing_mode": routing_mode,
-            "route_id": route_id,
-            "has_autorotation": new_autorotation,
-            "country_id": country_id,
-            "server_id": server_id,
-            "comment": comment,
-            "valid_from": now,
-        }
-        self._change_log(
-            "company_routing_setting",
-            new_id,
-            "company_routing_setting.version_created",
-            updated_by,
-            old_values=closed_old_values,
-            new_values=new_values,
-            summary=self._company_routing_summary(
-                calling_company_id=existing["calling_company_id"],
-                country_id=country_id,
-                server_id=server_id,
-                old_values=closed_old_values,
-                new_values=new_values,
-            ),
-        )
-        self.conn.commit()
-        return new_id
-
-    def deactivate_company_routing_setting(self, *, setting_id: int, updated_by: int, effective_at: str | None = None) -> None:
-        existing = self.conn.execute("SELECT * FROM company_routing_settings WHERE id = ?", (setting_id,)).fetchone()
-        if not existing:
-            raise BusinessRuleError("Схема маршрутизации кампании не найдена")
-        if not existing["is_active"] or existing["valid_to"] is not None:
-            raise BusinessRuleError("Схема маршрутизации уже неактивна")
-        now = effective_at or self.conn.execute("SELECT CURRENT_TIMESTAMP").fetchone()[0]
-        self.conn.execute(
-            """
-            UPDATE company_routing_settings
-            SET valid_to = ?, is_active = 0, updated_at = CURRENT_TIMESTAMP, updated_by = ?
-            WHERE id = ?
-            """,
-            (now, updated_by, setting_id),
-        )
-        old_values = {
-            "routing_mode": existing["routing_mode"],
-            "route_id": existing["route_id"],
-            "has_autorotation": existing["has_autorotation"],
-            "country_id": existing["country_id"],
-            "server_id": existing["server_id"],
-            "comment": existing["comment"],
-            "valid_to": now,
-        }
-        self._change_log(
-            "company_routing_setting",
-            setting_id,
-            "company_routing_setting.deactivated",
-            updated_by,
-            old_values=old_values,
-            summary=self._company_routing_summary(
-                calling_company_id=existing["calling_company_id"],
-                country_id=existing["country_id"],
-                server_id=existing["server_id"],
+    def deactivate_company_routing_setting(
+        self, *, setting_id: int, updated_by: int, effective_at: str | None = None,
+        commit: bool = True,
+    ) -> None:
+        p = placeholder(self.backend)
+        try:
+            existing = self.conn.execute(f"SELECT * FROM company_routing_settings WHERE id = {p}", (setting_id,)).fetchone()
+            if not existing:
+                raise BusinessRuleError("Схема маршрутизации кампании не найдена")
+            if not existing["is_active"] or existing["valid_to"] is not None:
+                raise BusinessRuleError("Схема маршрутизации уже неактивна")
+            now = effective_at or self.conn.execute("SELECT CURRENT_TIMESTAMP").fetchone()[0]
+            self.conn.execute(
+                f"""UPDATE company_routing_settings
+                    SET valid_to = {p}, is_active = {p}, updated_at = CURRENT_TIMESTAMP, updated_by = {p}
+                    WHERE id = {p}""",
+                (now, to_db_bool(False, self.backend), updated_by, setting_id),
+            )
+            old_values = {key: existing[key] for key in ("routing_mode", "route_id", "has_autorotation", "country_id", "server_id", "comment")}
+            old_values["valid_to"] = now
+            self._change_log(
+                "company_routing_setting", setting_id, "company_routing_setting.deactivated", updated_by,
                 old_values=old_values,
-            ),
-        )
-        self.conn.commit()
+                summary=self._company_routing_summary(calling_company_id=existing["calling_company_id"], country_id=existing["country_id"], server_id=existing["server_id"], old_values=old_values),
+            )
+            if commit:
+                self.conn.commit()
+        except Exception:
+            if commit:
+                self.conn.rollback()
+            raise
 
 
     ROUTING_EVENT_REASONS_BY_SCOPE = {

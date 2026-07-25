@@ -725,3 +725,64 @@ class RepositoryStage63RoutingEventUpdateTest(unittest.TestCase):
         self.assertEqual(conn.execute("SELECT comment FROM routing_events WHERE id=?",(event_id,)).fetchone()[0],"before")
         self.assertEqual(conn.execute("SELECT COUNT(*) FROM change_log WHERE entity_type='routing_event' AND entity_id=?",(event_id,)).fetchone()[0],0)
         conn.close()
+
+class RepositoryStage65ACompanyRoutingTest(unittest.TestCase):
+    def test_sqlite_lifecycle_caller_owned_transaction_rolls_back(self):
+        conn=sqlite3.connect(":memory:"); conn.row_factory=sqlite3.Row; init_db(conn); repo=Repository(conn)
+        user=conn.execute("SELECT id FROM users ORDER BY id LIMIT 1").fetchone()[0]
+        country=repo.create_country("Stage 65A GEO","65A"); server=repo.create_server("stage65a-server")
+        provider=repo.create_provider("Stage65A provider")
+        route1=repo.create_route(country_id=country,provider_id=provider,name="stage65a-r1",cli_source_type="other",cli_source_label="65A",created_by=user)
+        route2=repo.create_route(country_id=country,provider_id=provider,name="stage65a-r2",cli_source_type="other",cli_source_label="65A",created_by=user)
+        conn.execute("INSERT INTO calling_companies(server_id,country_id,company_name,company_id_external,created_by,updated_by) VALUES(?,?,?,?,?,?)",(server,country,"Stage65A","stage65a",user,user)); company=conn.execute("SELECT last_insert_rowid()").fetchone()[0]; conn.commit()
+        created=repo.create_company_routing_setting(calling_company_id=company,country_id=country,server_id=server,route_id=route1,routing_mode="campaign_route",has_autorotation=False,comment="created",created_by=user,commit=False)
+        conn.rollback(); self.assertIsNone(conn.execute("SELECT 1 FROM company_routing_settings WHERE id=?",(created,)).fetchone())
+        created=repo.create_company_routing_setting(calling_company_id=company,country_id=country,server_id=server,route_id=route1,routing_mode="campaign_route",has_autorotation=False,comment="created",created_by=user); baseline=conn.execute("SELECT * FROM company_routing_settings WHERE id=?",(created,)).fetchone()
+        updated=repo.update_company_routing_setting(setting_id=created,country_id=country,server_id=server,route_id=route2,routing_mode="mixed",has_autorotation=True,comment="updated",updated_by=user,commit=False)
+        conn.rollback(); restored=conn.execute("SELECT * FROM company_routing_settings WHERE id=?",(created,)).fetchone(); self.assertEqual((restored["is_active"],restored["valid_to"],restored["route_id"]),(baseline["is_active"],baseline["valid_to"],baseline["route_id"])); self.assertIsNone(conn.execute("SELECT 1 FROM company_routing_settings WHERE id=?",(updated,)).fetchone())
+        repo.deactivate_company_routing_setting(setting_id=created,updated_by=user,commit=False); self.assertEqual(conn.execute("SELECT is_active FROM company_routing_settings WHERE id=?",(created,)).fetchone()[0],0)
+        conn.rollback(); self.assertEqual(conn.execute("SELECT is_active FROM company_routing_settings WHERE id=?",(created,)).fetchone()[0],1); conn.close()
+
+    def test_postgres_create_sql_boolean_identity_and_commit_contract(self):
+        class Cursor:
+            def __init__(self,row=None): self.row=row
+            def fetchone(self): return self.row
+        class Conn:
+            def __init__(self,fail=False): self.calls=[]; self.commits=0; self.rollbacks=0; self.fail=fail
+            def execute(self,sql,params=()):
+                self.calls.append((sql,params))
+                if self.fail: raise RuntimeError("failed")
+                if "RETURNING id" in sql: return Cursor({"id":650})
+                return Cursor(None)
+            def commit(self): self.commits+=1
+            def rollback(self): self.rollbacks+=1
+        kwargs=dict(calling_company_id=1,country_id=2,server_id=3,route_id=4,routing_mode="mixed",has_autorotation=True,comment="x",created_by=5,effective_at="2026-07-25")
+        conn=Conn(); repo=Repository(conn,backend="postgres")
+        with patch.object(repo,"_validate_company_routing_values"),patch.object(repo,"_active_company_routing_setting",return_value=None),patch.object(repo,"_company_routing_summary",return_value="summary"),patch.object(repo,"_change_log"):
+            self.assertEqual(repo.create_company_routing_setting(**kwargs),650)
+            repo.create_company_routing_setting(commit=False,**kwargs)
+        sql="\n".join(q for q,_ in conn.calls); self.assertNotIn("?",sql); self.assertIn("VALUES (%s",sql); self.assertIn("RETURNING id",sql); insert_params=next(params for sql,params in conn.calls if "RETURNING id" in sql); self.assertIs(insert_params[5],True); self.assertIs(insert_params[6],True); self.assertEqual(conn.commits,1)
+        for commit,expected in ((True,1),(False,0)):
+            bad=Conn(True); method=Repository(bad,backend="postgres").create_company_routing_setting
+            with self.assertRaisesRegex(RuntimeError,"failed"): method(commit=commit,**kwargs)
+            self.assertEqual(bad.rollbacks,expected)
+
+    def test_postgres_update_and_deactivate_sql_and_commit_contract(self):
+        existing={"id":7,"calling_company_id":1,"country_id":2,"server_id":3,"route_id":4,"routing_mode":"campaign_route","has_autorotation":False,"comment":"before","is_active":True,"valid_to":None}
+        class Cursor:
+            def __init__(self,row=None): self.row=row
+            def fetchone(self): return self.row
+        class Conn:
+            def __init__(self): self.calls=[]; self.commits=0; self.rollbacks=0
+            def execute(self,sql,params=()):
+                self.calls.append((sql,params))
+                if "SELECT * FROM company_routing_settings" in sql:return Cursor(existing)
+                if "RETURNING id" in sql:return Cursor({"id":8})
+                return Cursor(None)
+            def commit(self):self.commits+=1
+            def rollback(self):self.rollbacks+=1
+        conn=Conn(); repo=Repository(conn,backend="postgres")
+        with patch.object(repo,"_validate_company_routing_values"),patch.object(repo,"_company_routing_summary",return_value="summary"),patch.object(repo,"_change_log"):
+            self.assertEqual(repo.update_company_routing_setting(setting_id=7,country_id=2,server_id=3,route_id=5,routing_mode="mixed",has_autorotation=True,comment="after",updated_by=9,effective_at="2026-07-25",commit=False),8)
+            repo.deactivate_company_routing_setting(setting_id=7,updated_by=9,effective_at="2026-07-25",commit=False)
+        sql="\n".join(q for q,_ in conn.calls); self.assertNotIn("?",sql); self.assertIn("is_active = %s",sql); self.assertIn("RETURNING id",sql); self.assertEqual((conn.commits,conn.rollbacks),(0,0)); self.assertTrue(any(False in params for _,params in conn.calls))

@@ -59,6 +59,10 @@ NONE_COMMENT = "__stage64_routing_event_none_comment__"
 SERVER_PRIORITY_COMMENT = "__stage64_routing_event_server_priority_comment__"
 SERVER_PRIORITY_OVERFLOW_COMMENT = "__stage64_routing_event_overflow_comment__"
 EVENT_AT = "2026-07-22 15:00:00"
+COMPANY_ROUTING_MARKER = "__stage65a_company_routing__"
+COMPANY_ROUTING_AT = "2026-07-25 10:00:00"
+COMPANY_ROUTING_UPDATED_AT = "2026-07-25 11:00:00"
+COMPANY_ROUTING_DEACTIVATED_AT = "2026-07-25 12:00:00"
 
 
 def empty_summary(postgres_url: str) -> dict:
@@ -73,7 +77,7 @@ def empty_summary(postgres_url: str) -> dict:
             "dictionary_change_reason_probe", "dictionary_snapshot_probe",
             "provider_change_priority_probe", "provider_change_create_probe",
             "routing_event_deactivate_probe", "routing_event_update_probe",
-            "routing_event_create_core_probe",
+            "routing_event_create_core_probe", "company_routing_setting_lifecycle_probe",
         )},
     }
 
@@ -906,6 +910,106 @@ def run_routing_event_create_core_probe(repo: Repository, conn) -> None:
         conn.rollback()
 
 
+
+def run_company_routing_setting_lifecycle_probe(repo: Repository, conn) -> None:
+    """Exercise the Stage 65A lifecycle entirely inside a rolled-back transaction."""
+    setting_ids = []
+    conn.rollback()
+    conn.execute("BEGIN")
+    try:
+        user = conn.execute("SELECT id FROM users ORDER BY id LIMIT 1").fetchone()
+        servers = conn.execute("SELECT id FROM servers WHERE is_active = %s ORDER BY id LIMIT 2", (True,)).fetchall()
+        routes = conn.execute("SELECT id, country_id FROM routes WHERE is_actual = %s ORDER BY country_id, id", (True,)).fetchall()
+        by_country = {}
+        for route in routes:
+            by_country.setdefault(route["country_id"], []).append(route)
+        pair = next((items for items in by_country.values() if len(items) >= 2), None)
+        if not user or len(servers) < 2 or pair is None:
+            raise AssertionError("Stage 65A fixture requires a user, two active servers, and two routes in one country")
+        user_id, server_id, country_id = user["id"], servers[0]["id"], pair[0]["country_id"]
+        mismatch_route = next((route for route in routes if route["country_id"] != country_id), None)
+        if mismatch_route is None:
+            raise AssertionError("Stage 65A fixture requires a route from another country for mismatch validation")
+        company_id = conn.execute(
+            """INSERT INTO calling_companies(
+                   server_id, country_id, company_name, company_id_external, has_autorotation,
+                   line_count, dial_set_count, retry_interval_seconds, comment, is_active, created_by, updated_by)
+               VALUES (%s, %s, %s, %s, %s, 0, 0, 0, %s, %s, %s, %s) RETURNING id""",
+            (server_id, country_id, COMPANY_ROUTING_MARKER, COMPANY_ROUTING_MARKER,
+             False, COMPANY_ROUTING_MARKER, True, user_id, user_id),
+        ).fetchone()["id"]
+
+        created_id = repo.create_company_routing_setting(
+            calling_company_id=company_id, country_id=country_id, server_id=server_id,
+            route_id=pair[0]["id"], routing_mode="campaign_route", has_autorotation=False,
+            comment=COMPANY_ROUTING_MARKER + "_created", created_by=user_id,
+            effective_at=COMPANY_ROUTING_AT, commit=False,
+        )
+        setting_ids.append(created_id)
+        created = conn.execute("SELECT * FROM company_routing_settings WHERE id = %s", (created_id,)).fetchone()
+        if not created or any(created[key] != value for key, value in {
+            "calling_company_id": company_id, "country_id": country_id, "server_id": server_id,
+            "route_id": pair[0]["id"], "routing_mode": "campaign_route", "created_by": user_id,
+            "updated_by": user_id,
+        }.items()) or bool(created["has_autorotation"]) or not bool(created["is_active"]) or created["valid_to"] is not None:
+            raise AssertionError("Stage 65A create lifecycle state is incomplete")
+        if not conn.execute("SELECT 1 FROM change_log WHERE entity_type = %s AND entity_id = %s AND change_type = %s", ("company_routing_setting", created_id, "company_routing_setting.created")).fetchone():
+            raise AssertionError("Stage 65A create change_log row is missing")
+
+        updated_id = repo.update_company_routing_setting(
+            setting_id=created_id, country_id=country_id, server_id=server_id,
+            route_id=pair[1]["id"], routing_mode="mixed", has_autorotation=True,
+            comment=COMPANY_ROUTING_MARKER + "_updated", updated_by=user_id,
+            effective_at=COMPANY_ROUTING_UPDATED_AT, commit=False,
+        )
+        setting_ids.append(updated_id)
+        old = conn.execute("SELECT * FROM company_routing_settings WHERE id = %s", (created_id,)).fetchone()
+        updated = conn.execute("SELECT * FROM company_routing_settings WHERE id = %s", (updated_id,)).fetchone()
+        if bool(old["is_active"]) or str(old["valid_to"])[:19] != COMPANY_ROUTING_UPDATED_AT:
+            raise AssertionError("Stage 65A previous routing version was not closed")
+        if not updated or updated["route_id"] != pair[1]["id"] or updated["routing_mode"] != "mixed" or not bool(updated["has_autorotation"]) or updated["comment"] != COMPANY_ROUTING_MARKER + "_updated" or not bool(updated["is_active"]):
+            raise AssertionError("Stage 65A updated routing version is incomplete")
+        if not conn.execute("SELECT 1 FROM change_log WHERE entity_id = %s AND change_type = %s", (updated_id, "company_routing_setting.version_created")).fetchone():
+            raise AssertionError("Stage 65A update change_log row is missing")
+
+        repo.deactivate_company_routing_setting(setting_id=updated_id, updated_by=user_id, effective_at=COMPANY_ROUTING_DEACTIVATED_AT, commit=False)
+        closed = conn.execute("SELECT * FROM company_routing_settings WHERE id = %s", (updated_id,)).fetchone()
+        if bool(closed["is_active"]) or str(closed["valid_to"])[:19] != COMPANY_ROUTING_DEACTIVATED_AT:
+            raise AssertionError("Stage 65A active routing version was not deactivated")
+        if not conn.execute("SELECT 1 FROM change_log WHERE entity_id = %s AND change_type = %s", (updated_id, "company_routing_setting.deactivated")).fetchone():
+            raise AssertionError("Stage 65A deactivate change_log row is missing")
+
+        validations = (
+            ("missing_update", repo.update_company_routing_setting, dict(setting_id=-65001, country_id=country_id, server_id=server_id, route_id=pair[0]["id"], routing_mode="campaign_route", has_autorotation=False, comment=COMPANY_ROUTING_MARKER, updated_by=user_id), "Схема маршрутизации кампании не найдена"),
+            ("missing_deactivate", repo.deactivate_company_routing_setting, dict(setting_id=-65002, updated_by=user_id), "Схема маршрутизации кампании не найдена"),
+            ("required_create", repo.create_company_routing_setting, dict(calling_company_id=company_id, country_id=country_id, server_id=server_id, route_id=None, routing_mode="campaign_route", has_autorotation=False, comment=COMPANY_ROUTING_MARKER, created_by=user_id), "Для режима campaign_route обязателен маршрут"),
+            ("server_mismatch", repo.create_company_routing_setting, dict(calling_company_id=company_id, country_id=country_id, server_id=servers[1]["id"], route_id=pair[0]["id"], routing_mode="campaign_route", has_autorotation=False, comment=COMPANY_ROUTING_MARKER, created_by=user_id), "Сервер схемы маршрутизации должен совпадать с сервером выбранной кампании"),
+            ("route_mismatch", repo.create_company_routing_setting, dict(calling_company_id=company_id, country_id=country_id, server_id=server_id, route_id=mismatch_route["id"], routing_mode="campaign_route", has_autorotation=False, comment=COMPANY_ROUTING_MARKER, created_by=user_id), "Маршрут кампании должен относиться к выбранному GEO"),
+        )
+        for name, method, arguments, expected in validations:
+            conn.execute(f"SAVEPOINT stage65a_{name}")
+            try:
+                method(commit=False, **arguments)
+            except BusinessRuleError as exc:
+                if str(exc) != expected:
+                    raise
+            else:
+                raise AssertionError(f"Stage 65A {name} validation did not fail")
+            finally:
+                conn.execute(f"ROLLBACK TO SAVEPOINT stage65a_{name}")
+                conn.execute(f"RELEASE SAVEPOINT stage65a_{name}")
+    finally:
+        conn.rollback()
+    try:
+        if conn.execute("SELECT 1 FROM calling_companies WHERE company_id_external = %s OR comment = %s", (COMPANY_ROUTING_MARKER, COMPANY_ROUTING_MARKER)).fetchone():
+            raise AssertionError("Stage 65A calling company remains after rollback")
+        if conn.execute("SELECT 1 FROM company_routing_settings WHERE comment LIKE %s", (COMPANY_ROUTING_MARKER + "%",)).fetchone():
+            raise AssertionError("Stage 65A company routing settings remain after rollback")
+        if conn.execute("SELECT 1 FROM change_log WHERE old_values::text LIKE %s OR new_values::text LIKE %s OR summary LIKE %s", ("%stage65a%", "%stage65a%", "%stage65a%")).fetchone():
+            raise AssertionError("Stage 65A change_log rows remain after rollback")
+    finally:
+        conn.rollback()
+
 def run_harness(postgres_url: str, probe_key: str = DEFAULT_PROBE_KEY, probe_value: str = DEFAULT_PROBE_VALUE) -> dict:
     """Run all probes; psycopg imports remain local so unit tests need no driver."""
     summary = empty_summary(postgres_url)
@@ -946,6 +1050,7 @@ def run_harness(postgres_url: str, probe_key: str = DEFAULT_PROBE_KEY, probe_val
         check("routing_event_deactivate_probe", lambda: run_routing_event_deactivate_probe(repo, conn))
         check("routing_event_update_probe", lambda: run_routing_event_update_probe(repo, conn))
         check("routing_event_create_core_probe", lambda: run_routing_event_create_core_probe(repo, conn))
+        check("company_routing_setting_lifecycle_probe", lambda: run_company_routing_setting_lifecycle_probe(repo, conn))
     except Exception as exc:
         summary["failures"].append({"check": "connect", "error": sanitize_error(exc, postgres_url)})
     finally:

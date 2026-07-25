@@ -81,3 +81,14 @@ row, both the update and insert paths for `server_route_priorities`, and the cor
 and the enclosing transaction is always rolled back; the harness never calls `conn.commit()`.
 This is deliberately partial coverage: `campaign_setting` and its company-routing writes remain
 pending for Stage 65, so `create_routing_event` is not yet a fully rollback-smoked method.
+
+## Stage 65A: company-routing setting lifecycle
+
+`company_routing_setting_lifecycle_probe` exercises `create_company_routing_setting`,
+`update_company_routing_setting`, and `deactivate_company_routing_setting` with
+`commit=False`. It verifies active-version creation, version closure, deactivation,
+and the associated `change_log` records. Expected business-rule failures are each
+isolated with `SAVEPOINT`, `ROLLBACK TO SAVEPOINT`, and `RELEASE SAVEPOINT`.
+The fixture company is inserted directly inside the transaction. The final rollback
+removes the company, every setting version, and every audit marker. The harness
+never calls `conn.commit()`.
