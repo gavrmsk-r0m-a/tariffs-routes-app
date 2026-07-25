@@ -765,3 +765,11 @@ rollback-only PostgreSQL write harness. Read-only smoke remains at **611** check
 and the coverage inventory remains **112 / 61 / 0 / 50 / 1 / 100.0%**. This stage
 does not enable `DB_BACKEND=postgres` and makes no production runtime change.
 The `campaign_setting` routing-event application path remains pending Stage 65B.
+
+### Stage 65B routing-event campaign coverage
+
+The `campaign_setting` branch of `create_routing_event` is covered by the rollback-only
+PostgreSQL harness, including nested company-routing side effects with `commit=False`.
+Read-only smoke remains **611** checks and repository coverage remains **112 / 61 / 0 /
+50 / 1 / 100.0%**. `DB_BACKEND=postgres` remains disabled; this stage enables no
+production PostgreSQL runtime.

@@ -2983,6 +2983,7 @@ class Repository:
                 comment=values["comment"],
                 created_by=updated_by,
                 effective_at=values["event_at"],
+                commit=False,
             )
             return
 
@@ -2996,6 +2997,7 @@ class Repository:
             comment=values["comment"],
             updated_by=updated_by,
             effective_at=values["event_at"],
+            commit=False,
         )
 
     def _deactivate_company_routing_setting_from_event(self, values: dict, *, updated_by: int) -> None:
@@ -3005,6 +3007,7 @@ class Repository:
                 setting_id=active["id"],
                 updated_by=updated_by,
                 effective_at=values["event_at"],
+                commit=False,
             )
 
     def _apply_campaign_setting_event(self, values: dict, *, updated_by: int) -> None:

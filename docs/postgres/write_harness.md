@@ -92,3 +92,15 @@ isolated with `SAVEPOINT`, `ROLLBACK TO SAVEPOINT`, and `RELEASE SAVEPOINT`.
 The fixture company is inserted directly inside the transaction. The final rollback
 removes the company, every setting version, and every audit marker. The harness
 never calls `conn.commit()`.
+
+## Stage 65B: campaign routing-event create
+
+`routing_event_create_campaign_probe` completes rollback-only coverage of
+`create_routing_event(..., apply_scope="campaign_setting", commit=False)`. It observes
+`set_campaign_route` both without an active setting (create) and with one (versioned
+update), `disable_autorotation`, and `remove_campaign_route`, including routing-event
+and company-routing audit rows. Eight negative business validations are isolated with
+`SAVEPOINT`, `ROLLBACK TO SAVEPOINT`, and `RELEASE SAVEPOINT`, so PostgreSQL never
+leaves the surrounding transaction aborted. The probe always rolls back and verifies
+Stage 65B markers were removed. The harness contains 19 probes and never calls
+`conn.commit()`.
