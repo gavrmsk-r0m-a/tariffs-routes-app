@@ -616,3 +616,77 @@ class RepositoryStage62RoutingEventDeactivateTest(unittest.TestCase):
         conn.rollback(); self.assertEqual(conn.execute("SELECT is_active FROM routing_events WHERE id=?",(event_id,)).fetchone()[0],1)
         with self.assertRaisesRegex(BusinessRuleError,"Причина деактивации обязательна"): repo.deactivate_routing_event(event_id, reason="", deactivated_by=1, commit=False)
         conn.close()
+
+
+class RepositoryStage63RoutingEventUpdateTest(unittest.TestCase):
+    def test_postgres_sql_transaction_and_validation_contract(self):
+        class Cursor:
+            def __init__(self, row): self.row = row
+            def fetchone(self): return self.row
+        class Connection:
+            def __init__(self, row=None, fail=False):
+                self.row=row; self.fail=fail; self.calls=[]; self.commits=0; self.rollbacks=0
+            def execute(self, sql, params=()):
+                self.calls.append((sql, params))
+                if self.fail and "UPDATE routing_events" in sql: raise RuntimeError("update failed")
+                return Cursor(self.row if "SELECT * FROM routing_events" in sql else None)
+            def commit(self): self.commits += 1
+            def rollback(self): self.rollbacks += 1
+        row={"id":63,"comment":"before","updated_at":datetime(2026,7,22,14,tzinfo=timezone.utc),"apply_scope":"none","calling_company_id":None}
+        conn=Connection(row); repo=Repository(conn,backend="postgres")
+        with patch.object(repo,"_change_log") as log:
+            repo.update_routing_event(63,updated_by=1,comment="after",updated_at_original="2026-07-22T14:00:00+00:00")
+        sql="\n".join(query for query,_ in conn.calls)
+        self.assertIn("WHERE id = %s",sql); self.assertIn("comment = %s",sql); self.assertIn("CURRENT_TIMESTAMP",sql); self.assertNotIn("?",sql)
+        self.assertEqual(conn.commits,1); self.assertEqual(conn.rollbacks,0); log.assert_called_once()
+        conn=Connection(row); repo=Repository(conn,backend="postgres")
+        with patch.object(repo,"_change_log"):
+            repo.update_routing_event(63,updated_by=1,comment="after",commit=False)
+        self.assertEqual((conn.commits,conn.rollbacks),(0,0))
+        conn=Connection(row,fail=True); repo=Repository(conn,backend="postgres")
+        with self.assertRaisesRegex(RuntimeError,"update failed"): repo.update_routing_event(63,updated_by=1,comment="after")
+        self.assertEqual(conn.rollbacks,1)
+        with self.assertRaisesRegex(RuntimeError,"update failed"): repo.update_routing_event(63,updated_by=1,comment="after",commit=False)
+        self.assertEqual(conn.rollbacks,1)
+        conn=Connection(row); repo=Repository(conn,backend="postgres")
+        with patch.object(repo,"_change_log") as log:
+            repo.update_routing_event(63,updated_by=1,comment="before")
+        self.assertEqual(conn.commits,0); log.assert_not_called()
+        with self.assertRaisesRegex(BusinessRuleError,"изменена другим пользователем"):
+            repo.update_routing_event(63,updated_by=1,comment="after",updated_at_original="stale",commit=False)
+        with self.assertRaisesRegex(BusinessRuleError,"Комментарий обязателен"):
+            repo.update_routing_event(63,updated_by=1,comment="",commit=False)
+        with self.assertRaisesRegex(BusinessRuleError,"Событие маршрутизации не найдено"):
+            Repository(Connection(),backend="postgres").update_routing_event(999,updated_by=1,comment="after",commit=False)
+
+    def test_postgres_private_campaign_sync_uses_placeholders_and_boolean(self):
+        class Cursor:
+            def __init__(self,row): self.row=row
+            def fetchone(self): return self.row
+        class Connection:
+            def __init__(self): self.calls=[]
+            def execute(self,sql,params=()):
+                self.calls.append((sql,params))
+                if "FROM company_routing_settings" in sql: return Cursor({"id":7,"routing_mode":"campaign_route","route_id":8,"has_autorotation":False})
+                return Cursor(None)
+        conn=Connection(); repo=Repository(conn,backend="postgres")
+        event={"id":63,"apply_scope":"campaign_setting","calling_company_id":6,"event_at":datetime(2026,7,22,14,tzinfo=timezone.utc),"new_company_routing_mode":"campaign_route","new_company_route_id":8,"new_company_has_autorotation":0}
+        repo._sync_company_routing_comment_from_event(event,comment="updated",updated_by=1)
+        sql="\n".join(q for q,_ in conn.calls)
+        self.assertNotIn("?",sql); self.assertIn("calling_company_id = %s",sql); self.assertIn("is_active = %s",sql); self.assertIn("UPDATE company_routing_settings",sql)
+        self.assertIs(conn.calls[0][1][1],True); self.assertIs(conn.calls[1][1][1],True)
+
+    def test_sqlite_update_noop_and_caller_rollback(self):
+        conn=sqlite3.connect(":memory:"); conn.row_factory=sqlite3.Row; init_db(conn); repo=Repository(conn)
+        conn.execute("INSERT INTO routing_events(event_at,apply_scope,reason,comment,is_active,created_by,updated_by) VALUES (?,?,?,?,?,?,?)",("2026-07-22 14:00:00","none","Другое","before",1,1,1))
+        event_id=conn.execute("SELECT id FROM routing_events").fetchone()[0]; conn.commit()
+        repo.update_routing_event(event_id,updated_by=1,comment="after",commit=False)
+        self.assertEqual(conn.execute("SELECT comment FROM routing_events WHERE id=?",(event_id,)).fetchone()[0],"after")
+        count=conn.execute("SELECT COUNT(*) FROM change_log WHERE entity_type='routing_event' AND entity_id=?",(event_id,)).fetchone()[0]
+        self.assertEqual(count,1)
+        repo.update_routing_event(event_id,updated_by=1,comment="after",commit=False)
+        self.assertEqual(conn.execute("SELECT COUNT(*) FROM change_log WHERE entity_type='routing_event' AND entity_id=?",(event_id,)).fetchone()[0],count)
+        conn.rollback()
+        self.assertEqual(conn.execute("SELECT comment FROM routing_events WHERE id=?",(event_id,)).fetchone()[0],"before")
+        self.assertEqual(conn.execute("SELECT COUNT(*) FROM change_log WHERE entity_type='routing_event' AND entity_id=?",(event_id,)).fetchone()[0],0)
+        conn.close()

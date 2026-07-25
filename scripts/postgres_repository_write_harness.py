@@ -50,6 +50,11 @@ PROVIDER_CHANGE_NOOP_COMMENT = "__stage61_provider_change_noop_comment__"
 ROUTING_EVENT_COMMENT = "__stage62_routing_event_comment__"
 ROUTING_EVENT_DEACTIVATION_REASON = "__stage62_deactivation_reason__"
 ROUTING_EVENT_CHANGED_AT = "2026-07-22 13:00:00"
+ROUTING_EVENT_ORIGINAL_COMMENT = "__stage63_routing_event_original_comment__"
+ROUTING_EVENT_UPDATED_COMMENT = "__stage63_routing_event_updated_comment__"
+CAMPAIGN_EVENT_ORIGINAL_COMMENT = "__stage63_campaign_event_original_comment__"
+CAMPAIGN_EVENT_UPDATED_COMMENT = "__stage63_campaign_event_updated_comment__"
+ROUTING_EVENT_UPDATE_CHANGED_AT = "2026-07-22 14:00:00"
 
 
 def empty_summary(postgres_url: str) -> dict:
@@ -63,7 +68,7 @@ def empty_summary(postgres_url: str) -> dict:
             "dictionary_ensure_probe", "dictionary_server_probe",
             "dictionary_change_reason_probe", "dictionary_snapshot_probe",
             "provider_change_priority_probe", "provider_change_create_probe",
-            "routing_event_deactivate_probe",
+            "routing_event_deactivate_probe", "routing_event_update_probe",
         )},
     }
 
@@ -687,6 +692,98 @@ def run_routing_event_deactivate_probe(repo: Repository, conn) -> None:
         conn.rollback()
 
 
+def run_routing_event_update_probe(repo: Repository, conn) -> None:
+    """Update ordinary and campaign events, then prove complete rollback cleanup."""
+    user = conn.execute("SELECT id FROM users ORDER BY id LIMIT 1").fetchone()
+    route = conn.execute("SELECT id, country_id, provider_id FROM routes WHERE provider_id IS NOT NULL ORDER BY id LIMIT 1").fetchone()
+    server = conn.execute("SELECT id FROM servers ORDER BY id LIMIT 1").fetchone()
+    if not user or not route or not server:
+        raise AssertionError("Stage 63 fixture requires a user, server, and route with a provider")
+    user_id = user["id"]
+    conn.rollback()
+    try:
+        conn.execute("BEGIN")
+        event_id = conn.execute(
+            """INSERT INTO routing_events
+               (event_at, apply_scope, reason, country_id, provider_id, comment, snapshot_json, is_active, created_by, updated_by)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id""",
+            (ROUTING_EVENT_UPDATE_CHANGED_AT, "none", "Другое", route["country_id"], route["provider_id"],
+             ROUTING_EVENT_ORIGINAL_COMMENT, '{"stage63": true}', to_db_bool(True, "postgres"), user_id, user_id),
+        ).fetchone()["id"]
+        repo.update_routing_event(event_id, updated_by=user_id, comment=ROUTING_EVENT_UPDATED_COMMENT, commit=False)
+        event = conn.execute("SELECT comment, updated_by, updated_at FROM routing_events WHERE id=%s", (event_id,)).fetchone()
+        if not event or event["comment"] != ROUTING_EVENT_UPDATED_COMMENT or event["updated_by"] != user_id or event["updated_at"] is None:
+            raise AssertionError("Stage 63 routing event comment update is not visible")
+        audit = conn.execute("SELECT * FROM change_log WHERE entity_type=%s AND entity_id=%s AND change_type=%s ORDER BY id DESC LIMIT 1", ("routing_event", event_id, "routing_event.comment_updated")).fetchone()
+        if not audit or audit["changed_by"] != user_id or audit["summary"] != "Комментарий события изменён" or ROUTING_EVENT_ORIGINAL_COMMENT not in str(audit["old_values"]) or ROUTING_EVENT_UPDATED_COMMENT not in str(audit["new_values"]):
+            raise AssertionError("Stage 63 routing event change_log row is not visible")
+        audit_count = conn.execute("SELECT COUNT(*) AS count FROM change_log WHERE entity_type=%s AND entity_id=%s", ("routing_event", event_id)).fetchone()["count"]
+        repo.update_routing_event(event_id, updated_by=user_id, comment=ROUTING_EVENT_UPDATED_COMMENT, commit=False)
+        if conn.execute("SELECT COUNT(*) AS count FROM change_log WHERE entity_type=%s AND entity_id=%s", ("routing_event", event_id)).fetchone()["count"] != audit_count:
+            raise AssertionError("Stage 63 no-op update created a change_log row")
+
+        company_id = conn.execute(
+            """INSERT INTO calling_companies
+               (server_id, country_id, company_name, company_id_external, has_autorotation, created_by, updated_by)
+               VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING id""",
+            (server["id"], route["country_id"], "Stage 63 Company", "__stage63_company__", False, user_id, user_id),
+        ).fetchone()["id"]
+        setting_id = conn.execute(
+            """INSERT INTO company_routing_settings
+               (calling_company_id, country_id, server_id, route_id, routing_mode, has_autorotation, is_active, comment, valid_from, created_by, updated_by)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id""",
+            (company_id, route["country_id"], server["id"], route["id"], "campaign_route", False, True,
+             CAMPAIGN_EVENT_ORIGINAL_COMMENT, ROUTING_EVENT_UPDATE_CHANGED_AT, user_id, user_id),
+        ).fetchone()["id"]
+        campaign_event_id = conn.execute(
+            """INSERT INTO routing_events
+               (event_at, apply_scope, reason, country_id, server_id, provider_id, calling_company_id, company_change_type,
+                old_company_routing_mode, new_company_routing_mode, old_company_route_id, new_company_route_id,
+                old_company_has_autorotation, new_company_has_autorotation, comment, snapshot_json, is_active, created_by, updated_by)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id""",
+            (ROUTING_EVENT_UPDATE_CHANGED_AT, "campaign_setting", "Другое", route["country_id"], server["id"], route["provider_id"], company_id,
+             "set_campaign_route", "campaign_route", "campaign_route", route["id"], route["id"], False, False,
+             CAMPAIGN_EVENT_ORIGINAL_COMMENT, '{"stage63_campaign": true}', True, user_id, user_id),
+        ).fetchone()["id"]
+        repo.update_routing_event(campaign_event_id, updated_by=user_id, comment=CAMPAIGN_EVENT_UPDATED_COMMENT, commit=False)
+        campaign = conn.execute("SELECT comment FROM routing_events WHERE id=%s", (campaign_event_id,)).fetchone()
+        setting = conn.execute("SELECT comment FROM company_routing_settings WHERE id=%s", (setting_id,)).fetchone()
+        if campaign["comment"] != CAMPAIGN_EVENT_UPDATED_COMMENT or setting["comment"] != CAMPAIGN_EVENT_UPDATED_COMMENT:
+            raise AssertionError("Stage 63 campaign-setting comment sync is not visible")
+        if not conn.execute("SELECT 1 FROM change_log WHERE entity_type=%s AND entity_id=%s AND change_type=%s", ("routing_event", campaign_event_id, "routing_event.comment_updated")).fetchone():
+            raise AssertionError("Stage 63 campaign event change_log row is not visible")
+
+        validations = (
+            ("missing", 999999999, {"comment": ROUTING_EVENT_UPDATED_COMMENT}, "Событие маршрутизации не найдено"),
+            ("empty_comment", event_id, {"comment": ""}, "Комментарий обязателен"),
+            ("optimistic_lock", event_id, {"comment": "another", "updated_at_original": "definitely-not-current"}, "Запись была изменена другим пользователем. Обновите страницу и повторите действие."),
+        )
+        for name, target_id, values, expected in validations:
+            conn.execute(f"SAVEPOINT stage63_{name}")
+            try:
+                repo.update_routing_event(target_id, updated_by=user_id, commit=False, **values)
+            except BusinessRuleError as exc:
+                if str(exc) != expected:
+                    raise
+            else:
+                raise AssertionError(f"Stage 63 {name} validation did not fail")
+            finally:
+                conn.execute(f"ROLLBACK TO SAVEPOINT stage63_{name}")
+                conn.execute(f"RELEASE SAVEPOINT stage63_{name}")
+    finally:
+        conn.rollback()
+    try:
+        comments = (ROUTING_EVENT_ORIGINAL_COMMENT, ROUTING_EVENT_UPDATED_COMMENT, CAMPAIGN_EVENT_ORIGINAL_COMMENT, CAMPAIGN_EVENT_UPDATED_COMMENT)
+        if conn.execute("SELECT 1 FROM routing_events WHERE comment = ANY(%s) OR snapshot_json::text LIKE %s", (list(comments), "%stage63%")).fetchone():
+            raise AssertionError("Stage 63 routing event rows remain after rollback")
+        if conn.execute("SELECT 1 FROM company_routing_settings WHERE comment = ANY(%s)", (list(comments),)).fetchone():
+            raise AssertionError("Stage 63 company routing rows remain after rollback")
+        if conn.execute("SELECT 1 FROM change_log WHERE old_values::text LIKE %s OR new_values::text LIKE %s", ("%stage63%", "%stage63%")).fetchone():
+            raise AssertionError("Stage 63 change_log rows remain after rollback")
+    finally:
+        conn.rollback()
+
+
 def run_harness(postgres_url: str, probe_key: str = DEFAULT_PROBE_KEY, probe_value: str = DEFAULT_PROBE_VALUE) -> dict:
     """Run all probes; psycopg imports remain local so unit tests need no driver."""
     summary = empty_summary(postgres_url)
@@ -725,6 +822,7 @@ def run_harness(postgres_url: str, probe_key: str = DEFAULT_PROBE_KEY, probe_val
         check("provider_change_priority_probe", lambda: run_provider_change_priority_probe(repo, conn))
         check("provider_change_create_probe", lambda: run_provider_change_create_probe(repo, conn))
         check("routing_event_deactivate_probe", lambda: run_routing_event_deactivate_probe(repo, conn))
+        check("routing_event_update_probe", lambda: run_routing_event_update_probe(repo, conn))
     except Exception as exc:
         summary["failures"].append({"check": "connect", "error": sanitize_error(exc, postgres_url)})
     finally:

@@ -149,3 +149,7 @@ Stage 52 rollback-smokes `set_app_setting_value`, `delete_app_setting_value`, an
 ## Stage 62 status
 
 `deactivate_routing_event` is PostgreSQL-compatible and rollback-smoked with caller-owned `commit=False`, including change-log visibility, SAVEPOINT-contained validation failures, and rollback cleanup. `routing_event_application_writes` has started; `create_routing_event` and `update_routing_event` remain unadapted and are not rollback-smoked. `provider_change_and_priority_writes` and `dictionary_and_snapshot_writes` remain complete. Production runtime and `DB_BACKEND=postgres` remain disabled.
+
+## Stage 63 status
+
+Stage 63 rollback-smokes `update_routing_event` on PostgreSQL with caller-owned `commit=False`, including ordinary comment updates, no-op behavior, optimistic-lock and validation failures, the audit row, and private campaign-setting comment synchronization. `deactivate_routing_event` remains rollback-smoked from Stage 62. `create_routing_event` remains unadapted, so `routing_event_application_writes` is still incomplete. Production PostgreSQL runtime and `DB_BACKEND=postgres` remain disabled. The rollback-smoked write count is 26.
