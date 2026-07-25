@@ -146,6 +146,12 @@ class WriteHarnessTest(unittest.TestCase):
         self.assertIn('(\"none_comment\", dict(apply_scope=\"none\"', source)
         self.assertIn('provider_id=route[\"provider_id\"]), \"\", \"Требуется понятный комментарий\")', source)
 
+    def test_stage64_fixture_selects_a_country_with_two_routes_and_scopes_priority_logs_by_id(self):
+        source = SCRIPT.read_text(encoding="utf-8")
+        self.assertIn('if len(items) >= 2', source)
+        self.assertIn('entity_id = ANY(%s)', source)
+        self.assertNotIn('change_type = %s AND new_values::text LIKE %s", ("server_route_priority"', source)
+
     def test_import_is_driver_free_and_masks_password(self):
         self.assertEqual(harness.mask_postgres_url("postgresql://user:secret@host/db"), "postgresql://user:***@host/db")
         self.assertNotIn("psycopg", harness.__dict__)

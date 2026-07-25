@@ -803,7 +803,16 @@ def run_routing_event_create_core_probe(repo: Repository, conn) -> None:
         servers = conn.execute("SELECT id FROM servers WHERE is_active = %s ORDER BY id LIMIT 2", (True,)).fetchall()
         if not user or not routes or len(servers) < 2:
             raise AssertionError("Stage 64 fixture requires a user, an active route, and two active servers")
-        user_id, route = user["id"], routes[0]
+        routes_by_country = {}
+        for candidate in routes:
+            routes_by_country.setdefault(candidate["country_id"], []).append(candidate)
+        country_routes = next(
+            (items for items in routes_by_country.values() if len(items) >= 2),
+            None,
+        )
+        if country_routes is None:
+            raise AssertionError("Stage 64 fixture requires two active routes in one country")
+        user_id, route = user["id"], country_routes[0]
 
         none_id = repo.create_routing_event(
             event_at=EVENT_AT, apply_scope="none", reason="Другое",
@@ -823,9 +832,6 @@ def run_routing_event_create_core_probe(repo: Repository, conn) -> None:
         if not log or log["changed_by"] != user_id or NONE_COMMENT not in str(log["new_values"]) or NONE_COMMENT not in log["summary"]:
             raise AssertionError("Stage 64 none change_log row is incomplete")
 
-        country_routes = [item for item in routes if item["country_id"] == route["country_id"]]
-        if len(country_routes) < 2:
-            raise AssertionError("Stage 64 fixture requires two active routes in one country")
         old_route, new_route = country_routes[0], country_routes[1]
         existing_server, insert_server = servers[0]["id"], servers[1]["id"]
         conn.execute("DELETE FROM server_route_priorities WHERE country_id = %s AND server_id IN (%s, %s)", (route["country_id"], existing_server, insert_server))
@@ -856,7 +862,11 @@ def run_routing_event_create_core_probe(repo: Repository, conn) -> None:
         updated = next(row for row in priorities if row["id"] == existing_id)
         if updated["previous_route_id"] != old_route["id"]:
             raise AssertionError("Stage 64 updated priority did not preserve previous route")
-        if conn.execute("SELECT COUNT(*) AS count FROM change_log WHERE entity_type = %s AND change_type = %s AND new_values::text LIKE %s", ("server_route_priority", "routing_event.applied_to_server_priority", "%stage64%" )).fetchone()["count"] < 2:
+        priority_ids = [row["id"] for row in priorities]
+        if conn.execute(
+            "SELECT COUNT(*) AS count FROM change_log WHERE entity_type = %s AND change_type = %s AND entity_id = ANY(%s)",
+            ("server_route_priority", "routing_event.applied_to_server_priority", priority_ids),
+        ).fetchone()["count"] < 2:
             raise AssertionError("Stage 64 priority change_log rows are missing")
 
         validations = (
