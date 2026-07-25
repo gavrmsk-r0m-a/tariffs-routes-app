@@ -140,6 +140,12 @@ class FakeRepo:
 
 
 class WriteHarnessTest(unittest.TestCase):
+    def test_stage64_validation_cases_do_not_pop_or_default_missing_comment(self):
+        source = SCRIPT.read_text(encoding="utf-8")
+        self.assertNotIn('arguments.pop("comment", SERVER_PRIORITY_COMMENT)', source)
+        self.assertIn('(\"none_comment\", dict(apply_scope=\"none\"', source)
+        self.assertIn('provider_id=route[\"provider_id\"]), \"\", \"Требуется понятный комментарий\")', source)
+
     def test_import_is_driver_free_and_masks_password(self):
         self.assertEqual(harness.mask_postgres_url("postgresql://user:secret@host/db"), "postgresql://user:***@host/db")
         self.assertNotIn("psycopg", harness.__dict__)

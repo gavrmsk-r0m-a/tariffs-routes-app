@@ -3441,6 +3441,7 @@ class Repository:
 
     def update_routing_event(self, event_id: int, *, updated_by: int, commit: bool = True, **kwargs) -> None:
         p = placeholder(self.backend)
+        updated_at_sql = "CURRENT_TIMESTAMP" if self.backend == "postgres" else "STRFTIME('%Y-%m-%d %H:%M:%f', 'now')"
         try:
             existing = self.conn.execute(f"SELECT * FROM routing_events WHERE id = {p}", (event_id,)).fetchone()
             if not existing:
@@ -3470,7 +3471,7 @@ class Repository:
             self.conn.execute(
                 f"""
                 UPDATE routing_events
-                SET comment = {p}, updated_by = {p}, updated_at = CURRENT_TIMESTAMP
+                SET comment = {p}, updated_by = {p}, updated_at = {updated_at_sql}
                 WHERE id = {p}
                 """,
                 (comment, updated_by, event_id),
