@@ -161,3 +161,13 @@ Stage 64 provides partial PostgreSQL core coverage for `create_routing_event`, l
 rollback-smoked method count remains 26. The `campaign_setting` branch and the public
 company-routing write methods remain pending Stage 65. PostgreSQL production runtime and
 `DB_BACKEND=postgres` remain disabled.
+
+## Stage 65A status
+
+`company_routing_setting_writes` is partially started. PostgreSQL rollback-only
+coverage now includes `create_company_routing_setting`,
+`update_company_routing_setting`, and `deactivate_company_routing_setting`.
+`create_calling_company`, `update_calling_company`, and
+`update_company_routing_setting_comment` remain pending. The `campaign_setting`
+branch of `create_routing_event` remains pending for Stage 65B, so that method is
+not yet fully rollback-smoked. `rollback_smoke_covered_methods_count` is **29**.

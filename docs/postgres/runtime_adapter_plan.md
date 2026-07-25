@@ -757,3 +757,11 @@ The rollback-only PostgreSQL harness now partially covers `create_routing_event`
 and `server_priority` paths. `campaign_setting` remains pending and there is no runtime write
 enablement. The read-only smoke remains at 611 checks and the coverage audit remains
 112/61/0/50/1/100%. `DB_BACKEND=postgres` is still disabled for production runtime.
+
+## Stage 65A: company-routing lifecycle rollback smoke
+
+The three public company-routing lifecycle methods are now covered by the
+rollback-only PostgreSQL write harness. Read-only smoke remains at **611** checks,
+and the coverage inventory remains **112 / 61 / 0 / 50 / 1 / 100.0%**. This stage
+does not enable `DB_BACKEND=postgres` and makes no production runtime change.
+The `campaign_setting` routing-event application path remains pending Stage 65B.
