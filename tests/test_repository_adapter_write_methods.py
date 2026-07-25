@@ -117,6 +117,109 @@ class RepositoryAdapterWriteMethodsTest(unittest.TestCase):
             Repository(caller_owned, backend="postgres").create_routing_event(commit=False, **kwargs)
         self.assertEqual(caller_owned.rollbacks, 0)
 
+    def _campaign_fixture(self):
+        user_id = self.conn.execute("SELECT id FROM users ORDER BY id LIMIT 1").fetchone()["id"]
+        country_id = self.repo.create_country("Stage 65B GEO", "65B")
+        provider_id = self.repo.create_provider("Stage 65B provider")
+        server_id = self.repo.create_server("stage-65b-server")
+        routes = [self.repo.create_route(country_id=country_id, provider_id=provider_id,
+                  name=f"Stage 65B route {index}", cli_source_type="other",
+                  cli_source_label="Stage 65B", created_by=user_id) for index in (1, 2)]
+        company_id = self.repo.create_calling_company(
+            server_id=server_id, country_id=country_id, company_name="Stage 65B company",
+            company_id_external="stage65b", has_autorotation=False, line_count=0,
+            dial_set_count=0, retry_interval_seconds=0, comment="stage65b", created_by=user_id,
+        )
+        return user_id, country_id, server_id, routes, company_id
+
+    def test_create_routing_event_campaign_create_is_caller_owned_and_rolls_back(self):
+        user_id, _, _, routes, company_id = self._campaign_fixture()
+        self.conn.commit()
+        event_id = self.repo.create_routing_event(
+            event_at="2026-07-22 16:00:00", apply_scope="campaign_setting",
+            reason="Задача руководства", calling_company_id=company_id,
+            company_change_type="set_campaign_route", new_company_route_id=routes[0],
+            comment="__stage65b_campaign_create__", created_by=user_id, commit=False,
+        )
+        self.assertIsNotNone(self.conn.execute("SELECT 1 FROM routing_events WHERE id = ?", (event_id,)).fetchone())
+        self.assertEqual(routes[0], self.conn.execute("SELECT route_id FROM company_routing_settings WHERE calling_company_id = ? AND is_active = 1", (company_id,)).fetchone()["route_id"])
+        self.assertIsNotNone(self.conn.execute("SELECT 1 FROM change_log WHERE entity_type = 'routing_event' AND entity_id = ? AND change_type = 'routing_event.created'", (event_id,)).fetchone())
+        self.conn.rollback()
+        self.assertIsNone(self.conn.execute("SELECT 1 FROM routing_events WHERE id = ?", (event_id,)).fetchone())
+        self.assertIsNone(self.conn.execute("SELECT 1 FROM company_routing_settings WHERE calling_company_id = ?", (company_id,)).fetchone())
+
+    def test_create_routing_event_campaign_remove_deactivates_and_rolls_back(self):
+        user_id, country_id, server_id, routes, company_id = self._campaign_fixture()
+        setting_id = self.repo.create_company_routing_setting(
+            calling_company_id=company_id, country_id=country_id, server_id=server_id,
+            route_id=routes[0], routing_mode="campaign_route", has_autorotation=False,
+            comment="before", created_by=user_id,
+        )
+        self.conn.commit()
+        event_id = self.repo.create_routing_event(
+            event_at="2026-07-22 16:00:00", apply_scope="campaign_setting",
+            reason="Задача руководства", calling_company_id=company_id,
+            company_change_type="remove_campaign_route", comment="__stage65b_campaign_remove__",
+            created_by=user_id, commit=False,
+        )
+        self.assertEqual(0, self.conn.execute("SELECT is_active FROM company_routing_settings WHERE id = ?", (setting_id,)).fetchone()["is_active"])
+        self.conn.rollback()
+        self.assertEqual(1, self.conn.execute("SELECT is_active FROM company_routing_settings WHERE id = ?", (setting_id,)).fetchone()["is_active"])
+        self.assertIsNone(self.conn.execute("SELECT 1 FROM routing_events WHERE id = ?", (event_id,)).fetchone())
+
+    def test_campaign_helpers_disable_nested_commits(self):
+        repo = Repository(object(), backend="postgres")
+        values = dict(calling_company_id=1, country_id=2, server_id=3,
+                      new_company_route_id=4, new_company_routing_mode="campaign_route",
+                      new_company_has_autorotation=0, comment="marker", event_at="2026-07-22 16:00:00")
+        with patch.object(repo, "_active_company_routing_setting", side_effect=[None, {"id": 8}, {"id": 9}]), \
+             patch.object(repo, "create_company_routing_setting") as create, \
+             patch.object(repo, "update_company_routing_setting") as update, \
+             patch.object(repo, "deactivate_company_routing_setting") as deactivate:
+            repo._upsert_company_routing_setting_from_event(values, updated_by=7)
+            repo._upsert_company_routing_setting_from_event(values, updated_by=7)
+            repo._deactivate_company_routing_setting_from_event(values, updated_by=7)
+        self.assertFalse(create.call_args.kwargs["commit"])
+        self.assertFalse(update.call_args.kwargs["commit"])
+        self.assertFalse(deactivate.call_args.kwargs["commit"])
+
+    def test_create_routing_event_campaign_uses_postgres_sql_and_top_level_commit(self):
+        class Cursor:
+            def __init__(self, row=None): self.row = row
+            def fetchone(self): return self.row
+        class Connection:
+            def __init__(self): self.calls=[]; self.commits=0; self.rollbacks=0
+            def execute(self, sql, params=()):
+                self.calls.append((sql, params))
+                if "FROM calling_companies" in sql:
+                    return Cursor({"country_id": 2, "server_id": 3})
+                if "FROM routes WHERE id" in sql:
+                    return Cursor({"country_id": 2, "provider_id": 5})
+                if "INSERT INTO routing_events" in sql:
+                    return Cursor({"id": 650})
+                return Cursor()
+            def commit(self): self.commits += 1
+            def rollback(self): self.rollbacks += 1
+        connection = Connection(); repo = Repository(connection, backend="postgres")
+        kwargs = dict(event_at="2026-07-22 16:00:00", apply_scope="campaign_setting",
+                      reason="Задача руководства", calling_company_id=1,
+                      company_change_type="set_campaign_route", new_company_route_id=4,
+                      comment="stage65b", created_by=7)
+        with patch.object(repo, "_company_old_state", return_value={"routing_mode": "server_priority", "route_id": None, "has_autorotation": False}), \
+             patch.object(repo, "_routing_event_snapshot", return_value={"comment": "stage65b"}), \
+             patch.object(repo, "_routing_event_summary", return_value="stage65b"), \
+             patch.object(repo, "_change_log") as change_log, \
+             patch.object(repo, "_apply_campaign_setting_event") as apply:
+            self.assertEqual(650, repo.create_routing_event(**kwargs))
+            self.assertEqual(1, connection.commits)
+            self.assertEqual(0, connection.rollbacks)
+            self.assertFalse(any("?" in sql for sql, _ in connection.calls))
+            apply.assert_called_once()
+            change_log.assert_called_once()
+            self.assertEqual("routing_event.created", change_log.call_args.args[2])
+            repo.create_routing_event(commit=False, **kwargs)
+            self.assertEqual(1, connection.commits)
+
     def test_change_reason_uses_postgres_placeholders_and_commit_contract(self):
         class Cursor:
             def fetchone(self): return {"id": 901}

@@ -63,6 +63,8 @@ COMPANY_ROUTING_MARKER = "__stage65a_company_routing__"
 COMPANY_ROUTING_AT = "2026-07-25 10:00:00"
 COMPANY_ROUTING_UPDATED_AT = "2026-07-25 11:00:00"
 COMPANY_ROUTING_DEACTIVATED_AT = "2026-07-25 12:00:00"
+CAMPAIGN_MARKER = "__stage65b_campaign__"
+CAMPAIGN_EVENT_AT = "2026-07-22 16:00:00"
 
 
 def empty_summary(postgres_url: str) -> dict:
@@ -78,6 +80,7 @@ def empty_summary(postgres_url: str) -> dict:
             "provider_change_priority_probe", "provider_change_create_probe",
             "routing_event_deactivate_probe", "routing_event_update_probe",
             "routing_event_create_core_probe", "company_routing_setting_lifecycle_probe",
+            "routing_event_create_campaign_probe",
         )},
     }
 
@@ -1000,6 +1003,136 @@ def run_company_routing_setting_lifecycle_probe(repo: Repository, conn) -> None:
                 conn.execute(f"RELEASE SAVEPOINT stage65a_{name}")
     finally:
         conn.rollback()
+
+
+def run_routing_event_create_campaign_probe(repo: Repository, conn) -> None:
+    """Cover every campaign-setting application path without committing."""
+    conn.rollback()
+    conn.execute("BEGIN")
+    try:
+        user = conn.execute("SELECT id FROM users ORDER BY id LIMIT 1").fetchone()
+        server = conn.execute("SELECT id FROM servers WHERE is_active = %s ORDER BY id LIMIT 1", (True,)).fetchone()
+        routes = conn.execute("SELECT id, country_id FROM routes WHERE is_actual = %s ORDER BY country_id, id", (True,)).fetchall()
+        grouped = {}
+        for route in routes:
+            grouped.setdefault(route["country_id"], []).append(route)
+        pair = next((items for items in grouped.values() if len(items) >= 2), None)
+        if not user or not server or pair is None:
+            raise AssertionError("Stage 65B fixture requires a user, active server, and two routes in one country")
+        user_id, server_id, country_id = user["id"], server["id"], pair[0]["country_id"]
+        wrong_geo = next((route for route in routes if route["country_id"] != country_id), None)
+        if wrong_geo is None:
+            raise AssertionError("Stage 65B fixture requires a route from another GEO")
+        company_id = conn.execute(
+            """INSERT INTO calling_companies(
+                   server_id, country_id, company_name, company_id_external, has_autorotation,
+                   line_count, dial_set_count, retry_interval_seconds, comment, is_active, created_by, updated_by)
+               VALUES (%s, %s, %s, %s, %s, 0, 0, 0, %s, %s, %s, %s) RETURNING id""",
+            (server_id, country_id, CAMPAIGN_MARKER, CAMPAIGN_MARKER, False,
+             CAMPAIGN_MARKER, True, user_id, user_id),
+        ).fetchone()["id"]
+
+        def create(change_type, comment, **extra):
+            return repo.create_routing_event(
+                event_at=CAMPAIGN_EVENT_AT, apply_scope="campaign_setting",
+                reason="Задача руководства", calling_company_id=company_id,
+                company_change_type=change_type, comment=comment,
+                created_by=user_id, commit=False, **extra,
+            )
+
+        created_event = create("set_campaign_route", CAMPAIGN_MARKER + "create", new_company_route_id=pair[0]["id"])
+        created = conn.execute("SELECT * FROM routing_events WHERE id = %s", (created_event,)).fetchone()
+        active = conn.execute("SELECT * FROM company_routing_settings WHERE calling_company_id = %s AND is_active = %s", (company_id, True)).fetchone()
+        if not created or created["apply_scope"] != "campaign_setting" or created["calling_company_id"] != company_id or created["company_change_type"] != "set_campaign_route" or created["new_company_route_id"] != pair[0]["id"] or CAMPAIGN_MARKER not in str(created["snapshot_json"]):
+            raise AssertionError("Stage 65B create event fields or snapshot are incomplete")
+        if not active or active["route_id"] != pair[0]["id"]:
+            raise AssertionError("Stage 65B no-active path did not create a company setting")
+
+        updated_event = create("set_campaign_route", CAMPAIGN_MARKER + "update", new_company_route_id=pair[1]["id"])
+        updated = conn.execute("SELECT * FROM company_routing_settings WHERE calling_company_id = %s AND is_active = %s", (company_id, True)).fetchone()
+        old = conn.execute("SELECT * FROM company_routing_settings WHERE id = %s", (active["id"],)).fetchone()
+        update_row = conn.execute("SELECT * FROM routing_events WHERE id = %s", (updated_event,)).fetchone()
+        if update_row["old_company_route_id"] != pair[0]["id"] or update_row["new_company_route_id"] != pair[1]["id"] or updated["route_id"] != pair[1]["id"] or bool(old["is_active"]) or old["valid_to"] is None:
+            raise AssertionError("Stage 65B active-setting update/version path is incomplete")
+
+        enabled_id = repo.update_company_routing_setting(
+            setting_id=updated["id"], country_id=country_id, server_id=server_id,
+            route_id=pair[1]["id"], routing_mode="mixed", has_autorotation=True,
+            comment=CAMPAIGN_MARKER + "enable_setup", updated_by=user_id,
+            effective_at=CAMPAIGN_EVENT_AT, commit=False,
+        )
+        disabled_event = create("disable_autorotation", CAMPAIGN_MARKER + "disable")
+        disabled = conn.execute("SELECT * FROM company_routing_settings WHERE calling_company_id = %s AND is_active = %s", (company_id, True)).fetchone()
+        disabled_row = conn.execute("SELECT * FROM routing_events WHERE id = %s", (disabled_event,)).fetchone()
+        if not bool(disabled_row["old_company_has_autorotation"]) or bool(disabled_row["new_company_has_autorotation"]) or bool(disabled["has_autorotation"]) or disabled["routing_mode"] != "campaign_route":
+            raise AssertionError("Stage 65B disable-autorotation path is incomplete")
+
+        removed_event = create("remove_campaign_route", CAMPAIGN_MARKER + "remove")
+        removed = conn.execute("SELECT * FROM routing_events WHERE id = %s", (removed_event,)).fetchone()
+        if removed["old_company_route_id"] != pair[1]["id"] or removed["new_company_route_id"] is not None:
+            raise AssertionError("Stage 65B remove event state is incomplete")
+        if conn.execute("SELECT 1 FROM company_routing_settings WHERE calling_company_id = %s AND is_active = %s", (company_id, True)).fetchone():
+            raise AssertionError("Stage 65B remove path did not deactivate the setting")
+        if conn.execute("SELECT COUNT(*) AS count FROM change_log WHERE entity_type IN (%s, %s) AND (new_values::text LIKE %s OR summary LIKE %s)", ("routing_event", "company_routing_setting", "%stage65b%", "%stage65b%")).fetchone()["count"] < 8:
+            raise AssertionError("Stage 65B routing-event/company-setting audit rows are missing")
+
+        # Restore an enabled active version for validation probes.
+        active_id = repo.create_company_routing_setting(
+            calling_company_id=company_id, country_id=country_id, server_id=server_id,
+            route_id=pair[0]["id"], routing_mode="mixed", has_autorotation=True,
+            comment=CAMPAIGN_MARKER + "validation", created_by=user_id,
+            effective_at=CAMPAIGN_EVENT_AT, commit=False,
+        )
+        validations = (
+            ("required", dict(calling_company_id=None, company_change_type=None), "Кампания и тип изменения обязательны"),
+            ("missing_company", dict(calling_company_id=-65001, company_change_type="remove_campaign_route"), "Кампания прозвона не найдена"),
+            ("invalid_type", dict(calling_company_id=company_id, company_change_type="invalid"), "Некорректный тип изменения кампании"),
+            ("already_enabled", dict(calling_company_id=company_id, company_change_type="enable_autorotation"), "В этой компании уже включена авторотация."),
+            ("missing_route", dict(calling_company_id=company_id, company_change_type="set_campaign_route"), "Новый маршрут кампании обязателен"),
+            ("wrong_geo", dict(calling_company_id=company_id, company_change_type="set_campaign_route", new_company_route_id=wrong_geo["id"]), "Маршрут кампании должен относиться к выбранному GEO"),
+            ("same_route", dict(calling_company_id=company_id, company_change_type="set_campaign_route", new_company_route_id=pair[0]["id"]), "Этот маршрут уже прописан для выбранной компании."),
+        )
+        for name, arguments, expected in validations:
+            conn.execute(f"SAVEPOINT stage65b_{name}")
+            try:
+                repo.create_routing_event(event_at=CAMPAIGN_EVENT_AT, apply_scope="campaign_setting", reason="Задача руководства", comment=CAMPAIGN_MARKER + name, created_by=user_id, commit=False, **arguments)
+            except BusinessRuleError as exc:
+                if str(exc) != expected:
+                    raise
+            else:
+                raise AssertionError(f"Stage 65B {name} validation did not fail")
+            finally:
+                conn.execute(f"ROLLBACK TO SAVEPOINT stage65b_{name}")
+                conn.execute(f"RELEASE SAVEPOINT stage65b_{name}")
+        repo.update_company_routing_setting(setting_id=active_id, country_id=country_id, server_id=server_id, route_id=pair[0]["id"], routing_mode="campaign_route", has_autorotation=False, comment=CAMPAIGN_MARKER + "disabled", updated_by=user_id, effective_at=CAMPAIGN_EVENT_AT, commit=False)
+        conn.execute("SAVEPOINT stage65b_already_disabled")
+        try:
+            create("disable_autorotation", CAMPAIGN_MARKER + "already_disabled")
+        except BusinessRuleError as exc:
+            if str(exc) != "В этой компании авторотация уже выключена.":
+                raise
+        else:
+            raise AssertionError("Stage 65B already-disabled validation did not fail")
+        finally:
+            conn.execute("ROLLBACK TO SAVEPOINT stage65b_already_disabled")
+            conn.execute("RELEASE SAVEPOINT stage65b_already_disabled")
+    finally:
+        conn.rollback()
+    try:
+        checks = (
+            ("routing_events", "comment LIKE %s OR snapshot_json::text LIKE %s"),
+            ("calling_companies", "company_id_external LIKE %s OR comment LIKE %s"),
+            ("company_routing_settings", "comment LIKE %s OR comment LIKE %s"),
+            ("change_log", "old_values::text LIKE %s OR new_values::text LIKE %s"),
+        )
+        for table, where in checks:
+            if conn.execute(f"SELECT 1 FROM {table} WHERE {where}", ("%stage65b%", "%stage65b%")).fetchone():
+                raise AssertionError(f"Stage 65B marker remains in {table} after rollback")
+        for table in ("routing_event_servers", "server_route_priorities"):
+            if conn.execute(f"SELECT 1 FROM {table} WHERE comment LIKE %s", ("%stage65b%",)).fetchone() if table == "server_route_priorities" else False:
+                raise AssertionError(f"Stage 65B marker remains in {table} after rollback")
+    finally:
+        conn.rollback()
     try:
         if conn.execute("SELECT 1 FROM calling_companies WHERE company_id_external = %s OR comment = %s", (COMPANY_ROUTING_MARKER, COMPANY_ROUTING_MARKER)).fetchone():
             raise AssertionError("Stage 65A calling company remains after rollback")
@@ -1051,6 +1184,7 @@ def run_harness(postgres_url: str, probe_key: str = DEFAULT_PROBE_KEY, probe_val
         check("routing_event_update_probe", lambda: run_routing_event_update_probe(repo, conn))
         check("routing_event_create_core_probe", lambda: run_routing_event_create_core_probe(repo, conn))
         check("company_routing_setting_lifecycle_probe", lambda: run_company_routing_setting_lifecycle_probe(repo, conn))
+        check("routing_event_create_campaign_probe", lambda: run_routing_event_create_campaign_probe(repo, conn))
     except Exception as exc:
         summary["failures"].append({"check": "connect", "error": sanitize_error(exc, postgres_url)})
     finally:
