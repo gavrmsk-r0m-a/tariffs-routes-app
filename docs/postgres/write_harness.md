@@ -71,3 +71,13 @@ Missing-event, already-inactive, and empty-reason validations run in separate SA
 `routing_event_update_probe` continues `routing_event_application_writes` without enabling PostgreSQL runtime. Inside an explicit transaction it inserts deterministic routing events with direct SQL and calls `update_routing_event(..., commit=False)`. The probe observes a normal comment update, its `updated_by`/`updated_at` values, and the `routing_event.comment_updated` `change_log` side effect. A second call with the same comment proves the no-op path adds no audit row.
 
 A campaign-setting fixture is also created with direct SQL. It covers `_sync_company_routing_comment_from_event` and `_active_company_routing_setting` only as private dependencies: the event comment and matching active `company_routing_settings.comment` must both update. Missing-event, empty-comment, and optimistic-lock failures are isolated with SAVEPOINTs. The `finally` rollback executes on success or failure, and cleanup checks reject every Stage 63 routing-event, company-setting, and audit marker. The harness never calls `conn.commit()` and does not use public company-routing write methods.
+
+## Stage 64: partial routing-event create core probe
+
+`routing_event_create_core_probe` exercises `create_routing_event` with `commit=False` for
+`apply_scope=none` and `apply_scope=server_priority`. It verifies the routing event and audit
+row, both the update and insert paths for `server_route_priorities`, and the corresponding
+`routing_event_servers` links. Expected business-rule failures are isolated with savepoints,
+and the enclosing transaction is always rolled back; the harness never calls `conn.commit()`.
+This is deliberately partial coverage: `campaign_setting` and its company-routing writes remain
+pending for Stage 65, so `create_routing_event` is not yet a fully rollback-smoked method.

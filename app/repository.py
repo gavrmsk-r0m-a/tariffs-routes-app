@@ -2802,19 +2802,35 @@ class Repository:
         return {"routing_mode": "server_priority", "route_id": None, "has_autorotation": False}
 
     def _routing_event_snapshot(self, values: dict) -> dict:
+        p = placeholder(self.backend)
+        def event_name(table, row_id, column="name"):
+            if not row_id:
+                return None
+            row = self.conn.execute(f"SELECT {column} FROM {table} WHERE id = {p}", (row_id,)).fetchone()
+            return row[column] if row else None
+
+        def event_route_label(route_id):
+            if not route_id:
+                return None
+            row = self.conn.execute(
+                f"SELECT r.name, provider.name AS provider_name FROM routes r JOIN providers provider ON provider.id = r.provider_id WHERE r.id = {p}",
+                (route_id,),
+            ).fetchone()
+            return f"{row['provider_name']} / {row['name']}" if row else str(route_id)
+
         company = None
         if values.get("calling_company_id"):
             company = self.conn.execute(
-                "SELECT company_id_external, company_name FROM calling_companies WHERE id = ?",
+                f"SELECT company_id_external, company_name FROM calling_companies WHERE id = {p}",
                 (values.get("calling_company_id"),),
             ).fetchone()
         snapshot = {
-            "country_name": self._name_by_id("countries", values.get("country_id")),
-            "server_name": None if values.get("apply_scope") == "campaign_setting" else self._name_by_id("servers", values.get("server_id")),
-            "provider_name": self._name_by_id("providers", values.get("provider_id")),
-            "affected_route_name": self._route_label(values.get("affected_route_id")),
-            "old_route_name": self._route_label(values.get("old_route_id")),
-            "new_route_name": self._route_label(values.get("new_route_id")),
+            "country_name": event_name("countries", values.get("country_id")),
+            "server_name": None if values.get("apply_scope") == "campaign_setting" else event_name("servers", values.get("server_id")),
+            "provider_name": event_name("providers", values.get("provider_id")),
+            "affected_route_name": event_route_label(values.get("affected_route_id")),
+            "old_route_name": event_route_label(values.get("old_route_id")),
+            "new_route_name": event_route_label(values.get("new_route_id")),
             "calling_company_external_id": company["company_id_external"] if company else None,
             "calling_company_name": company["company_name"] if company else None,
             "old_company_routing_mode": values.get("old_company_routing_mode"),
@@ -2826,41 +2842,57 @@ class Repository:
         if values.get("apply_scope") == "server_priority":
             snapshot["affected_servers"] = values.get("affected_servers", [])
             snapshot["has_overflow"] = values.get("has_overflow", 0)
-            snapshot["overflow_route_name"] = self._name_by_id('routes', values.get("overflow_route_id")) if values.get("overflow_route_id") else None
+            snapshot["overflow_route_name"] = event_name('routes', values.get("overflow_route_id")) if values.get("overflow_route_id") else None
             snapshot["overflow_provider_name"] = None
             if values.get("overflow_route_id"):
-                row = self.conn.execute("SELECT p.name FROM routes r JOIN providers p ON p.id = r.provider_id WHERE r.id = ?", (values.get("overflow_route_id"),)).fetchone()
+                row = self.conn.execute(f"SELECT p.name FROM routes r JOIN providers p ON p.id = r.provider_id WHERE r.id = {p}", (values.get("overflow_route_id"),)).fetchone()
                 snapshot["overflow_provider_name"] = row["name"] if row else None
         return snapshot
 
     def _routing_event_summary(self, values: dict) -> str:
+        p = placeholder(self.backend)
+        def event_name(table, row_id, column="name"):
+            if not row_id:
+                return None
+            row = self.conn.execute(f"SELECT {column} FROM {table} WHERE id = {p}", (row_id,)).fetchone()
+            return row[column] if row else None
+
+        def event_route_label(route_id):
+            if not route_id:
+                return None
+            row = self.conn.execute(
+                f"SELECT r.name, provider.name AS provider_name FROM routes r JOIN providers provider ON provider.id = r.provider_id WHERE r.id = {p}",
+                (route_id,),
+            ).fetchone()
+            return f"{row['provider_name']} / {row['name']}" if row else str(route_id)
+
         scope = values.get("apply_scope")
         parts = [
             f"Дата события: {values.get('event_at')}",
             f"Область: {ROUTING_SCOPE_LABELS.get(scope, scope)}",
         ]
         if values.get("country_id"):
-            parts.append(f"GEO: {self._name_by_id('countries', values.get('country_id')) or '—'}")
+            parts.append(f"GEO: {event_name('countries', values.get('country_id')) or '—'}")
         if scope == "none":
             if values.get("provider_id"):
-                parts.append(f"Провайдер: {self._name_by_id('providers', values.get('provider_id'))}")
+                parts.append(f"Провайдер: {event_name('providers', values.get('provider_id'))}")
             if values.get("affected_route_id"):
-                parts.append(f"Маршрут/префикс: {self._route_label(values.get('affected_route_id'))}")
+                parts.append(f"Маршрут/префикс: {event_route_label(values.get('affected_route_id'))}")
         elif scope == "server_priority":
             if values.get("server_id"):
-                parts.append(f"Сервер: {self._name_by_id('servers', values.get('server_id'))}")
-            parts.append(f"Маршрут: {self._route_label(values.get('old_route_id')) or '—'} → {self._route_label(values.get('new_route_id')) or '—'}")
+                parts.append(f"Сервер: {event_name('servers', values.get('server_id'))}")
+            parts.append(f"Маршрут: {event_route_label(values.get('old_route_id')) or '—'} → {event_route_label(values.get('new_route_id')) or '—'}")
             if values.get('has_overflow'):
                 overflow_provider = None
                 if values.get('overflow_route_id'):
-                    row = self.conn.execute("SELECT p.name FROM routes r JOIN providers p ON p.id = r.provider_id WHERE r.id = ?", (values.get('overflow_route_id'),)).fetchone()
+                    row = self.conn.execute(f"SELECT p.name FROM routes r JOIN providers p ON p.id = r.provider_id WHERE r.id = {p}", (values.get('overflow_route_id'),)).fetchone()
                     overflow_provider = row["name"] if row else None
-                parts.append(f"Перелив: да; Провайдер перелива: {overflow_provider or '—'}; Маршрут перелива: {self._route_label(values.get('overflow_route_id')) or '—'}")
+                parts.append(f"Перелив: да; Провайдер перелива: {overflow_provider or '—'}; Маршрут перелива: {event_route_label(values.get('overflow_route_id')) or '—'}")
             else:
                 parts.append("Перелив: нет")
         elif scope == "campaign_setting":
             if values.get("calling_company_id"):
-                company = self.conn.execute("SELECT company_id_external, company_name FROM calling_companies WHERE id = ?", (values.get("calling_company_id"),)).fetchone()
+                company = self.conn.execute(f"SELECT company_id_external, company_name FROM calling_companies WHERE id = {p}", (values.get("calling_company_id"),)).fetchone()
                 if company:
                     parts.append(f"Кампания: {company['company_id_external']} / {company['company_name']}")
             if values.get("company_change_type"):
@@ -2868,7 +2900,7 @@ class Repository:
             if values.get("old_company_routing_mode") or values.get("new_company_routing_mode"):
                 parts.append(f"Режим кампании: {values.get('old_company_routing_mode') or '—'} → {values.get('new_company_routing_mode') or '—'}")
             if values.get("old_company_route_id") or values.get("new_company_route_id"):
-                parts.append(f"Маршрут кампании: {self._route_label(values.get('old_company_route_id')) or '—'} → {self._route_label(values.get('new_company_route_id')) or '—'}")
+                parts.append(f"Маршрут кампании: {event_route_label(values.get('old_company_route_id')) or '—'} → {event_route_label(values.get('new_company_route_id')) or '—'}")
             if values.get("old_company_has_autorotation") is not None or values.get("new_company_has_autorotation") is not None:
                 old_auto = 'Да' if values.get("old_company_has_autorotation") else 'Нет'
                 new_auto = 'Да' if values.get("new_company_has_autorotation") else 'Нет'
@@ -2879,12 +2911,28 @@ class Repository:
 
 
     def _server_priority_apply_summary(self, *, country_id: int, server_id: int, old_route_id: int | None, new_route_id: int, previous_after_update: int | None, comment: str) -> str:
+        p = placeholder(self.backend)
+        def event_name(table, row_id, column="name"):
+            if not row_id:
+                return None
+            row = self.conn.execute(f"SELECT {column} FROM {table} WHERE id = {p}", (row_id,)).fetchone()
+            return row[column] if row else None
+
+        def event_route_label(route_id):
+            if not route_id:
+                return None
+            row = self.conn.execute(
+                f"SELECT r.name, provider.name AS provider_name FROM routes r JOIN providers provider ON provider.id = r.provider_id WHERE r.id = {p}",
+                (route_id,),
+            ).fetchone()
+            return f"{row['provider_name']} / {row['name']}" if row else str(route_id)
+
         return "; ".join([
-            f"GEO: {self._name_by_id('countries', country_id) or country_id}",
-            f"Сервер: {self._name_by_id('servers', server_id) or server_id}",
-            f"Старый current route: {self._route_label(old_route_id) or '—'}",
-            f"Новый current route: {self._route_label(new_route_id) or new_route_id}",
-            f"previous route after update: {self._route_label(previous_after_update) or '—'}",
+            f"GEO: {event_name('countries', country_id) or country_id}",
+            f"Сервер: {event_name('servers', server_id) or server_id}",
+            f"Старый current route: {event_route_label(old_route_id) or '—'}",
+            f"Новый current route: {event_route_label(new_route_id) or new_route_id}",
+            f"previous route after update: {event_route_label(previous_after_update) or '—'}",
             f"Комментарий: {comment}",
         ])
 
@@ -2902,15 +2950,31 @@ class Repository:
         return normalized
 
     def _server_priority_affected_servers(self, *, country_id: int, server_ids: list[int], new_route_id: int, has_overflow: int, overflow_route_id: int | None) -> list[dict]:
+        p = placeholder(self.backend)
+        def event_name(table, row_id, column="name"):
+            if not row_id:
+                return None
+            row = self.conn.execute(f"SELECT {column} FROM {table} WHERE id = {p}", (row_id,)).fetchone()
+            return row[column] if row else None
+
+        def event_route_label(route_id):
+            if not route_id:
+                return None
+            row = self.conn.execute(
+                f"SELECT r.name, provider.name AS provider_name FROM routes r JOIN providers provider ON provider.id = r.provider_id WHERE r.id = {p}",
+                (route_id,),
+            ).fetchone()
+            return f"{row['provider_name']} / {row['name']}" if row else str(route_id)
+
         affected = []
         for server_id in server_ids:
-            server = self.conn.execute("SELECT id, name, is_active FROM servers WHERE id = ?", (server_id,)).fetchone()
+            server = self.conn.execute(f"SELECT id, name, is_active FROM servers WHERE id = {p}", (server_id,)).fetchone()
             if not server:
                 raise BusinessRuleError("Сервер не найден")
             if not server["is_active"]:
                 raise BusinessRuleError("Нельзя выбрать неактивный сервер")
             current = self.conn.execute(
-                "SELECT id, current_route_id, has_overflow, overflow_route_id FROM server_route_priorities WHERE country_id = ? AND server_id = ?",
+                f"SELECT id, current_route_id, has_overflow, overflow_route_id FROM server_route_priorities WHERE country_id = {p} AND server_id = {p}",
                 (country_id, server_id),
             ).fetchone()
             old_route_id = current["current_route_id"] if current else None
@@ -2926,9 +2990,9 @@ class Repository:
                 "server_id": server_id,
                 "server_name": server["name"],
                 "old_route_id": old_route_id,
-                "old_route": self._route_label(old_route_id),
+                "old_route": event_route_label(old_route_id),
                 "new_route_id": new_route_id,
-                "new_route": self._route_label(new_route_id),
+                "new_route": event_route_label(new_route_id),
                 "server_route_priority_id": current["id"] if current else None,
                 "old_has_overflow": old_has_overflow,
                 "old_overflow_route_id": old_overflow_route_id,
@@ -2983,217 +3047,228 @@ class Repository:
         else:
             self._deactivate_company_routing_setting_from_event(values, updated_by=updated_by)
 
-    def create_routing_event(self, **kwargs) -> int:
-        apply_scope = kwargs.get("apply_scope")
-        if apply_scope not in {"none", "server_priority", "campaign_setting"}:
-            raise BusinessRuleError("Некорректная область применения")
-        values = {
-            "event_at": self._require_text(kwargs.get("event_at"), "Дата события обязательна").replace("T", " "),
-            "apply_scope": apply_scope,
-            "reason": self._require_text(kwargs.get("reason"), "Причина обязательна"),
-            "comment": (kwargs.get("comment") or "").strip(),
-            "country_id": kwargs.get("country_id"),
-            "server_id": kwargs.get("server_id"),
-            "server_ids": kwargs.get("server_ids"),
-            "provider_id": kwargs.get("provider_id"),
-            "affected_route_id": kwargs.get("affected_route_id"),
-            "old_route_id": kwargs.get("old_route_id"),
-            "new_route_id": kwargs.get("new_route_id"),
-            "calling_company_id": kwargs.get("calling_company_id"),
-            "company_change_type": kwargs.get("company_change_type"),
-            "old_company_routing_mode": kwargs.get("old_company_routing_mode"),
-            "new_company_routing_mode": kwargs.get("new_company_routing_mode"),
-            "old_company_route_id": kwargs.get("old_company_route_id"),
-            "new_company_route_id": kwargs.get("new_company_route_id"),
-            "old_company_has_autorotation": kwargs.get("old_company_has_autorotation"),
-            "new_company_has_autorotation": kwargs.get("new_company_has_autorotation"),
-            "has_overflow": 1 if kwargs.get("has_overflow") else 0,
-            "overflow_route_id": kwargs.get("overflow_route_id"),
-        }
-        created_by = kwargs.get("created_by")
-        if not created_by:
-            raise BusinessRuleError("Пользователь обязателен")
-        allowed_reasons = self.ROUTING_EVENT_REASONS_BY_SCOPE[apply_scope]
-        if values["reason"] not in allowed_reasons:
-            raise BusinessRuleError("Некорректная причина")
-        if apply_scope == "none" and values["reason"] == "Другое" and not values["comment"]:
-            raise BusinessRuleError("Требуется понятный комментарий")
+    def create_routing_event(self, *, commit: bool = True, **kwargs) -> int:
+        p = placeholder(self.backend)
+        try:
+            apply_scope = kwargs.get("apply_scope")
+            if apply_scope not in {"none", "server_priority", "campaign_setting"}:
+                raise BusinessRuleError("Некорректная область применения")
+            values = {
+                "event_at": self._require_text(kwargs.get("event_at"), "Дата события обязательна").replace("T", " "),
+                "apply_scope": apply_scope,
+                "reason": self._require_text(kwargs.get("reason"), "Причина обязательна"),
+                "comment": (kwargs.get("comment") or "").strip(),
+                "country_id": kwargs.get("country_id"),
+                "server_id": kwargs.get("server_id"),
+                "server_ids": kwargs.get("server_ids"),
+                "provider_id": kwargs.get("provider_id"),
+                "affected_route_id": kwargs.get("affected_route_id"),
+                "old_route_id": kwargs.get("old_route_id"),
+                "new_route_id": kwargs.get("new_route_id"),
+                "calling_company_id": kwargs.get("calling_company_id"),
+                "company_change_type": kwargs.get("company_change_type"),
+                "old_company_routing_mode": kwargs.get("old_company_routing_mode"),
+                "new_company_routing_mode": kwargs.get("new_company_routing_mode"),
+                "old_company_route_id": kwargs.get("old_company_route_id"),
+                "new_company_route_id": kwargs.get("new_company_route_id"),
+                "old_company_has_autorotation": kwargs.get("old_company_has_autorotation"),
+                "new_company_has_autorotation": kwargs.get("new_company_has_autorotation"),
+                "has_overflow": 1 if kwargs.get("has_overflow") else 0,
+                "overflow_route_id": kwargs.get("overflow_route_id"),
+            }
+            created_by = kwargs.get("created_by")
+            if not created_by:
+                raise BusinessRuleError("Пользователь обязателен")
+            allowed_reasons = self.ROUTING_EVENT_REASONS_BY_SCOPE[apply_scope]
+            if values["reason"] not in allowed_reasons:
+                raise BusinessRuleError("Некорректная причина")
+            if apply_scope == "none" and values["reason"] == "Другое" and not values["comment"]:
+                raise BusinessRuleError("Требуется понятный комментарий")
 
-        if apply_scope == "none":
-            if not values["provider_id"]:
-                raise BusinessRuleError("Провайдер обязателен")
-            if values["affected_route_id"]:
-                route = self.conn.execute("SELECT country_id, provider_id FROM routes WHERE id = ?", (values["affected_route_id"],)).fetchone()
-                if not route:
-                    raise BusinessRuleError("Маршрут/префикс не найден")
-                if int(route["provider_id"]) != int(values["provider_id"]):
-                    raise BusinessRuleError("Маршрут/префикс должен относиться к выбранному провайдеру")
-                if values["country_id"] and int(route["country_id"]) != int(values["country_id"]):
-                    raise BusinessRuleError("Маршрут/префикс должен относиться к выбранному GEO")
-            for field in (
-                "server_id", "old_route_id", "new_route_id", "calling_company_id", "company_change_type",
-                "old_company_routing_mode", "new_company_routing_mode", "old_company_route_id", "new_company_route_id",
-                "old_company_has_autorotation", "new_company_has_autorotation", "overflow_route_id",
-            ):
-                values[field] = None
-            values["server_ids"] = None
-            values["affected_servers"] = None
-            values["has_overflow"] = 0
-            values["overflow_route_id"] = None
-        elif apply_scope == "server_priority":
-            if not values["country_id"] or not values["new_route_id"]:
-                raise BusinessRuleError("GEO, сервер и новый маршрут обязательны для серверного приоритета")
-            server_ids = self._normalize_server_priority_server_ids(server_id=values["server_id"], server_ids=values.get("server_ids"))
-            route = self.conn.execute("SELECT country_id, provider_id FROM routes WHERE id = ?", (values["new_route_id"],)).fetchone()
-            if not route:
-                raise BusinessRuleError("Новый маршрут не найден")
-            if int(route["country_id"]) != int(values["country_id"]):
-                raise BusinessRuleError("Новый маршрут должен относиться к выбранному GEO")
-            if values["provider_id"] and int(route["provider_id"]) != int(values["provider_id"]):
-                raise BusinessRuleError("Новый маршрут должен относиться к выбранному новому провайдеру")
-            values["provider_id"] = route["provider_id"]
-            values["server_ids"] = server_ids
-            values["server_id"] = server_ids[0] if len(server_ids) == 1 else None
-            if values["has_overflow"]:
-                if not values["overflow_route_id"]:
-                    raise BusinessRuleError("Маршрут перелива обязателен")
-                if not kwargs.get("overflow_provider_id"):
-                    raise BusinessRuleError("Провайдер перелива обязателен")
-                overflow = self.conn.execute("SELECT country_id, provider_id, is_actual FROM routes WHERE id = ?", (values["overflow_route_id"],)).fetchone()
-                if not overflow or not int(overflow["is_actual"]) or int(overflow["country_id"]) != int(values["country_id"]):
-                    raise BusinessRuleError("Маршрут перелива должен быть активным и относиться к выбранному GEO")
-                if int(overflow["provider_id"]) != int(kwargs.get("overflow_provider_id")):
-                    raise BusinessRuleError("Маршрут перелива должен относиться к выбранному провайдеру перелива")
-            else:
+            if apply_scope == "none":
+                if not values["provider_id"]:
+                    raise BusinessRuleError("Провайдер обязателен")
+                if values["affected_route_id"]:
+                    route = self.conn.execute(f"SELECT country_id, provider_id FROM routes WHERE id = {p}", (values["affected_route_id"],)).fetchone()
+                    if not route:
+                        raise BusinessRuleError("Маршрут/префикс не найден")
+                    if int(route["provider_id"]) != int(values["provider_id"]):
+                        raise BusinessRuleError("Маршрут/префикс должен относиться к выбранному провайдеру")
+                    if values["country_id"] and int(route["country_id"]) != int(values["country_id"]):
+                        raise BusinessRuleError("Маршрут/префикс должен относиться к выбранному GEO")
+                for field in (
+                    "server_id", "old_route_id", "new_route_id", "calling_company_id", "company_change_type",
+                    "old_company_routing_mode", "new_company_routing_mode", "old_company_route_id", "new_company_route_id",
+                    "old_company_has_autorotation", "new_company_has_autorotation", "overflow_route_id",
+                ):
+                    values[field] = None
+                values["server_ids"] = None
+                values["affected_servers"] = None
                 values["has_overflow"] = 0
                 values["overflow_route_id"] = None
-            values["affected_servers"] = self._server_priority_affected_servers(
-                country_id=values["country_id"], server_ids=server_ids, new_route_id=values["new_route_id"],
-                has_overflow=values["has_overflow"], overflow_route_id=values["overflow_route_id"]
-            )
-            values["old_route_id"] = values["affected_servers"][0]["old_route_id"] if len(server_ids) == 1 else None
-        else:
-            if not values["calling_company_id"] or not values["company_change_type"]:
-                raise BusinessRuleError("Кампания и тип изменения обязательны")
-            company = self.conn.execute("SELECT country_id, server_id FROM calling_companies WHERE id = ?", (values["calling_company_id"],)).fetchone()
-            if not company:
-                raise BusinessRuleError("Кампания прозвона не найдена")
-            values["country_id"] = values["country_id"] or company["country_id"]
-            company_server_id = company["server_id"]
-            values["server_id"] = company_server_id
-            old_state = self._company_old_state(values["calling_company_id"])
-            values["old_company_routing_mode"] = old_state["routing_mode"]
-            values["old_company_route_id"] = old_state["route_id"]
-            values["old_company_has_autorotation"] = 1 if old_state["has_autorotation"] else 0
-            ctype = values["company_change_type"]
-            if ctype == "enable_autorotation":
-                if old_state["has_autorotation"]:
-                    raise BusinessRuleError("В этой компании уже включена авторотация.")
-                values["new_company_route_id"] = old_state["route_id"]
-                values["new_company_has_autorotation"] = 1
-            elif ctype == "disable_autorotation":
-                if not old_state["has_autorotation"]:
-                    raise BusinessRuleError("В этой компании авторотация уже выключена.")
-                values["new_company_route_id"] = old_state["route_id"]
-                values["new_company_has_autorotation"] = 0
-            elif ctype == "set_campaign_route":
-                if not values["new_company_route_id"]:
-                    raise BusinessRuleError("Новый маршрут кампании обязателен")
-                route = self.conn.execute("SELECT country_id, provider_id FROM routes WHERE id = ?", (values["new_company_route_id"],)).fetchone()
-                if not route or int(route["country_id"]) != int(values["country_id"]):
-                    raise BusinessRuleError("Маршрут кампании должен относиться к выбранному GEO")
+            elif apply_scope == "server_priority":
+                if not values["country_id"] or not values["new_route_id"]:
+                    raise BusinessRuleError("GEO, сервер и новый маршрут обязательны для серверного приоритета")
+                server_ids = self._normalize_server_priority_server_ids(server_id=values["server_id"], server_ids=values.get("server_ids"))
+                route = self.conn.execute(f"SELECT country_id, provider_id FROM routes WHERE id = {p}", (values["new_route_id"],)).fetchone()
+                if not route:
+                    raise BusinessRuleError("Новый маршрут не найден")
+                if int(route["country_id"]) != int(values["country_id"]):
+                    raise BusinessRuleError("Новый маршрут должен относиться к выбранному GEO")
                 if values["provider_id"] and int(route["provider_id"]) != int(values["provider_id"]):
-                    raise BusinessRuleError("Маршрут кампании должен относиться к выбранному провайдеру")
-                if old_state["route_id"] and int(values["new_company_route_id"]) == int(old_state["route_id"]):
-                    raise BusinessRuleError("Этот маршрут уже прописан для выбранной компании.")
-                if not values["provider_id"]:
-                    values["provider_id"] = route["provider_id"]
-                values["new_company_has_autorotation"] = values["old_company_has_autorotation"]
-            elif ctype == "remove_campaign_route":
-                values["new_company_route_id"] = None
-                values["new_company_has_autorotation"] = values["old_company_has_autorotation"]
-            else:
-                raise BusinessRuleError("Некорректный тип изменения кампании")
-            values["new_company_routing_mode"] = self._company_routing_mode_for_state(
-                values["new_company_route_id"], bool(values["new_company_has_autorotation"])
-            )
-            values["server_ids"] = None
-            values["affected_servers"] = None
-            values["has_overflow"] = 0
-            values["overflow_route_id"] = None
-
-        values["snapshot_json"] = json.dumps(self._routing_event_snapshot(values), ensure_ascii=False)
-        cur = self.conn.execute(
-            """
-            INSERT INTO routing_events(
-                event_at, apply_scope, reason, country_id, server_id, provider_id, affected_route_id,
-                old_route_id, new_route_id, calling_company_id, company_change_type,
-                old_company_routing_mode, new_company_routing_mode, old_company_route_id, new_company_route_id,
-                old_company_has_autorotation, new_company_has_autorotation, has_overflow, overflow_route_id, comment, snapshot_json,
-                created_by, updated_by
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                values["event_at"], values["apply_scope"], values["reason"], values["country_id"], None if values["apply_scope"] == "campaign_setting" else values["server_id"],
-                values["provider_id"], values["affected_route_id"], values["old_route_id"], values["new_route_id"],
-                values["calling_company_id"], values["company_change_type"], values["old_company_routing_mode"],
-                values["new_company_routing_mode"], values["old_company_route_id"], values["new_company_route_id"],
-                values["old_company_has_autorotation"], values["new_company_has_autorotation"], values["has_overflow"], values["overflow_route_id"], values["comment"],
-                values["snapshot_json"], created_by, created_by,
-            ),
-        )
-        event_id = int(cur.lastrowid)
-        self._change_log("routing_event", event_id, "routing_event.created", created_by, new_values=values, summary=self._routing_event_summary(values))
-
-        if apply_scope == "server_priority":
-            for affected in values["affected_servers"]:
-                priority_id = affected["server_route_priority_id"]
-                previous_after = affected["old_route_id"]
-                if affected["status"] == "applied":
-                    if priority_id:
-                        self.conn.execute(
-                            """
-                            UPDATE server_route_priorities
-                            SET previous_route_id = current_route_id, current_route_id = ?,
-                                has_overflow = ?, overflow_route_id = ?, changed_at = ?,
-                                changed_by = ?, reason = ?, comment = ?, updated_by = ?, updated_at = CURRENT_TIMESTAMP
-                            WHERE id = ?
-                            """,
-                            (values["new_route_id"], values["has_overflow"], values["overflow_route_id"], values["event_at"], created_by, values["reason"], values["comment"], created_by, priority_id),
-                        )
-                    else:
-                        cur2 = self.conn.execute(
-                            """
-                            INSERT INTO server_route_priorities(
-                                country_id, server_id, current_route_id, previous_route_id, has_overflow,
-                                overflow_route_id, changed_at, changed_by, reason, comment, created_by, updated_by
-                            ) VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?)
-                            """,
-                            (values["country_id"], affected["server_id"], values["new_route_id"], values["has_overflow"], values["overflow_route_id"], values["event_at"], created_by, values["reason"], values["comment"], created_by, created_by),
-                        )
-                        priority_id = int(cur2.lastrowid)
-                    affected["server_route_priority_id"] = priority_id
-                    self._change_log(
-                        "server_route_priority",
-                        priority_id,
-                        "routing_event.applied_to_server_priority",
-                        created_by,
-                        old_values={"current_route_id": affected["old_route_id"]},
-                        new_values={"current_route_id": values["new_route_id"], "previous_route_id": previous_after, "routing_event_id": event_id},
-                        summary=self._server_priority_apply_summary(country_id=values["country_id"], server_id=affected["server_id"], old_route_id=affected["old_route_id"], new_route_id=values["new_route_id"], previous_after_update=previous_after, comment=values["comment"]),
-                    )
-                self.conn.execute(
-                    """
-                    INSERT INTO routing_event_servers(
-                        routing_event_id, server_id, old_route_id, new_route_id, server_route_priority_id, status, created_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-                    """,
-                    (event_id, affected["server_id"], affected["old_route_id"], values["new_route_id"], priority_id, affected["status"]),
+                    raise BusinessRuleError("Новый маршрут должен относиться к выбранному новому провайдеру")
+                values["provider_id"] = route["provider_id"]
+                values["server_ids"] = server_ids
+                values["server_id"] = server_ids[0] if len(server_ids) == 1 else None
+                if values["has_overflow"]:
+                    if not values["overflow_route_id"]:
+                        raise BusinessRuleError("Маршрут перелива обязателен")
+                    if not kwargs.get("overflow_provider_id"):
+                        raise BusinessRuleError("Провайдер перелива обязателен")
+                    overflow = self.conn.execute(f"SELECT country_id, provider_id, is_actual FROM routes WHERE id = {p}", (values["overflow_route_id"],)).fetchone()
+                    if not overflow or not int(overflow["is_actual"]) or int(overflow["country_id"]) != int(values["country_id"]):
+                        raise BusinessRuleError("Маршрут перелива должен быть активным и относиться к выбранному GEO")
+                    if int(overflow["provider_id"]) != int(kwargs.get("overflow_provider_id")):
+                        raise BusinessRuleError("Маршрут перелива должен относиться к выбранному провайдеру перелива")
+                else:
+                    values["has_overflow"] = 0
+                    values["overflow_route_id"] = None
+                values["affected_servers"] = self._server_priority_affected_servers(
+                    country_id=values["country_id"], server_ids=server_ids, new_route_id=values["new_route_id"],
+                    has_overflow=values["has_overflow"], overflow_route_id=values["overflow_route_id"]
                 )
-        elif apply_scope == "campaign_setting":
-            self._apply_campaign_setting_event(values, updated_by=created_by)
-        self.conn.commit()
-        return event_id
+                values["old_route_id"] = values["affected_servers"][0]["old_route_id"] if len(server_ids) == 1 else None
+            else:
+                if not values["calling_company_id"] or not values["company_change_type"]:
+                    raise BusinessRuleError("Кампания и тип изменения обязательны")
+                company = self.conn.execute(f"SELECT country_id, server_id FROM calling_companies WHERE id = {p}", (values["calling_company_id"],)).fetchone()
+                if not company:
+                    raise BusinessRuleError("Кампания прозвона не найдена")
+                values["country_id"] = values["country_id"] or company["country_id"]
+                company_server_id = company["server_id"]
+                values["server_id"] = company_server_id
+                old_state = self._company_old_state(values["calling_company_id"])
+                values["old_company_routing_mode"] = old_state["routing_mode"]
+                values["old_company_route_id"] = old_state["route_id"]
+                values["old_company_has_autorotation"] = 1 if old_state["has_autorotation"] else 0
+                ctype = values["company_change_type"]
+                if ctype == "enable_autorotation":
+                    if old_state["has_autorotation"]:
+                        raise BusinessRuleError("В этой компании уже включена авторотация.")
+                    values["new_company_route_id"] = old_state["route_id"]
+                    values["new_company_has_autorotation"] = 1
+                elif ctype == "disable_autorotation":
+                    if not old_state["has_autorotation"]:
+                        raise BusinessRuleError("В этой компании авторотация уже выключена.")
+                    values["new_company_route_id"] = old_state["route_id"]
+                    values["new_company_has_autorotation"] = 0
+                elif ctype == "set_campaign_route":
+                    if not values["new_company_route_id"]:
+                        raise BusinessRuleError("Новый маршрут кампании обязателен")
+                    route = self.conn.execute(f"SELECT country_id, provider_id FROM routes WHERE id = {p}", (values["new_company_route_id"],)).fetchone()
+                    if not route or int(route["country_id"]) != int(values["country_id"]):
+                        raise BusinessRuleError("Маршрут кампании должен относиться к выбранному GEO")
+                    if values["provider_id"] and int(route["provider_id"]) != int(values["provider_id"]):
+                        raise BusinessRuleError("Маршрут кампании должен относиться к выбранному провайдеру")
+                    if old_state["route_id"] and int(values["new_company_route_id"]) == int(old_state["route_id"]):
+                        raise BusinessRuleError("Этот маршрут уже прописан для выбранной компании.")
+                    if not values["provider_id"]:
+                        values["provider_id"] = route["provider_id"]
+                    values["new_company_has_autorotation"] = values["old_company_has_autorotation"]
+                elif ctype == "remove_campaign_route":
+                    values["new_company_route_id"] = None
+                    values["new_company_has_autorotation"] = values["old_company_has_autorotation"]
+                else:
+                    raise BusinessRuleError("Некорректный тип изменения кампании")
+                values["new_company_routing_mode"] = self._company_routing_mode_for_state(
+                    values["new_company_route_id"], bool(values["new_company_has_autorotation"])
+                )
+                values["server_ids"] = None
+                values["affected_servers"] = None
+                values["has_overflow"] = 0
+                values["overflow_route_id"] = None
+
+            values["snapshot_json"] = json.dumps(self._routing_event_snapshot(values), ensure_ascii=False)
+            insert_sql = prepare_insert_returning_id(
+                f"""
+                INSERT INTO routing_events(
+                    event_at, apply_scope, reason, country_id, server_id, provider_id, affected_route_id,
+                    old_route_id, new_route_id, calling_company_id, company_change_type,
+                    old_company_routing_mode, new_company_routing_mode, old_company_route_id, new_company_route_id,
+                    old_company_has_autorotation, new_company_has_autorotation, has_overflow, overflow_route_id, comment, snapshot_json,
+                    created_by, updated_by
+                ) VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p})
+                """, self.backend)
+            cur = self.conn.execute(
+                insert_sql,
+                (
+                    values["event_at"], values["apply_scope"], values["reason"], values["country_id"], None if values["apply_scope"] == "campaign_setting" else values["server_id"],
+                    values["provider_id"], values["affected_route_id"], values["old_route_id"], values["new_route_id"],
+                    values["calling_company_id"], values["company_change_type"], values["old_company_routing_mode"],
+                    values["new_company_routing_mode"], values["old_company_route_id"], values["new_company_route_id"],
+                    to_db_bool(values["old_company_has_autorotation"], self.backend) if values["old_company_has_autorotation"] is not None else None, to_db_bool(values["new_company_has_autorotation"], self.backend) if values["new_company_has_autorotation"] is not None else None, to_db_bool(values["has_overflow"], self.backend), values["overflow_route_id"], values["comment"],
+                    values["snapshot_json"], created_by, created_by,
+                ),
+            )
+            event_id = extract_inserted_id(cur, self.backend)
+            self._change_log("routing_event", event_id, "routing_event.created", created_by, new_values=values, summary=self._routing_event_summary(values))
+
+            if apply_scope == "server_priority":
+                for affected in values["affected_servers"]:
+                    priority_id = affected["server_route_priority_id"]
+                    previous_after = affected["old_route_id"]
+                    if affected["status"] == "applied":
+                        if priority_id:
+                            self.conn.execute(
+                                f"""
+                                UPDATE server_route_priorities
+                                SET previous_route_id = current_route_id, current_route_id = {p},
+                                    has_overflow = {p}, overflow_route_id = {p}, changed_at = {p},
+                                    changed_by = {p}, reason = {p}, comment = {p}, updated_by = {p}, updated_at = CURRENT_TIMESTAMP
+                                WHERE id = {p}
+                                """,
+                                (values["new_route_id"], to_db_bool(values["has_overflow"], self.backend), values["overflow_route_id"], values["event_at"], created_by, values["reason"], values["comment"], created_by, priority_id),
+                            )
+                        else:
+                            priority_insert_sql = prepare_insert_returning_id(
+                                f"""
+                                INSERT INTO server_route_priorities(
+                                    country_id, server_id, current_route_id, previous_route_id, has_overflow,
+                                    overflow_route_id, changed_at, changed_by, reason, comment, created_by, updated_by
+                                ) VALUES ({p}, {p}, {p}, NULL, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p})
+                                """, self.backend)
+                            cur2 = self.conn.execute(
+                                priority_insert_sql,
+                                (values["country_id"], affected["server_id"], values["new_route_id"], to_db_bool(values["has_overflow"], self.backend), values["overflow_route_id"], values["event_at"], created_by, values["reason"], values["comment"], created_by, created_by),
+                            )
+                            priority_id = extract_inserted_id(cur2, self.backend)
+                        affected["server_route_priority_id"] = priority_id
+                        self._change_log(
+                            "server_route_priority",
+                            priority_id,
+                            "routing_event.applied_to_server_priority",
+                            created_by,
+                            old_values={"current_route_id": affected["old_route_id"]},
+                            new_values={"current_route_id": values["new_route_id"], "previous_route_id": previous_after, "routing_event_id": event_id},
+                            summary=self._server_priority_apply_summary(country_id=values["country_id"], server_id=affected["server_id"], old_route_id=affected["old_route_id"], new_route_id=values["new_route_id"], previous_after_update=previous_after, comment=values["comment"]),
+                        )
+                    self.conn.execute(
+                        f"""
+                        INSERT INTO routing_event_servers(
+                            routing_event_id, server_id, old_route_id, new_route_id, server_route_priority_id, status, created_at
+                        ) VALUES ({p}, {p}, {p}, {p}, {p}, {p}, CURRENT_TIMESTAMP)
+                        """,
+                        (event_id, affected["server_id"], affected["old_route_id"], values["new_route_id"], priority_id, affected["status"]),
+                    )
+            elif apply_scope == "campaign_setting":
+                self._apply_campaign_setting_event(values, updated_by=created_by)
+            if commit:
+                self.conn.commit()
+            return int(event_id)
+        except Exception:
+            if commit:
+                self.conn.rollback()
+            raise
 
     def list_routing_events(self, filters: dict | None = None) -> list[sqlite3.Row]:
         routing_filters = dict(filters or {})
@@ -3366,6 +3441,7 @@ class Repository:
 
     def update_routing_event(self, event_id: int, *, updated_by: int, commit: bool = True, **kwargs) -> None:
         p = placeholder(self.backend)
+        updated_at_sql = "CURRENT_TIMESTAMP" if self.backend == "postgres" else "STRFTIME('%Y-%m-%d %H:%M:%f', 'now')"
         try:
             existing = self.conn.execute(f"SELECT * FROM routing_events WHERE id = {p}", (event_id,)).fetchone()
             if not existing:
@@ -3395,7 +3471,7 @@ class Repository:
             self.conn.execute(
                 f"""
                 UPDATE routing_events
-                SET comment = {p}, updated_by = {p}, updated_at = CURRENT_TIMESTAMP
+                SET comment = {p}, updated_by = {p}, updated_at = {updated_at_sql}
                 WHERE id = {p}
                 """,
                 (comment, updated_by, event_id),

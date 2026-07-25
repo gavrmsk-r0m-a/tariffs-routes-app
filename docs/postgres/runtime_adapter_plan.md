@@ -750,3 +750,10 @@ Stage 57 rollback-smokes `create_server` on PostgreSQL using a caller-owned tran
 ## Stage 63 — routing-event update rollback smoke
 
 `update_routing_event` is PostgreSQL-compatible and rollback-smoked with an optional commit parameter. The private campaign-setting comment-sync helpers are covered only as dependencies; public company-routing writes and `create_routing_event` remain outside this stage. The read-only smoke contract remains 611 checks, and the coverage audit remains 112 public / 61 reads / 0 deferred / 50 writes / 1 infrastructure / 100.0%. `DB_BACKEND=postgres` stays disabled and no production write runtime is enabled.
+
+## Stage 64: routing-event create core only
+
+The rollback-only PostgreSQL harness now partially covers `create_routing_event` for the `none`
+and `server_priority` paths. `campaign_setting` remains pending and there is no runtime write
+enablement. The read-only smoke remains at 611 checks and the coverage audit remains
+112/61/0/50/1/100%. `DB_BACKEND=postgres` is still disabled for production runtime.

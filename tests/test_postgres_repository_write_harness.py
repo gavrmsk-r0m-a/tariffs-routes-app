@@ -140,6 +140,18 @@ class FakeRepo:
 
 
 class WriteHarnessTest(unittest.TestCase):
+    def test_stage64_validation_cases_do_not_pop_or_default_missing_comment(self):
+        source = SCRIPT.read_text(encoding="utf-8")
+        self.assertNotIn('arguments.pop("comment", SERVER_PRIORITY_COMMENT)', source)
+        self.assertIn('(\"none_comment\", dict(apply_scope=\"none\"', source)
+        self.assertIn('provider_id=route[\"provider_id\"]), \"\", \"Требуется понятный комментарий\")', source)
+
+    def test_stage64_fixture_selects_a_country_with_two_routes_and_scopes_priority_logs_by_id(self):
+        source = SCRIPT.read_text(encoding="utf-8")
+        self.assertIn('if len(items) >= 2', source)
+        self.assertIn('entity_id = ANY(%s)', source)
+        self.assertNotIn('change_type = %s AND new_values::text LIKE %s", ("server_route_priority"', source)
+
     def test_import_is_driver_free_and_masks_password(self):
         self.assertEqual(harness.mask_postgres_url("postgresql://user:secret@host/db"), "postgresql://user:***@host/db")
         self.assertNotIn("psycopg", harness.__dict__)
@@ -297,7 +309,7 @@ class WriteHarnessTest(unittest.TestCase):
             @staticmethod
             def connect(*args, **kwargs): return FakeConnection()
         import types
-        with tempfile.TemporaryDirectory() as directory, patch.dict("sys.modules", {"psycopg": Driver, "psycopg.rows": types.SimpleNamespace(dict_row=dict)}), patch.object(harness, "Repository", lambda conn, backend: FakeRepo(conn)), patch.object(harness, "run_dictionary_snapshot_probe") as snapshot_probe, patch.object(harness, "run_provider_change_priority_probe") as priority_probe, patch.object(harness, "run_provider_change_create_probe") as create_probe, patch.object(harness, "run_routing_event_deactivate_probe") as routing_probe, patch.object(harness, "run_routing_event_update_probe") as update_probe:
+        with tempfile.TemporaryDirectory() as directory, patch.dict("sys.modules", {"psycopg": Driver, "psycopg.rows": types.SimpleNamespace(dict_row=dict)}), patch.object(harness, "Repository", lambda conn, backend: FakeRepo(conn)), patch.object(harness, "run_dictionary_snapshot_probe") as snapshot_probe, patch.object(harness, "run_provider_change_priority_probe") as priority_probe, patch.object(harness, "run_provider_change_create_probe") as create_probe, patch.object(harness, "run_routing_event_deactivate_probe") as routing_probe, patch.object(harness, "run_routing_event_update_probe") as update_probe, patch.object(harness, "run_routing_event_create_core_probe") as create_event_probe:
             output = Path(directory) / "summary.json"
             self.assertEqual(harness.main(["--postgres-url", "postgresql://u:pw@h/db", "--json", "--output", str(output)]), 0)
             snapshot_probe.assert_called_once()
@@ -305,10 +317,11 @@ class WriteHarnessTest(unittest.TestCase):
             create_probe.assert_called_once()
             routing_probe.assert_called_once()
             update_probe.assert_called_once()
+            create_event_probe.assert_called_once()
             summary = json.loads(output.read_text())
         self.assertEqual(summary["status"], "ok")
         self.assertEqual(set(summary), {"status", "postgres_url", "checks_count", "failures", "probes"})
-        self.assertEqual(summary["probes"], {"rollback_probe": "ok", "aborted_transaction_probe": "ok", "savepoint_probe": "ok", "app_setting_probe": "ok", "hlr_daily_usage_probe": "ok", "user_admin_probe": "ok", "dictionary_create_probe": "ok", "dictionary_get_or_create_probe": "ok", "dictionary_ensure_probe": "ok", "dictionary_server_probe": "ok", "dictionary_change_reason_probe": "ok", "dictionary_snapshot_probe": "ok", "provider_change_priority_probe": "ok", "provider_change_create_probe": "ok", "routing_event_deactivate_probe": "ok", "routing_event_update_probe": "ok"})
+        self.assertEqual(summary["probes"], {"rollback_probe": "ok", "aborted_transaction_probe": "ok", "savepoint_probe": "ok", "app_setting_probe": "ok", "hlr_daily_usage_probe": "ok", "user_admin_probe": "ok", "dictionary_create_probe": "ok", "dictionary_get_or_create_probe": "ok", "dictionary_ensure_probe": "ok", "dictionary_server_probe": "ok", "dictionary_change_reason_probe": "ok", "dictionary_snapshot_probe": "ok", "provider_change_priority_probe": "ok", "provider_change_create_probe": "ok", "routing_event_deactivate_probe": "ok", "routing_event_update_probe": "ok", "routing_event_create_core_probe": "ok"})
 
     def test_repository_uses_postgres_backend(self):
         class Driver:
@@ -321,6 +334,6 @@ class WriteHarnessTest(unittest.TestCase):
                 super().__init__(conn)
                 self.backend = backend
                 type(self).backend_seen = backend
-        with patch.dict("sys.modules", {"psycopg": Driver, "psycopg.rows": types.SimpleNamespace(dict_row=dict)}), patch.object(harness, "Repository", CapturingRepo), patch.object(harness, "run_dictionary_snapshot_probe"), patch.object(harness, "run_provider_change_priority_probe"), patch.object(harness, "run_provider_change_create_probe"), patch.object(harness, "run_routing_event_deactivate_probe"), patch.object(harness, "run_routing_event_update_probe"):
+        with patch.dict("sys.modules", {"psycopg": Driver, "psycopg.rows": types.SimpleNamespace(dict_row=dict)}), patch.object(harness, "Repository", CapturingRepo), patch.object(harness, "run_dictionary_snapshot_probe"), patch.object(harness, "run_provider_change_priority_probe"), patch.object(harness, "run_provider_change_create_probe"), patch.object(harness, "run_routing_event_deactivate_probe"), patch.object(harness, "run_routing_event_update_probe"), patch.object(harness, "run_routing_event_create_core_probe"):
             harness.run_harness("postgresql://u:pw@h/db")
         self.assertEqual(CapturingRepo.backend_seen, "postgres")
