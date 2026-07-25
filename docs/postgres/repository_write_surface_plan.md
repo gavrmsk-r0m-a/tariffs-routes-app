@@ -145,3 +145,7 @@ Stage 52 rollback-smokes `set_app_setting_value`, `delete_app_setting_value`, an
 ## Stage 61 status
 
 `create_provider_change` is PostgreSQL-compatible and rollback-smoked with caller-owned `commit=False`; its `_route_prefix_id` and `_current_tariff` dependencies use backend-aware placeholders. `provider_change_and_priority_writes` is complete: `update_server_route_priority` was rollback-smoked in Stage 60 and `create_provider_change` in Stage 61. `dictionary_and_snapshot_writes` remains complete. Production runtime and `DB_BACKEND=postgres` remain disabled.
+
+## Stage 62 status
+
+`deactivate_routing_event` is PostgreSQL-compatible and rollback-smoked with caller-owned `commit=False`, including change-log visibility, SAVEPOINT-contained validation failures, and rollback cleanup. `routing_event_application_writes` has started; `create_routing_event` and `update_routing_event` remain unadapted and are not rollback-smoked. `provider_change_and_priority_writes` and `dictionary_and_snapshot_writes` remain complete. Production runtime and `DB_BACKEND=postgres` remain disabled.

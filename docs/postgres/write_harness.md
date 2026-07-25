@@ -59,3 +59,9 @@ The harness still never calls `conn.commit()`: every probe rolls back in `finall
 ## Stage 61: provider-change creation probe
 
 `provider_change_create_probe` completes the provider-change/priority batch. In one explicit rollback-only transaction it selects a country with routes from two providers, prepares an existing priority plus a server without one, and calls `create_provider_change(..., commit=False)`. The changed-provider path verifies the provider-change row, both `provider_change_log_servers` rows, existing-priority update, new-priority insert, and `change_log` side effect. It then verifies the provider-unchanged path accepts no server IDs and creates no server links or priority changes. Missing reason, missing servers, and route/provider mismatch validations are isolated with SAVEPOINTs. Its `finally` rolls back, and cleanup queries reject all Stage 61 provider-change, priority, and audit markers. The harness still never calls `conn.commit()`.
+
+## Stage 62: routing-event deactivation probe
+
+`routing_event_deactivate_probe` starts `routing_event_application_writes` without enabling runtime PostgreSQL. It inserts a deterministic `apply_scope="none"` routing event with direct SQL only inside an explicit rollback-only transaction, then calls `deactivate_routing_event(..., commit=False)`. The probe verifies the active-to-inactive transition, deactivation reason and actor fields, timestamps, and the `change_log` audit row.
+
+Missing-event, already-inactive, and empty-reason validations run in separate SAVEPOINTs so expected `BusinessRuleError` paths do not abort the enclosing PostgreSQL transaction. A `finally` rollback always executes; cleanup queries reject all Stage 62 routing-event and audit markers. The harness never calls `conn.commit()`.

@@ -716,31 +716,28 @@
     },
     "deactivate_routing_event": {
       "batch": "routing_event_application_writes",
-      "current_commit_behavior": "commits internally",
+      "current_commit_behavior": "mixed",
       "dependencies": [],
       "mutation_kind": "mixed_read_write",
-      "notes": "Stage 50 audit inventory only; no write adaptation.",
+      "notes": "Stage 62: backend placeholders, backend boolean binding, optional commit, SAVEPOINT-contained validation checks, and rollback-only PostgreSQL smoke.",
       "postgres_strategy": "Keep runtime disabled; use rollback-only harness, backend placeholders, and RETURNING where identity retrieval is required.",
       "returns": "none",
       "risk": "medium",
-      "rollback_strategy": "Not safe until harness exists; run inside explicit transaction and rollback.",
+      "rollback_strategy": "Caller-owned commit=False transaction is rollback-smoked; commit=True rolls back on exceptions.",
       "side_effects": [
         "change_log_write",
         "database_write"
       ],
       "sqlite_postgres_blockers": [
-        "dynamic_sql",
         "needs_integration_test",
-        "postgres_transaction_aborted_behavior",
-        "sqlite_datetime_function",
-        "sqlite_placeholder"
+        "sqlite_datetime_function"
       ],
       "test_strategy": [
         "SQL-recording test",
         "SQLite regression test",
         "PostgreSQL rollback-only integration test"
       ],
-      "transaction_contract": "multi_statement_atomic"
+      "transaction_contract": "optional_commit_parameter"
     },
     "delete_app_setting_value": {
       "batch": "app_settings_and_admin_low_risk",
@@ -1603,6 +1600,7 @@
     "create_change_reason",
     "update_dictionary_snapshots",
     "update_server_route_priority",
-    "create_provider_change"
+    "create_provider_change",
+    "deactivate_routing_event"
   ]
 }

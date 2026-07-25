@@ -3424,24 +3424,37 @@ class Repository:
             (comment, updated_by, active["id"]),
         )
 
-    def deactivate_routing_event(self, event_id: int, *, reason: str, deactivated_by: int) -> None:
-        existing = self.conn.execute("SELECT * FROM routing_events WHERE id = ?", (event_id,)).fetchone()
-        if not existing:
-            raise BusinessRuleError("Событие маршрутизации не найдено")
-        if not existing["is_active"]:
-            raise BusinessRuleError("Событие уже деактивировано")
-        reason = self._require_text(reason, "Причина деактивации обязательна")
-        self.conn.execute(
-            """
-            UPDATE routing_events
-            SET is_active = 0, deactivation_reason = ?, deactivated_at = CURRENT_TIMESTAMP,
-                deactivated_by = ?, updated_by = ?, updated_at = CURRENT_TIMESTAMP
-            WHERE id = ?
-            """,
-            (reason, deactivated_by, deactivated_by, event_id),
-        )
-        self._change_log("routing_event", event_id, "routing_event.deactivated", deactivated_by, old_values=dict(existing), new_values={"deactivation_reason": reason}, summary=f"Событие #{event_id} деактивировано. Причина: {reason}")
-        self.conn.commit()
+    def deactivate_routing_event(self, event_id: int, *, reason: str, deactivated_by: int, commit: bool = True) -> None:
+        p = placeholder(self.backend)
+        try:
+            existing = self.conn.execute(f"SELECT * FROM routing_events WHERE id = {p}", (event_id,)).fetchone()
+            if not existing:
+                raise BusinessRuleError("Событие маршрутизации не найдено")
+            # psycopg returns TIMESTAMPTZ columns as datetime objects, whereas
+            # SQLite exposes their TEXT values.  Keep the audit payload's
+            # existing-row shape while making it JSON-serializable for the
+            # backend-aware _change_log helper.
+            if self.backend == "postgres":
+                existing = json.loads(json.dumps(dict(existing), default=str))
+            if not existing["is_active"]:
+                raise BusinessRuleError("Событие уже деактивировано")
+            reason = self._require_text(reason, "Причина деактивации обязательна")
+            self.conn.execute(
+                f"""
+                UPDATE routing_events
+                SET is_active = {p}, deactivation_reason = {p}, deactivated_at = CURRENT_TIMESTAMP,
+                    deactivated_by = {p}, updated_by = {p}, updated_at = CURRENT_TIMESTAMP
+                WHERE id = {p}
+                """,
+                (to_db_bool(False, self.backend), reason, deactivated_by, deactivated_by, event_id),
+            )
+            self._change_log("routing_event", event_id, "routing_event.deactivated", deactivated_by, old_values=dict(existing), new_values={"deactivation_reason": reason}, summary=f"Событие #{event_id} деактивировано. Причина: {reason}")
+            if commit:
+                self.conn.commit()
+        except Exception:
+            if commit:
+                self.conn.rollback()
+            raise
 
     def list_provider_changes(self, filters: dict | None = None) -> list[sqlite3.Row]:
         filters = filters or {}

@@ -1,9 +1,10 @@
 import sqlite3
+from datetime import datetime, timezone
 import unittest
 from unittest.mock import patch
 
 from app.db import init_db
-from app.repository import Repository
+from app.repository import BusinessRuleError, Repository
 
 
 class RepositoryAdapterWriteMethodsTest(unittest.TestCase):
@@ -555,4 +556,63 @@ class RepositoryStage59DictionarySnapshotsTest(unittest.TestCase):
         conn.rollback()
         self.assertEqual(dict(conn.execute("SELECT * FROM phone_numbers WHERE id=?",(phone,)).fetchone()),before_phone)
         self.assertEqual(dict(conn.execute("SELECT * FROM routes WHERE id=?",(route,)).fetchone()),before_route)
+        conn.close()
+
+class RepositoryStage62RoutingEventDeactivateTest(unittest.TestCase):
+    def test_postgres_sql_commit_and_rollback_contract(self):
+        class Cursor:
+            def __init__(self, row): self.row = row
+            def fetchone(self): return self.row
+        class Connection:
+            def __init__(self, fail=False): self.calls=[]; self.commits=0; self.rollbacks=0; self.fail=fail
+            def execute(self, sql, params=()):
+                self.calls.append((sql, params))
+                if self.fail and "UPDATE routing_events" in sql: raise RuntimeError("update failed")
+                return Cursor({"id": 62, "is_active": True})
+            def commit(self): self.commits += 1
+            def rollback(self): self.rollbacks += 1
+        conn=Connection(); repo=Repository(conn, backend="postgres")
+        with patch.object(repo, "_change_log") as log:
+            self.assertIsNone(repo.deactivate_routing_event(62, reason="stage62", deactivated_by=1))
+        sql="\n".join(q for q,_ in conn.calls)
+        self.assertIn("SELECT * FROM routing_events WHERE id = %s", sql)
+        self.assertIn("SET is_active = %s", sql)
+        self.assertIn("CURRENT_TIMESTAMP", sql)
+        self.assertNotIn("?", sql)
+        self.assertEqual(conn.calls[1][1][0], False)
+        self.assertEqual(conn.commits,1); log.assert_called_once()
+        conn=Connection(); repo=Repository(conn, backend="postgres")
+        with patch.object(repo, "_change_log"):
+            repo.deactivate_routing_event(62, reason="stage62", deactivated_by=1, commit=False)
+        self.assertEqual((conn.commits,conn.rollbacks),(0,0))
+        conn=Connection(fail=True); repo=Repository(conn, backend="postgres")
+        with self.assertRaisesRegex(RuntimeError,"update failed"): repo.deactivate_routing_event(62, reason="stage62", deactivated_by=1)
+        self.assertEqual(conn.rollbacks,1)
+        with self.assertRaisesRegex(RuntimeError,"update failed"): repo.deactivate_routing_event(62, reason="stage62", deactivated_by=1, commit=False)
+        self.assertEqual(conn.rollbacks,1)
+
+    def test_postgres_audit_old_values_serializes_timestamps(self):
+        class Cursor:
+            def fetchone(self): return {"id": 62, "is_active": True, "event_at": datetime(2026, 7, 22, 13, tzinfo=timezone.utc)}
+        class Connection:
+            def execute(self, sql, params=()): return Cursor()
+            def commit(self): pass
+            def rollback(self): pass
+        repo=Repository(Connection(), backend="postgres")
+        with patch.object(repo, "_change_log") as log:
+            repo.deactivate_routing_event(62, reason="stage62", deactivated_by=1, commit=False)
+        self.assertEqual(log.call_args.kwargs["old_values"]["event_at"], "2026-07-22 13:00:00+00:00")
+
+    def test_validations_and_sqlite_rollback(self):
+        conn=sqlite3.connect(":memory:"); conn.row_factory=sqlite3.Row; init_db(conn); repo=Repository(conn)
+        with self.assertRaisesRegex(BusinessRuleError, "Событие маршрутизации не найдено"):
+            repo.deactivate_routing_event(999, reason="x", deactivated_by=1, commit=False)
+        conn.execute("INSERT INTO routing_events(event_at, apply_scope, reason, comment, is_active, created_by, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?)", ("2026-07-22 13:00:00", "none", "Другое", "stage62", 1, 1, 1))
+        event_id=conn.execute("SELECT id FROM routing_events").fetchone()["id"]; conn.commit()
+        repo.deactivate_routing_event(event_id, reason="stage62 reason", deactivated_by=1, commit=False)
+        row=conn.execute("SELECT is_active,deactivation_reason,deactivated_by,updated_by FROM routing_events WHERE id=?",(event_id,)).fetchone()
+        self.assertEqual(tuple(row),(0,"stage62 reason",1,1)); self.assertIsNotNone(conn.execute("SELECT 1 FROM change_log WHERE entity_type='routing_event' AND entity_id=?",(event_id,)).fetchone())
+        with self.assertRaisesRegex(BusinessRuleError,"Событие уже деактивировано"): repo.deactivate_routing_event(event_id, reason="x", deactivated_by=1, commit=False)
+        conn.rollback(); self.assertEqual(conn.execute("SELECT is_active FROM routing_events WHERE id=?",(event_id,)).fetchone()[0],1)
+        with self.assertRaisesRegex(BusinessRuleError,"Причина деактивации обязательна"): repo.deactivate_routing_event(event_id, reason="", deactivated_by=1, commit=False)
         conn.close()

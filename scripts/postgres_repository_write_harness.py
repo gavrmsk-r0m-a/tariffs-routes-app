@@ -17,7 +17,8 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from app.repository import Repository, normalize_provider_name
+from app.db_adapter import to_db_bool
+from app.repository import BusinessRuleError, Repository, normalize_provider_name
 from scripts.postgres_repository_smoke import mask_postgres_url, sanitize_error
 
 DEFAULT_PROBE_KEY = "__stage51_rollback_probe__"
@@ -46,6 +47,9 @@ PRIORITY_SAME_ROUTE_COMMENT = "__stage60_priority_same_route_comment__"
 PROVIDER_CHANGE_REASON = "__stage61_provider_change_reason__"
 PROVIDER_CHANGE_CHANGED_COMMENT = "__stage61_provider_change_changed_comment__"
 PROVIDER_CHANGE_NOOP_COMMENT = "__stage61_provider_change_noop_comment__"
+ROUTING_EVENT_COMMENT = "__stage62_routing_event_comment__"
+ROUTING_EVENT_DEACTIVATION_REASON = "__stage62_deactivation_reason__"
+ROUTING_EVENT_CHANGED_AT = "2026-07-22 13:00:00"
 
 
 def empty_summary(postgres_url: str) -> dict:
@@ -59,6 +63,7 @@ def empty_summary(postgres_url: str) -> dict:
             "dictionary_ensure_probe", "dictionary_server_probe",
             "dictionary_change_reason_probe", "dictionary_snapshot_probe",
             "provider_change_priority_probe", "provider_change_create_probe",
+            "routing_event_deactivate_probe",
         )},
     }
 
@@ -627,6 +632,61 @@ def run_provider_change_create_probe(repo: Repository, conn) -> None:
             raise AssertionError("Stage 61 rows remain after rollback")
     finally:
         conn.rollback()
+
+def run_routing_event_deactivate_probe(repo: Repository, conn) -> None:
+    """Deactivate a transaction-local routing event and prove rollback cleanup."""
+    user = conn.execute("SELECT id FROM users ORDER BY id LIMIT 1").fetchone()
+    route = conn.execute("SELECT country_id, provider_id FROM routes WHERE provider_id IS NOT NULL ORDER BY id LIMIT 1").fetchone()
+    if not user or not route:
+        raise AssertionError("Stage 62 fixture requires a user and a route with a provider")
+    user_id = user["id"]
+    conn.rollback()
+    try:
+        conn.execute("BEGIN")
+        event_id = conn.execute(
+            """INSERT INTO routing_events
+               (event_at, apply_scope, reason, country_id, provider_id, comment, snapshot_json, is_active, created_by, updated_by)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id""",
+            (ROUTING_EVENT_CHANGED_AT, "none", "Другое", route["country_id"], route["provider_id"], ROUTING_EVENT_COMMENT,
+             '{"stage62": true}', to_db_bool(True, "postgres"), user_id, user_id),
+        ).fetchone()["id"]
+        repo.deactivate_routing_event(event_id, reason=ROUTING_EVENT_DEACTIVATION_REASON, deactivated_by=user_id, commit=False)
+        event = conn.execute("SELECT * FROM routing_events WHERE id=%s", (event_id,)).fetchone()
+        if not event or bool(event["is_active"]) or event["deactivation_reason"] != ROUTING_EVENT_DEACTIVATION_REASON or event["deactivated_by"] != user_id or event["updated_by"] != user_id or event["deactivated_at"] is None or event["updated_at"] is None:
+            raise AssertionError("Stage 62 inactive routing event state is not visible inside the transaction")
+        audit = conn.execute("SELECT * FROM change_log WHERE entity_type=%s AND entity_id=%s AND change_type=%s ORDER BY id DESC LIMIT 1", ("routing_event", event_id, "routing_event.deactivated")).fetchone()
+        if not audit or audit["changed_by"] != user_id or ROUTING_EVENT_DEACTIVATION_REASON not in f"{audit['new_values']} {audit['summary']}":
+            raise AssertionError("Stage 62 routing event change_log row is not visible inside the transaction")
+        active_event_id = conn.execute(
+            """INSERT INTO routing_events
+               (event_at, apply_scope, reason, country_id, provider_id, comment, snapshot_json, is_active, created_by, updated_by)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id""",
+            (ROUTING_EVENT_CHANGED_AT, "none", "Другое", route["country_id"], route["provider_id"], ROUTING_EVENT_COMMENT,
+             '{"stage62": "empty-reason"}', to_db_bool(True, "postgres"), user_id, user_id),
+        ).fetchone()["id"]
+        for name, event_arg, reason, expected in (("missing", 999999999, ROUTING_EVENT_DEACTIVATION_REASON, "Событие маршрутизации не найдено"), ("inactive", event_id, ROUTING_EVENT_DEACTIVATION_REASON, "Событие уже деактивировано"), ("empty_reason", active_event_id, "", "Причина деактивации обязательна")):
+            conn.execute(f"SAVEPOINT stage62_{name}")
+            try:
+                repo.deactivate_routing_event(event_arg, reason=reason, deactivated_by=user_id, commit=False)
+            except BusinessRuleError as exc:
+                if str(exc) != expected:
+                    raise
+            else:
+                raise AssertionError(f"Stage 62 {name} validation did not fail")
+            finally:
+                conn.execute(f"ROLLBACK TO SAVEPOINT stage62_{name}")
+                conn.execute(f"RELEASE SAVEPOINT stage62_{name}")
+    finally:
+        conn.rollback()
+    try:
+        if conn.execute("SELECT 1 FROM routing_events WHERE comment=%s OR deactivation_reason=%s OR snapshot_json::text LIKE %s", (ROUTING_EVENT_COMMENT, ROUTING_EVENT_DEACTIVATION_REASON, "%stage62%")).fetchone():
+            raise AssertionError("Stage 62 routing event rows remain after rollback")
+        if conn.execute("SELECT 1 FROM change_log WHERE new_values::text LIKE %s OR summary LIKE %s", ("%stage62%", "%stage62%")).fetchone():
+            raise AssertionError("Stage 62 change_log rows remain after rollback")
+    finally:
+        conn.rollback()
+
+
 def run_harness(postgres_url: str, probe_key: str = DEFAULT_PROBE_KEY, probe_value: str = DEFAULT_PROBE_VALUE) -> dict:
     """Run all probes; psycopg imports remain local so unit tests need no driver."""
     summary = empty_summary(postgres_url)
@@ -664,6 +724,7 @@ def run_harness(postgres_url: str, probe_key: str = DEFAULT_PROBE_KEY, probe_val
         check("dictionary_snapshot_probe", lambda: run_dictionary_snapshot_probe(repo, conn))
         check("provider_change_priority_probe", lambda: run_provider_change_priority_probe(repo, conn))
         check("provider_change_create_probe", lambda: run_provider_change_create_probe(repo, conn))
+        check("routing_event_deactivate_probe", lambda: run_routing_event_deactivate_probe(repo, conn))
     except Exception as exc:
         summary["failures"].append({"check": "connect", "error": sanitize_error(exc, postgres_url)})
     finally:
