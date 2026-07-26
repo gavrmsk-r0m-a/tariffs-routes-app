@@ -70,6 +70,8 @@ ROUTE_UPDATED_MARKER = "__stage66a_route_updated__"
 PHONE_IMPORT_MARKER = "__stage66b_phone_import__"
 PHONE_UPDATED_MARKER = "__stage66b_phone_updated__"
 PHONE_IMPORT_NUMBER = "79996660001"
+ROUTE_PHONE_LINK_MARKER = "__stage66c_route_phone_link__"
+ROUTE_PHONE_REMOVED_MARKER = "__stage66c_route_phone_removed__"
 
 
 def empty_summary(postgres_url: str) -> dict:
@@ -88,6 +90,7 @@ def empty_summary(postgres_url: str) -> dict:
             "routing_event_create_campaign_probe",
             "route_import_lifecycle_probe",
             "phone_import_lifecycle_probe",
+            "route_phone_link_lifecycle_probe",
         )},
     }
 
@@ -1343,6 +1346,106 @@ def run_phone_import_lifecycle_probe(repo: Repository, conn) -> None:
         conn.rollback()
 
 
+def run_route_phone_link_lifecycle_probe(repo: Repository, conn) -> None:
+    """Exercise route-phone link creation/removal in one caller-owned transaction."""
+    conn.rollback()
+    conn.execute("BEGIN")
+    route_id = None
+    phone_ids: list[int] = []
+    try:
+        user = conn.execute("SELECT id FROM users ORDER BY id LIMIT 1").fetchone()
+        country = conn.execute("SELECT id FROM countries ORDER BY id LIMIT 1").fetchone()
+        provider = conn.execute("SELECT id FROM providers ORDER BY id LIMIT 1").fetchone()
+        if not all((user, country, provider)):
+            raise AssertionError("Stage 66C requires migrated user/country/provider fixtures")
+        route_id = conn.execute(
+            """INSERT INTO routes(country_id, provider_id, name, cli_source_type,
+                                   cli_source_label, comment, created_by)
+               VALUES (%s, %s, %s, 'other', %s, %s, %s) RETURNING id""",
+            (country["id"], provider["id"], ROUTE_PHONE_LINK_MARKER,
+             ROUTE_PHONE_LINK_MARKER, ROUTE_PHONE_LINK_MARKER, user["id"]),
+        ).fetchone()["id"]
+        for number, marker in (("79996660011", ROUTE_PHONE_LINK_MARKER),
+                               ("79996660012", ROUTE_PHONE_LINK_MARKER),
+                               ("79996660013", ROUTE_PHONE_REMOVED_MARKER)):
+            phone_ids.append(conn.execute(
+                """INSERT INTO phone_numbers(country_id, provider_id, number,
+                                               normalized_number, status, is_active,
+                                               comment, created_by)
+                   VALUES (%s, %s, %s, %s, 'used', TRUE, %s, %s) RETURNING id""",
+                (country["id"], provider["id"], number, number, marker, user["id"]),
+            ).fetchone()["id"])
+
+        first = repo.add_phone_to_route(
+            route_id=route_id, phone_number_id=phone_ids[0], usage_type="cli",
+            added_by=user["id"], comment=ROUTE_PHONE_LINK_MARKER, commit=False,
+        )
+        second = repo.add_phone_to_route_by_number(
+            route_id=route_id, number="79996660012", usage_type="backup_number",
+            added_by=user["id"], comment=ROUTE_PHONE_LINK_MARKER, commit=False,
+        )
+        untouched = repo.add_phone_to_route(
+            route_id=route_id, phone_number_id=phone_ids[2], usage_type="other",
+            added_by=user["id"], comment=ROUTE_PHONE_REMOVED_MARKER, commit=False,
+        )
+        for result, phone_id in ((first, phone_ids[0]), (second, phone_ids[1])):
+            row = conn.execute("SELECT * FROM route_phone_numbers WHERE id = %s", (result.route_phone_number_id,)).fetchone()
+            if not row or row["route_id"] != route_id or row["phone_number_id"] != phone_id or not bool(row["is_active"]):
+                raise AssertionError("Stage 66C active route-phone link fields are incomplete")
+            if row["added_by"] != user["id"]:
+                raise AssertionError("Stage 66C route-phone link actor was not preserved")
+            if not conn.execute("SELECT 1 FROM route_phone_number_history WHERE route_id = %s AND phone_number_id = %s AND action = 'added'", (route_id, phone_id)).fetchone():
+                raise AssertionError("Stage 66C added history is missing")
+            if not conn.execute("SELECT 1 FROM change_log WHERE entity_type = 'route_phone_number' AND entity_id = %s AND change_type = 'route_phone_number.added'", (result.route_phone_number_id,)).fetchone():
+                raise AssertionError("Stage 66C added change_log is missing")
+
+        if repo.remove_phone_links_from_route(
+            route_id=route_id, link_ids=[first.route_phone_number_id, second.route_phone_number_id],
+            removed_by=user["id"], reason=ROUTE_PHONE_REMOVED_MARKER, commit=False,
+        ) != 2:
+            raise AssertionError("Stage 66C did not remove both selected links")
+        removed = conn.execute("SELECT * FROM route_phone_numbers WHERE id = %s", (first.route_phone_number_id,)).fetchone()
+        if bool(removed["is_active"]) or removed["removed_at"] is None or removed["removed_by"] != user["id"]:
+            raise AssertionError("Stage 66C removal fields are incomplete")
+        if not conn.execute("SELECT 1 FROM route_phone_number_history WHERE route_id = %s AND action = 'removed' AND reason = %s", (route_id, ROUTE_PHONE_REMOVED_MARKER)).fetchone():
+            raise AssertionError("Stage 66C removed history is missing")
+        if not bool(conn.execute("SELECT is_active FROM route_phone_numbers WHERE id = %s", (untouched.route_phone_number_id,)).fetchone()["is_active"]):
+            raise AssertionError("Stage 66C removal changed a non-selected link")
+
+        validations = (
+            ("missing_route", lambda: repo.add_phone_to_route(route_id=-66003, phone_number_id=phone_ids[0], usage_type="cli", added_by=user["id"], commit=False)),
+            ("missing_phone", lambda: repo.add_phone_to_route(route_id=route_id, phone_number_id=-66003, usage_type="cli", added_by=user["id"], commit=False)),
+            ("duplicate", lambda: repo.add_phone_to_route_by_number(route_id=route_id, number="79996660013", usage_type="other", added_by=user["id"], commit=False)),
+            ("missing_number", lambda: repo.add_phone_to_route_by_number(route_id=route_id, number="79996669999", usage_type="other", added_by=user["id"], commit=False)),
+        )
+        for name, operation in validations:
+            conn.execute(f"SAVEPOINT stage66c_{name}")
+            try:
+                operation()
+            except Exception:
+                pass
+            else:
+                raise AssertionError(f"Stage 66C {name} validation did not fail")
+            finally:
+                conn.execute(f"ROLLBACK TO SAVEPOINT stage66c_{name}")
+                conn.execute(f"RELEASE SAVEPOINT stage66c_{name}")
+    finally:
+        conn.rollback()
+    try:
+        if conn.execute("SELECT 1 FROM routes WHERE name = %s", (ROUTE_PHONE_LINK_MARKER,)).fetchone():
+            raise AssertionError("Stage 66C route marker remains after rollback")
+        if conn.execute("SELECT 1 FROM phone_numbers WHERE comment IN (%s, %s)", (ROUTE_PHONE_LINK_MARKER, ROUTE_PHONE_REMOVED_MARKER)).fetchone():
+            raise AssertionError("Stage 66C phone marker remains after rollback")
+        if route_id is not None and conn.execute("SELECT 1 FROM route_phone_numbers WHERE route_id = %s", (route_id,)).fetchone():
+            raise AssertionError("Stage 66C route-phone link remains after rollback")
+        if route_id is not None and conn.execute("SELECT 1 FROM route_phone_number_history WHERE route_id = %s", (route_id,)).fetchone():
+            raise AssertionError("Stage 66C route-phone history remains after rollback")
+        if conn.execute("SELECT 1 FROM change_log WHERE new_values::text LIKE %s OR summary = %s", ("%stage66c%", ROUTE_PHONE_REMOVED_MARKER)).fetchone():
+            raise AssertionError("Stage 66C change_log marker remains after rollback")
+    finally:
+        conn.rollback()
+
+
 def run_harness(postgres_url: str, probe_key: str = DEFAULT_PROBE_KEY, probe_value: str = DEFAULT_PROBE_VALUE) -> dict:
     """Run all probes; psycopg imports remain local so unit tests need no driver."""
     summary = empty_summary(postgres_url)
@@ -1387,6 +1490,7 @@ def run_harness(postgres_url: str, probe_key: str = DEFAULT_PROBE_KEY, probe_val
         check("routing_event_create_campaign_probe", lambda: run_routing_event_create_campaign_probe(repo, conn))
         check("route_import_lifecycle_probe", lambda: run_route_import_lifecycle_probe(repo, conn))
         check("phone_import_lifecycle_probe", lambda: run_phone_import_lifecycle_probe(repo, conn))
+        check("route_phone_link_lifecycle_probe", lambda: run_route_phone_link_lifecycle_probe(repo, conn))
     except Exception as exc:
         summary["failures"].append({"check": "connect", "error": sanitize_error(exc, postgres_url)})
     finally:
