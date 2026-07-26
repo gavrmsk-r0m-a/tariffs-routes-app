@@ -38,11 +38,31 @@ class PostgresProductionGateTests(unittest.TestCase):
         self.assertEqual(result["metrics"]["expected_write_methods_count"], 50)
         self.assertEqual(result["metrics"]["rollback_smoke_covered_methods_count"], 50)
 
+    def test_adapter_is_guarded_while_remaining_gates_are_blocked(self):
+        result = audit()
+        self.assertEqual(result["checks"]["postgres_runtime_default_guarded"], "ok")
+        self.assertEqual(result["checks"]["runtime_adapter_gate"], "ok")
+        for gate in (
+            "backup_restore_gate", "security_gate", "deployment_rollback_gate",
+            "final_enablement_gate",
+        ):
+            self.assertEqual(result["checks"][gate], "blocked")
+        self.assertNotIn("production_postgres_runtime_not_implemented", result["blockers"])
+        for blocker in (
+            "backup_restore_scripts_not_verified",
+            "basic_security_gate_not_completed",
+            "deployment_rollback_procedure_not_documented",
+            "final_enablement_not_approved",
+        ):
+            self.assertIn(blocker, result["blockers"])
+
     def test_runtime_remains_disabled_for_postgres_aliases(self):
         for backend in ("postgres", "postgresql"):
             with self.subTest(backend=backend):
                 with self.assertRaises(NotImplementedError):
-                    connect_database(DbConfig(backend=backend, sqlite_path=Path(":memory:")))
+                    connect_database(
+                        DbConfig(backend=backend, sqlite_path=Path(":memory:")), environ={}
+                    )
         self.assertEqual(load_db_config({}).backend, "sqlite")
 
     def test_command_exit_codes(self):
@@ -67,12 +87,13 @@ class PostgresProductionGateTests(unittest.TestCase):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, text)
 
-    def test_no_accidental_runtime_implementation(self):
+    def test_runtime_implementation_is_lazy_and_guarded(self):
         source = (ROOT / "app/db.py").read_text(encoding="utf-8")
-        self.assertIn("POSTGRES_NOT_IMPLEMENTED_MESSAGE", source)
-        self.assertIn("raise NotImplementedError(POSTGRES_NOT_IMPLEMENTED_MESSAGE)", source)
-        self.assertNotIn("import psycopg", source)
-        self.assertNotIn("psycopg.connect", source)
+        self.assertIn('POSTGRES_RUNTIME_GUARD_ENV = "POSTGRES_RUNTIME_ENABLED"', source)
+        self.assertIn("raise NotImplementedError(POSTGRES_RUNTIME_DISABLED_MESSAGE)", source)
+        self.assertIn("def connect_postgres", source)
+        self.assertIn("        import psycopg", source)
+        self.assertIn("return psycopg.connect(database_url, row_factory=dict_row)", source)
 
 
 if __name__ == "__main__":

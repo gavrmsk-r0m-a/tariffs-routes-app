@@ -7,13 +7,16 @@ import ast
 import json
 import sys
 from pathlib import Path
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from app.db import (  # noqa: E402
-    POSTGRES_NOT_IMPLEMENTED_MESSAGE,
+    POSTGRES_DATABASE_URL_REQUIRED_MESSAGE,
+    POSTGRES_RUNTIME_DISABLED_MESSAGE,
+    POSTGRES_RUNTIME_GUARD_ENV,
     DbConfig,
     connect_database,
     load_db_config,
@@ -47,36 +50,73 @@ EXPECTED_PROBES = (
     "calling_company_tail_lifecycle_probe",
 )
 BLOCKERS = [
-    "production_postgres_runtime_not_implemented",
     "backup_restore_scripts_not_verified",
     "basic_security_gate_not_completed",
     "deployment_rollback_procedure_not_documented",
+    "final_enablement_not_approved",
 ]
 
 
-def _postgres_runtime_is_disabled() -> bool:
+def _postgres_runtime_is_guarded() -> bool:
     db_path = ROOT / "app/db.py"
     source = db_path.read_text(encoding="utf-8")
     tree = ast.parse(source, filename=str(db_path))
-    imported_modules = {
+    top_level_imported_modules = {
         alias.name.split(".")[0]
-        for node in ast.walk(tree)
+        for node in tree.body
         if isinstance(node, (ast.Import, ast.ImportFrom))
         for alias in node.names
     }
-    if "POSTGRES_NOT_IMPLEMENTED_MESSAGE" not in source or "psycopg" in imported_modules:
+    adapter = next(
+        (node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "connect_postgres"),
+        None,
+    )
+    adapter_imports = {
+        alias.name.split(".")[0]
+        for node in ast.walk(adapter) if adapter is not None
+        if isinstance(node, (ast.Import, ast.ImportFrom))
+        for alias in node.names
+    }
+    if (
+        "POSTGRES_RUNTIME_GUARD_ENV" not in source
+        or POSTGRES_RUNTIME_GUARD_ENV != "POSTGRES_RUNTIME_ENABLED"
+        or "psycopg" in top_level_imported_modules
+        or "psycopg" not in adapter_imports
+    ):
         return False
     if load_db_config({}).backend != "sqlite":
         return False
     for backend in ("postgres", "postgresql"):
         config = DbConfig(backend=backend, sqlite_path=Path(":memory:"))
         try:
-            connect_database(config)
+            connect_database(config, environ={})
         except NotImplementedError as exc:
-            if str(exc) != POSTGRES_NOT_IMPLEMENTED_MESSAGE:
+            if str(exc) != POSTGRES_RUNTIME_DISABLED_MESSAGE:
                 return False
         else:
             return False
+        try:
+            connect_database(config, environ={POSTGRES_RUNTIME_GUARD_ENV: "true"})
+        except NotImplementedError:
+            pass
+        else:
+            return False
+    missing_url = DbConfig(backend="postgres", sqlite_path=Path(":memory:"))
+    try:
+        connect_database(missing_url, environ={POSTGRES_RUNTIME_GUARD_ENV: "1"})
+    except ValueError as exc:
+        if str(exc) != POSTGRES_DATABASE_URL_REQUIRED_MESSAGE:
+            return False
+    else:
+        return False
+    config = DbConfig(
+        backend="postgres", sqlite_path=Path(":memory:"), database_url="postgresql://masked/audit"
+    )
+    sentinel = object()
+    with patch("app.db.connect_postgres", return_value=sentinel) as connect_adapter:
+        if connect_database(config, environ={POSTGRES_RUNTIME_GUARD_ENV: "1"}) is not sentinel:
+            return False
+    connect_adapter.assert_called_once_with("postgresql://masked/audit")
     return True
 
 
@@ -95,21 +135,23 @@ def audit() -> dict:
         and write_plan.get("rollback_smoke_covered_methods_count") == EXPECTED_WRITE_METHODS
     )
     harness_ok = len(probes) == len(EXPECTED_PROBES) and set(probes) == set(EXPECTED_PROBES)
-    runtime_disabled = _postgres_runtime_is_disabled()
+    runtime_guarded = _postgres_runtime_is_guarded()
     checks = {
         "coverage_baseline": "ok" if coverage_ok else "failed",
         "read_only_smoke_contract_documented": "ok",
         "write_plan_complete": "ok" if write_plan_ok else "failed",
         "rollback_harness_complete": "ok" if harness_ok else "failed",
-        "postgres_runtime_disabled": "ok" if runtime_disabled else "failed",
+        "postgres_runtime_default_guarded": "ok" if runtime_guarded else "failed",
+        "runtime_adapter_gate": "ok" if runtime_guarded else "failed",
         "backup_restore_gate": "blocked",
         "security_gate": "blocked",
-        "runtime_adapter_gate": "blocked",
         "deployment_rollback_gate": "blocked",
+        "final_enablement_gate": "blocked",
     }
     foundational_ok = all(checks[name] == "ok" for name in (
         "coverage_baseline", "read_only_smoke_contract_documented",
-        "write_plan_complete", "rollback_harness_complete", "postgres_runtime_disabled",
+        "write_plan_complete", "rollback_harness_complete",
+        "postgres_runtime_default_guarded", "runtime_adapter_gate",
     ))
     metrics = {key: coverage.get(key) for key in EXPECTED_COVERAGE}
     metrics.update({

@@ -826,3 +826,14 @@ an explicit, blocked gate. All 50 public Repository writes remain rollback-smoke
 and the rollback-only harness remains at 25 probes. Production runtime is still
 disabled. The next stage should implement and test a runtime adapter behind an
 explicit environment guard; it must not switch the default away from SQLite.
+
+## Stage 67B — guarded PostgreSQL runtime adapter
+
+The PostgreSQL runtime adapter is implemented behind the exact opt-in guard
+`POSTGRES_RUNTIME_ENABLED=1`, and it requires `DATABASE_URL`. SQLite remains the
+default backend, PostgreSQL without the guard remains blocked, and no production
+enablement or deploy configuration is included.
+
+The next stage should complete either the backup/restore gate or the security
+gate. It must not skip directly to final enablement; deployment rollback and
+explicit final approval remain separate blockers.
