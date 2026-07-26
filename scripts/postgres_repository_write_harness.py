@@ -75,6 +75,9 @@ ROUTE_PHONE_REMOVED_MARKER = "__stage66c_route_phone_removed__"
 TARIFF_MARKER = "__stage66d_tariff__"
 TARIFF_UPDATED_MARKER = "__stage66d_tariff_updated__"
 TARIFF_INACTIVE_MARKER = "__stage66d_tariff_inactive__"
+CURRENCY_RATE_MARKER = "__stage66e_currency_rate__"
+CURRENCY_RATE_RECALC_MARKER = "__stage66e_currency_rate_recalc__"
+CURRENCY_RATE_LOG_MARKER = "__stage66e_currency_rate_log__"
 
 
 def empty_summary(postgres_url: str) -> dict:
@@ -95,6 +98,7 @@ def empty_summary(postgres_url: str) -> dict:
             "phone_import_lifecycle_probe",
             "route_phone_link_lifecycle_probe",
             "tariff_lifecycle_probe",
+            "currency_rate_lifecycle_probe",
         )},
     }
 
@@ -1557,6 +1561,116 @@ def run_tariff_lifecycle_probe(repo: Repository, conn) -> None:
         conn.rollback()
 
 
+def run_currency_rate_lifecycle_probe(repo: Repository, conn) -> None:
+    """Exercise currency-rate create/recalculate/log inside one rolled-back transaction."""
+    conn.rollback()
+    conn.execute("BEGIN")
+    tariff_id = new_rate_id = None
+    try:
+        user_id = conn.execute("SELECT id FROM users ORDER BY id LIMIT 1").fetchone()["id"]
+        country_id = conn.execute(
+            "INSERT INTO countries(name, code, is_active) VALUES (%s, %s, %s) RETURNING id",
+            (CURRENCY_RATE_RECALC_MARKER, "S66E", to_db_bool(True, "postgres")),
+        ).fetchone()["id"]
+        currency_id = conn.execute(
+            "INSERT INTO currencies(code, name, symbol, is_active) VALUES (%s, %s, %s, %s) RETURNING id",
+            ("S6E", CURRENCY_RATE_MARKER, "S6E", to_db_bool(True, "postgres")),
+        ).fetchone()["id"]
+        empty_currency_id = conn.execute(
+            "INSERT INTO currencies(code, name, symbol, is_active) VALUES (%s, %s, %s, %s) RETURNING id",
+            ("E6E", CURRENCY_RATE_LOG_MARKER, "E6E", to_db_bool(True, "postgres")),
+        ).fetchone()["id"]
+        provider_id = conn.execute(
+            "INSERT INTO providers(name, normalized_name, provider_type, default_currency_id, is_active, comment) VALUES (%s, %s, %s, %s, %s, %s) RETURNING id",
+            (CURRENCY_RATE_RECALC_MARKER, CURRENCY_RATE_RECALC_MARKER, "voip", currency_id, to_db_bool(True, "postgres"), CURRENCY_RATE_RECALC_MARKER),
+        ).fetchone()["id"]
+        old_rate_id = conn.execute(
+            "INSERT INTO currency_rates(currency_id, rate_to_eur, rate_date, updated_by, source, comment) VALUES (%s, %s, %s, %s, %s, %s) RETURNING id",
+            (currency_id, "1.5", "2026-07-25", user_id, "manual", CURRENCY_RATE_MARKER),
+        ).fetchone()["id"]
+        tariff_id = conn.execute(
+            """INSERT INTO tariffs(country_id, provider_id, provider_currency_id,
+                   price_in_provider_currency, conversion_rate_to_eur, conversion_rate_date,
+                   currency_rate_id, eur_price, is_current, comment, created_by, updated_by)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id""",
+            (country_id, provider_id, currency_id, "3.25", "1.5", "2026-07-25", old_rate_id,
+             str(eur_price("3.25", "1.5")), to_db_bool(True, "postgres"), CURRENCY_RATE_RECALC_MARKER, user_id, user_id),
+        ).fetchone()["id"]
+
+        new_rate_id = repo.create_currency_rate(currency_id, "2.1250", "2026-07-26", user_id,
+                                                 source="manual", comment=CURRENCY_RATE_MARKER, commit=False)
+        new_rate = repo.get_currency_rate(new_rate_id)
+        if not new_rate or Decimal(str(new_rate["rate_to_eur"])) != Decimal("2.1250") or new_rate["comment"] != CURRENCY_RATE_MARKER:
+            raise AssertionError("Stage 66E created currency rate fields do not match")
+
+        recalculated = repo.recalculate_current_tariffs_for_currency_rate(new_rate_id, user_id)
+        if [item["tariff_id"] for item in recalculated] != [tariff_id]:
+            raise AssertionError("Stage 66E recalculated tariff set does not match")
+        tariff = conn.execute("SELECT * FROM tariffs WHERE id = %s", (tariff_id,)).fetchone()
+        if (tariff["currency_rate_id"] != new_rate_id or Decimal(str(tariff["conversion_rate_to_eur"])) != Decimal("2.1250")
+                or Decimal(str(tariff["eur_price"])) != eur_price("3.25", "2.1250")):
+            raise AssertionError("Stage 66E tariff recalculation values do not match")
+        if not conn.execute("SELECT 1 FROM tariff_change_history WHERE tariff_id = %s AND reason = %s", (tariff_id, "tariff.currency_rate_recalculated")).fetchone():
+            raise AssertionError("Stage 66E recalculation history is missing")
+        if not conn.execute("SELECT 1 FROM change_log WHERE entity_type = %s AND entity_id = %s AND change_type = %s", ("tariff", tariff_id, "tariff.currency_rate_recalculated")).fetchone():
+            raise AssertionError("Stage 66E recalculation log is missing")
+
+        old_rate = repo.get_currency_rate(old_rate_id)
+        repo.log_currency_rate_change(new_rate_id, currency_id, "S6E", old_rate, new_rate, user_id,
+                                      source="ui", recalculated_active_tariffs_count=len(recalculated))
+        rate_log = conn.execute(
+            "SELECT * FROM change_log WHERE entity_type = %s AND entity_id = %s AND change_type = %s ORDER BY id DESC LIMIT 1",
+            ("currency_rate", new_rate_id, "currency_rate.manual_created"),
+        ).fetchone()
+        new_values = rate_log["new_values"] if isinstance(rate_log["new_values"], dict) else json.loads(rate_log["new_values"])
+        old_values = rate_log["old_values"] if isinstance(rate_log["old_values"], dict) else json.loads(rate_log["old_values"])
+        if old_values["rate_to_eur"] != str(old_rate["rate_to_eur"]) or new_values["rate_to_eur"] != str(new_rate["rate_to_eur"]):
+            raise AssertionError("Stage 66E logged rate values do not match")
+        if new_values["recalculated_active_tariffs_count"] != 1 or "Активных тарифов пересчитано: 1." not in rate_log["summary"] or rate_log["source"] != "ui":
+            raise AssertionError("Stage 66E currency-rate summary does not match")
+
+        empty_rate_id = repo.create_currency_rate(empty_currency_id, "1.1", "2026-07-26", user_id,
+                                                   source="manual", comment=CURRENCY_RATE_LOG_MARKER, commit=False)
+        if repo.recalculate_current_tariffs_for_currency_rate(empty_rate_id, user_id) != []:
+            raise AssertionError("Stage 66E no-current-tariff branch did not return an empty list")
+        empty_rate = repo.get_currency_rate(empty_rate_id)
+        repo.log_currency_rate_change(empty_rate_id, empty_currency_id, "E6E", None, empty_rate, user_id,
+                                      source="ui", recalculated_active_tariffs_count=0)
+        empty_log = conn.execute("SELECT summary FROM change_log WHERE entity_type = %s AND entity_id = %s", ("currency_rate", empty_rate_id)).fetchone()
+        if "Активных тарифов для пересчёта нет." not in empty_log["summary"]:
+            raise AssertionError("Stage 66E empty recalculation summary does not match")
+
+        negative_calls = (
+            ("create_invalid_rate", lambda: repo.create_currency_rate(currency_id, "invalid", "2026-07-26", user_id, commit=False)),
+            ("create_missing_rate", lambda: repo.create_currency_rate(currency_id, "", "2026-07-26", user_id, commit=False)),
+            ("recalculate_missing", lambda: repo.recalculate_current_tariffs_for_currency_rate(-66, user_id)),
+        )
+        for name, call in negative_calls:
+            conn.execute(f"SAVEPOINT stage66e_{name}")
+            try:
+                call()
+            except BusinessRuleError:
+                pass
+            else:
+                raise AssertionError(f"Stage 66E {name} validation did not fail")
+            finally:
+                conn.execute(f"ROLLBACK TO SAVEPOINT stage66e_{name}")
+                conn.execute(f"RELEASE SAVEPOINT stage66e_{name}")
+    finally:
+        conn.rollback()
+    try:
+        if conn.execute("SELECT 1 FROM currency_rates WHERE comment IN (%s, %s, %s)", (CURRENCY_RATE_MARKER, CURRENCY_RATE_RECALC_MARKER, CURRENCY_RATE_LOG_MARKER)).fetchone():
+            raise AssertionError("Stage 66E currency-rate marker remains after rollback")
+        if conn.execute("SELECT 1 FROM currencies WHERE name IN (%s, %s, %s)", (CURRENCY_RATE_MARKER, CURRENCY_RATE_RECALC_MARKER, CURRENCY_RATE_LOG_MARKER)).fetchone():
+            raise AssertionError("Stage 66E currency marker remains after rollback")
+        if tariff_id is not None and conn.execute("SELECT 1 FROM tariff_change_history WHERE tariff_id = %s", (tariff_id,)).fetchone():
+            raise AssertionError("Stage 66E tariff history remains after rollback")
+        if conn.execute("SELECT 1 FROM change_log WHERE new_values::text LIKE %s OR summary LIKE %s", ("%stage66e%", "%stage66e%")).fetchone():
+            raise AssertionError("Stage 66E change_log marker remains after rollback")
+    finally:
+        conn.rollback()
+
+
 def run_harness(postgres_url: str, probe_key: str = DEFAULT_PROBE_KEY, probe_value: str = DEFAULT_PROBE_VALUE) -> dict:
     """Run all probes; psycopg imports remain local so unit tests need no driver."""
     summary = empty_summary(postgres_url)
@@ -1603,6 +1717,7 @@ def run_harness(postgres_url: str, probe_key: str = DEFAULT_PROBE_KEY, probe_val
         check("phone_import_lifecycle_probe", lambda: run_phone_import_lifecycle_probe(repo, conn))
         check("route_phone_link_lifecycle_probe", lambda: run_route_phone_link_lifecycle_probe(repo, conn))
         check("tariff_lifecycle_probe", lambda: run_tariff_lifecycle_probe(repo, conn))
+        check("currency_rate_lifecycle_probe", lambda: run_currency_rate_lifecycle_probe(repo, conn))
     except Exception as exc:
         summary["failures"].append({"check": "connect", "error": sanitize_error(exc, postgres_url)})
     finally:

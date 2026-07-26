@@ -1,10 +1,11 @@
 import sqlite3
 from datetime import datetime, timezone
+from decimal import Decimal
 import unittest
 from unittest.mock import patch
 
 from app.db import init_db
-from app.repository import BusinessRuleError, Repository
+from app.repository import BusinessRuleError, Repository, eur_price
 
 
 class RepositoryAdapterWriteMethodsTest(unittest.TestCase):
@@ -1157,3 +1158,66 @@ class RepositoryStage66BPhoneImportTest(unittest.TestCase):
         conn.rollback()
         self.assertEqual(conn.execute('SELECT COUNT(*) FROM phone_number_history WHERE phone_number_id=?',(phone,)).fetchone()[0],before)
         conn.close()
+
+class RepositoryStage66ECurrencyRateWriteTest(unittest.TestCase):
+    class Cursor:
+        def __init__(self, row=None, rows=None): self.row, self.rows = row, rows or []
+        def fetchone(self): return self.row
+        def fetchall(self): return self.rows
+    class Connection:
+        def __init__(self, fail=False): self.calls=[]; self.commits=0; self.rollbacks=0; self.fail=fail
+        def execute(self, sql, params=()):
+            self.calls.append((sql, params))
+            if self.fail: raise RuntimeError('failed')
+            if 'RETURNING id' in sql: return RepositoryStage66ECurrencyRateWriteTest.Cursor({'id': 66})
+            if 'FROM tariffs t' in sql:
+                return RepositoryStage66ECurrencyRateWriteTest.Cursor(rows=[{
+                    'id': 10, 'currency_rate_id': 5, 'conversion_rate_to_eur': '1.5',
+                    'conversion_rate_date': '2026-07-25', 'eur_price': '2.0000',
+                    'price_in_provider_currency': '3.25', 'provider_currency_id': 2,
+                    'created_by': 1,
+                }])
+            return RepositoryStage66ECurrencyRateWriteTest.Cursor()
+        def commit(self): self.commits += 1
+        def rollback(self): self.rollbacks += 1
+
+    def test_create_currency_rate_postgres_returning_and_transaction_contract(self):
+        conn=self.Connection(); repo=Repository(conn,backend='postgres')
+        self.assertEqual(repo.create_currency_rate(2, Decimal('2.1250'), '2026-07-26', 1, commit=False),66)
+        sql,params=conn.calls[0]
+        self.assertNotIn('?',sql); self.assertIn('VALUES (%s, %s, %s, %s, %s, %s) RETURNING id',sql)
+        self.assertEqual(params[1], '2.1250'); self.assertEqual((conn.commits,conn.rollbacks),(0,0))
+        repo.create_currency_rate(2, '2.1250', '2026-07-26', 1)
+        self.assertEqual(conn.commits,1)
+
+    def test_create_currency_rate_only_rolls_back_owned_transaction(self):
+        for commit, expected in ((True,1),(False,0)):
+            conn=self.Connection(fail=True)
+            with self.assertRaisesRegex(RuntimeError,'failed'):
+                Repository(conn,backend='postgres').create_currency_rate(2,'2','2026-07-26',1,commit=commit)
+            self.assertEqual((conn.commits,conn.rollbacks),(0,expected))
+
+    def test_recalculate_and_log_currency_rate_are_postgres_and_no_commit(self):
+        conn=self.Connection(); repo=Repository(conn,backend='postgres')
+        rate={'id':66,'currency_id':2,'currency_code':'S6E','rate_to_eur':Decimal('2.1250'),'rate_date':'2026-07-26','source':'manual'}
+        updated={'id':10,'created_by':1}
+        with patch.object(repo,'get_currency_rate',return_value=rate), patch.object(repo,'get_tariff',return_value=updated), patch.object(repo,'_insert_tariff_history') as history:
+            recalculated=repo.recalculate_current_tariffs_for_currency_rate(66,1)
+        self.assertEqual(recalculated[0]['new_values']['conversion_rate_to_eur'],'2.1250')
+        self.assertEqual(recalculated[0]['new_values']['eur_price'],str(eur_price('3.25',Decimal('2.1250'))))
+        repo.log_currency_rate_change(66,2,'S6E',None,rate,1,recalculated_active_tariffs_count=1)
+        sql='\n'.join(q for q,_ in conn.calls)
+        self.assertNotIn('?',sql); self.assertIn('t.provider_currency_id = %s AND t.is_current = %s',sql)
+        self.assertIn('SET conversion_rate_to_eur = %s',sql); self.assertIn('INSERT INTO change_log',sql)
+        current_select=next(params for q,params in conn.calls if 'FROM tariffs t' in q)
+        self.assertEqual(current_select,(2,True)); self.assertTrue(history.called)
+        self.assertEqual((conn.commits,conn.rollbacks),(0,0))
+        log_params=next(params for q,params in reversed(conn.calls) if 'INSERT INTO change_log' in q)
+        self.assertIn('"rate_to_eur": "2.1250"',log_params[5]); self.assertIn('"recalculated_active_tariffs_count": 1',log_params[5])
+
+    def test_recalculate_missing_rate_preserves_business_error(self):
+        conn=self.Connection(); repo=Repository(conn,backend='postgres')
+        with patch.object(repo,'get_currency_rate',return_value=None):
+            with self.assertRaisesRegex(BusinessRuleError,'Курс валюты не найден'):
+                repo.recalculate_current_tariffs_for_currency_rate(999,1)
+        self.assertEqual((conn.commits,conn.rollbacks),(0,0))
