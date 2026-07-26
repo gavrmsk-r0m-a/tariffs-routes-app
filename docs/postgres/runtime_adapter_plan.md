@@ -773,3 +773,10 @@ PostgreSQL harness, including nested company-routing side effects with `commit=F
 Read-only smoke remains **611** checks and repository coverage remains **112 / 61 / 0 /
 50 / 1 / 100.0%**. `DB_BACKEND=postgres` remains disabled; this stage enables no
 production PostgreSQL runtime.
+
+## Stage 66A — rollback-only route import writes
+
+The PostgreSQL harness now covers route create, update, and import-field update
+without committing. Read-only smoke remains 611 checks and repository coverage
+remains 112/61/0/50/1/100%. `DB_BACKEND=postgres` and production PostgreSQL
+runtime remain disabled.

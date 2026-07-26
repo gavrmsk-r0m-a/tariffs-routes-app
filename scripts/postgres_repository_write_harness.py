@@ -65,6 +65,8 @@ COMPANY_ROUTING_UPDATED_AT = "2026-07-25 11:00:00"
 COMPANY_ROUTING_DEACTIVATED_AT = "2026-07-25 12:00:00"
 CAMPAIGN_MARKER = "__stage65b_campaign__"
 CAMPAIGN_EVENT_AT = "2026-07-22 16:00:00"
+ROUTE_IMPORT_MARKER = "__stage66a_route_import__"
+ROUTE_UPDATED_MARKER = "__stage66a_route_updated__"
 
 
 def empty_summary(postgres_url: str) -> dict:
@@ -81,6 +83,7 @@ def empty_summary(postgres_url: str) -> dict:
             "routing_event_deactivate_probe", "routing_event_update_probe",
             "routing_event_create_core_probe", "company_routing_setting_lifecycle_probe",
             "routing_event_create_campaign_probe",
+            "route_import_lifecycle_probe",
         )},
     }
 
@@ -1143,6 +1146,87 @@ def run_routing_event_create_campaign_probe(repo: Repository, conn) -> None:
     finally:
         conn.rollback()
 
+def run_route_import_lifecycle_probe(repo: Repository, conn) -> None:
+    """Exercise route create/update/import writes in one caller-owned transaction."""
+    conn.rollback()
+    conn.execute("BEGIN")
+    route_id = None
+    try:
+        user = conn.execute("SELECT id FROM users ORDER BY id LIMIT 1").fetchone()
+        country = conn.execute("SELECT id FROM countries ORDER BY id LIMIT 1").fetchone()
+        provider = conn.execute("SELECT id FROM providers ORDER BY id LIMIT 1").fetchone()
+        if not user or not country or not provider:
+            raise AssertionError("Stage 66A requires migrated user/country/provider fixtures")
+        prefix = conn.execute(
+            "SELECT id FROM provider_prefixes WHERE provider_id = %s ORDER BY id LIMIT 1",
+            (provider["id"],),
+        ).fetchone()
+        prefix_id = prefix["id"] if prefix else None
+        route_id = repo.create_route(
+            country_id=country["id"], provider_id=provider["id"], provider_prefix_id=prefix_id,
+            name=ROUTE_IMPORT_MARKER, project_label="Stage 66A", cli_source_type="other",
+            cli_source_label=ROUTE_IMPORT_MARKER, comment=ROUTE_IMPORT_MARKER,
+            created_by=user["id"], commit=False,
+        )
+        created = conn.execute("SELECT * FROM routes WHERE id = %s", (route_id,)).fetchone()
+        if not created or created["name"] != ROUTE_IMPORT_MARKER or not bool(created["is_actual"]):
+            raise AssertionError("Stage 66A route create fields are incomplete")
+        if not conn.execute("SELECT 1 FROM route_history WHERE route_id = %s AND action = 'created'", (route_id,)).fetchone():
+            raise AssertionError("Stage 66A create history is missing")
+        if not conn.execute("SELECT 1 FROM change_log WHERE entity_type = 'route' AND entity_id = %s", (route_id,)).fetchone():
+            raise AssertionError("Stage 66A create change_log is missing")
+
+        repo.update_route(
+            route_id, name=ROUTE_UPDATED_MARKER, provider_id=provider["id"],
+            provider_prefix_id=prefix_id, comment=ROUTE_UPDATED_MARKER, is_actual=True,
+            priority_status="unknown", updated_by=user["id"], cli_source_type="other",
+            cli_source_label=ROUTE_UPDATED_MARKER, commit=False,
+        )
+        updated = conn.execute("SELECT * FROM routes WHERE id = %s", (route_id,)).fetchone()
+        if updated["name"] != ROUTE_UPDATED_MARKER or updated["comment"] != ROUTE_UPDATED_MARKER:
+            raise AssertionError("Stage 66A route update fields are incomplete")
+        if not conn.execute("SELECT 1 FROM route_history WHERE route_id = %s AND action = 'updated'", (route_id,)).fetchone():
+            raise AssertionError("Stage 66A update history is missing")
+
+        affected = repo.update_route_import_fields(
+            country_id=country["id"], name=ROUTE_UPDATED_MARKER, provider_id=provider["id"],
+            provider_prefix_id=prefix_id, project_label="Stage 66A imported",
+            cli_source_type="other", cli_source_label=ROUTE_IMPORT_MARKER,
+            comment=ROUTE_IMPORT_MARKER, updated_by=user["id"], commit=False,
+        )
+        imported = conn.execute("SELECT * FROM routes WHERE id = %s", (route_id,)).fetchone()
+        if affected != 1 or imported["project_label"] != "Stage 66A imported" or imported["cli_source_type"] != "other":
+            raise AssertionError("Stage 66A import update did not affect exactly the intended route")
+
+        validations = (
+            ("create_required", lambda: repo.create_route(country_id=None, provider_id=provider["id"], name=ROUTE_IMPORT_MARKER + "invalid", cli_source_type="other", cli_source_label="invalid", created_by=user["id"], commit=False)),
+            ("update_missing", lambda: repo.update_route(-66001, name="missing", provider_prefix_id=None, comment=None, is_actual=True, priority_status="unknown", updated_by=user["id"], commit=False)),
+            ("import_invalid", lambda: repo.update_route_import_fields(country_id=country["id"], name=ROUTE_UPDATED_MARKER, provider_id=-66001, provider_prefix_id=None, project_label=None, cli_source_type="other", cli_source_label="invalid", comment=None, updated_by=user["id"], commit=False)),
+        )
+        for name, operation in validations:
+            conn.execute(f"SAVEPOINT stage66a_{name}")
+            try:
+                operation()
+            except Exception:
+                pass
+            else:
+                raise AssertionError(f"Stage 66A {name} validation did not fail")
+            finally:
+                conn.execute(f"ROLLBACK TO SAVEPOINT stage66a_{name}")
+                conn.execute(f"RELEASE SAVEPOINT stage66a_{name}")
+    finally:
+        conn.rollback()
+    try:
+        if conn.execute("SELECT 1 FROM routes WHERE name LIKE %s OR comment LIKE %s", ("%stage66a%", "%stage66a%")).fetchone():
+            raise AssertionError("Stage 66A route marker remains after rollback")
+        if route_id is not None and conn.execute("SELECT 1 FROM route_history WHERE route_id = %s", (route_id,)).fetchone():
+            raise AssertionError("Stage 66A route history remains after rollback")
+        if conn.execute("SELECT 1 FROM change_log WHERE new_values::text LIKE %s OR summary LIKE %s", ("%stage66a%", "%stage66a%")).fetchone():
+            raise AssertionError("Stage 66A change_log marker remains after rollback")
+    finally:
+        conn.rollback()
+
+
 def run_harness(postgres_url: str, probe_key: str = DEFAULT_PROBE_KEY, probe_value: str = DEFAULT_PROBE_VALUE) -> dict:
     """Run all probes; psycopg imports remain local so unit tests need no driver."""
     summary = empty_summary(postgres_url)
@@ -1185,6 +1269,7 @@ def run_harness(postgres_url: str, probe_key: str = DEFAULT_PROBE_KEY, probe_val
         check("routing_event_create_core_probe", lambda: run_routing_event_create_core_probe(repo, conn))
         check("company_routing_setting_lifecycle_probe", lambda: run_company_routing_setting_lifecycle_probe(repo, conn))
         check("routing_event_create_campaign_probe", lambda: run_routing_event_create_campaign_probe(repo, conn))
+        check("route_import_lifecycle_probe", lambda: run_route_import_lifecycle_probe(repo, conn))
     except Exception as exc:
         summary["failures"].append({"check": "connect", "error": sanitize_error(exc, postgres_url)})
     finally:

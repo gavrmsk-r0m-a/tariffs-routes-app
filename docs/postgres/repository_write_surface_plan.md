@@ -182,3 +182,11 @@ paths. `routing_event_application_writes` is therefore complete. The
 create/update/deactivate lifecycle is covered, while calling-company writes and the
 standalone comment update remain pending. `rollback_smoke_covered_methods_count` is
 **30**. Production PostgreSQL runtime and `DB_BACKEND=postgres` remain disabled.
+
+## Stage 66A status
+
+Route import is now rollback-smoked for `create_route`, `update_route`, and
+`update_route_import_fields`. This partially starts both
+`phone_route_tariff_core_writes` and `importer_and_bulk_mutation_writes`; phone
+import remains pending. The rollback-smoke-covered count is **33**. Production
+PostgreSQL runtime remains disabled.

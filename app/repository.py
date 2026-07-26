@@ -824,17 +824,22 @@ class Repository:
         aon_pool: str | None = None,
         rnd_type: str | None = None,
         rnd_pool_owner: str | None = None,
+        commit: bool = True,
     ) -> int:
-        cur = self.conn.execute(
-            """
+        p = placeholder(self.backend)
+        sql = prepare_insert_returning_id(
+            f"""
             INSERT INTO routes(
                 country_id, provider_id, provider_prefix_id, name, project_label,
                 cli_source_type, cli_source_label, aon_pool, rnd_type, rnd_pool_owner, comment, is_actual, priority_status,
                 inbound_line_available, created_by
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES ({', '.join([p] * 15)})
             """,
-            (
+            self.backend,
+        )
+        try:
+            cur = self.conn.execute(sql, (
                 country_id,
                 provider_id,
                 provider_prefix_id,
@@ -846,23 +851,27 @@ class Repository:
                 rnd_type,
                 rnd_pool_owner,
                 comment,
-                1 if is_actual else 0,
+                to_db_bool(is_actual, self.backend),
                 priority_status,
-                1 if inbound_line_available else 0,
+                to_db_bool(inbound_line_available, self.backend),
                 created_by,
-            ),
-        )
-        route_id = int(cur.lastrowid)
-        self.conn.execute(
-            """
+            ))
+            route_id = extract_inserted_id(cur, self.backend)
+            self.conn.execute(
+            f"""
             INSERT INTO route_history(route_id, action, changed_by, field_name, new_value, comment)
-            VALUES (?, 'created', ?, 'route', ?, ?)
+            VALUES ({p}, 'created', {p}, 'route', {p}, {p})
             """,
             (route_id, created_by, name, comment),
-        )
-        self._change_log("route", route_id, "route.created", created_by, new_values={"name": name})
-        self.conn.commit()
-        return route_id
+            )
+            self._change_log("route", route_id, "route.created", created_by, new_values={"name": name})
+            if commit:
+                self.conn.commit()
+            return route_id
+        except Exception:
+            if commit:
+                self.conn.rollback()
+            raise
 
     def create_phone_number(
         self,
@@ -1657,57 +1666,63 @@ class Repository:
         expected_updated_at: str | None = None,
         commit: bool = True,
     ) -> None:
-        existing = self.conn.execute("SELECT * FROM routes WHERE id = ?", (route_id,)).fetchone()
-        if existing is None:
-            raise BusinessRuleError("Route not found")
-        old_values = dict(existing)
-        final_provider_id = provider_id if provider_id is not None else int(existing["provider_id"])
-        final_cli_source_type = cli_source_type if cli_source_type is not None else existing["cli_source_type"]
-        final_cli_source_label = cli_source_label if cli_source_label is not None else existing["cli_source_label"]
-        update_params = [
-            name,
-            final_provider_id,
-            provider_prefix_id,
-            final_cli_source_type,
-            final_cli_source_label,
-            aon_pool,
-            rnd_type,
-            rnd_pool_owner,
-            comment,
-            1 if is_actual else 0,
-            priority_status,
-            updated_by,
-            route_id,
-        ]
-        token_clause = ""
-        if expected_updated_at is not None:
-            token_clause = " AND updated_at = ?"
-            update_params.append(expected_updated_at)
-        cur = self.conn.execute(
-            f"""
-            UPDATE routes
-            SET name = ?, provider_id = ?, provider_prefix_id = ?, cli_source_type = ?, cli_source_label = ?,
-                aon_pool = ?, rnd_type = ?, rnd_pool_owner = ?, comment = ?, is_actual = ?,
-                priority_status = ?, updated_by = ?,
-                updated_at = STRFTIME('%Y-%m-%d %H:%M:%f', MAX(julianday('now'), julianday(updated_at) + (1.0 / 86400000.0)))
-            WHERE id = ?{token_clause}
-            """,
-            tuple(update_params),
-        )
-        if cur.rowcount == 0:
-            if self.conn.execute("SELECT 1 FROM routes WHERE id = ?", (route_id,)).fetchone() is None:
+        p = placeholder(self.backend)
+        try:
+            existing = self.conn.execute(f"SELECT * FROM routes WHERE id = {p}", (route_id,)).fetchone()
+            if existing is None:
                 raise BusinessRuleError("Route not found")
-            raise ConcurrencyConflict("Запись была изменена другим пользователем. Обновите страницу и повторите действие.")
-        new_values = {**old_values, "name": name, "provider_id": final_provider_id, "provider_prefix_id": provider_prefix_id, "cli_source_type": final_cli_source_type, "cli_source_label": final_cli_source_label, "aon_pool": aon_pool, "rnd_type": rnd_type, "rnd_pool_owner": rnd_pool_owner, "comment": comment, "is_actual": 1 if is_actual else 0, "priority_status": priority_status}
-        changes = self._route_field_changes(old_values, new_values)
-        if changes:
-            payload = {"changes": changes, "description": f"Изменено полей: {len(changes)}", "details": "; ".join(changes)}
-            self.conn.execute(
-                "INSERT INTO route_history(route_id, action, changed_by, field_name, old_value, new_value, comment) VALUES (?, 'updated', ?, 'changes', ?, ?, ?)",
-                (route_id, updated_by, json.dumps({"changes": changes}, ensure_ascii=False), json.dumps(payload, ensure_ascii=False), comment),
+            old_values = dict(existing)
+            final_provider_id = provider_id if provider_id is not None else int(existing["provider_id"])
+            final_cli_source_type = cli_source_type if cli_source_type is not None else existing["cli_source_type"]
+            final_cli_source_label = cli_source_label if cli_source_label is not None else existing["cli_source_label"]
+            update_params = [
+                name,
+                final_provider_id,
+                provider_prefix_id,
+                final_cli_source_type,
+                final_cli_source_label,
+                aon_pool,
+                rnd_type,
+                rnd_pool_owner,
+                comment,
+                to_db_bool(is_actual, self.backend),
+                priority_status,
+                updated_by,
+                route_id,
+            ]
+            token_clause = ""
+            if expected_updated_at is not None:
+                token_clause = f" AND updated_at = {p}"
+                update_params.append(expected_updated_at)
+            updated_at_sql = ("CURRENT_TIMESTAMP" if self.backend == "postgres" else "STRFTIME('%Y-%m-%d %H:%M:%f', MAX(julianday('now'), julianday(updated_at) + (1.0 / 86400000.0)))")
+            cur = self.conn.execute(
+                f"""
+                UPDATE routes
+                SET name = {p}, provider_id = {p}, provider_prefix_id = {p}, cli_source_type = {p}, cli_source_label = {p},
+                    aon_pool = {p}, rnd_type = {p}, rnd_pool_owner = {p}, comment = {p}, is_actual = {p},
+                    priority_status = {p}, updated_by = {p}, updated_at = {updated_at_sql}
+                WHERE id = {p}{token_clause}
+                """,
+                tuple(update_params),
             )
-        if commit:
-            self.conn.commit()
+            if cur.rowcount == 0:
+                if self.conn.execute(f"SELECT 1 FROM routes WHERE id = {p}", (route_id,)).fetchone() is None:
+                    raise BusinessRuleError("Route not found")
+                raise ConcurrencyConflict("Запись была изменена другим пользователем. Обновите страницу и повторите действие.")
+            new_values = {**old_values, "name": name, "provider_id": final_provider_id, "provider_prefix_id": provider_prefix_id, "cli_source_type": final_cli_source_type, "cli_source_label": final_cli_source_label, "aon_pool": aon_pool, "rnd_type": rnd_type, "rnd_pool_owner": rnd_pool_owner, "comment": comment, "is_actual": to_db_bool(is_actual, self.backend), "priority_status": priority_status}
+            changes = self._route_field_changes(old_values, new_values)
+            if changes:
+                payload = {"changes": changes, "description": f"Изменено полей: {len(changes)}", "details": "; ".join(changes)}
+                self.conn.execute(
+                    f"INSERT INTO route_history(route_id, action, changed_by, field_name, old_value, new_value, comment) VALUES ({p}, 'updated', {p}, 'changes', {p}, {p}, {p})",
+                    (route_id, updated_by, json.dumps({"changes": changes}, ensure_ascii=False), json.dumps(payload, ensure_ascii=False), comment),
+                )
+            if commit:
+                self.conn.commit()
+        except Exception:
+            if commit:
+                self.conn.rollback()
+            raise
 
     def find_tariff_by_identity(self, country_id: int, provider_id: int, provider_prefix_id: int | None) -> sqlite3.Row | None:
         p = placeholder(self.backend)
@@ -4012,29 +4027,34 @@ class Repository:
         commit: bool = True,
     ) -> int:
         p = placeholder(self.backend)
-        cursor = self.conn.execute(
-            f"""
-            UPDATE routes
-            SET provider_id = {p}, provider_prefix_id = {p}, project_label = {p},
-                cli_source_type = {p}, cli_source_label = {p}, comment = {p},
-                updated_by = {p}, updated_at = CURRENT_TIMESTAMP
-            WHERE country_id = {p} AND name = {p}
-            """,
-            (
-                provider_id,
-                provider_prefix_id,
-                project_label,
-                cli_source_type,
-                cli_source_label,
-                comment,
-                updated_by,
-                country_id,
-                name,
-            ),
-        )
-        if commit:
-            self.conn.commit()
-        return int(cursor.rowcount)
+        try:
+            cursor = self.conn.execute(
+                f"""
+                UPDATE routes
+                SET provider_id = {p}, provider_prefix_id = {p}, project_label = {p},
+                    cli_source_type = {p}, cli_source_label = {p}, comment = {p},
+                    updated_by = {p}, updated_at = CURRENT_TIMESTAMP
+                WHERE country_id = {p} AND name = {p}
+                """,
+                (
+                    provider_id,
+                    provider_prefix_id,
+                    project_label,
+                    cli_source_type,
+                    cli_source_label,
+                    comment,
+                    updated_by,
+                    country_id,
+                    name,
+                ),
+            )
+            if commit:
+                self.conn.commit()
+            return int(cursor.rowcount)
+        except Exception:
+            if commit:
+                self.conn.rollback()
+            raise
 
     def phone_number_exists_by_normalized_number(self, normalized_number: str) -> bool:
         p = placeholder(self.backend)
