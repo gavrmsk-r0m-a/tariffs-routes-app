@@ -10,6 +10,10 @@ on:
       - scripts/postgres_repository_write_harness.py
       - scripts/audit_repository_postgres_coverage.py
       - scripts/audit_repository_postgres_write_plan.py
+      - scripts/audit_postgres_production_gate.py
+      - tests/test_postgres_production_gate.py
+      - docs/postgres/production_readiness_gate.md
+      - docs/postgres/runtime_adapter_plan.md
       - docs/postgres/repository_write_surface_plan.json
       - docs/postgres/repository_write_surface_plan.md
       - tests/test_repository_postgres_write_plan.py
@@ -77,6 +81,8 @@ jobs:
           python -m unittest tests.test_migration_demo_sqlite
           python -m unittest tests.test_postgres_repository_smoke
           python -m unittest tests.test_postgres_repository_write_harness
+          python -m unittest tests.test_postgres_production_gate
+          python scripts/audit_postgres_production_gate.py --format json
 
       - name: Create demo SQLite database
         run: python scripts/create_migration_demo_sqlite.py --output "$RUNNER_TEMP/migration_demo.sqlite3"
