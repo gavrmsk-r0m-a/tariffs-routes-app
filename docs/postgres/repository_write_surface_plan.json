@@ -632,14 +632,14 @@
     },
     "create_tariff": {
       "batch": "phone_route_tariff_core_writes",
-      "current_commit_behavior": "commits internally",
+      "current_commit_behavior": "mixed",
       "dependencies": [],
       "mutation_kind": "insert",
-      "notes": "Stage 50 audit inventory only; no write adaptation.",
+      "notes": "Stage 66D tariff lifecycle rollback smoke; production PostgreSQL runtime remains disabled.",
       "postgres_strategy": "Keep runtime disabled; use rollback-only harness, backend placeholders, and RETURNING where identity retrieval is required.",
       "returns": "inserted_id",
       "risk": "medium",
-      "rollback_strategy": "Not safe until harness exists; run inside explicit transaction and rollback.",
+      "rollback_strategy": "Caller-owned transaction supported with commit=False; rollback-only harness owns cleanup.",
       "side_effects": [
         "database_write"
       ],
@@ -655,7 +655,7 @@
         "SQLite regression test",
         "PostgreSQL rollback-only integration test"
       ],
-      "transaction_contract": "explicit_commit"
+      "transaction_contract": "optional_commit_parameter"
     },
     "create_user": {
       "batch": "app_settings_and_admin_low_risk",
@@ -1104,14 +1104,14 @@
     },
     "set_tariff_active": {
       "batch": "phone_route_tariff_core_writes",
-      "current_commit_behavior": "commits internally",
+      "current_commit_behavior": "mixed",
       "dependencies": [],
       "mutation_kind": "update",
-      "notes": "Stage 50 audit inventory only; no write adaptation.",
+      "notes": "Stage 66D tariff lifecycle rollback smoke; production PostgreSQL runtime remains disabled.",
       "postgres_strategy": "Keep runtime disabled; use rollback-only harness, backend placeholders, and RETURNING where identity retrieval is required.",
       "returns": "none",
       "risk": "medium",
-      "rollback_strategy": "Not safe until harness exists; run inside explicit transaction and rollback.",
+      "rollback_strategy": "Caller-owned transaction supported with commit=False; rollback-only harness owns cleanup.",
       "side_effects": [
         "database_write"
       ],
@@ -1126,7 +1126,7 @@
         "SQLite regression test",
         "PostgreSQL rollback-only integration test"
       ],
-      "transaction_contract": "explicit_commit"
+      "transaction_contract": "optional_commit_parameter"
     },
     "set_user_permissions": {
       "batch": "app_settings_and_admin_low_risk",
@@ -1465,14 +1465,14 @@
     },
     "update_tariff": {
       "batch": "phone_route_tariff_core_writes",
-      "current_commit_behavior": "commits internally",
+      "current_commit_behavior": "mixed",
       "dependencies": [],
       "mutation_kind": "multi_write",
-      "notes": "Stage 50 audit inventory only; no write adaptation.",
+      "notes": "Stage 66D tariff lifecycle rollback smoke; production PostgreSQL runtime remains disabled.",
       "postgres_strategy": "Keep runtime disabled; use rollback-only harness, backend placeholders, and RETURNING where identity retrieval is required.",
       "returns": "none",
       "risk": "high",
-      "rollback_strategy": "Not safe until harness exists; run inside explicit transaction and rollback.",
+      "rollback_strategy": "Caller-owned transaction supported with commit=False; rollback-only harness owns cleanup.",
       "side_effects": [
         "database_write"
       ],
@@ -1488,7 +1488,7 @@
         "SQLite regression test",
         "PostgreSQL rollback-only integration test"
       ],
-      "transaction_contract": "multi_statement_atomic"
+      "transaction_contract": "optional_commit_parameter"
     },
     "update_user": {
       "batch": "app_settings_and_admin_low_risk",
@@ -1613,7 +1613,10 @@
     "update_phone_number_import_fields_with_history",
     "add_phone_to_route",
     "add_phone_to_route_by_number",
-    "remove_phone_links_from_route"
+    "remove_phone_links_from_route",
+    "create_tariff",
+    "update_tariff",
+    "set_tariff_active"
   ],
   "schema_version": 1
 }

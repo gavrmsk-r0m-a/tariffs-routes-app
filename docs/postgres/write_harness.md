@@ -133,3 +133,11 @@ history, and audit side effects. Expected validation failures are isolated with
 SAVEPOINTs, selected links are deactivated without changing an unselected link,
 and the final rollback is followed by marker cleanup checks. The harness never
 calls `conn.commit()` and now runs 22 probes.
+
+## Stage 66D — tariff lifecycle
+
+`tariff_lifecycle_probe` runs `create_tariff`, `update_tariff`, and
+`set_tariff_active` with `commit=False` in one caller-owned PostgreSQL
+transaction. It verifies tariff, tariff history, and change-log effects,
+contains expected validation failures with SAVEPOINTs, and finally rolls back
+and checks marker cleanup. The harness never commits.

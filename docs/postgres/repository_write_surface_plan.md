@@ -209,3 +209,10 @@ Route-phone links are rollback-smoked through `add_phone_to_route`,
 tariff/currency writes are still pending. The
 `rollback_smoke_covered_methods_count` is **40**. Production PostgreSQL runtime
 and `DB_BACKEND=postgres` remain disabled.
+
+## Stage 66D status
+
+The tariff lifecycle is rollback-smoked for `create_tariff`, `update_tariff`,
+and `set_tariff_active`. The rollback-smoke covered count is now **43**.
+Currency-rate creation/logging/recalculation and company import remain pending.
+Production PostgreSQL runtime and `DB_BACKEND=postgres` remain disabled.
