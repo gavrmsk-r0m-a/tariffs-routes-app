@@ -18,6 +18,43 @@ class RepositoryAdapterWriteMethodsTest(unittest.TestCase):
     def tearDown(self):
         self.conn.close()
 
+    def test_tariff_lifecycle_supports_sqlite_caller_owned_rollback(self):
+        user_id = self.conn.execute("SELECT id FROM users ORDER BY id LIMIT 1").fetchone()["id"]
+        country_id = self.repo.create_country("Stage 66D GEO", "66D")
+        currency_id = self.repo.create_currency("S6D", "Stage 66D currency")
+        provider_id = self.repo.create_provider("Stage 66D provider", default_currency_id=currency_id)
+        self.conn.commit()
+
+        tariff_id = self.repo.create_tariff(
+            country_id=country_id, provider_id=provider_id, provider_currency_id=currency_id,
+            price_in_provider_currency="1.25", conversion_rate_to_eur="2",
+            conversion_rate_date="2026-07-26", created_by=user_id,
+            comment="__stage66d_tariff__", commit=False,
+        )
+        self.assertIsNotNone(self.repo.get_tariff(tariff_id))
+        self.conn.rollback()
+        self.assertIsNone(self.repo.get_tariff(tariff_id))
+
+        tariff_id = self.repo.create_tariff(
+            country_id=country_id, provider_id=provider_id, provider_currency_id=currency_id,
+            price_in_provider_currency="1.25", conversion_rate_to_eur="2",
+            conversion_rate_date="2026-07-26", created_by=user_id,
+        )
+        self.repo.update_tariff(
+            tariff_id, provider_currency_id=currency_id, price_in_provider_currency="2.50",
+            conversion_rate_to_eur="2", conversion_rate_date="2026-07-26",
+            currency_rate_id=None, comment="__stage66d_tariff_updated__", updated_by=user_id,
+            commit=False,
+        )
+        self.assertEqual("__stage66d_tariff_updated__", self.repo.get_tariff(tariff_id)["comment"])
+        self.conn.rollback()
+        self.assertIsNone(self.repo.get_tariff(tariff_id)["comment"])
+
+        self.repo.set_tariff_active(tariff_id, is_current=False, changed_by=user_id, commit=False)
+        self.assertFalse(self.repo.get_tariff(tariff_id)["is_current"])
+        self.conn.rollback()
+        self.assertTrue(self.repo.get_tariff(tariff_id)["is_current"])
+
     def _route_phone_fixture(self):
         user_id = self.conn.execute("SELECT id FROM users ORDER BY id LIMIT 1").fetchone()["id"]
         country_id = self.repo.create_country("Stage 66C GEO", "66C")

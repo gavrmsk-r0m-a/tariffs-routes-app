@@ -18,7 +18,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from app.db_adapter import to_db_bool
-from app.repository import BusinessRuleError, Repository, normalize_provider_name
+from app.repository import BusinessRuleError, Repository, eur_price, normalize_provider_name
 from scripts.postgres_repository_smoke import mask_postgres_url, sanitize_error
 
 DEFAULT_PROBE_KEY = "__stage51_rollback_probe__"
@@ -72,6 +72,9 @@ PHONE_UPDATED_MARKER = "__stage66b_phone_updated__"
 PHONE_IMPORT_NUMBER = "79996660001"
 ROUTE_PHONE_LINK_MARKER = "__stage66c_route_phone_link__"
 ROUTE_PHONE_REMOVED_MARKER = "__stage66c_route_phone_removed__"
+TARIFF_MARKER = "__stage66d_tariff__"
+TARIFF_UPDATED_MARKER = "__stage66d_tariff_updated__"
+TARIFF_INACTIVE_MARKER = "__stage66d_tariff_inactive__"
 
 
 def empty_summary(postgres_url: str) -> dict:
@@ -91,6 +94,7 @@ def empty_summary(postgres_url: str) -> dict:
             "route_import_lifecycle_probe",
             "phone_import_lifecycle_probe",
             "route_phone_link_lifecycle_probe",
+            "tariff_lifecycle_probe",
         )},
     }
 
@@ -1446,6 +1450,113 @@ def run_route_phone_link_lifecycle_probe(repo: Repository, conn) -> None:
         conn.rollback()
 
 
+def run_tariff_lifecycle_probe(repo: Repository, conn) -> None:
+    """Exercise tariff create/update/deactivate and roll every fixture back."""
+    conn.rollback()
+    conn.execute("BEGIN")
+    tariff_id = None
+    try:
+        user_id = conn.execute("SELECT id FROM users ORDER BY id LIMIT 1").fetchone()["id"]
+        country_id = conn.execute(
+            "INSERT INTO countries(name, code, is_active) VALUES (%s, %s, %s) RETURNING id",
+            (TARIFF_MARKER, "S66D", to_db_bool(True, "postgres")),
+        ).fetchone()["id"]
+        currency_id = conn.execute(
+            "INSERT INTO currencies(code, name, symbol, is_active) VALUES (%s, %s, %s, %s) RETURNING id",
+            ("S6D", TARIFF_MARKER, "S6D", to_db_bool(True, "postgres")),
+        ).fetchone()["id"]
+        provider_id = conn.execute(
+            "INSERT INTO providers(name, normalized_name, provider_type, default_currency_id, is_active, comment) VALUES (%s, %s, %s, %s, %s, %s) RETURNING id",
+            (TARIFF_MARKER, TARIFF_MARKER, "voip", currency_id, to_db_bool(True, "postgres"), TARIFF_MARKER),
+        ).fetchone()["id"]
+        prefix_id = conn.execute(
+            "INSERT INTO provider_prefixes(provider_id, prefix, name, is_active) VALUES (%s, %s, %s, %s) RETURNING id",
+            (provider_id, "9966", TARIFF_MARKER, to_db_bool(True, "postgres")),
+        ).fetchone()["id"]
+
+        tariff_id = repo.create_tariff(
+            country_id=country_id, provider_id=provider_id, provider_prefix_id=prefix_id,
+            provider_currency_id=currency_id, price_in_provider_currency="1.2345",
+            conversion_rate_to_eur="2", conversion_rate_date="2026-07-26",
+            created_by=user_id, comment=TARIFF_MARKER, commit=False,
+        )
+        created = conn.execute("SELECT * FROM tariffs WHERE id = %s", (tariff_id,)).fetchone()
+        expected_eur_price = eur_price("1.2345", "2")
+        if not created or created["comment"] != TARIFF_MARKER or Decimal(str(created["eur_price"])) != expected_eur_price:
+            raise AssertionError("Stage 66D created tariff fields do not match")
+        if not created["is_current"] or created["country_id"] != country_id or created["provider_prefix_id"] != prefix_id:
+            raise AssertionError("Stage 66D created tariff identity/current flag does not match")
+        if not conn.execute("SELECT 1 FROM tariff_change_history WHERE tariff_id = %s", (tariff_id,)).fetchone():
+            raise AssertionError("Stage 66D create history is missing")
+
+        # Duplicate identity is rejected while the first tariff is still
+        # current. Keep this validation before the lifecycle deactivation so
+        # its premise cannot depend on inactive-tariff semantics.
+        conn.execute("SAVEPOINT stage66d_create_duplicate")
+        try:
+            repo.create_tariff(
+                country_id=country_id, provider_id=provider_id, provider_prefix_id=prefix_id,
+                provider_currency_id=currency_id, price_in_provider_currency="1",
+                conversion_rate_to_eur="2", conversion_rate_date="2026-07-26",
+                created_by=user_id, commit=False,
+            )
+        except BusinessRuleError:
+            pass
+        else:
+            raise AssertionError("Stage 66D create_duplicate validation did not fail")
+        finally:
+            conn.execute("ROLLBACK TO SAVEPOINT stage66d_create_duplicate")
+            conn.execute("RELEASE SAVEPOINT stage66d_create_duplicate")
+
+        repo.update_tariff(
+            tariff_id, provider_currency_id=currency_id, price_in_provider_currency="2.5000",
+            conversion_rate_to_eur="2", conversion_rate_date="2026-07-26",
+            currency_rate_id=None, comment=TARIFF_UPDATED_MARKER, updated_by=user_id, commit=False,
+        )
+        updated = conn.execute("SELECT * FROM tariffs WHERE id = %s", (tariff_id,)).fetchone()
+        if updated["comment"] != TARIFF_UPDATED_MARKER or Decimal(str(updated["price_in_provider_currency"])) != Decimal("2.5000"):
+            raise AssertionError("Stage 66D tariff update is not visible")
+
+        repo.set_tariff_active(tariff_id, is_current=False, changed_by=user_id, commit=False)
+        conn.execute("UPDATE tariffs SET comment = %s WHERE id = %s", (TARIFF_INACTIVE_MARKER, tariff_id))
+        if conn.execute("SELECT is_current FROM tariffs WHERE id = %s", (tariff_id,)).fetchone()["is_current"]:
+            raise AssertionError("Stage 66D tariff was not deactivated")
+        if conn.execute("SELECT COUNT(*) AS count FROM tariff_change_history WHERE tariff_id = %s", (tariff_id,)).fetchone()["count"] < 3:
+            raise AssertionError("Stage 66D lifecycle history is incomplete")
+        if conn.execute("SELECT COUNT(*) AS count FROM change_log WHERE entity_type = %s AND entity_id = %s", ("tariff", tariff_id)).fetchone()["count"] < 3:
+            raise AssertionError("Stage 66D lifecycle change_log is incomplete")
+
+        negative_calls = (
+            ("create_missing_price", lambda: repo.create_tariff(country_id=country_id, provider_id=provider_id, provider_prefix_id=None, provider_currency_id=currency_id, price_in_provider_currency="", conversion_rate_to_eur="2", conversion_rate_date="2026-07-26", created_by=user_id, commit=False)),
+            ("create_invalid_price", lambda: repo.create_tariff(country_id=country_id, provider_id=provider_id, provider_prefix_id=None, provider_currency_id=currency_id, price_in_provider_currency="invalid", conversion_rate_to_eur="2", conversion_rate_date="2026-07-26", created_by=user_id, commit=False)),
+            ("update_missing", lambda: repo.update_tariff(-66, provider_currency_id=currency_id, price_in_provider_currency="1", conversion_rate_to_eur="2", conversion_rate_date="2026-07-26", currency_rate_id=None, comment=None, updated_by=user_id, commit=False)),
+            ("update_invalid_price", lambda: repo.update_tariff(tariff_id, provider_currency_id=currency_id, price_in_provider_currency="invalid", conversion_rate_to_eur="2", conversion_rate_date="2026-07-26", currency_rate_id=None, comment=None, updated_by=user_id, commit=False)),
+            ("activate_missing", lambda: repo.set_tariff_active(-66, is_current=False, changed_by=user_id, commit=False)),
+        )
+        for name, call in negative_calls:
+            conn.execute(f"SAVEPOINT stage66d_{name}")
+            try:
+                call()
+            except BusinessRuleError:
+                pass
+            else:
+                raise AssertionError(f"Stage 66D {name} validation did not fail")
+            finally:
+                conn.execute(f"ROLLBACK TO SAVEPOINT stage66d_{name}")
+                conn.execute(f"RELEASE SAVEPOINT stage66d_{name}")
+    finally:
+        conn.rollback()
+    try:
+        if conn.execute("SELECT 1 FROM tariffs WHERE comment IN (%s, %s, %s)", (TARIFF_MARKER, TARIFF_UPDATED_MARKER, TARIFF_INACTIVE_MARKER)).fetchone():
+            raise AssertionError("Stage 66D tariff marker remains after rollback")
+        if tariff_id is not None and conn.execute("SELECT 1 FROM tariff_change_history WHERE tariff_id = %s", (tariff_id,)).fetchone():
+            raise AssertionError("Stage 66D tariff history remains after rollback")
+        if conn.execute("SELECT 1 FROM change_log WHERE new_values::text LIKE %s OR summary LIKE %s", ("%stage66d%", "%stage66d%")).fetchone():
+            raise AssertionError("Stage 66D change_log marker remains after rollback")
+    finally:
+        conn.rollback()
+
+
 def run_harness(postgres_url: str, probe_key: str = DEFAULT_PROBE_KEY, probe_value: str = DEFAULT_PROBE_VALUE) -> dict:
     """Run all probes; psycopg imports remain local so unit tests need no driver."""
     summary = empty_summary(postgres_url)
@@ -1491,6 +1602,7 @@ def run_harness(postgres_url: str, probe_key: str = DEFAULT_PROBE_KEY, probe_val
         check("route_import_lifecycle_probe", lambda: run_route_import_lifecycle_probe(repo, conn))
         check("phone_import_lifecycle_probe", lambda: run_phone_import_lifecycle_probe(repo, conn))
         check("route_phone_link_lifecycle_probe", lambda: run_route_phone_link_lifecycle_probe(repo, conn))
+        check("tariff_lifecycle_probe", lambda: run_tariff_lifecycle_probe(repo, conn))
     except Exception as exc:
         summary["failures"].append({"check": "connect", "error": sanitize_error(exc, postgres_url)})
     finally:
