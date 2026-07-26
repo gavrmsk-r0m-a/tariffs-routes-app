@@ -123,3 +123,13 @@ explicit PostgreSQL transaction. It verifies the phone, history, and change-log
 side effects, contains negative validation cases with SAVEPOINTs, and checks
 that all Stage 66B phone/import markers and accidental route-phone links are
 absent after rollback. The harness never calls `conn.commit()`.
+
+## Stage 66C route-phone link lifecycle
+
+`route_phone_link_lifecycle_probe` rollback-smokes `add_phone_to_route`,
+`add_phone_to_route_by_number`, and `remove_phone_links_from_route` with
+`commit=False`. Direct-SQL transaction-local route and phone fixtures prove link,
+history, and audit side effects. Expected validation failures are isolated with
+SAVEPOINTs, selected links are deactivated without changing an unselected link,
+and the final rollback is followed by marker cleanup checks. The harness never
+calls `conn.commit()` and now runs 22 probes.

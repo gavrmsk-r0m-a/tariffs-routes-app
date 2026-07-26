@@ -200,3 +200,12 @@ Stage 66B rollback-smokes the phone import lifecycle: `create_phone_number`,
 are therefore partially covered; company import, route-phone links, tariffs,
 and currency-rate writes remain pending. The rollback-smoke-covered count is
 **37**. Production PostgreSQL runtime and `DB_BACKEND=postgres` remain disabled.
+
+## Stage 66C status
+
+Route-phone links are rollback-smoked through `add_phone_to_route`,
+`add_phone_to_route_by_number`, and `remove_phone_links_from_route`.
+`phone_route_tariff_core_writes` remains partially covered: company import and
+tariff/currency writes are still pending. The
+`rollback_smoke_covered_methods_count` is **40**. Production PostgreSQL runtime
+and `DB_BACKEND=postgres` remain disabled.

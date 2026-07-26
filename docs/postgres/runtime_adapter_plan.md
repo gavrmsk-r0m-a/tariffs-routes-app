@@ -788,3 +788,10 @@ and update-history writes. Read-only smoke remains **611** checks, while the
 coverage baseline remains **112 / 61 / 0 / 50 / 1 / 100.0%** (public methods /
 smoked reads / deferred reads / writes / infrastructure / read coverage).
 `DB_BACKEND=postgres` and production PostgreSQL runtime remain disabled.
+
+## Stage 66C route-phone link rollback smoke
+
+Route-phone link create and remove flows are covered by the rollback-only
+PostgreSQL harness. Read-only smoke remains 611 checks and the coverage baseline
+remains 112 public / 61 reads / 0 deferred / 50 writes / 1 infrastructure /
+100.0%. `DB_BACKEND=postgres` and production PostgreSQL runtime remain disabled.

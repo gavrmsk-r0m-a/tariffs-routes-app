@@ -981,44 +981,47 @@ class Repository:
         usage_type: str,
         added_by: int,
         comment: str | None = None,
+        commit: bool = True,
     ) -> PhoneLinkResult:
-        phone = self.conn.execute(
-            "SELECT id, number, is_active, status FROM phone_numbers WHERE id = ?",
-            (phone_number_id,),
-        ).fetchone()
-        if phone is None:
-            raise BusinessRuleError("Phone number not found")
-        if int(phone["is_active"]) != 1:
-            raise BusinessRuleError("Нельзя добавить номер в маршрут: номер не активен у провайдера")
-        if phone["status"] != "used":
-            raise BusinessRuleError("Нельзя добавить номер в маршрут: рабочий статус номера должен быть ‘Используется’")
+        p = placeholder(self.backend)
+        try:
+            phone = self.conn.execute(
+                f"SELECT id, number, is_active, status FROM phone_numbers WHERE id = {p}",
+                (phone_number_id,),
+            ).fetchone()
+            if phone is None:
+                raise BusinessRuleError("Phone number not found")
+            if not bool(phone["is_active"]):
+                raise BusinessRuleError("Нельзя добавить номер в маршрут: номер не активен у провайдера")
+            if phone["status"] != "used":
+                raise BusinessRuleError("Нельзя добавить номер в маршрут: рабочий статус номера должен быть ‘Используется’")
 
-        cur = self.conn.execute(
-            """
+            insert_sql = prepare_insert_returning_id(f"""
             INSERT INTO route_phone_numbers(route_id, phone_number_id, usage_type, is_active, added_by, comment)
-            VALUES (?, ?, ?, 1, ?, ?)
-            """,
-            (route_id, phone_number_id, usage_type, added_by, comment),
-        )
-        link_id = int(cur.lastrowid)
-        self.conn.execute(
-            """
+            VALUES ({p}, {p}, {p}, {p}, {p}, {p})
+            """, self.backend)
+            cur = self.conn.execute(insert_sql, (
+                route_id, phone_number_id, usage_type,
+                to_db_bool(True, self.backend), added_by, comment,
+            ))
+            link_id = extract_inserted_id(cur, self.backend)
+            self.conn.execute(f"""
             INSERT INTO route_phone_number_history(
                 route_id, phone_number_id, action, changed_by, new_values, comment
             )
-            VALUES (?, ?, 'added', ?, ?, ?)
-            """,
-            (route_id, phone_number_id, added_by, f'{{"usage_type": "{usage_type}"}}', comment),
-        )
-        self._change_log(
-            "route_phone_number",
-            link_id,
-            "route_phone_number.added",
-            added_by,
-            new_values={"route_id": route_id, "phone_number_id": phone_number_id, "usage_type": usage_type},
-        )
-        self.conn.commit()
-        return PhoneLinkResult(route_phone_number_id=link_id, phone_number_id=phone_number_id)
+            VALUES ({p}, {p}, 'added', {p}, {p}, {p})
+            """, (route_id, phone_number_id, added_by, json.dumps({"usage_type": usage_type}, ensure_ascii=False), comment))
+            self._change_log(
+                "route_phone_number", link_id, "route_phone_number.added", added_by,
+                new_values={"route_id": route_id, "phone_number_id": phone_number_id, "usage_type": usage_type},
+            )
+            if commit:
+                self.conn.commit()
+            return PhoneLinkResult(route_phone_number_id=link_id, phone_number_id=phone_number_id)
+        except Exception:
+            if commit:
+                self.conn.rollback()
+            raise
 
     def create_calling_company(
         self,
@@ -1430,49 +1433,63 @@ class Repository:
         usage_type: str,
         added_by: int,
         comment: str | None = None,
+        commit: bool = True,
     ) -> PhoneLinkResult:
-        normalized = validate_phone_number(number)
-        phone = self.conn.execute(
-            "SELECT id FROM phone_numbers WHERE number = ? OR normalized_number = ?",
-            (normalized, normalized),
-        ).fetchone()
-        if phone is None:
-            raise BusinessRuleError("Номер не найден в справочнике купленных номеров")
-        existing = self.conn.execute(
-            "SELECT id FROM route_phone_numbers WHERE route_id = ? AND phone_number_id = ? AND is_active = 1",
-            (route_id, phone["id"]),
-        ).fetchone()
-        if existing:
-            raise BusinessRuleError("Номер уже добавлен в этот маршрут")
-        return self.add_phone_to_route(
-            route_id=route_id,
-            phone_number_id=int(phone["id"]),
-            usage_type=usage_type,
-            added_by=added_by,
-            comment=comment,
-        )
-
-    def remove_phone_links_from_route(self, *, route_id: int, link_ids: list[int], removed_by: int, reason: str | None = None) -> int:
-        removed = 0
-        for link_id in link_ids:
-            link = self.conn.execute(
-                "SELECT id, phone_number_id FROM route_phone_numbers WHERE id = ? AND route_id = ? AND is_active = 1",
-                (link_id, route_id),
+        p = placeholder(self.backend)
+        try:
+            normalized = validate_phone_number(number)
+            phone = self.conn.execute(
+                f"SELECT id FROM phone_numbers WHERE number = {p} OR normalized_number = {p}",
+                (normalized, normalized),
             ).fetchone()
-            if not link:
-                continue
-            self.conn.execute(
-                "UPDATE route_phone_numbers SET is_active = 0, removed_at = CURRENT_TIMESTAMP, removed_by = ? WHERE id = ?",
-                (removed_by, link_id),
+            if phone is None:
+                raise BusinessRuleError("Номер не найден в справочнике купленных номеров")
+            existing = self.conn.execute(
+                f"SELECT id FROM route_phone_numbers WHERE route_id = {p} AND phone_number_id = {p} AND is_active = {p}",
+                (route_id, phone["id"], to_db_bool(True, self.backend)),
+            ).fetchone()
+            if existing:
+                raise BusinessRuleError("Номер уже добавлен в этот маршрут")
+            result = self.add_phone_to_route(
+                route_id=route_id, phone_number_id=int(phone["id"]), usage_type=usage_type,
+                added_by=added_by, comment=comment, commit=False,
             )
-            self.conn.execute(
-                "INSERT INTO route_phone_number_history(route_id, phone_number_id, action, changed_by, reason) VALUES (?, ?, 'removed', ?, ?)",
-                (route_id, link["phone_number_id"], removed_by, reason),
-            )
-            self._change_log("route_phone_number", link_id, "route_phone_number.removed", removed_by, summary=reason)
-            removed += 1
-        self.conn.commit()
-        return removed
+            if commit:
+                self.conn.commit()
+            return result
+        except Exception:
+            if commit:
+                self.conn.rollback()
+            raise
+
+    def remove_phone_links_from_route(self, *, route_id: int, link_ids: list[int], removed_by: int, reason: str | None = None, commit: bool = True) -> int:
+        p = placeholder(self.backend)
+        try:
+            removed = 0
+            for link_id in link_ids:
+                link = self.conn.execute(
+                    f"SELECT id, phone_number_id FROM route_phone_numbers WHERE id = {p} AND route_id = {p} AND is_active = {p}",
+                    (link_id, route_id, to_db_bool(True, self.backend)),
+                ).fetchone()
+                if not link:
+                    continue
+                self.conn.execute(
+                    f"UPDATE route_phone_numbers SET is_active = {p}, removed_at = CURRENT_TIMESTAMP, removed_by = {p} WHERE id = {p}",
+                    (to_db_bool(False, self.backend), removed_by, link_id),
+                )
+                self.conn.execute(
+                    f"INSERT INTO route_phone_number_history(route_id, phone_number_id, action, changed_by, reason) VALUES ({p}, {p}, 'removed', {p}, {p})",
+                    (route_id, link["phone_number_id"], removed_by, reason),
+                )
+                self._change_log("route_phone_number", link_id, "route_phone_number.removed", removed_by, summary=reason)
+                removed += 1
+            if commit:
+                self.conn.commit()
+            return removed
+        except Exception:
+            if commit:
+                self.conn.rollback()
+            raise
 
 
     def update_phone_number(

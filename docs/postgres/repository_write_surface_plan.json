@@ -223,58 +223,53 @@
   "methods": {
     "add_phone_to_route": {
       "batch": "phone_route_tariff_core_writes",
-      "current_commit_behavior": "commits internally",
+      "current_commit_behavior": "mixed",
       "dependencies": [],
       "mutation_kind": "mixed_read_write",
-      "notes": "Stage 50 audit inventory only; no write adaptation.",
-      "postgres_strategy": "Keep runtime disabled; use rollback-only harness, backend placeholders, and RETURNING where identity retrieval is required.",
-      "returns": "none",
+      "notes": "Stage 66C route-phone link rollback smoke; production PostgreSQL runtime remains disabled.",
+      "postgres_strategy": "Backend-aware placeholders and booleans with caller-owned transaction support; use RETURNING for the route-phone link identity.",
+      "returns": "PhoneLinkResult containing the inserted link and phone IDs",
       "risk": "medium",
-      "rollback_strategy": "Not safe until harness exists; run inside explicit transaction and rollback.",
+      "rollback_strategy": "Call with commit=False inside the rollback-only PostgreSQL harness; the caller owns rollback.",
       "side_effects": [
         "database_write"
       ],
       "sqlite_postgres_blockers": [
-        "dynamic_sql",
         "needs_integration_test",
-        "postgres_returning_required",
-        "postgres_transaction_aborted_behavior",
-        "sqlite_lastrowid",
-        "sqlite_placeholder"
+        "postgres_transaction_aborted_behavior"
       ],
       "test_strategy": [
         "SQL-recording test",
         "SQLite regression test",
         "PostgreSQL rollback-only integration test"
       ],
-      "transaction_contract": "multi_statement_atomic"
+      "transaction_contract": "optional_commit_parameter"
     },
     "add_phone_to_route_by_number": {
       "batch": "phone_route_tariff_core_writes",
-      "current_commit_behavior": "never commits",
+      "current_commit_behavior": "mixed",
       "dependencies": [
         "add_phone_to_route"
       ],
       "mutation_kind": "mixed_read_write",
-      "notes": "Stage 50 audit inventory only; no write adaptation.",
-      "postgres_strategy": "Keep runtime disabled; use rollback-only harness, backend placeholders, and RETURNING where identity retrieval is required.",
-      "returns": "none",
+      "notes": "Stage 66C route-phone link rollback smoke; production PostgreSQL runtime remains disabled.",
+      "postgres_strategy": "Backend-aware placeholders and booleans with caller-owned transaction support; use RETURNING for the route-phone link identity.",
+      "returns": "PhoneLinkResult from add_phone_to_route",
       "risk": "high",
-      "rollback_strategy": "Not safe until harness exists; run inside explicit transaction and rollback.",
+      "rollback_strategy": "Call with commit=False inside the rollback-only PostgreSQL harness; the caller owns rollback.",
       "side_effects": [
         "database_write"
       ],
       "sqlite_postgres_blockers": [
-        "multi_statement_atomicity",
         "needs_integration_test",
-        "sqlite_placeholder"
+        "postgres_transaction_aborted_behavior"
       ],
       "test_strategy": [
         "SQL-recording test",
         "SQLite regression test",
         "PostgreSQL rollback-only integration test"
       ],
-      "transaction_contract": "multi_statement_atomic"
+      "transaction_contract": "optional_commit_parameter"
     },
     "create_calling_company": {
       "batch": "company_routing_setting_writes",
@@ -1031,29 +1026,27 @@
     },
     "remove_phone_links_from_route": {
       "batch": "phone_route_tariff_core_writes",
-      "current_commit_behavior": "commits internally",
+      "current_commit_behavior": "mixed",
       "dependencies": [],
       "mutation_kind": "mixed_read_write",
-      "notes": "Stage 50 audit inventory only; no write adaptation.",
-      "postgres_strategy": "Keep runtime disabled; use rollback-only harness, backend placeholders, and RETURNING where identity retrieval is required.",
-      "returns": "none",
+      "notes": "Stage 66C route-phone link rollback smoke; production PostgreSQL runtime remains disabled.",
+      "postgres_strategy": "Backend-aware placeholders and booleans with caller-owned transaction support; use RETURNING for the route-phone link identity.",
+      "returns": "number of links deactivated",
       "risk": "medium",
-      "rollback_strategy": "Not safe until harness exists; run inside explicit transaction and rollback.",
+      "rollback_strategy": "Call with commit=False inside the rollback-only PostgreSQL harness; the caller owns rollback.",
       "side_effects": [
         "database_write"
       ],
       "sqlite_postgres_blockers": [
         "needs_integration_test",
-        "postgres_transaction_aborted_behavior",
-        "sqlite_datetime_function",
-        "sqlite_placeholder"
+        "postgres_transaction_aborted_behavior"
       ],
       "test_strategy": [
         "SQL-recording test",
         "SQLite regression test",
         "PostgreSQL rollback-only integration test"
       ],
-      "transaction_contract": "multi_statement_atomic"
+      "transaction_contract": "optional_commit_parameter"
     },
     "set_app_setting_value": {
       "batch": "app_settings_and_admin_low_risk",
@@ -1617,7 +1610,10 @@
     "create_phone_number",
     "update_phone_number",
     "record_phone_update_history",
-    "update_phone_number_import_fields_with_history"
+    "update_phone_number_import_fields_with_history",
+    "add_phone_to_route",
+    "add_phone_to_route_by_number",
+    "remove_phone_links_from_route"
   ],
   "schema_version": 1
 }

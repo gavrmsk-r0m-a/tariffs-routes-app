@@ -18,6 +18,123 @@ class RepositoryAdapterWriteMethodsTest(unittest.TestCase):
     def tearDown(self):
         self.conn.close()
 
+    def _route_phone_fixture(self):
+        user_id = self.conn.execute("SELECT id FROM users ORDER BY id LIMIT 1").fetchone()["id"]
+        country_id = self.repo.create_country("Stage 66C GEO", "66C")
+        provider_id = self.repo.create_provider("Stage 66C provider")
+        route_id = self.repo.create_route(
+            country_id=country_id, provider_id=provider_id, name="Stage 66C route",
+            cli_source_type="other", cli_source_label="Stage 66C", created_by=user_id,
+        )
+        phone_ids = [self.repo.create_phone_number(
+            country_id=country_id, provider_id=provider_id, number=f"7999666010{index}",
+            assignment_type="other", status="used", created_by=user_id,
+        ) for index in (1, 2)]
+        return user_id, route_id, phone_ids
+
+    def test_route_phone_methods_support_sqlite_caller_owned_rollback(self):
+        user_id, route_id, phone_ids = self._route_phone_fixture()
+        self.conn.commit()
+        first = self.repo.add_phone_to_route(
+            route_id=route_id, phone_number_id=phone_ids[0], usage_type="cli",
+            added_by=user_id, commit=False,
+        )
+        second = self.repo.add_phone_to_route_by_number(
+            route_id=route_id, number="79996660102", usage_type="other",
+            added_by=user_id, commit=False,
+        )
+        self.assertEqual(1, self.repo.remove_phone_links_from_route(
+            route_id=route_id, link_ids=[first.route_phone_number_id],
+            removed_by=user_id, reason="rollback", commit=False,
+        ))
+        self.assertIsNotNone(self.conn.execute("SELECT 1 FROM route_phone_numbers WHERE id = ?", (second.route_phone_number_id,)).fetchone())
+        self.conn.rollback()
+        self.assertIsNone(self.conn.execute("SELECT 1 FROM route_phone_numbers WHERE route_id = ?", (route_id,)).fetchone())
+        self.assertIsNone(self.conn.execute("SELECT 1 FROM route_phone_number_history WHERE route_id = ?", (route_id,)).fetchone())
+
+    def test_route_phone_add_uses_postgres_sql_returning_and_commit_contract(self):
+        class Cursor:
+            def __init__(self, row=None): self.row = row
+            def fetchone(self): return self.row
+        class Connection:
+            def __init__(self): self.calls=[]; self.commits=0; self.rollbacks=0
+            def execute(self, sql, params=()):
+                self.calls.append((sql, params))
+                if "FROM phone_numbers" in sql: return Cursor({"id": 2, "number": "79996660101", "is_active": True, "status": "used"})
+                if "INSERT INTO route_phone_numbers" in sql: return Cursor({"id": 66})
+                return Cursor()
+            def commit(self): self.commits += 1
+            def rollback(self): self.rollbacks += 1
+        connection = Connection(); repo = Repository(connection, backend="postgres")
+        result = repo.add_phone_to_route(route_id=1, phone_number_id=2, usage_type="cli", added_by=3, commit=False)
+        self.assertEqual(66, result.route_phone_number_id)
+        self.assertEqual(0, connection.commits)
+        self.assertEqual(0, connection.rollbacks)
+        self.assertFalse(any("?" in sql for sql, _ in connection.calls))
+        insert = next((sql, params) for sql, params in connection.calls if "INSERT INTO route_phone_numbers" in sql)
+        self.assertIn("RETURNING id", insert[0])
+        self.assertIn("VALUES (%s, %s, %s, %s, %s, %s)", insert[0])
+        self.assertIs(insert[1][3], True)
+
+    def test_route_phone_by_number_disables_nested_commit_and_uses_postgres_placeholders(self):
+        class Cursor:
+            def __init__(self, row=None): self.row = row
+            def fetchone(self): return self.row
+        class Connection:
+            def __init__(self): self.calls=[]; self.commits=0; self.rollbacks=0
+            def execute(self, sql, params=()):
+                self.calls.append((sql, params))
+                if "FROM phone_numbers" in sql: return Cursor({"id": 2})
+                return Cursor()
+            def commit(self): self.commits += 1
+            def rollback(self): self.rollbacks += 1
+        connection = Connection(); repo = Repository(connection, backend="postgres")
+        expected = object()
+        with patch.object(repo, "add_phone_to_route", return_value=expected) as add:
+            self.assertIs(expected, repo.add_phone_to_route_by_number(
+                route_id=1, number="79996660101", usage_type="cli", added_by=3, commit=False,
+            ))
+        self.assertFalse(add.call_args.kwargs["commit"])
+        self.assertFalse(any("?" in sql for sql, _ in connection.calls))
+        self.assertIn("number = %s OR normalized_number = %s", connection.calls[0][0])
+        self.assertEqual((0, 0), (connection.commits, connection.rollbacks))
+
+    def test_route_phone_remove_uses_postgres_placeholders_and_caller_transaction(self):
+        class Cursor:
+            def __init__(self, row=None): self.row = row
+            def fetchone(self): return self.row
+        class Connection:
+            def __init__(self): self.calls=[]; self.commits=0; self.rollbacks=0
+            def execute(self, sql, params=()):
+                self.calls.append((sql, params))
+                if "SELECT id, phone_number_id" in sql: return Cursor({"id": 4, "phone_number_id": 2})
+                return Cursor()
+            def commit(self): self.commits += 1
+            def rollback(self): self.rollbacks += 1
+        connection = Connection(); repo = Repository(connection, backend="postgres")
+        self.assertEqual(1, repo.remove_phone_links_from_route(route_id=1, link_ids=[4], removed_by=3, commit=False))
+        self.assertFalse(any("?" in sql for sql, _ in connection.calls))
+        update = next((sql, params) for sql, params in connection.calls if "UPDATE route_phone_numbers" in sql)
+        self.assertIn("is_active = %s", update[0])
+        self.assertIs(update[1][0], False)
+        self.assertEqual((0, 0), (connection.commits, connection.rollbacks))
+
+    def test_route_phone_methods_do_not_rollback_caller_owned_failures(self):
+        class FailingConnection:
+            def __init__(self): self.rollbacks=0
+            def execute(self, sql, params=()): raise RuntimeError("route-phone failed")
+            def commit(self): raise AssertionError("unexpected commit")
+            def rollback(self): self.rollbacks += 1
+        for method, kwargs in (
+            ("add_phone_to_route", dict(route_id=1, phone_number_id=2, usage_type="cli", added_by=3)),
+            ("add_phone_to_route_by_number", dict(route_id=1, number="79996660101", usage_type="cli", added_by=3)),
+            ("remove_phone_links_from_route", dict(route_id=1, link_ids=[4], removed_by=3)),
+        ):
+            connection = FailingConnection()
+            with self.assertRaisesRegex(RuntimeError, "route-phone failed"):
+                getattr(Repository(connection, backend="postgres"), method)(commit=False, **kwargs)
+            self.assertEqual(0, connection.rollbacks)
+
     def test_selected_create_method_returns_id_on_sqlite(self):
         country_id = self.repo.create_country("Бельгия", "BE")
         provider_id = self.repo.create_provider("AdapterWriteTel")
