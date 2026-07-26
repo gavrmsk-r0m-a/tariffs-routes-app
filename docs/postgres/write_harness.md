@@ -104,3 +104,12 @@ and company-routing audit rows. Eight negative business validations are isolated
 leaves the surrounding transaction aborted. The probe always rolls back and verifies
 Stage 65B markers were removed. The harness contains 19 probes and never calls
 `conn.commit()`.
+
+## Stage 66A — route import lifecycle
+
+`route_import_lifecycle_probe` runs `create_route`, `update_route`, and
+`update_route_import_fields` with `commit=False` inside one explicit PostgreSQL
+transaction. Expected validation failures are isolated with SAVEPOINTs. The
+probe verifies route/history/audit visibility, then rolls the transaction back
+and confirms that all Stage 66A markers were removed. The harness never calls
+`conn.commit()`.

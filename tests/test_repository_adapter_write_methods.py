@@ -889,3 +889,50 @@ class RepositoryStage65ACompanyRoutingTest(unittest.TestCase):
             self.assertEqual(repo.update_company_routing_setting(setting_id=7,country_id=2,server_id=3,route_id=5,routing_mode="mixed",has_autorotation=True,comment="after",updated_by=9,effective_at="2026-07-25",commit=False),8)
             repo.deactivate_company_routing_setting(setting_id=7,updated_by=9,effective_at="2026-07-25",commit=False)
         sql="\n".join(q for q,_ in conn.calls); self.assertNotIn("?",sql); self.assertIn("is_active = %s",sql); self.assertIn("RETURNING id",sql); self.assertEqual((conn.commits,conn.rollbacks),(0,0)); self.assertTrue(any(False in params for _,params in conn.calls))
+
+class RepositoryStage66ARouteImportTest(unittest.TestCase):
+    def test_sqlite_route_lifecycle_is_caller_owned_and_rollback_safe(self):
+        conn=sqlite3.connect(':memory:'); conn.row_factory=sqlite3.Row; init_db(conn); repo=Repository(conn)
+        user=conn.execute('SELECT id FROM users ORDER BY id LIMIT 1').fetchone()[0]
+        country=repo.create_country('Stage 66A GEO','66A'); provider=repo.create_provider('Stage66A provider')
+        route=repo.create_route(country_id=country,provider_id=provider,name='stage66a-original',cli_source_type='other',cli_source_label='original',created_by=user,commit=False)
+        self.assertIsNotNone(conn.execute('SELECT 1 FROM routes WHERE id=?',(route,)).fetchone()); conn.rollback()
+        self.assertIsNone(conn.execute('SELECT 1 FROM routes WHERE id=?',(route,)).fetchone())
+        route=repo.create_route(country_id=country,provider_id=provider,name='stage66a-original',cli_source_type='other',cli_source_label='original',created_by=user)
+        repo.update_route(route,name='stage66a-updated',provider_prefix_id=None,comment='updated',is_actual=True,priority_status='unknown',updated_by=user,commit=False)
+        self.assertEqual(conn.execute('SELECT name FROM routes WHERE id=?',(route,)).fetchone()[0],'stage66a-updated'); conn.rollback()
+        self.assertEqual(conn.execute('SELECT name FROM routes WHERE id=?',(route,)).fetchone()[0],'stage66a-original')
+        repo.update_route_import_fields(country_id=country,name='stage66a-original',provider_id=provider,provider_prefix_id=None,project_label='imported',cli_source_type='other',cli_source_label='imported',comment='imported',updated_by=user,commit=False)
+        self.assertEqual(conn.execute('SELECT project_label FROM routes WHERE id=?',(route,)).fetchone()[0],'imported'); conn.rollback()
+        self.assertIsNone(conn.execute('SELECT project_label FROM routes WHERE id=?',(route,)).fetchone()[0]); conn.close()
+
+    def test_postgres_route_sql_identity_and_transaction_contracts(self):
+        class Cursor:
+            def __init__(self,row=None,rowcount=1): self.row,self.rowcount=row,rowcount
+            def fetchone(self): return self.row
+        existing={'id':66,'provider_id':2,'cli_source_type':'other','cli_source_label':'old','name':'old','provider_prefix_id':None,'aon_pool':None,'rnd_type':None,'rnd_pool_owner':None,'comment':None,'is_actual':True,'priority_status':'unknown','country_id':1}
+        class Conn:
+            def __init__(self,fail=False): self.calls=[]; self.commits=0; self.rollbacks=0; self.fail=fail
+            def execute(self,sql,params=()):
+                self.calls.append((sql,params))
+                if self.fail: raise RuntimeError('failed')
+                if 'RETURNING id' in sql:return Cursor({'id':66})
+                if 'SELECT * FROM routes' in sql:return Cursor(existing)
+                return Cursor()
+            def commit(self):self.commits+=1
+            def rollback(self):self.rollbacks+=1
+        conn=Conn(); repo=Repository(conn,backend='postgres')
+        route=repo.create_route(country_id=1,provider_id=2,name='route',cli_source_type='other',cli_source_label='label',created_by=3)
+        self.assertEqual(route,66)
+        repo.update_route(66,name='updated',provider_prefix_id=None,comment='updated',is_actual=True,priority_status='unknown',updated_by=3,commit=False)
+        repo.update_route_import_fields(country_id=1,name='updated',provider_id=2,provider_prefix_id=None,project_label='p',cli_source_type='other',cli_source_label='import',comment='import',updated_by=3,commit=False)
+        sql='\n'.join(q for q,_ in conn.calls)
+        self.assertNotIn('?',sql); self.assertIn('RETURNING id',sql); self.assertIn('VALUES (%s',sql); self.assertIn('WHERE id = %s',sql); self.assertEqual(conn.commits,1)
+        for method,args in (
+            ('create_route',dict(country_id=1,provider_id=2,name='x',cli_source_type='other',cli_source_label='x',created_by=3)),
+            ('update_route',dict(route_id=66,name='x',provider_prefix_id=None,comment=None,is_actual=True,priority_status='unknown',updated_by=3)),
+            ('update_route_import_fields',dict(country_id=1,name='x',provider_id=2,provider_prefix_id=None,project_label=None,cli_source_type='other',cli_source_label='x',comment=None,updated_by=3))):
+            for commit,rollbacks in ((True,1),(False,0)):
+                bad=Conn(True)
+                with self.assertRaisesRegex(RuntimeError,'failed'): getattr(Repository(bad,backend='postgres'),method)(commit=commit,**args)
+                self.assertEqual(bad.rollbacks,rollbacks)

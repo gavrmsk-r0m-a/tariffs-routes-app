@@ -9,7 +9,7 @@ class WritePlanTests(unittest.TestCase):
  def bad(self,p): self.assertEqual('failed',self.execute_plan(p)['status'])
  def name(self): return next(iter(self.plan['methods']))
  def test_actual_baseline_write_plan_passes(self):
-  summary=self.execute_plan(self.plan); self.assertEqual('ok',summary['status']); self.assertEqual(30,summary['rollback_smoke_covered_methods_count'])
+  summary=self.execute_plan(self.plan); self.assertEqual('ok',summary['status']); self.assertEqual(33,summary['rollback_smoke_covered_methods_count'])
  def test_invalid_rollback_smoke_tracking_fails(self):
   for value in ([], ['set_app_setting_value','set_app_setting_value'], ['list_countries'], ['stale_method'], ['set_hlr_limit_override','set_app_setting_value','delete_app_setting_value','upsert_hlr_daily_usage']):
    p=copy.deepcopy(self.plan); p['rollback_smoke_covered_methods']=value; self.bad(p)
@@ -35,6 +35,12 @@ class WritePlanTests(unittest.TestCase):
   p=copy.deepcopy(self.plan); p['rollback_smoke_covered_methods'].remove('create_routing_event'); self.bad(p)
   p=copy.deepcopy(self.plan); p['rollback_smoke_covered_methods'].append('_server_priority_affected_servers'); self.bad(p)
   p=copy.deepcopy(self.plan); p['rollback_smoke_covered_methods'].append('update_company_routing_setting_comment'); self.bad(p)
+ def test_stage66a_route_import_rules(self):
+  for name in ('create_route','update_route','update_route_import_fields'):
+   p=copy.deepcopy(self.plan); p['rollback_smoke_covered_methods'].remove(name); self.bad(p)
+  for name in ('update_phone_number_import_fields_with_history','update_calling_company_import_fields','_change_log','list_routes'):
+   p=copy.deepcopy(self.plan); p['rollback_smoke_covered_methods'].append(name); self.bad(p)
+  p=copy.deepcopy(self.plan); p['rollback_smoke_covered_methods'].append('create_route'); self.bad(p)
  def test_missing_stage59_rollback_method_fails(self):
   p=copy.deepcopy(self.plan); p['rollback_smoke_covered_methods'].remove('update_dictionary_snapshots'); self.bad(p)
  def test_stage57_server_in_wrong_batch_fails(self):

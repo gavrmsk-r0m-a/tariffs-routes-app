@@ -553,10 +553,10 @@
     },
     "create_route": {
       "batch": "phone_route_tariff_core_writes",
-      "current_commit_behavior": "commits internally",
+      "current_commit_behavior": "mixed",
       "dependencies": [],
       "mutation_kind": "insert",
-      "notes": "Stage 50 audit inventory only; no write adaptation.",
+      "notes": "Stage 66A route import rollback smoke; caller-owned transactions use commit=False.",
       "postgres_strategy": "Keep runtime disabled; use rollback-only harness, backend placeholders, and RETURNING where identity retrieval is required.",
       "returns": "inserted_id",
       "risk": "medium",
@@ -576,7 +576,7 @@
         "SQLite regression test",
         "PostgreSQL rollback-only integration test"
       ],
-      "transaction_contract": "explicit_commit"
+      "transaction_contract": "optional_commit_parameter"
     },
     "create_routing_event": {
       "batch": "routing_event_application_writes",
@@ -1362,10 +1362,10 @@
     },
     "update_route": {
       "batch": "phone_route_tariff_core_writes",
-      "current_commit_behavior": "commits internally",
+      "current_commit_behavior": "mixed",
       "dependencies": [],
       "mutation_kind": "multi_write",
-      "notes": "Stage 50 audit inventory only; no write adaptation.",
+      "notes": "Stage 66A route import rollback smoke; caller-owned transactions use commit=False.",
       "postgres_strategy": "Keep runtime disabled; use rollback-only harness, backend placeholders, and RETURNING where identity retrieval is required.",
       "returns": "none",
       "risk": "high",
@@ -1385,14 +1385,14 @@
         "SQLite regression test",
         "PostgreSQL rollback-only integration test"
       ],
-      "transaction_contract": "multi_statement_atomic"
+      "transaction_contract": "optional_commit_parameter"
     },
     "update_route_import_fields": {
       "batch": "importer_and_bulk_mutation_writes",
-      "current_commit_behavior": "commits internally",
+      "current_commit_behavior": "mixed",
       "dependencies": [],
       "mutation_kind": "multi_write",
-      "notes": "Stage 50 audit inventory only; no write adaptation.",
+      "notes": "Stage 66A route import rollback smoke; caller-owned transactions use commit=False.",
       "postgres_strategy": "Keep runtime disabled; use rollback-only harness, backend placeholders, and RETURNING where identity retrieval is required.",
       "returns": "none",
       "risk": "critical",
@@ -1414,7 +1414,7 @@
         "SQLite regression test",
         "PostgreSQL rollback-only integration test"
       ],
-      "transaction_contract": "multi_statement_atomic"
+      "transaction_contract": "optional_commit_parameter"
     },
     "update_routing_event": {
       "batch": "routing_event_application_writes",
@@ -1610,7 +1610,10 @@
     "create_company_routing_setting",
     "update_company_routing_setting",
     "deactivate_company_routing_setting",
-    "create_routing_event"
+    "create_routing_event",
+    "create_route",
+    "update_route",
+    "update_route_import_fields"
   ],
   "schema_version": 1
 }
