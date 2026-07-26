@@ -150,3 +150,12 @@ transaction-local PostgreSQL fixtures. It verifies Decimal-safe EUR recalculatio
 tariff history and change-log writes, the no-current-tariff branch, and negative
 validations isolated by SAVEPOINT. The harness never commits and its final rollback
 removes all Stage 66E currency-rate, tariff-history, and change-log markers.
+
+## Stage 66F — calling-company tail lifecycle
+
+`calling_company_tail_lifecycle_probe` invokes `create_calling_company`,
+`update_calling_company`, `update_company_routing_setting_comment`, and
+`update_calling_company_import_fields` with `commit=False`. Negative validation
+cases are isolated by SAVEPOINTs. The outer transaction is always rolled back,
+and cleanup checks cover calling-company, routing-setting, and change-log markers.
+The harness never commits and now runs **25 probes**.
