@@ -95,9 +95,22 @@ class PostgresRuntimeAdapterTests(unittest.TestCase):
                 raise ImportError("forced missing dependency")
             return real_import(name, *args, **kwargs)
 
-        with patch("builtins.__import__", side_effect=import_without_psycopg):
-            with self.assertRaisesRegex(RuntimeError, r"psycopg\[binary\]"):
-                connect_database(config, environ={"POSTGRES_RUNTIME_ENABLED": "1"})
+        psycopg_modules = {
+            name: module
+            for name, module in sys.modules.items()
+            if name == "psycopg" or name.startswith("psycopg.")
+        }
+        try:
+            for name in psycopg_modules:
+                sys.modules.pop(name, None)
+            with patch("builtins.__import__", side_effect=import_without_psycopg):
+                with self.assertRaisesRegex(RuntimeError, r"psycopg\[binary\]"):
+                    connect_database(config, environ={"POSTGRES_RUNTIME_ENABLED": "1"})
+        finally:
+            for name in tuple(sys.modules):
+                if name == "psycopg" or name.startswith("psycopg."):
+                    sys.modules.pop(name, None)
+            sys.modules.update(psycopg_modules)
 
 
 if __name__ == "__main__":
