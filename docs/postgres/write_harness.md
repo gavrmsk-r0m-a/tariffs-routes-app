@@ -141,3 +141,12 @@ calls `conn.commit()` and now runs 22 probes.
 transaction. It verifies tariff, tariff history, and change-log effects,
 contains expected validation failures with SAVEPOINTs, and finally rolls back
 and checks marker cleanup. The harness never commits.
+
+## Stage 66E — currency-rate lifecycle
+
+`currency_rate_lifecycle_probe` rollback-smokes `create_currency_rate(commit=False)`,
+`recalculate_current_tariffs_for_currency_rate`, and `log_currency_rate_change` against
+transaction-local PostgreSQL fixtures. It verifies Decimal-safe EUR recalculation,
+tariff history and change-log writes, the no-current-tariff branch, and negative
+validations isolated by SAVEPOINT. The harness never commits and its final rollback
+removes all Stage 66E currency-rate, tariff-history, and change-log markers.

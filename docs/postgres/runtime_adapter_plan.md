@@ -802,3 +802,11 @@ Tariff create, update, and activation flows are covered by the rollback-only
 PostgreSQL write harness. Read-only smoke remains 611 checks and the coverage
 inventory remains 112 public / 61 reads / 0 deferred / 50 writes / 1 mixed /
 100%. `DB_BACKEND=postgres` and production PostgreSQL runtime remain disabled.
+
+## Stage 66E — currency-rate rollback smoke
+
+Currency-rate create, current-tariff recalculation, and audit-log flows are covered by
+the rollback-only PostgreSQL write harness. Read-only smoke remains at 611 checks and
+the coverage baseline remains 112 public / 61 reads / 0 deferred / 50 writes / 1
+infrastructure / 100%. `DB_BACKEND=postgres` and production PostgreSQL runtime remain
+disabled.

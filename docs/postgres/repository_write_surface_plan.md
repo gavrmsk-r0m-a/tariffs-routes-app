@@ -216,3 +216,11 @@ The tariff lifecycle is rollback-smoked for `create_tariff`, `update_tariff`,
 and `set_tariff_active`. The rollback-smoke covered count is now **43**.
 Currency-rate creation/logging/recalculation and company import remain pending.
 Production PostgreSQL runtime and `DB_BACKEND=postgres` remain disabled.
+
+## Stage 66E status
+
+The currency-rate lifecycle is rollback-smoked for `create_currency_rate`,
+`recalculate_current_tariffs_for_currency_rate`, and `log_currency_rate_change`.
+This brings `rollback_smoke_covered_methods_count` to **46** and completes
+`phone_route_tariff_core_writes`. The company/calling-company tail remains pending.
+Production PostgreSQL runtime remains disabled.

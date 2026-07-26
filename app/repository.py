@@ -2024,17 +2024,22 @@ class Repository:
         *,
         commit: bool = True,
     ) -> sqlite3.Row | int:
-        rate_value = validate_currency_rate(rate_to_eur)
-        cur = self.conn.execute(
-            """
+        p = placeholder(self.backend)
+        try:
+            rate_value = validate_currency_rate(rate_to_eur)
+            sql = prepare_insert_returning_id(f"""
             INSERT INTO currency_rates(currency_id, rate_to_eur, rate_date, updated_by, source, comment)
-            VALUES (?, ?, ?, ?, ?, ?)
-            """,
-            (currency_id, str(rate_value), rate_date, updated_by, source, comment),
-        )
-        if commit:
-            self.conn.commit()
-        return cur.lastrowid
+            VALUES ({', '.join([p] * 6)})
+            """, self.backend)
+            cur = self.conn.execute(sql, (currency_id, str(rate_value), rate_date, updated_by, source, comment))
+            currency_rate_id = extract_inserted_id(cur, self.backend)
+            if commit:
+                self.conn.commit()
+            return currency_rate_id
+        except Exception:
+            if commit:
+                self.conn.rollback()
+            raise
 
     def get_currency_rate(self, currency_rate_id: int) -> sqlite3.Row | None:
         p = placeholder(self.backend)
@@ -2063,6 +2068,7 @@ class Repository:
         currency_rate_id: int,
         changed_by: int | None,
     ) -> list[dict]:
+        p = placeholder(self.backend)
         rate = self.get_currency_rate(currency_rate_id)
         if rate is None:
             raise BusinessRuleError("Курс валюты не найден")
@@ -2074,10 +2080,10 @@ class Repository:
             JOIN providers p ON p.id = t.provider_id
             LEFT JOIN provider_prefixes pp ON pp.id = t.provider_prefix_id
             JOIN currencies cur ON cur.id = t.provider_currency_id
-            WHERE t.provider_currency_id = ? AND t.is_current = 1
+            WHERE t.provider_currency_id = {p} AND t.is_current = {p}
             ORDER BY t.id
-            """,
-            (rate["currency_id"],),
+            """.format(p=p),
+            (rate["currency_id"], to_db_bool(True, self.backend)),
         ).fetchall()
         recalculated: list[dict] = []
         new_rate_value = validate_currency_rate(rate["rate_to_eur"])
@@ -2090,11 +2096,11 @@ class Repository:
             }
             new_eur_price = eur_price(tariff["price_in_provider_currency"], new_rate_value)
             self.conn.execute(
-                """
+                f"""
                 UPDATE tariffs
-                SET conversion_rate_to_eur = ?, conversion_rate_date = ?, currency_rate_id = ?,
-                    eur_price = ?, updated_by = ?, updated_at = CURRENT_TIMESTAMP
-                WHERE id = ?
+                SET conversion_rate_to_eur = {p}, conversion_rate_date = {p}, currency_rate_id = {p},
+                    eur_price = {p}, updated_by = {p}, updated_at = CURRENT_TIMESTAMP
+                WHERE id = {p}
                 """,
                 (str(new_rate_value), rate["rate_date"], currency_rate_id, str(new_eur_price), changed_by, tariff["id"]),
             )
