@@ -140,6 +140,16 @@ class FakeRepo:
 
 
 class WriteHarnessTest(unittest.TestCase):
+    def test_stage66d_tariff_probe_uses_business_eur_semantics_and_current_duplicate(self):
+        source = SCRIPT.read_text(encoding="utf-8")
+        self.assertIn('expected_eur_price = eur_price("1.2345", "2")', source)
+        self.assertNotIn('Decimal("0.6173")', source)
+        duplicate = source.index('SAVEPOINT stage66d_create_duplicate')
+        deactivate = source.index('repo.set_tariff_active(tariff_id, is_current=False')
+        self.assertLess(duplicate, deactivate)
+        self.assertIn('("create_missing_price", lambda:', source)
+        self.assertIn('f"SAVEPOINT stage66d_{name}"', source)
+
     def test_stage66c_route_phone_probe_is_caller_owned_and_rollback_only(self):
         source = SCRIPT.read_text(encoding="utf-8")
         self.assertIn("def run_route_phone_link_lifecycle_probe", source)

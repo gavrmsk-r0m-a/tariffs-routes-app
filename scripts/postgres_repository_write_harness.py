@@ -18,7 +18,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from app.db_adapter import to_db_bool
-from app.repository import BusinessRuleError, Repository, normalize_provider_name
+from app.repository import BusinessRuleError, Repository, eur_price, normalize_provider_name
 from scripts.postgres_repository_smoke import mask_postgres_url, sanitize_error
 
 DEFAULT_PROBE_KEY = "__stage51_rollback_probe__"
@@ -1481,12 +1481,32 @@ def run_tariff_lifecycle_probe(repo: Repository, conn) -> None:
             created_by=user_id, comment=TARIFF_MARKER, commit=False,
         )
         created = conn.execute("SELECT * FROM tariffs WHERE id = %s", (tariff_id,)).fetchone()
-        if not created or created["comment"] != TARIFF_MARKER or Decimal(str(created["eur_price"])) != Decimal("0.6173"):
+        expected_eur_price = eur_price("1.2345", "2")
+        if not created or created["comment"] != TARIFF_MARKER or Decimal(str(created["eur_price"])) != expected_eur_price:
             raise AssertionError("Stage 66D created tariff fields do not match")
         if not created["is_current"] or created["country_id"] != country_id or created["provider_prefix_id"] != prefix_id:
             raise AssertionError("Stage 66D created tariff identity/current flag does not match")
         if not conn.execute("SELECT 1 FROM tariff_change_history WHERE tariff_id = %s", (tariff_id,)).fetchone():
             raise AssertionError("Stage 66D create history is missing")
+
+        # Duplicate identity is rejected while the first tariff is still
+        # current. Keep this validation before the lifecycle deactivation so
+        # its premise cannot depend on inactive-tariff semantics.
+        conn.execute("SAVEPOINT stage66d_create_duplicate")
+        try:
+            repo.create_tariff(
+                country_id=country_id, provider_id=provider_id, provider_prefix_id=prefix_id,
+                provider_currency_id=currency_id, price_in_provider_currency="1",
+                conversion_rate_to_eur="2", conversion_rate_date="2026-07-26",
+                created_by=user_id, commit=False,
+            )
+        except BusinessRuleError:
+            pass
+        else:
+            raise AssertionError("Stage 66D create_duplicate validation did not fail")
+        finally:
+            conn.execute("ROLLBACK TO SAVEPOINT stage66d_create_duplicate")
+            conn.execute("RELEASE SAVEPOINT stage66d_create_duplicate")
 
         repo.update_tariff(
             tariff_id, provider_currency_id=currency_id, price_in_provider_currency="2.5000",
@@ -1507,8 +1527,8 @@ def run_tariff_lifecycle_probe(repo: Repository, conn) -> None:
             raise AssertionError("Stage 66D lifecycle change_log is incomplete")
 
         negative_calls = (
+            ("create_missing_price", lambda: repo.create_tariff(country_id=country_id, provider_id=provider_id, provider_prefix_id=None, provider_currency_id=currency_id, price_in_provider_currency="", conversion_rate_to_eur="2", conversion_rate_date="2026-07-26", created_by=user_id, commit=False)),
             ("create_invalid_price", lambda: repo.create_tariff(country_id=country_id, provider_id=provider_id, provider_prefix_id=None, provider_currency_id=currency_id, price_in_provider_currency="invalid", conversion_rate_to_eur="2", conversion_rate_date="2026-07-26", created_by=user_id, commit=False)),
-            ("create_duplicate", lambda: repo.create_tariff(country_id=country_id, provider_id=provider_id, provider_prefix_id=prefix_id, provider_currency_id=currency_id, price_in_provider_currency="1", conversion_rate_to_eur="2", conversion_rate_date="2026-07-26", created_by=user_id, commit=False)),
             ("update_missing", lambda: repo.update_tariff(-66, provider_currency_id=currency_id, price_in_provider_currency="1", conversion_rate_to_eur="2", conversion_rate_date="2026-07-26", currency_rate_id=None, comment=None, updated_by=user_id, commit=False)),
             ("update_invalid_price", lambda: repo.update_tariff(tariff_id, provider_currency_id=currency_id, price_in_provider_currency="invalid", conversion_rate_to_eur="2", conversion_rate_date="2026-07-26", currency_rate_id=None, comment=None, updated_by=user_id, commit=False)),
             ("activate_missing", lambda: repo.set_tariff_active(-66, is_current=False, changed_by=user_id, commit=False)),
