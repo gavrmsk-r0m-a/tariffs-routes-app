@@ -224,3 +224,12 @@ The currency-rate lifecycle is rollback-smoked for `create_currency_rate`,
 This brings `rollback_smoke_covered_methods_count` to **46** and completes
 `phone_route_tariff_core_writes`. The company/calling-company tail remains pending.
 Production PostgreSQL runtime remains disabled.
+
+## Stage 66F status
+
+The calling-company tail is rollback-smoked: `create_calling_company`,
+`update_calling_company`, `update_company_routing_setting_comment`, and
+`update_calling_company_import_fields`. The `company_routing_setting_writes` and
+`importer_and_bulk_mutation_writes` batches are complete. All **50** public
+write-or-mutating methods are covered (`rollback_smoke_covered_methods_count = 50`),
+while production PostgreSQL runtime remains disabled.

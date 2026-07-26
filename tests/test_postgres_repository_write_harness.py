@@ -149,7 +149,7 @@ class WriteHarnessTest(unittest.TestCase):
         self.assertIn("SAVEPOINT stage66e_", source)
         self.assertIn("ROLLBACK TO SAVEPOINT stage66e_", source)
         self.assertIn("currency_rate_lifecycle_probe", harness.empty_summary("postgresql://u:p@h/db")["probes"])
-        self.assertEqual(24, len(harness.empty_summary("postgresql://u:p@h/db")["probes"]))
+        self.assertEqual(25, len(harness.empty_summary("postgresql://u:p@h/db")["probes"]))
         self.assertNotIn("conn.commit()", source)
 
     def test_stage66d_tariff_probe_uses_business_eur_semantics_and_current_duplicate(self):
@@ -173,7 +173,7 @@ class WriteHarnessTest(unittest.TestCase):
         self.assertIn("repo.remove_phone_links_from_route(", source)
         self.assertGreaterEqual(source.count("commit=False"), 6)
         self.assertNotIn("conn.commit()", source)
-        self.assertEqual(24, len(harness.empty_summary("postgresql://u:p@h/db")["probes"]))
+        self.assertEqual(25, len(harness.empty_summary("postgresql://u:p@h/db")["probes"]))
 
     def test_stage64_validation_cases_do_not_pop_or_default_missing_comment(self):
         source = SCRIPT.read_text(encoding="utf-8")
@@ -198,7 +198,7 @@ class WriteHarnessTest(unittest.TestCase):
         self.assertIn('ROLLBACK TO SAVEPOINT stage65a_', source)
         self.assertNotIn('conn.commit()', source)
         self.assertIn('company_routing_setting_lifecycle_probe', harness.empty_summary("postgresql://u:p@h/db")["probes"])
-        self.assertEqual(len(harness.empty_summary("postgresql://u:p@h/db")["probes"]), 24)
+        self.assertEqual(len(harness.empty_summary("postgresql://u:p@h/db")["probes"]), 25)
 
     def test_stage66a_route_probe_is_rollback_only_and_savepoint_contained(self):
         source = SCRIPT.read_text(encoding="utf-8")
@@ -218,7 +218,7 @@ class WriteHarnessTest(unittest.TestCase):
         self.assertIn("SAVEPOINT stage66b_", source)
         self.assertIn("ROLLBACK TO SAVEPOINT stage66b_", source)
         self.assertIn("phone_import_lifecycle_probe", harness.empty_summary("postgresql://u:p@h/db")["probes"])
-        self.assertEqual(len(harness.empty_summary("postgresql://u:p@h/db")["probes"]), 24)
+        self.assertEqual(len(harness.empty_summary("postgresql://u:p@h/db")["probes"]), 25)
         self.assertNotIn("conn.commit()", source)
 
     def test_stage65b_campaign_probe_covers_paths_validations_and_cleanup(self):
@@ -392,7 +392,7 @@ class WriteHarnessTest(unittest.TestCase):
             @staticmethod
             def connect(*args, **kwargs): return FakeConnection()
         import types
-        with tempfile.TemporaryDirectory() as directory, patch.dict("sys.modules", {"psycopg": Driver, "psycopg.rows": types.SimpleNamespace(dict_row=dict)}), patch.object(harness, "Repository", lambda conn, backend: FakeRepo(conn)), patch.object(harness, "run_dictionary_snapshot_probe") as snapshot_probe, patch.object(harness, "run_provider_change_priority_probe") as priority_probe, patch.object(harness, "run_provider_change_create_probe") as create_probe, patch.object(harness, "run_routing_event_deactivate_probe") as routing_probe, patch.object(harness, "run_routing_event_update_probe") as update_probe, patch.object(harness, "run_routing_event_create_core_probe") as create_event_probe, patch.object(harness, "run_company_routing_setting_lifecycle_probe") as company_probe, patch.object(harness, "run_routing_event_create_campaign_probe") as campaign_probe, patch.object(harness, "run_route_import_lifecycle_probe") as route_probe, patch.object(harness, "run_phone_import_lifecycle_probe"), patch.object(harness, "run_route_phone_link_lifecycle_probe") as phone_probe, patch.object(harness, "run_tariff_lifecycle_probe") as tariff_probe, patch.object(harness, "run_currency_rate_lifecycle_probe") as currency_probe:
+        with tempfile.TemporaryDirectory() as directory, patch.dict("sys.modules", {"psycopg": Driver, "psycopg.rows": types.SimpleNamespace(dict_row=dict)}), patch.object(harness, "Repository", lambda conn, backend: FakeRepo(conn)), patch.object(harness, "run_dictionary_snapshot_probe") as snapshot_probe, patch.object(harness, "run_provider_change_priority_probe") as priority_probe, patch.object(harness, "run_provider_change_create_probe") as create_probe, patch.object(harness, "run_routing_event_deactivate_probe") as routing_probe, patch.object(harness, "run_routing_event_update_probe") as update_probe, patch.object(harness, "run_routing_event_create_core_probe") as create_event_probe, patch.object(harness, "run_company_routing_setting_lifecycle_probe") as company_probe, patch.object(harness, "run_routing_event_create_campaign_probe") as campaign_probe, patch.object(harness, "run_route_import_lifecycle_probe") as route_probe, patch.object(harness, "run_phone_import_lifecycle_probe"), patch.object(harness, "run_route_phone_link_lifecycle_probe") as phone_probe, patch.object(harness, "run_tariff_lifecycle_probe") as tariff_probe, patch.object(harness, "run_currency_rate_lifecycle_probe") as currency_probe, patch.object(harness, "run_calling_company_tail_lifecycle_probe") as company_tail_probe:
             output = Path(directory) / "summary.json"
             self.assertEqual(harness.main(["--postgres-url", "postgresql://u:pw@h/db", "--json", "--output", str(output)]), 0)
             snapshot_probe.assert_called_once()
@@ -407,7 +407,7 @@ class WriteHarnessTest(unittest.TestCase):
             summary = json.loads(output.read_text())
         self.assertEqual(summary["status"], "ok")
         self.assertEqual(set(summary), {"status", "postgres_url", "checks_count", "failures", "probes"})
-        self.assertEqual(summary["probes"], {"rollback_probe": "ok", "aborted_transaction_probe": "ok", "savepoint_probe": "ok", "app_setting_probe": "ok", "hlr_daily_usage_probe": "ok", "user_admin_probe": "ok", "dictionary_create_probe": "ok", "dictionary_get_or_create_probe": "ok", "dictionary_ensure_probe": "ok", "dictionary_server_probe": "ok", "dictionary_change_reason_probe": "ok", "dictionary_snapshot_probe": "ok", "provider_change_priority_probe": "ok", "provider_change_create_probe": "ok", "routing_event_deactivate_probe": "ok", "routing_event_update_probe": "ok", "routing_event_create_core_probe": "ok", "company_routing_setting_lifecycle_probe": "ok", "routing_event_create_campaign_probe": "ok", "route_import_lifecycle_probe": "ok", "phone_import_lifecycle_probe": "ok", "route_phone_link_lifecycle_probe": "ok", "tariff_lifecycle_probe": "ok", "currency_rate_lifecycle_probe": "ok"})
+        self.assertEqual(summary["probes"], {"rollback_probe": "ok", "aborted_transaction_probe": "ok", "savepoint_probe": "ok", "app_setting_probe": "ok", "hlr_daily_usage_probe": "ok", "user_admin_probe": "ok", "dictionary_create_probe": "ok", "dictionary_get_or_create_probe": "ok", "dictionary_ensure_probe": "ok", "dictionary_server_probe": "ok", "dictionary_change_reason_probe": "ok", "dictionary_snapshot_probe": "ok", "provider_change_priority_probe": "ok", "provider_change_create_probe": "ok", "routing_event_deactivate_probe": "ok", "routing_event_update_probe": "ok", "routing_event_create_core_probe": "ok", "company_routing_setting_lifecycle_probe": "ok", "routing_event_create_campaign_probe": "ok", "route_import_lifecycle_probe": "ok", "phone_import_lifecycle_probe": "ok", "route_phone_link_lifecycle_probe": "ok", "tariff_lifecycle_probe": "ok", "currency_rate_lifecycle_probe": "ok", "calling_company_tail_lifecycle_probe": "ok"})
 
     def test_repository_uses_postgres_backend(self):
         class Driver:
@@ -420,6 +420,6 @@ class WriteHarnessTest(unittest.TestCase):
                 super().__init__(conn)
                 self.backend = backend
                 type(self).backend_seen = backend
-        with patch.dict("sys.modules", {"psycopg": Driver, "psycopg.rows": types.SimpleNamespace(dict_row=dict)}), patch.object(harness, "Repository", CapturingRepo), patch.object(harness, "run_dictionary_snapshot_probe"), patch.object(harness, "run_provider_change_priority_probe"), patch.object(harness, "run_provider_change_create_probe"), patch.object(harness, "run_routing_event_deactivate_probe"), patch.object(harness, "run_routing_event_update_probe"), patch.object(harness, "run_routing_event_create_core_probe"), patch.object(harness, "run_company_routing_setting_lifecycle_probe"), patch.object(harness, "run_routing_event_create_campaign_probe"), patch.object(harness, "run_route_import_lifecycle_probe"), patch.object(harness, "run_phone_import_lifecycle_probe"), patch.object(harness, "run_route_phone_link_lifecycle_probe"), patch.object(harness, "run_tariff_lifecycle_probe"), patch.object(harness, "run_currency_rate_lifecycle_probe"):
+        with patch.dict("sys.modules", {"psycopg": Driver, "psycopg.rows": types.SimpleNamespace(dict_row=dict)}), patch.object(harness, "Repository", CapturingRepo), patch.object(harness, "run_dictionary_snapshot_probe"), patch.object(harness, "run_provider_change_priority_probe"), patch.object(harness, "run_provider_change_create_probe"), patch.object(harness, "run_routing_event_deactivate_probe"), patch.object(harness, "run_routing_event_update_probe"), patch.object(harness, "run_routing_event_create_core_probe"), patch.object(harness, "run_company_routing_setting_lifecycle_probe"), patch.object(harness, "run_routing_event_create_campaign_probe"), patch.object(harness, "run_route_import_lifecycle_probe"), patch.object(harness, "run_phone_import_lifecycle_probe"), patch.object(harness, "run_route_phone_link_lifecycle_probe"), patch.object(harness, "run_tariff_lifecycle_probe"), patch.object(harness, "run_currency_rate_lifecycle_probe"), patch.object(harness, "run_calling_company_tail_lifecycle_probe"):
             harness.run_harness("postgresql://u:pw@h/db")
         self.assertEqual(CapturingRepo.backend_seen, "postgres")

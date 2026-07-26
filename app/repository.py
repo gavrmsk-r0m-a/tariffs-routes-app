@@ -1037,48 +1037,52 @@ class Repository:
         line_count: int = 0,
         dial_set_count: int = 0,
         retry_interval_seconds: int = 0,
+        commit: bool = True,
     ) -> int:
-        normalized_external_id = company_id_external.strip()
-        if not normalized_external_id:
-            raise BusinessRuleError("Company external ID is required")
-        duplicate = self.conn.execute(
-            """
+        p = placeholder(self.backend)
+        try:
+            normalized_external_id = company_id_external.strip()
+            if not normalized_external_id:
+                raise BusinessRuleError("Company external ID is required")
+            duplicate = self.conn.execute(
+            f"""
             SELECT cc.company_name, cc.company_id_external, s.name AS server_name
             FROM calling_companies cc
             JOIN servers s ON s.id = cc.server_id
-            WHERE cc.company_id_external = ?
+            WHERE cc.company_id_external = {p}
             LIMIT 1
             """,
             (normalized_external_id,),
-        ).fetchone()
-        if duplicate is not None:
-            raise BusinessRuleError(f"Кампания с ID {normalized_external_id} уже существует: {duplicate['company_name']} / {duplicate['server_name']}")
-        cur = self.conn.execute(
-            """
+            ).fetchone()
+            if duplicate is not None:
+                raise BusinessRuleError(f"Кампания с ID {normalized_external_id} уже существует: {duplicate['company_name']} / {duplicate['server_name']}")
+            insert_sql = prepare_insert_returning_id(f"""
             INSERT INTO calling_companies(
                 server_id, country_id, company_name, company_id_external,
                 has_autorotation, line_count, dial_set_count, retry_interval_seconds,
                 comment, is_active, created_by
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
+            VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p})
+            """, self.backend)
+            cur = self.conn.execute(
+            insert_sql,
             (
                 server_id,
                 country_id,
                 company_name,
                 normalized_external_id,
-                1 if has_autorotation else 0,
+                to_db_bool(has_autorotation, self.backend),
                 int(line_count),
                 int(dial_set_count),
                 int(retry_interval_seconds),
                 comment,
-                1 if is_active else 0,
+                to_db_bool(is_active, self.backend),
                 created_by,
             ),
-        )
-        company_id = int(cur.lastrowid)
-        if has_autorotation:
-            self.create_company_routing_setting(
+            )
+            company_id = extract_inserted_id(cur, self.backend)
+            if has_autorotation:
+                self.create_company_routing_setting(
                 calling_company_id=company_id,
                 country_id=country_id,
                 server_id=server_id,
@@ -1086,9 +1090,9 @@ class Repository:
                 routing_mode="autorotation",
                 has_autorotation=True,
                 comment="Начальная авторотация при создании кампании",
-                created_by=created_by,
-            )
-        details = [
+                created_by=created_by, commit=False,
+                )
+            details = [
             f"Название: {_company_history_value(company_name)}",
             f"ID кампании: {_company_history_value(normalized_external_id)}",
             f"Активна: {_company_history_value(is_active, 'bool')}",
@@ -1097,8 +1101,8 @@ class Repository:
             f"Интервал, сек.: {_company_history_value(retry_interval_seconds, 'number')}",
             f"Авторотация: {_company_history_value(has_autorotation, 'bool')}",
             f"Комментарий: {_truncate_history_text(_company_history_value(comment), 120)}",
-        ]
-        self._change_log(
+            ]
+            self._change_log(
             "calling_company",
             company_id,
             "calling_company.created",
@@ -1110,9 +1114,14 @@ class Repository:
                 "search_text": "; ".join([_company_history_value(comment), company_name, normalized_external_id]),
             },
             summary="Компания создана",
-        )
-        self.conn.commit()
-        return company_id
+            )
+            if commit:
+                self.conn.commit()
+            return int(company_id)
+        except Exception:
+            if commit:
+                self.conn.rollback()
+            raise
 
     def get_calling_company(self, company_id: int) -> sqlite3.Row | None:
         p = placeholder(self.backend)
@@ -1142,65 +1151,71 @@ class Repository:
         comment: str | None,
         updated_by: int,
         expected_updated_at: str | None = None,
+        commit: bool = True,
     ) -> None:
-        old = self.conn.execute("SELECT * FROM calling_companies WHERE id = ?", (company_id,)).fetchone()
-        if old is None:
-            raise BusinessRuleError("Calling company not found")
-        changes = []
-        new_server = self.conn.execute("SELECT name FROM servers WHERE id = ?", (server_id,)).fetchone()
-        old_server = self.conn.execute("SELECT name FROM servers WHERE id = ?", (old["server_id"],)).fetchone()
-        specs = [
-            ("Сервер", old_server["name"] if old_server else old["server_id"], new_server["name"] if new_server else server_id, "text"),
-            ("Название", old["company_name"], company_name, "text"),
-            ("Активна", old["is_active"], 1 if is_active else 0, "bool"),
-            ("Количество наборов", old["dial_set_count"], dial_set_count, "number"),
-            ("Интервал, сек.", old["retry_interval_seconds"], retry_interval_seconds, "number"),
-            ("Количество линий", old["line_count"], line_count, "number"),
-            ("Комментарий", old["comment"], comment, "text"),
-        ]
-        for label, old_value, new_value, kind in specs:
-            change = _company_history_change(label, old_value, new_value, kind)
-            if change:
-                changes.append(change)
-        update_params = [server_id, country_id, company_name, int(line_count), int(dial_set_count), int(retry_interval_seconds), 1 if is_active else 0, comment, updated_by, company_id]
-        token_clause = ""
-        if expected_updated_at is not None:
-            token_clause = " AND updated_at = ?"
-            update_params.append(expected_updated_at)
-        cur = self.conn.execute(
-            f"""
-            UPDATE calling_companies
-            SET server_id = ?, country_id = ?, company_name = ?, line_count = ?, dial_set_count = ?,
-                retry_interval_seconds = ?, is_active = ?, comment = ?, updated_by = ?,
-                updated_at = STRFTIME('%Y-%m-%d %H:%M:%f', 'now')
-            WHERE id = ?{token_clause}
-            """,
-            tuple(update_params),
-        )
-        if cur.rowcount == 0:
-            if self.conn.execute("SELECT 1 FROM calling_companies WHERE id = ?", (company_id,)).fetchone() is None:
+        p = placeholder(self.backend)
+        try:
+            old = self.conn.execute(f"SELECT * FROM calling_companies WHERE id = {p}", (company_id,)).fetchone()
+            if old is None:
                 raise BusinessRuleError("Calling company not found")
-            raise ConcurrencyConflict("Запись была изменена другим пользователем. Обновите страницу и повторите действие.")
-        if changes:
-            only_active = len(changes) == 1 and changes[0].startswith("Активна:")
-            if only_active and int(old["is_active"] or 0) == 0 and is_active:
-                event = description = "Компания активирована"
-            elif only_active and int(old["is_active"] or 0) == 1 and not is_active:
-                event = description = "Компания деактивирована"
-            else:
-                event = "Компания изменена"
-                description = f"Изменено полей: {len(changes)}"
-            details = "; ".join(changes)
-            self._change_log(
-                "calling_company",
-                company_id,
-                "calling_company.updated",
-                updated_by,
-                old_values={"company_name": old["company_name"], "comment": old["comment"]},
-                new_values={"event": event, "description": description, "details": details, "search_text": f"{old['company_name']} {company_name} {old['comment'] or ''} {comment or ''} {details}"},
-                summary=event,
+            changes = []
+            new_server = self.conn.execute(f"SELECT name FROM servers WHERE id = {p}", (server_id,)).fetchone()
+            old_server = self.conn.execute(f"SELECT name FROM servers WHERE id = {p}", (old["server_id"],)).fetchone()
+            specs = [
+                ("Сервер", old_server["name"] if old_server else old["server_id"], new_server["name"] if new_server else server_id, "text"),
+                ("Название", old["company_name"], company_name, "text"),
+                ("Активна", old["is_active"], 1 if is_active else 0, "bool"),
+                ("Количество наборов", old["dial_set_count"], dial_set_count, "number"),
+                ("Интервал, сек.", old["retry_interval_seconds"], retry_interval_seconds, "number"),
+                ("Количество линий", old["line_count"], line_count, "number"),
+                ("Комментарий", old["comment"], comment, "text"),
+            ]
+            for label, old_value, new_value, kind in specs:
+                change = _company_history_change(label, old_value, new_value, kind)
+                if change:
+                    changes.append(change)
+            update_params = [server_id, country_id, company_name, int(line_count), int(dial_set_count), int(retry_interval_seconds), to_db_bool(is_active, self.backend), comment, updated_by, company_id]
+            token_clause = ""
+            if expected_updated_at is not None:
+                token_clause = f" AND updated_at = {p}"
+                update_params.append(expected_updated_at)
+            updated_at_sql = "CURRENT_TIMESTAMP" if self.backend == "postgres" else "STRFTIME('%Y-%m-%d %H:%M:%f', 'now')"
+            cur = self.conn.execute(
+                f"""
+                UPDATE calling_companies
+                SET server_id = {p}, country_id = {p}, company_name = {p}, line_count = {p}, dial_set_count = {p},
+                    retry_interval_seconds = {p}, is_active = {p}, comment = {p}, updated_by = {p},
+                    updated_at = {updated_at_sql}
+                WHERE id = {p}{token_clause}
+                """,
+                tuple(update_params),
             )
-        self.conn.commit()
+            if cur.rowcount == 0:
+                if self.conn.execute(f"SELECT 1 FROM calling_companies WHERE id = {p}", (company_id,)).fetchone() is None:
+                    raise BusinessRuleError("Calling company not found")
+                raise ConcurrencyConflict("Запись была изменена другим пользователем. Обновите страницу и повторите действие.")
+            if changes:
+                only_active = len(changes) == 1 and changes[0].startswith("Активна:")
+                if only_active and int(old["is_active"] or 0) == 0 and is_active:
+                    event = description = "Компания активирована"
+                elif only_active and int(old["is_active"] or 0) == 1 and not is_active:
+                    event = description = "Компания деактивирована"
+                else:
+                    event = "Компания изменена"
+                    description = f"Изменено полей: {len(changes)}"
+                details = "; ".join(changes)
+                self._change_log(
+                    "calling_company", company_id, "calling_company.updated", updated_by,
+                    old_values={"company_name": old["company_name"], "comment": old["comment"]},
+                    new_values={"event": event, "description": description, "details": details, "search_text": f"{old['company_name']} {company_name} {old['comment'] or ''} {comment or ''} {details}"},
+                    summary=event,
+                )
+            if commit:
+                self.conn.commit()
+        except Exception:
+            if commit:
+                self.conn.rollback()
+            raise
 
     def create_server(self, name: str, comment: str | None = None, *, commit: bool = True) -> int:
         p = placeholder(self.backend)
@@ -2624,26 +2639,28 @@ class Repository:
                 self.conn.rollback()
             raise
 
-    def update_company_routing_setting_comment(self, *, setting_id: int, comment: str | None, updated_by: int) -> int:
-        existing = self.conn.execute("SELECT * FROM company_routing_settings WHERE id = ?", (setting_id,)).fetchone()
-        if not existing:
-            raise BusinessRuleError("Схема маршрутизации кампании не найдена")
-        if not existing["is_active"] or existing["valid_to"] is not None:
-            raise BusinessRuleError("Можно редактировать только активную схему маршрутизации")
-        old_values = {
+    def update_company_routing_setting_comment(self, *, setting_id: int, comment: str | None, updated_by: int, commit: bool = True) -> int:
+        p = placeholder(self.backend)
+        try:
+            existing = self.conn.execute(f"SELECT * FROM company_routing_settings WHERE id = {p}", (setting_id,)).fetchone()
+            if not existing:
+                raise BusinessRuleError("Схема маршрутизации кампании не найдена")
+            if not existing["is_active"] or existing["valid_to"] is not None:
+                raise BusinessRuleError("Можно редактировать только активную схему маршрутизации")
+            old_values = {
             "routing_mode": existing["routing_mode"],
             "route_id": existing["route_id"],
             "has_autorotation": existing["has_autorotation"],
             "country_id": existing["country_id"],
             "server_id": existing["server_id"],
             "comment": existing["comment"],
-        }
-        new_values = {**old_values, "comment": comment}
-        self.conn.execute(
-            "UPDATE company_routing_settings SET comment = ?, updated_at = CURRENT_TIMESTAMP, updated_by = ? WHERE id = ?",
-            (comment, updated_by, setting_id),
-        )
-        self._change_log(
+            }
+            new_values = {**old_values, "comment": comment}
+            self.conn.execute(
+                f"UPDATE company_routing_settings SET comment = {p}, updated_at = CURRENT_TIMESTAMP, updated_by = {p} WHERE id = {p}",
+                (comment, updated_by, setting_id),
+            )
+            self._change_log(
             "company_routing_setting",
             setting_id,
             "company_routing_setting.updated",
@@ -2657,9 +2674,14 @@ class Repository:
                 old_values=old_values,
                 new_values=new_values,
             ),
-        )
-        self.conn.commit()
-        return setting_id
+            )
+            if commit:
+                self.conn.commit()
+            return setting_id
+        except Exception:
+            if commit:
+                self.conn.rollback()
+            raise
 
     def update_company_routing_setting(
         self,
@@ -4244,14 +4266,15 @@ class Repository:
         commit: bool = True,
     ) -> int:
         p = placeholder(self.backend)
-        cursor = self.conn.execute(
-            f"""
+        try:
+            cursor = self.conn.execute(
+                f"""
             UPDATE calling_companies
             SET company_name = {p}, has_autorotation = {p}, comment = {p}, is_active = {p},
                 updated_by = {p}, updated_at = CURRENT_TIMESTAMP
             WHERE server_id = {p} AND country_id = {p} AND company_id_external = {p}
-            """,
-            (
+                """,
+                (
                 company_name,
                 to_db_bool(has_autorotation, self.backend),
                 comment,
@@ -4260,11 +4283,15 @@ class Repository:
                 server_id,
                 country_id,
                 company_id_external,
-            ),
-        )
-        if commit:
-            self.conn.commit()
-        return int(cursor.rowcount)
+                ),
+            )
+            if commit:
+                self.conn.commit()
+            return int(cursor.rowcount)
+        except Exception:
+            if commit:
+                self.conn.rollback()
+            raise
 
     def current_tariff_exists_by_country_provider_prefix(self, country_name: str, provider_name: str, prefix: str | None) -> bool:
         p = placeholder(self.backend)

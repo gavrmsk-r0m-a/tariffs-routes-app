@@ -9,7 +9,11 @@ class WritePlanTests(unittest.TestCase):
  def bad(self,p): self.assertEqual('failed',self.execute_plan(p)['status'])
  def name(self): return next(iter(self.plan['methods']))
  def test_actual_baseline_write_plan_passes(self):
-  summary=self.execute_plan(self.plan); self.assertEqual('ok',summary['status']); self.assertEqual(46,summary['rollback_smoke_covered_methods_count'])
+  summary=self.execute_plan(self.plan); self.assertEqual('ok',summary['status']); self.assertEqual(50,summary['rollback_smoke_covered_methods_count'])
+ def test_stage66f_all_write_methods_are_rollback_smoked(self):
+  self.assertEqual(set(self.plan['methods']), set(self.plan['rollback_smoke_covered_methods']))
+  for name in ('create_calling_company','update_calling_company','update_company_routing_setting_comment','update_calling_company_import_fields'):
+   p=copy.deepcopy(self.plan); p['rollback_smoke_covered_methods'].remove(name); self.bad(p)
  def test_invalid_rollback_smoke_tracking_fails(self):
   for value in ([], ['set_app_setting_value','set_app_setting_value'], ['list_countries'], ['stale_method'], ['set_hlr_limit_override','set_app_setting_value','delete_app_setting_value','upsert_hlr_daily_usage']):
    p=copy.deepcopy(self.plan); p['rollback_smoke_covered_methods']=value; self.bad(p)

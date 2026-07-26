@@ -78,6 +78,10 @@ TARIFF_INACTIVE_MARKER = "__stage66d_tariff_inactive__"
 CURRENCY_RATE_MARKER = "__stage66e_currency_rate__"
 CURRENCY_RATE_RECALC_MARKER = "__stage66e_currency_rate_recalc__"
 CURRENCY_RATE_LOG_MARKER = "__stage66e_currency_rate_log__"
+CALLING_COMPANY_MARKER = "__stage66f_calling_company__"
+CALLING_COMPANY_UPDATED_MARKER = "__stage66f_calling_company_updated__"
+CALLING_COMPANY_IMPORT_MARKER = "__stage66f_calling_company_import__"
+ROUTING_COMMENT_MARKER = "__stage66f_routing_comment__"
 
 
 def empty_summary(postgres_url: str) -> dict:
@@ -99,6 +103,7 @@ def empty_summary(postgres_url: str) -> dict:
             "route_phone_link_lifecycle_probe",
             "tariff_lifecycle_probe",
             "currency_rate_lifecycle_probe",
+            "calling_company_tail_lifecycle_probe",
         )},
     }
 
@@ -1671,6 +1676,81 @@ def run_currency_rate_lifecycle_probe(repo: Repository, conn) -> None:
         conn.rollback()
 
 
+def run_calling_company_tail_lifecycle_probe(repo: Repository, conn) -> None:
+    """Rollback-smoke the complete Stage 66F calling-company write tail."""
+    conn.rollback()
+    conn.execute("BEGIN")
+    try:
+        user = conn.execute("SELECT id FROM users ORDER BY id LIMIT 1").fetchone()
+        country = conn.execute("SELECT id FROM countries WHERE is_active = %s ORDER BY id LIMIT 1", (True,)).fetchone()
+        server = conn.execute("SELECT id FROM servers WHERE is_active = %s ORDER BY id LIMIT 1", (True,)).fetchone()
+        if not user or not country or not server:
+            raise AssertionError("Stage 66F fixture requires a user, active country, and active server")
+        user_id, country_id, server_id = user["id"], country["id"], server["id"]
+        company_id = repo.create_calling_company(
+            server_id=server_id, country_id=country_id, company_name=CALLING_COMPANY_MARKER,
+            company_id_external=CALLING_COMPANY_MARKER, has_autorotation=False,
+            created_by=user_id, comment=CALLING_COMPANY_MARKER, commit=False,
+        )
+        created = conn.execute("SELECT * FROM calling_companies WHERE id = %s", (company_id,)).fetchone()
+        if not created or created["company_name"] != CALLING_COMPANY_MARKER or not bool(created["is_active"]):
+            raise AssertionError("Stage 66F calling company was not created")
+        repo.update_calling_company(
+            company_id, server_id=server_id, country_id=country_id,
+            company_name=CALLING_COMPANY_UPDATED_MARKER, line_count=1, dial_set_count=2,
+            has_autorotation=False, retry_interval_seconds=3, is_active=True,
+            comment=CALLING_COMPANY_UPDATED_MARKER, updated_by=user_id, commit=False,
+        )
+        setting_id = conn.execute(
+            """INSERT INTO company_routing_settings(
+                   calling_company_id, country_id, server_id, route_id, routing_mode,
+                   has_autorotation, is_active, comment, created_by, updated_by)
+               VALUES (%s, %s, %s, NULL, %s, %s, %s, %s, %s, %s) RETURNING id""",
+            (company_id, country_id, server_id, "autorotation", True, True,
+             CALLING_COMPANY_MARKER, user_id, user_id),
+        ).fetchone()["id"]
+        repo.update_company_routing_setting_comment(
+            setting_id=setting_id, comment=ROUTING_COMMENT_MARKER,
+            updated_by=user_id, commit=False,
+        )
+        affected = repo.update_calling_company_import_fields(
+            server_id=server_id, country_id=country_id,
+            company_id_external=CALLING_COMPANY_MARKER,
+            company_name=CALLING_COMPANY_IMPORT_MARKER, has_autorotation=False,
+            comment=CALLING_COMPANY_IMPORT_MARKER, is_active=True,
+            updated_by=user_id, commit=False,
+        )
+        if affected != 1:
+            raise AssertionError("Stage 66F import update did not affect exactly one company")
+        validations = (
+            ("duplicate", lambda: repo.create_calling_company(server_id=server_id, country_id=country_id, company_name=CALLING_COMPANY_MARKER, company_id_external=CALLING_COMPANY_MARKER, has_autorotation=False, created_by=user_id, commit=False)),
+            ("missing_update", lambda: repo.update_calling_company(-66001, server_id=server_id, country_id=country_id, company_name=CALLING_COMPANY_MARKER, line_count=0, dial_set_count=0, has_autorotation=False, retry_interval_seconds=0, is_active=True, comment=None, updated_by=user_id, commit=False)),
+            ("missing_comment", lambda: repo.update_company_routing_setting_comment(setting_id=-66002, comment=ROUTING_COMMENT_MARKER, updated_by=user_id, commit=False)),
+        )
+        for name, operation in validations:
+            conn.execute(f"SAVEPOINT stage66f_{name}")
+            try:
+                operation()
+            except BusinessRuleError:
+                pass
+            else:
+                raise AssertionError(f"Stage 66F {name} validation did not fail")
+            finally:
+                conn.execute(f"ROLLBACK TO SAVEPOINT stage66f_{name}")
+                conn.execute(f"RELEASE SAVEPOINT stage66f_{name}")
+    finally:
+        conn.rollback()
+    try:
+        if conn.execute("SELECT 1 FROM calling_companies WHERE company_id_external = %s OR company_name IN (%s, %s)", (CALLING_COMPANY_MARKER, CALLING_COMPANY_UPDATED_MARKER, CALLING_COMPANY_IMPORT_MARKER)).fetchone():
+            raise AssertionError("Stage 66F calling company remains after rollback")
+        if conn.execute("SELECT 1 FROM company_routing_settings WHERE comment IN (%s, %s)", (CALLING_COMPANY_MARKER, ROUTING_COMMENT_MARKER)).fetchone():
+            raise AssertionError("Stage 66F routing setting remains after rollback")
+        if conn.execute("SELECT 1 FROM change_log WHERE old_values::text LIKE %s OR new_values::text LIKE %s", ("%stage66f%", "%stage66f%")).fetchone():
+            raise AssertionError("Stage 66F change_log rows remain after rollback")
+    finally:
+        conn.rollback()
+
+
 def run_harness(postgres_url: str, probe_key: str = DEFAULT_PROBE_KEY, probe_value: str = DEFAULT_PROBE_VALUE) -> dict:
     """Run all probes; psycopg imports remain local so unit tests need no driver."""
     summary = empty_summary(postgres_url)
@@ -1718,6 +1798,7 @@ def run_harness(postgres_url: str, probe_key: str = DEFAULT_PROBE_KEY, probe_val
         check("route_phone_link_lifecycle_probe", lambda: run_route_phone_link_lifecycle_probe(repo, conn))
         check("tariff_lifecycle_probe", lambda: run_tariff_lifecycle_probe(repo, conn))
         check("currency_rate_lifecycle_probe", lambda: run_currency_rate_lifecycle_probe(repo, conn))
+        check("calling_company_tail_lifecycle_probe", lambda: run_calling_company_tail_lifecycle_probe(repo, conn))
     except Exception as exc:
         summary["failures"].append({"check": "connect", "error": sanitize_error(exc, postgres_url)})
     finally:

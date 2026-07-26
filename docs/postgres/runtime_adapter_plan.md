@@ -810,3 +810,11 @@ the rollback-only PostgreSQL write harness. Read-only smoke remains at 611 check
 the coverage baseline remains 112 public / 61 reads / 0 deferred / 50 writes / 1
 infrastructure / 100%. `DB_BACKEND=postgres` and production PostgreSQL runtime remain
 disabled.
+
+## Stage 66F — complete write-surface rollback smoke
+
+All 50 write-or-mutating public Repository methods are now rollback-smoked. The
+read-only smoke remains at 611 checks and coverage remains 112/61/0/50/1/100%.
+The rollback-only harness now has 25 probes. `DB_BACKEND=postgres` and production
+PostgreSQL runtime remain disabled; the next phase is the production runtime,
+security, backup, and rollback gate—not an automatic runtime switch.

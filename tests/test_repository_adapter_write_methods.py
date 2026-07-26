@@ -19,6 +19,54 @@ class RepositoryAdapterWriteMethodsTest(unittest.TestCase):
     def tearDown(self):
         self.conn.close()
 
+    def test_calling_company_tail_supports_sqlite_caller_owned_rollback(self):
+        user_id = self.conn.execute("SELECT id FROM users ORDER BY id LIMIT 1").fetchone()["id"]
+        country_id = self.repo.create_country("Stage 66F GEO", "66F")
+        server_id = self.repo.create_server("Stage 66F server")
+        self.conn.commit()
+        company_id = self.repo.create_calling_company(
+            server_id=server_id, country_id=country_id, company_name="Stage 66F",
+            company_id_external="stage66f", has_autorotation=False,
+            created_by=user_id, commit=False,
+        )
+        self.assertIsNotNone(self.repo.get_calling_company(company_id))
+        self.conn.rollback()
+        self.assertIsNone(self.repo.get_calling_company(company_id))
+
+        company_id = self.repo.create_calling_company(
+            server_id=server_id, country_id=country_id, company_name="Stage 66F",
+            company_id_external="stage66f", has_autorotation=False, created_by=user_id,
+        )
+        self.repo.update_calling_company(
+            company_id, server_id=server_id, country_id=country_id, company_name="updated",
+            line_count=1, dial_set_count=2, has_autorotation=False,
+            retry_interval_seconds=3, is_active=True, comment="updated",
+            updated_by=user_id, commit=False,
+        )
+        self.assertEqual("updated", self.repo.get_calling_company(company_id)["company_name"])
+        self.conn.rollback()
+        self.assertEqual("Stage 66F", self.repo.get_calling_company(company_id)["company_name"])
+
+        setting_id = self.repo.create_company_routing_setting(
+            calling_company_id=company_id, country_id=country_id, server_id=server_id,
+            route_id=None, routing_mode="autorotation", has_autorotation=True,
+            comment="before", created_by=user_id,
+        )
+        self.repo.update_company_routing_setting_comment(
+            setting_id=setting_id, comment="after", updated_by=user_id, commit=False,
+        )
+        self.assertEqual("after", self.conn.execute("SELECT comment FROM company_routing_settings WHERE id = ?", (setting_id,)).fetchone()[0])
+        self.conn.rollback()
+        self.assertEqual("before", self.conn.execute("SELECT comment FROM company_routing_settings WHERE id = ?", (setting_id,)).fetchone()[0])
+
+        self.assertEqual(1, self.repo.update_calling_company_import_fields(
+            server_id=server_id, country_id=country_id, company_id_external="stage66f",
+            company_name="imported", has_autorotation=False, comment="imported",
+            is_active=True, updated_by=user_id, commit=False,
+        ))
+        self.conn.rollback()
+        self.assertEqual("Stage 66F", self.repo.get_calling_company(company_id)["company_name"])
+
     def test_tariff_lifecycle_supports_sqlite_caller_owned_rollback(self):
         user_id = self.conn.execute("SELECT id FROM users ORDER BY id LIMIT 1").fetchone()["id"]
         country_id = self.repo.create_country("Stage 66D GEO", "66D")
