@@ -818,3 +818,11 @@ read-only smoke remains at 611 checks and coverage remains 112/61/0/50/1/100%.
 The rollback-only harness now has 25 probes. `DB_BACKEND=postgres` and production
 PostgreSQL runtime remain disabled; the next phase is the production runtime,
 security, backup, and rollback gate—not an automatic runtime switch.
+
+## Stage 67A — production readiness gate
+
+The production readiness audit and practical checklist now make runtime enablement
+an explicit, blocked gate. All 50 public Repository writes remain rollback-smoked,
+and the rollback-only harness remains at 25 probes. Production runtime is still
+disabled. The next stage should implement and test a runtime adapter behind an
+explicit environment guard; it must not switch the default away from SQLite.
