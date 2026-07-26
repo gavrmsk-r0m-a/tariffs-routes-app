@@ -190,3 +190,13 @@ Route import is now rollback-smoked for `create_route`, `update_route`, and
 `phone_route_tariff_core_writes` and `importer_and_bulk_mutation_writes`; phone
 import remains pending. The rollback-smoke-covered count is **33**. Production
 PostgreSQL runtime remains disabled.
+
+## Stage 66B status
+
+Stage 66B rollback-smokes the phone import lifecycle: `create_phone_number`,
+`update_phone_number`, `record_phone_update_history`, and
+`update_phone_number_import_fields_with_history`. The
+`importer_and_bulk_mutation_writes` and `phone_route_tariff_core_writes` batches
+are therefore partially covered; company import, route-phone links, tariffs,
+and currency-rate writes remain pending. The rollback-smoke-covered count is
+**37**. Production PostgreSQL runtime and `DB_BACKEND=postgres` remain disabled.

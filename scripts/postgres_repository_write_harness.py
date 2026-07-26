@@ -67,6 +67,9 @@ CAMPAIGN_MARKER = "__stage65b_campaign__"
 CAMPAIGN_EVENT_AT = "2026-07-22 16:00:00"
 ROUTE_IMPORT_MARKER = "__stage66a_route_import__"
 ROUTE_UPDATED_MARKER = "__stage66a_route_updated__"
+PHONE_IMPORT_MARKER = "__stage66b_phone_import__"
+PHONE_UPDATED_MARKER = "__stage66b_phone_updated__"
+PHONE_IMPORT_NUMBER = "79996660001"
 
 
 def empty_summary(postgres_url: str) -> dict:
@@ -84,6 +87,7 @@ def empty_summary(postgres_url: str) -> dict:
             "routing_event_create_core_probe", "company_routing_setting_lifecycle_probe",
             "routing_event_create_campaign_probe",
             "route_import_lifecycle_probe",
+            "phone_import_lifecycle_probe",
         )},
     }
 
@@ -1227,6 +1231,118 @@ def run_route_import_lifecycle_probe(repo: Repository, conn) -> None:
         conn.rollback()
 
 
+def run_phone_import_lifecycle_probe(repo: Repository, conn) -> None:
+    """Exercise phone create/update/import/history writes without committing."""
+    conn.rollback()
+    conn.execute("BEGIN")
+    phone_id = None
+    try:
+        user = conn.execute("SELECT id FROM users ORDER BY id LIMIT 1").fetchone()
+        country = conn.execute("SELECT id FROM countries ORDER BY id LIMIT 1").fetchone()
+        provider = conn.execute("SELECT id FROM providers ORDER BY id LIMIT 1").fetchone()
+        currency = conn.execute("SELECT id FROM currencies ORDER BY id LIMIT 1").fetchone()
+        assignment = conn.execute("SELECT code FROM phone_assignment_types WHERE is_active = TRUE ORDER BY id LIMIT 1").fetchone()
+        phone_type = conn.execute("SELECT name FROM phone_number_types WHERE is_active = TRUE ORDER BY id LIMIT 1").fetchone()
+        if not all((user, country, provider, currency, assignment, phone_type)):
+            raise AssertionError("Stage 66B requires migrated phone dictionary fixtures")
+
+        phone_id = repo.create_phone_number(
+            country_id=country["id"], provider_id=provider["id"], currency_id=currency["id"],
+            number=PHONE_IMPORT_NUMBER, assignment_type=assignment["code"], status="used",
+            phone_type=phone_type["name"], project_label="Stage 66B", comment=PHONE_IMPORT_MARKER,
+            created_by=user["id"], commit=False,
+        )
+        created = conn.execute("SELECT * FROM phone_numbers WHERE id = %s", (phone_id,)).fetchone()
+        if not created or created["normalized_number"] != PHONE_IMPORT_NUMBER or created["status"] != "used":
+            raise AssertionError("Stage 66B phone create fields are incomplete")
+        if created["assignment_type"] != assignment["code"] or created["project_label"] != "Stage 66B":
+            raise AssertionError("Stage 66B phone create dictionary fields are incomplete")
+        if not conn.execute("SELECT 1 FROM phone_number_history WHERE phone_number_id = %s AND action = 'created'", (phone_id,)).fetchone():
+            raise AssertionError("Stage 66B create history is missing")
+        if not conn.execute("SELECT 1 FROM change_log WHERE entity_type = 'phone_number' AND entity_id = %s", (phone_id,)).fetchone():
+            raise AssertionError("Stage 66B create change_log is missing")
+
+        repo.update_phone_number(
+            phone_id, country_id=country["id"], provider_id=provider["id"], number=PHONE_IMPORT_NUMBER,
+            assignment_type=assignment["code"], status="free", is_active=True, updated_by=user["id"],
+            project_label="Stage 66B", currency_id=currency["id"], phone_type=phone_type["name"],
+            comment=PHONE_UPDATED_MARKER, commit=False,
+        )
+        updated = conn.execute("SELECT * FROM phone_numbers WHERE id = %s", (phone_id,)).fetchone()
+        if updated["status"] != "free" or updated["comment"] != PHONE_UPDATED_MARKER:
+            raise AssertionError("Stage 66B phone update fields are incomplete")
+        if not conn.execute("SELECT 1 FROM phone_number_history WHERE phone_number_id = %s AND field_name = 'changes'", (phone_id,)).fetchone():
+            raise AssertionError("Stage 66B update history is missing")
+
+        affected = repo.update_phone_number_import_fields_with_history(
+            normalized_number=PHONE_IMPORT_NUMBER, phone_number_id=phone_id,
+            country_id=country["id"], provider_id=provider["id"], project_label="Stage 66B imported",
+            assignment_type=assignment["code"], status="unused", is_active=True,
+            connection_cost=None, monthly_fee=None, outgoing_rate=None, incoming_rate=None,
+            currency_id=currency["id"], phone_type=phone_type["name"], tariff_label=None,
+            comment=PHONE_IMPORT_MARKER, review_required=False, imported_created_by=PHONE_IMPORT_MARKER,
+            deactivated_at=None, updated_by=user["id"], history_changed_by=user["id"],
+            history_new_value=PHONE_IMPORT_MARKER, history_comment=PHONE_IMPORT_MARKER, commit=False,
+        )
+        imported = conn.execute("SELECT * FROM phone_numbers WHERE id = %s", (phone_id,)).fetchone()
+        if affected != 1 or imported["project_label"] != "Stage 66B imported" or imported["status"] != "unused":
+            raise AssertionError("Stage 66B import update did not affect exactly the intended phone")
+        if not conn.execute("SELECT 1 FROM phone_number_history WHERE phone_number_id = %s AND field_name = 'import' AND new_value = %s", (phone_id, PHONE_IMPORT_MARKER)).fetchone():
+            raise AssertionError("Stage 66B import history is missing")
+
+        repo.record_phone_update_history(
+            phone_id, user["id"], {"comment": PHONE_IMPORT_MARKER},
+            {"comment": PHONE_UPDATED_MARKER}, PHONE_IMPORT_MARKER, commit=False,
+        )
+        validations = (
+            ("invalid_number", lambda: repo.create_phone_number(country_id=country["id"], provider_id=provider["id"], number="invalid", assignment_type=assignment["code"], status="used", created_by=user["id"], commit=False)),
+            ("duplicate", lambda: repo.create_phone_number(country_id=country["id"], provider_id=provider["id"], number=PHONE_IMPORT_NUMBER, assignment_type=assignment["code"], status="used", created_by=user["id"], commit=False)),
+            ("update_missing", lambda: repo.update_phone_number(-66002, country_id=country["id"], provider_id=provider["id"], number="79996660002", assignment_type=assignment["code"], status="used", is_active=True, updated_by=user["id"], commit=False)),
+        )
+        for name, operation in validations:
+            conn.execute(f"SAVEPOINT stage66b_{name}")
+            try:
+                operation()
+            except Exception:
+                pass
+            else:
+                raise AssertionError(f"Stage 66B {name} validation did not fail")
+            finally:
+                conn.execute(f"ROLLBACK TO SAVEPOINT stage66b_{name}")
+                conn.execute(f"RELEASE SAVEPOINT stage66b_{name}")
+
+        conn.execute("SAVEPOINT stage66b_import_missing")
+        try:
+            missing = repo.update_phone_number_import_fields_with_history(
+                normalized_number="79996669999", phone_number_id=-66002, country_id=country["id"],
+                provider_id=provider["id"], project_label=None, assignment_type=assignment["code"],
+                status="used", is_active=True, connection_cost=None, monthly_fee=None,
+                outgoing_rate=None, incoming_rate=None, currency_id=currency["id"],
+                phone_type=phone_type["name"], tariff_label=None, comment=None,
+                review_required=False, imported_created_by=None, deactivated_at=None,
+                updated_by=user["id"], history_changed_by=user["id"], history_new_value="missing",
+                history_comment="missing", commit=False,
+            )
+            if missing != 0:
+                raise AssertionError("Stage 66B missing import unexpectedly changed a phone")
+        finally:
+            conn.execute("ROLLBACK TO SAVEPOINT stage66b_import_missing")
+            conn.execute("RELEASE SAVEPOINT stage66b_import_missing")
+    finally:
+        conn.rollback()
+    try:
+        if conn.execute("SELECT 1 FROM phone_numbers WHERE normalized_number = %s OR comment LIKE %s", (PHONE_IMPORT_NUMBER, "%stage66b%")).fetchone():
+            raise AssertionError("Stage 66B phone marker remains after rollback")
+        if phone_id is not None and conn.execute("SELECT 1 FROM phone_number_history WHERE phone_number_id = %s", (phone_id,)).fetchone():
+            raise AssertionError("Stage 66B phone history remains after rollback")
+        if conn.execute("SELECT 1 FROM change_log WHERE old_values::text LIKE %s OR new_values::text LIKE %s", ("%stage66b%", "%stage66b%")).fetchone():
+            raise AssertionError("Stage 66B change_log marker remains after rollback")
+        if phone_id is not None and conn.execute("SELECT 1 FROM route_phone_numbers WHERE phone_number_id = %s", (phone_id,)).fetchone():
+            raise AssertionError("Stage 66B route-phone link remains after rollback")
+    finally:
+        conn.rollback()
+
+
 def run_harness(postgres_url: str, probe_key: str = DEFAULT_PROBE_KEY, probe_value: str = DEFAULT_PROBE_VALUE) -> dict:
     """Run all probes; psycopg imports remain local so unit tests need no driver."""
     summary = empty_summary(postgres_url)
@@ -1270,6 +1386,7 @@ def run_harness(postgres_url: str, probe_key: str = DEFAULT_PROBE_KEY, probe_val
         check("company_routing_setting_lifecycle_probe", lambda: run_company_routing_setting_lifecycle_probe(repo, conn))
         check("routing_event_create_campaign_probe", lambda: run_routing_event_create_campaign_probe(repo, conn))
         check("route_import_lifecycle_probe", lambda: run_route_import_lifecycle_probe(repo, conn))
+        check("phone_import_lifecycle_probe", lambda: run_phone_import_lifecycle_probe(repo, conn))
     except Exception as exc:
         summary["failures"].append({"check": "connect", "error": sanitize_error(exc, postgres_url)})
     finally:
