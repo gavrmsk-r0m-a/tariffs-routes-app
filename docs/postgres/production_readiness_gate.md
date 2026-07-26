@@ -1,13 +1,15 @@
 # PostgreSQL Production Readiness Gate
 
-## Current status after Stage 66F
+## Current status after Stage 67B
 
 - Read-only smoke: **611 checks**.
 - Coverage: **112 / 61 / 0 / 50 / 1 / 100.0%**.
 - Write plan: **50/50** `write_or_mutating` public methods rollback-smoked.
 - Write harness: **25 probes**.
-- Production runtime: **disabled**.
-- `DB_BACKEND=postgres`: not allowed for production yet.
+- A guarded PostgreSQL runtime adapter exists, while SQLite remains the default.
+- `DB_BACKEND=postgres` requires both `POSTGRES_RUNTIME_ENABLED=1` (the exact
+  value) and `DATABASE_URL`.
+- This is not production enablement; the production gate remains blocked.
 
 ## What is ready
 
@@ -17,12 +19,11 @@
 - All public Repository write methods have rollback-smoke coverage.
 
 These checks establish surface coverage; they do not establish production readiness.
-The remaining backup, security, runtime, and deployment rollback gates are explicit
+The remaining backup, security, deployment rollback, and final enablement gates are explicit
 blockers rather than deferred assumptions.
 
 ## What is not ready yet
 
-- Production PostgreSQL runtime adapter.
 - Backup/restore scripts and a verified restore runbook.
 - Security gate: no default production passwords, an implemented brute-force/login
   throttling decision, and documented secret/session configuration.
@@ -31,7 +32,7 @@ blockers rather than deferred assumptions.
 
 ## Required gates before enabling DB_BACKEND=postgres
 
-1. Runtime adapter PR, implemented and tested behind an explicit environment guard.
+1. Guarded runtime adapter (completed in Stage 67B, without enabling production).
 2. Backup/restore PR, including a verified restore exercise and runbook.
 3. Security hardening PR covering production credentials, login throttling, secrets,
    and session configuration.
@@ -41,8 +42,9 @@ blockers rather than deferred assumptions.
 ## Hard rule
 
 `DB_BACKEND=postgres` **must not be enabled** by default and must not be enabled in
-production until all gates are green. Stage 67A intentionally leaves the gate
-blocked and does not implement a PostgreSQL runtime connection.
+production until all gates are green. Stage 67B leaves SQLite as the default and
+blocks PostgreSQL unless the explicit runtime guard is set. The adapter guard is
+not approval to use it in production.
 
 ## Current audit command
 
@@ -61,4 +63,15 @@ python scripts/audit_postgres_production_gate.py --strict
 
 Strict mode is expected to fail until production gates are completed. A successful
 strict audit is a prerequisite for the later explicit runtime-enablement decision,
-not a signal that Stage 67A is production-ready.
+not a signal that Stage 67B permits production enablement.
+
+## Stage 67B guarded runtime adapter
+
+The runtime adapter now connects with `psycopg` and dictionary rows only when
+`POSTGRES_RUNTIME_ENABLED=1` is set and `DATABASE_URL` is present. Other truthy
+spellings do not enable it. The adapter does not run SQLite initialization,
+PRAGMAs, schema creation, or default-user seeding.
+
+`runtime_adapter_gate` is now `ok`, but backup/restore, security, deployment
+rollback, and explicit final enablement remain blocked. Consequently the strict
+audit is still expected to return non-zero.

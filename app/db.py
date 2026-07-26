@@ -14,6 +14,9 @@ SQLITE_TIMEOUT_SECONDS = 5
 SQLITE_BUSY_TIMEOUT_MS = 5000
 SUPPORTED_DB_BACKENDS = {"sqlite", "postgres", "postgresql"}
 POSTGRES_NOT_IMPLEMENTED_MESSAGE = "PostgreSQL backend is not implemented yet"
+POSTGRES_RUNTIME_GUARD_ENV = "POSTGRES_RUNTIME_ENABLED"
+POSTGRES_RUNTIME_DISABLED_MESSAGE = "PostgreSQL runtime is disabled; set POSTGRES_RUNTIME_ENABLED=1 only after production gates are complete"
+POSTGRES_DATABASE_URL_REQUIRED_MESSAGE = "DATABASE_URL is required for PostgreSQL backend"
 
 
 @dataclass(frozen=True)
@@ -39,11 +42,31 @@ def load_db_config(environ: dict[str, str] | None = None) -> DbConfig:
     return DbConfig(backend=backend, sqlite_path=sqlite_path, database_url=database_url)
 
 
-def connect_database(config: DbConfig) -> sqlite3.Connection:
+def postgres_runtime_enabled(environ: dict[str, str] | None = None) -> bool:
+    env = os.environ if environ is None else environ
+    return (env.get(POSTGRES_RUNTIME_GUARD_ENV) or "").strip() == "1"
+
+
+def connect_postgres(database_url: str):
+    if not database_url:
+        raise ValueError(POSTGRES_DATABASE_URL_REQUIRED_MESSAGE)
+    try:
+        import psycopg
+        from psycopg.rows import dict_row
+    except ImportError as exc:
+        raise RuntimeError(
+            "psycopg is required for PostgreSQL backend; install psycopg[binary]"
+        ) from exc
+    return psycopg.connect(database_url, row_factory=dict_row)
+
+
+def connect_database(config: DbConfig, environ: dict[str, str] | None = None):
     if config.backend == "sqlite":
         return connect(config.sqlite_path)
     if config.backend in {"postgres", "postgresql"}:
-        raise NotImplementedError(POSTGRES_NOT_IMPLEMENTED_MESSAGE)
+        if not postgres_runtime_enabled(environ):
+            raise NotImplementedError(POSTGRES_RUNTIME_DISABLED_MESSAGE)
+        return connect_postgres(config.database_url or "")
     raise ValueError(f"Unsupported DB_BACKEND: {config.backend}")
 
 

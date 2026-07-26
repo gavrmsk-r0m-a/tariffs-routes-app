@@ -12,6 +12,7 @@ on:
       - scripts/audit_repository_postgres_write_plan.py
       - scripts/audit_postgres_production_gate.py
       - tests/test_postgres_production_gate.py
+      - tests/test_postgres_runtime_adapter.py
       - docs/postgres/production_readiness_gate.md
       - docs/postgres/runtime_adapter_plan.md
       - docs/postgres/repository_write_surface_plan.json
@@ -82,6 +83,7 @@ jobs:
           python -m unittest tests.test_postgres_repository_smoke
           python -m unittest tests.test_postgres_repository_write_harness
           python -m unittest tests.test_postgres_production_gate
+          python -m unittest tests.test_postgres_runtime_adapter
           python scripts/audit_postgres_production_gate.py --format json
 
       - name: Create demo SQLite database
