@@ -113,3 +113,13 @@ transaction. Expected validation failures are isolated with SAVEPOINTs. The
 probe verifies route/history/audit visibility, then rolls the transaction back
 and confirms that all Stage 66A markers were removed. The harness never calls
 `conn.commit()`.
+
+## Stage 66B — phone import lifecycle
+
+`phone_import_lifecycle_probe` runs `create_phone_number`, `update_phone_number`,
+`record_phone_update_history`, and
+`update_phone_number_import_fields_with_history` with `commit=False` in one
+explicit PostgreSQL transaction. It verifies the phone, history, and change-log
+side effects, contains negative validation cases with SAVEPOINTs, and checks
+that all Stage 66B phone/import markers and accidental route-phone links are
+absent after rollback. The harness never calls `conn.commit()`.

@@ -780,3 +780,11 @@ The PostgreSQL harness now covers route create, update, and import-field update
 without committing. Read-only smoke remains 611 checks and repository coverage
 remains 112/61/0/50/1/100%. `DB_BACKEND=postgres` and production PostgreSQL
 runtime remain disabled.
+
+## Stage 66B — rollback-only phone import writes
+
+The PostgreSQL rollback-only harness now covers phone create, update, import,
+and update-history writes. Read-only smoke remains **611** checks, while the
+coverage baseline remains **112 / 61 / 0 / 50 / 1 / 100.0%** (public methods /
+smoked reads / deferred reads / writes / infrastructure / read coverage).
+`DB_BACKEND=postgres` and production PostgreSQL runtime remain disabled.

@@ -334,7 +334,8 @@ class Repository:
     def _phone_snapshot_labels(self, country_id: int, provider_id: int | None, assignment_type: str | None, currency_id: int | None) -> dict[str, str | None]:
         def one(sql: str, params: tuple[object, ...]) -> str | None:
             row = self.conn.execute(sql, params).fetchone()
-            return str(row[0]) if row and row[0] is not None else None
+            value = next(iter(row.values())) if isinstance(row, dict) else (row[0] if row else None)
+            return str(value) if value is not None else None
         p = placeholder(self.backend)
         return {
             "country_label": one(f"SELECT name FROM countries WHERE id = {p}", (country_id,)),
@@ -898,12 +899,13 @@ class Repository:
         imported_created_by: str | None = None,
         commit: bool = True,
     ) -> int:
-        normalized = validate_phone_number(number)
-        if not is_active and deactivated_at is None:
-            deactivated_at = created_at or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        labels = self._phone_snapshot_labels(country_id, provider_id, assignment_type, currency_id)
-        p = placeholder(self.backend)
-        phone_insert_sql = prepare_insert_returning_id(
+        try:
+            normalized = validate_phone_number(number)
+            if not is_active and deactivated_at is None:
+                deactivated_at = created_at or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            labels = self._phone_snapshot_labels(country_id, provider_id, assignment_type, currency_id)
+            p = placeholder(self.backend)
+            phone_insert_sql = prepare_insert_returning_id(
             f"""
             INSERT INTO phone_numbers(
                 country_id, provider_id, country_label, provider_label, number, normalized_number, project_label,
@@ -914,9 +916,9 @@ class Repository:
             """,
             self.backend,
         )
-        cur = self.conn.execute(
-            phone_insert_sql,
-            (
+            cur = self.conn.execute(
+                phone_insert_sql,
+                (
                 country_id,
                 provider_id,
                 labels["country_label"],
@@ -942,17 +944,17 @@ class Repository:
                 created_by,
                 created_at,
                 deactivated_at,
-            ),
-        )
-        phone_id = extract_inserted_id(cur, self.backend)
-        self.conn.execute(
+                ),
+            )
+            phone_id = extract_inserted_id(cur, self.backend)
+            self.conn.execute(
             f"""
             INSERT INTO phone_number_history(phone_number_id, action, changed_by, field_name, new_value, comment)
             VALUES ({p}, 'created', {p}, 'number', {p}, {p})
             """,
             (phone_id, created_by, number, (f"{comment}. " if comment else "") + (f"Создал в Excel: {imported_created_by}" if imported_created_by else "")),
-        )
-        self.conn.execute(
+            )
+            self.conn.execute(
             f"""
             INSERT INTO change_log(entity_type, entity_id, change_type, changed_by, old_values, new_values, summary, source)
             VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p})
@@ -962,10 +964,14 @@ class Repository:
                 json.dumps({"number": number, "imported_created_by": imported_created_by}, ensure_ascii=False),
                 None, "ui",
             ),
-        )
-        if commit:
-            self.conn.commit()
-        return phone_id
+            )
+            if commit:
+                self.conn.commit()
+            return phone_id
+        except Exception:
+            if commit:
+                self.conn.rollback()
+            raise
 
     def add_phone_to_route(
         self,
@@ -1488,58 +1494,61 @@ class Repository:
         tariff_label: str | None = None,
         comment: str | None = None,
         review_required: bool = False,
+        commit: bool = True,
     ) -> None:
-        existing = self.conn.execute("SELECT * FROM phone_numbers WHERE id = ?", (phone_id,)).fetchone()
-        if existing is None:
-            raise BusinessRuleError("Phone number not found")
-        normalized = validate_phone_number(number)
-        old_values = dict(existing)
-        requested_active = 1 if is_active else 0
-        forced_review_required = 1 if (requested_active == 1 and int(existing["is_active"]) == 0) else 0
-        final_review_required = 1 if review_required or forced_review_required else 0
-        if provider_id is None and final_review_required == 0:
-            raise BusinessRuleError("Нельзя снять флаг проверки, пока не выбран провайдер")
-        final_status = normalize_phone_status(status)
-        if requested_active == 0 and int(existing["is_active"]) == 1 and existing["status"] == "used":
-            final_status = "problem"
-        labels = self._phone_snapshot_labels(country_id, provider_id, assignment_type, currency_id)
-        self.conn.execute(
-            """
+        p = placeholder(self.backend)
+        try:
+            existing = self.conn.execute(f"SELECT * FROM phone_numbers WHERE id = {p}", (phone_id,)).fetchone()
+            if existing is None:
+                raise BusinessRuleError("Phone number not found")
+            normalized = validate_phone_number(number)
+            old_values = dict(existing)
+            requested_active = to_db_bool(is_active, self.backend)
+            forced_review_required = bool(is_active and not bool(existing["is_active"]))
+            final_review_required = to_db_bool(review_required or forced_review_required, self.backend)
+            if provider_id is None and not bool(final_review_required):
+                raise BusinessRuleError("Нельзя снять флаг проверки, пока не выбран провайдер")
+            final_status = normalize_phone_status(status)
+            if not is_active and bool(existing["is_active"]) and existing["status"] == "used":
+                final_status = "problem"
+            labels = self._phone_snapshot_labels(country_id, provider_id, assignment_type, currency_id)
+            self.conn.execute(
+            f"""
             UPDATE phone_numbers
-            SET number = ?, normalized_number = ?, country_id = ?, provider_id = ?, country_label = ?, provider_label = ?, project_label = ?,
-                assignment_type = ?, assignment_label = ?, status = ?, is_active = ?, connection_cost = ?, monthly_fee = ?,
-                currency_id = ?, currency_label = ?, phone_type = ?, tariff_label = ?, comment = ?, review_required = ?,
-                deactivated_at = CASE WHEN ? = 0 AND deactivated_at IS NULL THEN CURRENT_TIMESTAMP ELSE deactivated_at END,
-                updated_by = ?, updated_at = CURRENT_TIMESTAMP
-            WHERE id = ?
+            SET number = {p}, normalized_number = {p}, country_id = {p}, provider_id = {p}, country_label = {p}, provider_label = {p}, project_label = {p},
+                assignment_type = {p}, assignment_label = {p}, status = {p}, is_active = {p}, connection_cost = {p}, monthly_fee = {p},
+                currency_id = {p}, currency_label = {p}, phone_type = {p}, tariff_label = {p}, comment = {p}, review_required = {p},
+                deactivated_at = CASE WHEN {p} = {p} AND deactivated_at IS NULL THEN CURRENT_TIMESTAMP ELSE deactivated_at END,
+                updated_by = {p}, updated_at = CURRENT_TIMESTAMP
+            WHERE id = {p}
             """,
             (
                 normalized, normalized, country_id, provider_id, labels["country_label"], labels["provider_label"], project_label, assignment_type, labels["assignment_label"], final_status,
                 requested_active, connection_cost, monthly_fee, currency_id, labels["currency_label"], phone_type, tariff_label, comment,
-                final_review_required, requested_active, updated_by, phone_id,
+                final_review_required, requested_active, to_db_bool(False, self.backend), updated_by, phone_id,
             ),
-        )
-        if requested_active == 0:
-            links = list(self.conn.execute(
-                "SELECT id, route_id, phone_number_id FROM route_phone_numbers WHERE phone_number_id = ? AND is_active = 1",
-                (phone_id,),
-            ))
-            for link in links:
-                self.conn.execute(
-                    "UPDATE route_phone_numbers SET is_active = 0, removed_at = CURRENT_TIMESTAMP, removed_by = ? WHERE id = ?",
-                    (updated_by, link["id"]),
-                )
-                self.conn.execute(
-                    """
+            )
+            if not is_active:
+                links = list(self.conn.execute(
+                    f"SELECT id, route_id, phone_number_id FROM route_phone_numbers WHERE phone_number_id = {p} AND is_active = {p}",
+                    (phone_id, to_db_bool(True, self.backend)),
+                ))
+                for link in links:
+                    self.conn.execute(
+                        f"UPDATE route_phone_numbers SET is_active = {p}, removed_at = CURRENT_TIMESTAMP, removed_by = {p} WHERE id = {p}",
+                        (to_db_bool(False, self.backend), updated_by, link["id"]),
+                    )
+                    self.conn.execute(
+                    f"""
                     INSERT INTO route_phone_number_history(route_id, phone_number_id, action, changed_by, old_values, new_values, reason)
-                    VALUES (?, ?, 'removed', ?, ?, ?, ?)
+                    VALUES ({p}, {p}, 'removed', {p}, {p}, {p}, {p})
                     """,
                     (link["route_id"], link["phone_number_id"], updated_by,
                      json.dumps({"is_active": 1}, ensure_ascii=False),
                      json.dumps({"is_active": 0, "removed_by": updated_by}, ensure_ascii=False),
                      "phone_number.deactivated"),
-                )
-                self._change_log(
+                    )
+                    self._change_log(
                     "route_phone_number",
                     int(link["id"]),
                     "route_phone_number.removed_by_phone_deactivation",
@@ -1547,8 +1556,8 @@ class Repository:
                     old_values={"is_active": 1},
                     new_values={"is_active": 0, "phone_number_id": phone_id},
                     summary="Phone provider deactivation closed active route link",
-                )
-        new_values = {
+                    )
+            new_values = {
             **old_values,
             "number": normalized,
             "country_id": country_id,
@@ -1564,23 +1573,30 @@ class Repository:
             "tariff_label": tariff_label,
             "comment": comment,
             "review_required": final_review_required,
-        }
-        self.record_phone_update_history(phone_id, updated_by, old_values, new_values, comment)
-        self._change_log(
+            }
+            self.record_phone_update_history(phone_id, updated_by, old_values, new_values, comment, commit=False)
+            self._change_log(
             "phone_number",
             phone_id,
             "phone_number.updated",
             updated_by,
             old_values={"number": existing["number"], "status": existing["status"], "is_active": existing["is_active"], "review_required": existing["review_required"]},
             new_values={"number": normalized, "status": final_status, "is_active": requested_active, "review_required": final_review_required},
-        )
-        self.conn.commit()
+            )
+            if commit:
+                self.conn.commit()
+        except Exception:
+            if commit:
+                self.conn.rollback()
+            raise
 
     def _name_by_id(self, table: str, value: object, display_column: str = "name") -> str:
         if value in (None, ""):
             return "—"
-        row = self.conn.execute(f"SELECT {display_column} AS label FROM {table} WHERE id = ?", (value,)).fetchone()
-        return str(row["label"]) if row and row["label"] not in (None, "") else str(value)
+        p = placeholder(self.backend)
+        row = self.conn.execute(f"SELECT {display_column} AS label FROM {table} WHERE id = {p}", (value,)).fetchone()
+        label = row.get("label") if isinstance(row, dict) else (row["label"] if row else None)
+        return str(label) if label not in (None, "") else str(value)
 
     def _currency_label(self, value: object) -> str:
         return self._name_by_id("currencies", value, "code")
@@ -1636,16 +1652,23 @@ class Repository:
             changes.append(f"Комментарий: {_truncate_history_text(old.get('comment'))} → {_truncate_history_text(new.get('comment'))}")
         return changes
 
-    def record_phone_update_history(self, phone_id: int, changed_by: int, old_values: dict, new_values: dict, comment: str | None = None) -> None:
-        changes = self._phone_field_changes(old_values, new_values)
-        if not changes:
-            return
-        details = "; ".join(changes)
-        payload = {"changes": changes, "description": f"Изменено полей: {len(changes)}", "details": details}
-        self.conn.execute(
-            "INSERT INTO phone_number_history(phone_number_id, action, changed_by, field_name, old_value, new_value, comment) VALUES (?, 'updated', ?, 'changes', ?, ?, ?)",
-            (phone_id, changed_by, json.dumps({"changes": changes}, ensure_ascii=False), json.dumps(payload, ensure_ascii=False), comment),
-        )
+    def record_phone_update_history(self, phone_id: int, changed_by: int, old_values: dict, new_values: dict, comment: str | None = None, *, commit: bool = True) -> None:
+        try:
+            changes = self._phone_field_changes(old_values, new_values)
+            if changes:
+                details = "; ".join(changes)
+                payload = {"changes": changes, "description": f"Изменено полей: {len(changes)}", "details": details}
+                p = placeholder(self.backend)
+                self.conn.execute(
+                    f"INSERT INTO phone_number_history(phone_number_id, action, changed_by, field_name, old_value, new_value, comment) VALUES ({p}, 'updated', {p}, 'changes', {p}, {p}, {p})",
+                    (phone_id, changed_by, json.dumps({"changes": changes}, ensure_ascii=False), json.dumps(payload, ensure_ascii=False), comment),
+                )
+            if commit:
+                self.conn.commit()
+        except Exception:
+            if commit:
+                self.conn.rollback()
+            raise
 
     def update_route(
         self,
@@ -4101,7 +4124,8 @@ class Repository:
         commit: bool = True,
     ) -> int:
         p = placeholder(self.backend)
-        cursor = self.conn.execute(
+        try:
+            cursor = self.conn.execute(
             f"""
             UPDATE phone_numbers
             SET country_id = {p}, provider_id = {p}, project_label = {p}, assignment_type = {p},
@@ -4119,20 +4143,24 @@ class Repository:
                 comment, to_db_bool(review_required, self.backend), imported_created_by,
                 deactivated_at, updated_by, normalized_number,
             ),
-        )
-        rowcount = int(cursor.rowcount)
-        if rowcount:
-            self.conn.execute(
+            )
+            rowcount = int(cursor.rowcount)
+            if rowcount:
+                self.conn.execute(
                 f"""
                 INSERT INTO phone_number_history(
                     phone_number_id, action, changed_by, field_name, old_value, new_value, comment
                 ) VALUES ({p}, 'updated', {p}, 'import', NULL, {p}, {p})
                 """,
                 (phone_number_id, history_changed_by, history_new_value, history_comment),
-            )
-        if commit:
-            self.conn.commit()
-        return rowcount
+                )
+            if commit:
+                self.conn.commit()
+            return rowcount
+        except Exception:
+            if commit:
+                self.conn.rollback()
+            raise
 
     def calling_company_exists_by_server_country_external_id(self, server_name: str, country_name: str, external_id: str) -> bool:
         p = placeholder(self.backend)

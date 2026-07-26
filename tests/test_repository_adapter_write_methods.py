@@ -936,3 +936,70 @@ class RepositoryStage66ARouteImportTest(unittest.TestCase):
                 bad=Conn(True)
                 with self.assertRaisesRegex(RuntimeError,'failed'): getattr(Repository(bad,backend='postgres'),method)(commit=commit,**args)
                 self.assertEqual(bad.rollbacks,rollbacks)
+
+class RepositoryStage66BPhoneImportTest(unittest.TestCase):
+    class Cursor:
+        def __init__(self, row=None, rowcount=1): self.row, self.rowcount = row, rowcount
+        def fetchone(self): return self.row
+
+    class Conn:
+        def __init__(self, fail=False): self.calls=[]; self.commits=0; self.rollbacks=0; self.fail=fail
+        def execute(self, sql, params=()):
+            self.calls.append((sql, params))
+            if self.fail: raise RuntimeError('failed')
+            if 'SELECT name FROM countries' in sql: return RepositoryStage66BPhoneImportTest.Cursor({'name':'GEO'})
+            if 'SELECT name FROM providers' in sql: return RepositoryStage66BPhoneImportTest.Cursor({'name':'Provider'})
+            if 'SELECT name FROM phone_assignment_types' in sql: return RepositoryStage66BPhoneImportTest.Cursor({'name':'Assignment'})
+            if 'SELECT code FROM currencies' in sql: return RepositoryStage66BPhoneImportTest.Cursor({'code':'USD'})
+            if 'RETURNING id' in sql: return RepositoryStage66BPhoneImportTest.Cursor({'id':661})
+            if 'SELECT * FROM phone_numbers' in sql:
+                return RepositoryStage66BPhoneImportTest.Cursor({'id':661,'number':'79996660001','status':'used','is_active':True,'review_required':False,'comment':'before','country_id':1,'provider_id':2,'project_label':'p','assignment_type':'gl','connection_cost':None,'monthly_fee':None,'currency_id':3,'phone_type':'Mobile','tariff_label':None})
+            if 'SELECT id, route_id' in sql: return []
+            return RepositoryStage66BPhoneImportTest.Cursor(rowcount=1)
+        def commit(self): self.commits += 1
+        def rollback(self): self.rollbacks += 1
+
+    @staticmethod
+    def create_kwargs():
+        return dict(country_id=1,provider_id=2,currency_id=3,number='79996660001',assignment_type='gl',status='used',created_by=4,comment='stage66b')
+
+    @staticmethod
+    def update_kwargs():
+        return dict(phone_id=661,country_id=1,provider_id=2,currency_id=3,number='79996660001',assignment_type='gl',status='free',is_active=True,updated_by=4,comment='after')
+
+    @staticmethod
+    def import_kwargs():
+        return dict(normalized_number='79996660001',phone_number_id=661,country_id=1,provider_id=2,project_label='imported',assignment_type='gl',status='unused',is_active=True,connection_cost=None,monthly_fee=None,outgoing_rate=None,incoming_rate=None,currency_id=3,phone_type='Mobile',tariff_label=None,comment='imported',review_required=False,imported_created_by='stage66b',deactivated_at=None,updated_by=4,history_changed_by=4,history_new_value='stage66b',history_comment='stage66b')
+
+    def test_postgres_phone_sql_and_top_level_commit_contracts(self):
+        conn=self.Conn(); repo=Repository(conn,backend='postgres')
+        self.assertEqual(repo.create_phone_number(**self.create_kwargs()),661)
+        repo.update_phone_number(commit=False,**self.update_kwargs())
+        repo.record_phone_update_history(661,4,{'comment':'old'},{'comment':'new'},commit=False)
+        self.assertEqual(repo.update_phone_number_import_fields_with_history(commit=False,**self.import_kwargs()),1)
+        sql='\n'.join(q for q,_ in conn.calls)
+        self.assertNotIn('?',sql); self.assertIn('RETURNING id',sql); self.assertIn('VALUES (%s',sql)
+        self.assertIn('WHERE id = %s',sql); self.assertIn('normalized_number = %s',sql)
+        self.assertEqual((conn.commits,conn.rollbacks),(1,0))
+
+    def test_phone_methods_only_rollback_owned_transactions(self):
+        cases=(('create_phone_number',self.create_kwargs()),('update_phone_number',self.update_kwargs()),('record_phone_update_history',dict(phone_id=661,changed_by=4,old_values={'comment':'a'},new_values={'comment':'b'})),('update_phone_number_import_fields_with_history',self.import_kwargs()))
+        for method,kwargs in cases:
+            for commit, expected in ((True,1),(False,0)):
+                conn=self.Conn(fail=True)
+                with self.assertRaisesRegex(RuntimeError,'failed'):
+                    getattr(Repository(conn,backend='postgres'),method)(commit=commit,**kwargs)
+                self.assertEqual(conn.rollbacks,expected)
+                self.assertEqual(conn.commits,0)
+
+    def test_sqlite_phone_history_is_caller_owned_and_rollback_safe(self):
+        conn=sqlite3.connect(':memory:'); conn.row_factory=sqlite3.Row; init_db(conn); repo=Repository(conn)
+        user=conn.execute('SELECT id FROM users ORDER BY id LIMIT 1').fetchone()[0]
+        country=repo.create_country('Stage 66B GEO','S6B'); provider=repo.create_provider('Stage66B provider')
+        phone=repo.create_phone_number(country_id=country,provider_id=provider,number='79996660001',assignment_type='gl',status='used',created_by=user)
+        before=conn.execute('SELECT COUNT(*) FROM phone_number_history WHERE phone_number_id=?',(phone,)).fetchone()[0]
+        repo.record_phone_update_history(phone,user,{'comment':'before'},{'comment':'after'},commit=False)
+        self.assertEqual(conn.execute('SELECT COUNT(*) FROM phone_number_history WHERE phone_number_id=?',(phone,)).fetchone()[0],before+1)
+        conn.rollback()
+        self.assertEqual(conn.execute('SELECT COUNT(*) FROM phone_number_history WHERE phone_number_id=?',(phone,)).fetchone()[0],before)
+        conn.close()
