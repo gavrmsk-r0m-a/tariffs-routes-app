@@ -7,6 +7,8 @@ import ast
 import json
 import re
 import sys
+import sqlite3
+from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
 
@@ -25,6 +27,15 @@ from app.db import (  # noqa: E402
 from scripts.audit_repository_postgres_coverage import audit as audit_coverage  # noqa: E402
 from scripts.audit_repository_postgres_write_plan import audit as audit_write_plan  # noqa: E402
 from scripts.postgres_repository_write_harness import empty_summary  # noqa: E402
+from app.security import (  # noqa: E402
+    DEV_AUTH_SECRET,
+    auth_cookie_attributes,
+    get_auth_cookie_secret,
+    login_is_locked,
+    record_login_failure,
+    security_gate_facts,
+    validate_auth_secret,
+)
 
 EXPECTED_COVERAGE = {
     "repository_public_methods_count": 112,
@@ -51,7 +62,6 @@ EXPECTED_PROBES = (
     "calling_company_tail_lifecycle_probe",
 )
 BLOCKERS = [
-    "basic_security_gate_not_completed",
     "deployment_rollback_procedure_not_documented",
     "final_enablement_not_approved",
 ]
@@ -63,6 +73,59 @@ BACKUP_RESTORE_ARTIFACTS = (
     "tests/test_postgres_backup_restore.py",
     "docs/postgres/backup_restore_runbook.md",
 )
+
+SECURITY_ARTIFACTS = (
+    "app/security.py",
+    "tests/test_postgres_security_gate.py",
+    "docs/postgres/security_gate.md",
+)
+
+
+def _security_gate_is_complete() -> bool:
+    if not all((ROOT / path).is_file() for path in SECURITY_ARTIFACTS):
+        return False
+    production_env = {"MVP_PRODUCTION_SECURITY": "1", "MVP_AUTH_SECRET": "audit-only-strong-auth-secret-32-characters"}
+    try:
+        if get_auth_cookie_secret({}) != DEV_AUTH_SECRET:
+            return False
+        if not validate_auth_secret({"MVP_PRODUCTION_SECURITY": "1"}):
+            return False
+        if not validate_auth_secret({"MVP_PRODUCTION_SECURITY": "1", "MVP_AUTH_SECRET": DEV_AUTH_SECRET}):
+            return False
+        if get_auth_cookie_secret(production_env) != production_env["MVP_AUTH_SECRET"]:
+            return False
+        prod_cookie = auth_cookie_attributes(production_env)
+        dev_cookie = auth_cookie_attributes({})
+        if not all(prod_cookie.get(key) == value for key, value in {"Secure": True, "HttpOnly": True, "SameSite": "Lax", "Path": "/"}.items()):
+            return False
+        if not all(dev_cookie.get(key) == value for key, value in {"HttpOnly": True, "SameSite": "Lax", "Path": "/"}.items()):
+            return False
+        facts = security_gate_facts(production_env)
+        throttle = facts["login_throttle"]
+        if throttle != {"max_failed_attempts": 5, "failure_window_seconds": 900, "lockout_seconds": 900}:
+            return False
+        if facts["passwordless_user_switching_allowed"] or not facts["default_credentials_forbidden_in_production"]:
+            return False
+        conn = sqlite3.connect(":memory:")
+        conn.row_factory = sqlite3.Row
+        conn.execute("CREATE TABLE login_attempts(id INTEGER PRIMARY KEY, username_normalized TEXT NOT NULL, client_key TEXT NOT NULL, failed_at TEXT NOT NULL, reason TEXT)")
+        now = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        for _ in range(5):
+            record_login_failure(conn, "audit-user", "audit-client", now=now)
+        if not login_is_locked(conn, "audit-user", "audit-client", now=now):
+            return False
+    except (RuntimeError, TypeError, ValueError, sqlite3.Error):
+        return False
+    server_source = (ROOT / "app/server.py").read_text(encoding="utf-8")
+    db_source = (ROOT / "app/db.py").read_text(encoding="utf-8")
+    workflow = (ROOT / ".github/workflows/postgres-migration-smoke.yml").read_text(encoding="utf-8")
+    return (
+        "login_is_locked(conn, username, request_client_key)" in server_source
+        and server_source.index("login_is_locked(conn, username, request_client_key)") < server_source.index("repo.authenticate_user(username")
+        and "production_security_enabled()" in server_source
+        and "Known default credentials are forbidden" in db_source
+        and "python -m unittest tests.test_postgres_security_gate" in workflow
+    )
 
 
 def _backup_restore_gate_is_complete() -> bool:
@@ -174,6 +237,7 @@ def audit() -> dict:
     harness_ok = len(probes) == len(EXPECTED_PROBES) and set(probes) == set(EXPECTED_PROBES)
     runtime_guarded = _postgres_runtime_is_guarded()
     backup_restore_ok = _backup_restore_gate_is_complete()
+    security_ok = _security_gate_is_complete()
     checks = {
         "coverage_baseline": "ok" if coverage_ok else "failed",
         "read_only_smoke_contract_documented": "ok",
@@ -182,7 +246,7 @@ def audit() -> dict:
         "postgres_runtime_default_guarded": "ok" if runtime_guarded else "failed",
         "runtime_adapter_gate": "ok" if runtime_guarded else "failed",
         "backup_restore_gate": "ok" if backup_restore_ok else "failed",
-        "security_gate": "blocked",
+        "security_gate": "ok" if security_ok else "failed",
         "deployment_rollback_gate": "blocked",
         "final_enablement_gate": "blocked",
     }
@@ -191,6 +255,7 @@ def audit() -> dict:
         "write_plan_complete", "rollback_harness_complete",
         "postgres_runtime_default_guarded", "runtime_adapter_gate",
         "backup_restore_gate",
+        "security_gate",
     ))
     metrics = {key: coverage.get(key) for key in EXPECTED_COVERAGE}
     metrics.update({
