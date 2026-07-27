@@ -38,22 +38,19 @@ class PostgresProductionGateTests(unittest.TestCase):
         self.assertEqual(result["metrics"]["expected_write_methods_count"], 50)
         self.assertEqual(result["metrics"]["rollback_smoke_covered_methods_count"], 50)
 
-    def test_security_and_backup_gates_are_ok_while_remaining_gates_are_blocked(self):
+    def test_completed_gates_are_ok_while_final_enablement_is_blocked(self):
         result = audit()
         self.assertEqual(result["checks"]["postgres_runtime_default_guarded"], "ok")
         self.assertEqual(result["checks"]["runtime_adapter_gate"], "ok")
         self.assertEqual(result["checks"]["backup_restore_gate"], "ok")
         self.assertEqual(result["checks"]["security_gate"], "ok")
-        for gate in ("deployment_rollback_gate", "final_enablement_gate"):
-            self.assertEqual(result["checks"][gate], "blocked")
+        self.assertEqual(result["checks"]["deployment_rollback_gate"], "ok")
+        self.assertEqual(result["checks"]["final_enablement_gate"], "blocked")
         self.assertNotIn("production_postgres_runtime_not_implemented", result["blockers"])
         self.assertNotIn("backup_restore_scripts_not_verified", result["blockers"])
         self.assertNotIn("basic_security_gate_not_completed", result["blockers"])
-        for blocker in (
-            "deployment_rollback_procedure_not_documented",
-            "final_enablement_not_approved",
-        ):
-            self.assertIn(blocker, result["blockers"])
+        self.assertNotIn("deployment_rollback_procedure_not_documented", result["blockers"])
+        self.assertEqual(result["blockers"], ["final_enablement_not_approved"])
 
     def test_runtime_remains_disabled_for_postgres_aliases(self):
         for backend in ("postgres", "postgresql"):
