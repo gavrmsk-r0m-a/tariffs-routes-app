@@ -26,7 +26,7 @@ EXIT_VALIDATION = 1
 EXIT_CONFIG = 2
 
 MIGRATION_ORDER = [
-    "users", "countries", "currencies", "providers", "projects", "servers",
+    "users", "login_attempts", "countries", "currencies", "providers", "projects", "servers",
     "change_reasons", "phone_number_types", "phone_assignment_types",
     "provider_prefixes", "routes", "currency_rates", "phone_numbers", "tariffs",
     "calling_companies", "company_routing_settings", "route_phone_numbers",
@@ -57,7 +57,7 @@ DATE_COLUMNS = {
 TIMESTAMP_COLUMNS = {
     "created_at", "updated_at", "changed_at", "event_at", "valid_from", "valid_to",
     "checked_at", "added_at", "removed_at", "deactivated_at", "telegram_sent_at",
-    "started_at", "finished_at", "last_used_at", "last_test_at",
+    "started_at", "finished_at", "last_used_at", "last_test_at", "failed_at",
 }
 NUMERIC_RE = re.compile(r"(price|rate|cost|fee|credit|delta|spent|eur)", re.I)
 JSONB_COLUMNS = {

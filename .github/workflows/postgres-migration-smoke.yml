@@ -11,6 +11,10 @@ on:
       - scripts/audit_repository_postgres_coverage.py
       - scripts/audit_repository_postgres_write_plan.py
       - scripts/audit_postgres_production_gate.py
+      - app/security.py
+      - tests/test_postgres_security_gate.py
+      - tests/test_server_auth_security.py
+      - docs/postgres/security_gate.md
       - scripts/postgres_backup.py
       - scripts/postgres_restore_verify.py
       - scripts/postgres_backup_restore_smoke.py
@@ -88,6 +92,7 @@ jobs:
           python -m unittest tests.test_postgres_repository_smoke
           python -m unittest tests.test_postgres_repository_write_harness
           python -m unittest tests.test_postgres_production_gate
+          python -m unittest tests.test_postgres_security_gate
           python -m unittest tests.test_postgres_runtime_adapter
           python -m unittest tests.test_postgres_backup_restore
           python scripts/audit_postgres_production_gate.py --format json

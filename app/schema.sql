@@ -26,6 +26,16 @@ CREATE TABLE IF NOT EXISTS user_permissions (
     UNIQUE(user_id, section_key)
 );
 
+CREATE TABLE IF NOT EXISTS login_attempts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username_normalized TEXT NOT NULL,
+    client_key TEXT NOT NULL,
+    failed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    reason TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_login_attempts_identity_time
+    ON login_attempts(username_normalized, client_key, failed_at);
+
 CREATE TABLE IF NOT EXISTS countries (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL UNIQUE,

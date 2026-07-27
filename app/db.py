@@ -4,7 +4,8 @@ import os
 import sqlite3
 import threading
 from dataclasses import dataclass
-from app.repository import hash_password
+from app.repository import hash_password, verify_password
+from app.security import production_security_enabled, validate_bootstrap_password
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -239,7 +240,18 @@ def _seed_default_users_if_empty(conn: sqlite3.Connection) -> None:
     if conn.execute("SELECT COUNT(*) FROM users").fetchone()[0] != 0:
         return
     columns = _column_names(conn, "users")
-    for username, display_name, role_key, password in DEFAULT_USERS:
+    users = DEFAULT_USERS
+    if production_security_enabled():
+        username = (os.environ.get("MVP_BOOTSTRAP_ADMIN_USERNAME") or "").strip()
+        password = os.environ.get("MVP_BOOTSTRAP_ADMIN_PASSWORD") or ""
+        if not username or not password:
+            raise RuntimeError("Production security mode requires bootstrap admin credentials for an empty users table")
+        errors = validate_bootstrap_password(username, password)
+        if errors:
+            raise RuntimeError("Invalid production bootstrap admin configuration: " + "; ".join(errors))
+        display_name = (os.environ.get("MVP_BOOTSTRAP_ADMIN_DISPLAY_NAME") or username).strip()
+        users = ((username, display_name, "admin", password),)
+    for username, display_name, role_key, password in users:
         insert_columns = ["username", "display_name", "is_active"]
         values: list[object] = [username, display_name, 1]
         if "role_key" in columns:
@@ -283,6 +295,16 @@ def run_lightweight_migrations(conn: sqlite3.Connection) -> None:
             password_salt TEXT
         )
     """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS login_attempts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username_normalized TEXT NOT NULL,
+            client_key TEXT NOT NULL,
+            failed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            reason TEXT
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_login_attempts_identity_time ON login_attempts(username_normalized, client_key, failed_at)")
     _add_column_if_missing(conn, "users", "role_key", "TEXT NOT NULL DEFAULT 'operator'")
     _add_column_if_missing(conn, "users", "email", "TEXT")
     _add_column_if_missing(conn, "users", "role", "TEXT")
@@ -332,6 +354,11 @@ def run_lightweight_migrations(conn: sqlite3.Connection) -> None:
     if "role" in _column_names(conn, "users"):
         conn.execute("UPDATE users SET role_key = CASE WHEN LOWER(role) = 'admin' THEN 'admin' WHEN LOWER(role) IN ('operator','duty','boss','guest') THEN LOWER(role) ELSE 'operator' END WHERE role_key IS NULL OR role_key = ''")
     _seed_default_users_if_empty(conn)
+    if production_security_enabled():
+        for username, _display_name, _role_key, password in DEFAULT_USERS:
+            row = conn.execute("SELECT password_hash, password_salt FROM users WHERE username = ?", (username,)).fetchone()
+            if row and verify_password(password, row["password_hash"], row["password_salt"]):
+                raise RuntimeError("Known default credentials are forbidden in production security mode")
     for username, _display_name, _role_key, password in DEFAULT_USERS:
         row = conn.execute("SELECT id, password_hash, password_salt FROM users WHERE username = ?", (username,)).fetchone()
         if row and (not row["password_hash"] or (not row["password_salt"] and not str(row["password_hash"]).startswith("pbkdf2:"))):

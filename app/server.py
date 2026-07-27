@@ -23,6 +23,16 @@ from app.db import DEFAULT_PHONE_ASSIGNMENTS, DEFAULT_PROJECTS, connect, connect
 from app.db_errors import UNKNOWN_DATABASE_ERROR, UNIQUE_VIOLATION, map_database_error
 from app.importer import apply_import, preview_import
 from app.repository import BusinessRuleError, COMPANY_CHANGE_LABELS, ROUTING_SCOPE_LABELS, Repository, normalize_phone_status, normalize_provider_name, normalize_real_prefix, validate_phone_number
+from app.security import (
+    GENERIC_LOGIN_ERROR,
+    clear_login_failures,
+    client_key,
+    get_auth_cookie_secret,
+    login_is_locked,
+    production_security_enabled,
+    record_login_failure,
+    render_cookie_attributes,
+)
 from app.telegram import notify_provider_change_created
 
 logger = logging.getLogger(__name__)
@@ -89,7 +99,7 @@ DB_PATH = DB_CONFIG.sqlite_path
 ADMIN_ID = 1
 CURRENT_USER_COOKIE = "mvp_auth"
 FILTER_STATE_COOKIE = "mvp_filter_state"
-AUTH_COOKIE_SECRET = os.environ.get("SECRET_KEY") or os.environ.get("MVP_AUTH_SECRET") or "dev-mvp-auth-secret-change-me"
+AUTH_COOKIE_SECRET = get_auth_cookie_secret()
 
 def sign_user_id(user_id: int) -> str:
     value = str(user_id)
@@ -97,7 +107,7 @@ def sign_user_id(user_id: int) -> str:
     return f"{value}.{sig}"
 
 def auth_cookie_header(user_id: int) -> tuple[str, str]:
-    return ("Set-Cookie", f"{CURRENT_USER_COOKIE}={sign_user_id(user_id)}; Path=/; HttpOnly; SameSite=Lax")
+    return ("Set-Cookie", f"{CURRENT_USER_COOKIE}={sign_user_id(user_id)}; {render_cookie_attributes()}")
 FILTER_SECTIONS = {
     "/routes": ("routes", ("country_id", "provider_id", "prefix_id", "is_actual", "search")),
     "/tariffs": ("tariffs", ("country_id", "provider_id", "priority_status", "status")),
@@ -558,6 +568,8 @@ def role_label(role_key: str | None) -> str:
 
 
 def current_user_selector() -> str:
+    if production_security_enabled():
+        return ""
     repo = _REQUEST_CONTEXT.get("repo")
     current_user_id = _REQUEST_CONTEXT.get("current_user_id")
     if not isinstance(repo, Repository) or current_user_id is None:
@@ -4481,7 +4493,7 @@ def current_actor_id() -> int:
 
 
 def clear_current_user_cookie() -> tuple[str, str]:
-    return ("Set-Cookie", f"{CURRENT_USER_COOKIE}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax")
+    return ("Set-Cookie", f"{CURRENT_USER_COOKIE}=; Max-Age=0; {render_cookie_attributes()}")
 
 
 def is_public_path(path: str) -> bool:
@@ -10245,10 +10257,17 @@ def app(environ, start_response):
             raw_size = int(environ.get("CONTENT_LENGTH") or "0")
             raw_body = environ["wsgi.input"].read(raw_size).decode("utf-8")
             parsed = {key: values[-1] for key, values in parse_qs(raw_body, keep_blank_values=True).items()}
-            user = repo.authenticate_user(parsed.get("username", ""), parsed.get("password", ""))
-            if user is None:
+            username = parsed.get("username", "")
+            request_client_key = client_key(environ)
+            if login_is_locked(conn, username, request_client_key):
                 start_response("401 Unauthorized", [*html_headers(), clear_current_user_cookie()])
-                return [login_page(repo, "Неверный логин или пароль")]
+                return [login_page(repo, GENERIC_LOGIN_ERROR)]
+            user = repo.authenticate_user(username, parsed.get("password", ""))
+            if user is None:
+                record_login_failure(conn, username, request_client_key)
+                start_response("401 Unauthorized", [*html_headers(), clear_current_user_cookie()])
+                return [login_page(repo, GENERIC_LOGIN_ERROR)]
+            clear_login_failures(conn, username, request_client_key)
             target = "/change-password" if user["must_change_password"] else safe_redirect_target(parsed.get("redirect_to") or "/routes")
             return redirect(start_response, target, [auth_cookie_header(int(user["id"]))])
         if method == "GET" and path == "/change-password":
