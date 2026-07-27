@@ -10226,9 +10226,13 @@ def user_error(exc: Exception) -> str:
 
 def app(environ, start_response):
     conn = connect_database(replace(DB_CONFIG, sqlite_path=DB_PATH))
-    ensure_db_initialized(conn, DB_PATH)
     repo = Repository(conn)
-    ensure_seed(repo)
+    if DB_CONFIG.backend == "sqlite":
+        # SQLite owns its local schema lifecycle.  PostgreSQL is deliberately
+        # different: its schema and data must already have been prepared by the
+        # migration/cutover process before the WSGI application starts.
+        ensure_db_initialized(conn, DB_PATH)
+        ensure_seed(repo)
     method = environ["REQUEST_METHOD"]
     path = environ.get("PATH_INFO", "/")
     q = request_query(environ)
