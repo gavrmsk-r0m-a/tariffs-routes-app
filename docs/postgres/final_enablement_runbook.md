@@ -1,5 +1,10 @@
 # PostgreSQL Final Enablement Runbook
 
+For the first production deployment of baseline release
+`e5ee9dd663d604b17936882e465b94f242bdf09c`, use the dedicated
+[production cutover checklist](production_cutover_first_deploy.md). This readiness runbook
+remains the reference for the underlying enablement gates.
+
 ## Status after Stage 67F
 
 - Final enablement gate is implemented.
