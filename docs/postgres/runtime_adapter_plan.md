@@ -853,3 +853,10 @@ SQLite remains the default and `POSTGRES_RUNTIME_ENABLED=1` remains the exact op
 Strong auth secrets and cookies, production credential bootstrapping, login throttling, and the
 passwordless-switching restriction are covered. The next stage should implement the deployment
 rollback gate, not final enablement; final approval remains a separate blocker.
+
+## Stage 67E — PostgreSQL deployment rollback gate
+
+The deployment rollback gate is implemented and smoke-tested by restoring a verified
+pre-deployment backup into a fresh disposable database. This stage does not enable
+PostgreSQL in production; SQLite remains the default and the runtime guard is unchanged.
+The next stage may implement the final explicit enablement gate, but only in a separate PR.

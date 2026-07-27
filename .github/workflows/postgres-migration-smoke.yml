@@ -18,8 +18,12 @@ on:
       - scripts/postgres_backup.py
       - scripts/postgres_restore_verify.py
       - scripts/postgres_backup_restore_smoke.py
+      - scripts/postgres_deployment_rollback_smoke.py
+      - scripts/postgres_deployment_rollback_check.py
       - tests/test_postgres_backup_restore.py
+      - tests/test_postgres_deployment_rollback_gate.py
       - docs/postgres/backup_restore_runbook.md
+      - docs/postgres/deployment_rollback_runbook.md
       - tests/test_postgres_production_gate.py
       - tests/test_postgres_runtime_adapter.py
       - docs/postgres/production_readiness_gate.md
@@ -95,6 +99,7 @@ jobs:
           python -m unittest tests.test_postgres_security_gate
           python -m unittest tests.test_postgres_runtime_adapter
           python -m unittest tests.test_postgres_backup_restore
+          python -m unittest tests.test_postgres_deployment_rollback_gate
           python scripts/audit_postgres_production_gate.py --format json
 
       - name: Create demo SQLite database
@@ -126,6 +131,14 @@ jobs:
           python scripts/postgres_backup_restore_smoke.py \
             --database-url "postgresql://postgres:postgres@localhost:5432/teleroute_migration_test" \
             --workdir "$RUNNER_TEMP/postgres-backup-restore"
+
+      - name: Run PostgreSQL deployment rollback smoke
+        run: |
+          python scripts/postgres_deployment_rollback_smoke.py \
+            --database-url "postgresql://postgres:postgres@localhost:5432/teleroute_migration_test" \
+            --workdir "$RUNNER_TEMP/postgres-deployment-rollback" \
+            --current-release-sha "$GITHUB_SHA" \
+            --rollback-release-sha "d3d217eafcb5fc0a1fe52e17c195d596fd0cbaab"
 
       - name: Run read-only PostgreSQL Repository smoke
         run: |

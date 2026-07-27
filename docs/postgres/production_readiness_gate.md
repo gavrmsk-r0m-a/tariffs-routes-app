@@ -1,6 +1,6 @@
 # PostgreSQL Production Readiness Gate
 
-## Current status after Stage 67D
+## Current status after Stage 67E
 
 - Read-only smoke: **611 checks**.
 - Coverage: **112 / 61 / 0 / 50 / 1 / 100.0%**.
@@ -14,6 +14,8 @@
   temporary restore, manifest digest, and public-table counts.
 - The security gate is `ok`; strong production secrets, hardened cookies, production
   credential policy, login throttling, and passwordless-switching restrictions are verified.
+- The deployment rollback gate is `ok`; a pre-deployment backup is restored and verified
+  in a fresh disposable database, never in-place in the production database.
 
 ## What is ready
 
@@ -23,12 +25,10 @@
 - All public Repository write methods have rollback-smoke coverage.
 
 These checks establish surface coverage; they do not establish production readiness.
-The remaining deployment rollback and final enablement gates are explicit
-blockers rather than deferred assumptions.
+Final enablement approval is the sole remaining blocker.
 
 ## What is not ready yet
 
-- Deployment rollback gate and documented rollback procedure.
 - Final production runbook.
 
 ## Required gates before enabling DB_BACKEND=postgres
@@ -37,7 +37,7 @@ blockers rather than deferred assumptions.
 2. Backup/restore PR, including a verified restore exercise and runbook (completed in Stage 67C).
 3. Security hardening PR covering production credentials, login throttling, secrets,
    and session configuration (completed in Stage 67D).
-4. Production dry-run PR, including the deployment rollback procedure.
+4. Production dry-run PR, including the deployment rollback procedure (completed in Stage 67E).
 5. Explicit final enablement PR after every preceding gate is green.
 
 ## Hard rule
@@ -62,8 +62,7 @@ gate correctly remains blocked. This is the mode suitable for current CI.
 python scripts/audit_postgres_production_gate.py --strict
 ```
 
-Strict mode is still expected to fail until the deployment rollback and final
-enablement gates are completed. A successful
+Strict mode is still expected to fail until the final enablement gate is completed. A successful
 strict audit is a prerequisite for the later explicit runtime-enablement decision,
 not a signal that Stage 67B permits production enablement.
 
@@ -96,3 +95,14 @@ uses `Secure`, `HttpOnly`, and `SameSite=Lax` cookies, rejects known default cre
 throttles password logins, and disables passwordless user switching. The overall gate remains
 `status=blocked` with `ready_for_runtime_enablement=false`; deployment rollback documentation
 and final enablement approval remain blockers. Strict audit therefore still intentionally fails.
+
+## Stage 67E deployment rollback gate
+
+The `deployment_rollback_gate` is now `ok`. The hosted rehearsal creates a pre-deployment
+backup, verifies its manifest SHA-256 and table counts, restores it into a fresh temporary
+database, runs connectivity and users checks, and removes the temporary database in `finally`.
+In-place restore into production is prohibited by the rollback runbook.
+
+The overall production gate remains `status=blocked` and
+`ready_for_runtime_enablement=false`. Final enablement approval is the remaining blocker,
+so strict audit is still expected to return non-zero. There is no production enablement yet.

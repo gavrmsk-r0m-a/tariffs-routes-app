@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import argparse
 import ast
+import hashlib
 import json
 import re
 import sys
 import sqlite3
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
@@ -27,6 +29,7 @@ from app.db import (  # noqa: E402
 from scripts.audit_repository_postgres_coverage import audit as audit_coverage  # noqa: E402
 from scripts.audit_repository_postgres_write_plan import audit as audit_write_plan  # noqa: E402
 from scripts.postgres_repository_write_harness import empty_summary  # noqa: E402
+from scripts.postgres_deployment_rollback_check import check_rollback_artifacts  # noqa: E402
 from app.security import (  # noqa: E402
     DEV_AUTH_SECRET,
     auth_cookie_attributes,
@@ -62,7 +65,6 @@ EXPECTED_PROBES = (
     "calling_company_tail_lifecycle_probe",
 )
 BLOCKERS = [
-    "deployment_rollback_procedure_not_documented",
     "final_enablement_not_approved",
 ]
 
@@ -79,6 +81,92 @@ SECURITY_ARTIFACTS = (
     "tests/test_postgres_security_gate.py",
     "docs/postgres/security_gate.md",
 )
+
+DEPLOYMENT_ROLLBACK_ARTIFACTS = (
+    "scripts/postgres_deployment_rollback_smoke.py",
+    "scripts/postgres_deployment_rollback_check.py",
+    "tests/test_postgres_deployment_rollback_gate.py",
+    "docs/postgres/deployment_rollback_runbook.md",
+)
+
+
+def _deployment_rollback_gate_is_complete() -> bool:
+    if not all((ROOT / path).is_file() for path in DEPLOYMENT_ROLLBACK_ARTIFACTS):
+        return False
+    workflow = (ROOT / ".github/workflows/postgres-migration-smoke.yml").read_text(encoding="utf-8")
+    runbook = (ROOT / "docs/postgres/deployment_rollback_runbook.md").read_text(encoding="utf-8").lower()
+    smoke_path = ROOT / "scripts/postgres_deployment_rollback_smoke.py"
+    check_path = ROOT / "scripts/postgres_deployment_rollback_check.py"
+    smoke_source = smoke_path.read_text(encoding="utf-8")
+    check_source = check_path.read_text(encoding="utf-8")
+    required_workflow = (
+        "python -m unittest tests.test_postgres_deployment_rollback_gate",
+        "python scripts/postgres_deployment_rollback_smoke.py",
+        "--workdir \"$RUNNER_TEMP/postgres-deployment-rollback\"",
+    )
+    required_runbook = ("never restore directly", "fresh database", "sha-256", "table counts", "smoke/read checks")
+    if not all(value in workflow for value in required_workflow):
+        return False
+    if not all(value in runbook for value in required_runbook):
+        return False
+    credential_pattern = re.compile(r"postgres(?:ql)?://[^\s:/]+:([^@\s]+)@", re.IGNORECASE)
+    if any(credential_pattern.search(source) for source in (smoke_source, check_source, runbook)):
+        return False
+    try:
+        smoke_tree = ast.parse(smoke_source, filename=str(smoke_path))
+        check_tree = ast.parse(check_source, filename=str(check_path))
+    except SyntaxError:
+        return False
+    prefix_ok = any(
+        isinstance(node, ast.Assign)
+        and any(isinstance(target, ast.Name) and target.id == "ROLLBACK_DATABASE_PREFIX" for target in node.targets)
+        and isinstance(node.value, ast.Constant)
+        and node.value.value == "teleroute_deployment_rollback_"
+        for node in smoke_tree.body
+    )
+    finally_drops = any(
+        isinstance(node, ast.Try)
+        and any(
+            isinstance(child, ast.Call) and isinstance(child.func, ast.Name) and child.func.id == "drop_database"
+            for statement in node.finalbody for child in ast.walk(statement)
+        )
+        for node in ast.walk(smoke_tree)
+    )
+    strict_cli = any(
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute) and node.func.attr == "add_argument"
+        and node.args and isinstance(node.args[0], ast.Constant) and node.args[0].value == "--strict"
+        for node in ast.walk(check_tree)
+    )
+    if not (prefix_ok and finally_drops and strict_cli):
+        return False
+    try:
+        with tempfile.TemporaryDirectory() as directory:
+            backup = Path(directory) / "audit.dump"
+            backup.write_bytes(b"rollback-audit")
+            manifest = Path(directory) / "audit.manifest.json"
+            manifest.write_text(json.dumps({
+                "status": "ok", "format": "pg_dump_custom",
+                "sha256": hashlib.sha256(backup.read_bytes()).hexdigest(),
+                "size_bytes": backup.stat().st_size, "table_counts": {"users": 1},
+                "backup_file": str(backup),
+            }), encoding="utf-8")
+            strict_result = check_rollback_artifacts("current", "rollback", manifest, strict=True)
+            backup.unlink()
+            warning_result = check_rollback_artifacts("current", "rollback", manifest, strict=False)
+            try:
+                check_rollback_artifacts("current", "rollback", manifest, strict=True)
+            except ValueError:
+                strict_missing_fails = True
+            else:
+                strict_missing_fails = False
+        return (
+            strict_result.get("backup_sha256_verified") is True
+            and warning_result.get("warnings")
+            and strict_missing_fails
+        )
+    except (OSError, ValueError, json.JSONDecodeError):
+        return False
 
 
 def _security_gate_is_complete() -> bool:
@@ -238,6 +326,7 @@ def audit() -> dict:
     runtime_guarded = _postgres_runtime_is_guarded()
     backup_restore_ok = _backup_restore_gate_is_complete()
     security_ok = _security_gate_is_complete()
+    deployment_rollback_ok = _deployment_rollback_gate_is_complete()
     checks = {
         "coverage_baseline": "ok" if coverage_ok else "failed",
         "read_only_smoke_contract_documented": "ok",
@@ -247,7 +336,7 @@ def audit() -> dict:
         "runtime_adapter_gate": "ok" if runtime_guarded else "failed",
         "backup_restore_gate": "ok" if backup_restore_ok else "failed",
         "security_gate": "ok" if security_ok else "failed",
-        "deployment_rollback_gate": "blocked",
+        "deployment_rollback_gate": "ok" if deployment_rollback_ok else "failed",
         "final_enablement_gate": "blocked",
     }
     foundational_ok = all(checks[name] == "ok" for name in (
@@ -256,6 +345,7 @@ def audit() -> dict:
         "postgres_runtime_default_guarded", "runtime_adapter_gate",
         "backup_restore_gate",
         "security_gate",
+        "deployment_rollback_gate",
     ))
     metrics = {key: coverage.get(key) for key in EXPECTED_COVERAGE}
     metrics.update({
