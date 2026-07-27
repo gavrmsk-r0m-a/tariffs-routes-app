@@ -11,6 +11,11 @@ on:
       - scripts/audit_repository_postgres_coverage.py
       - scripts/audit_repository_postgres_write_plan.py
       - scripts/audit_postgres_production_gate.py
+      - scripts/postgres_final_enablement_check.py
+      - scripts/postgres_runtime_enablement_smoke.py
+      - tests/test_postgres_final_enablement_gate.py
+      - docs/postgres/final_enablement_runbook.md
+      - docs/postgres/final_enablement_approval.md
       - app/security.py
       - tests/test_postgres_security_gate.py
       - tests/test_server_auth_security.py
@@ -100,7 +105,9 @@ jobs:
           python -m unittest tests.test_postgres_runtime_adapter
           python -m unittest tests.test_postgres_backup_restore
           python -m unittest tests.test_postgres_deployment_rollback_gate
+          python -m unittest tests.test_postgres_final_enablement_gate
           python scripts/audit_postgres_production_gate.py --format json
+          python scripts/audit_postgres_production_gate.py --strict
 
       - name: Create demo SQLite database
         run: python scripts/create_migration_demo_sqlite.py --output "$RUNNER_TEMP/migration_demo.sqlite3"
@@ -139,6 +146,30 @@ jobs:
             --workdir "$RUNNER_TEMP/postgres-deployment-rollback" \
             --current-release-sha "$GITHUB_SHA" \
             --rollback-release-sha "d3d217eafcb5fc0a1fe52e17c195d596fd0cbaab"
+
+      - name: Run guarded PostgreSQL runtime enablement smoke
+        run: |
+          python scripts/postgres_runtime_enablement_smoke.py \
+            --database-url "postgresql://postgres:postgres@localhost:5432/teleroute_migration_test" \
+            --auth-secret "ci-only-runtime-enable-secret-at-least-32-chars" \
+            --format json
+
+      - name: Run strict PostgreSQL final enablement check
+        env:
+          DB_BACKEND: postgres
+          POSTGRES_RUNTIME_ENABLED: '1'
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/teleroute_migration_test
+          MVP_PRODUCTION_SECURITY: '1'
+          MVP_AUTH_SECRET: ci-only-runtime-enable-secret-at-least-32-chars
+        run: |
+          python scripts/postgres_final_enablement_check.py \
+            --database-url "postgresql://postgres:postgres@localhost:5432/teleroute_migration_test" \
+            --current-release-sha "$GITHUB_SHA" \
+            --rollback-release-sha "511531f09bdf00e2ddd8df27467f5887429a6b96" \
+            --backup-manifest "$RUNNER_TEMP/postgres-backup-restore/teleroute-backup.manifest.json" \
+            --approval docs/postgres/final_enablement_approval.md \
+            --strict \
+            --format json
 
       - name: Run read-only PostgreSQL Repository smoke
         run: |

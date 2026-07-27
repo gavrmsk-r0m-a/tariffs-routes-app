@@ -15,8 +15,8 @@ AUDIT_SCRIPT = ROOT / "scripts/audit_postgres_production_gate.py"
 class PostgresProductionGateTests(unittest.TestCase):
     def test_json_audit_shape_and_baseline(self):
         result = audit()
-        self.assertEqual(result["status"], "blocked")
-        self.assertIs(result["ready_for_runtime_enablement"], False)
+        self.assertEqual(result["status"], "ready")
+        self.assertIs(result["ready_for_runtime_enablement"], True)
         expected = {
             "repository_public_methods_count": 112,
             "smoke_covered_read_count": 61,
@@ -38,19 +38,19 @@ class PostgresProductionGateTests(unittest.TestCase):
         self.assertEqual(result["metrics"]["expected_write_methods_count"], 50)
         self.assertEqual(result["metrics"]["rollback_smoke_covered_methods_count"], 50)
 
-    def test_completed_gates_are_ok_while_final_enablement_is_blocked(self):
+    def test_all_production_readiness_gates_are_ok(self):
         result = audit()
         self.assertEqual(result["checks"]["postgres_runtime_default_guarded"], "ok")
         self.assertEqual(result["checks"]["runtime_adapter_gate"], "ok")
         self.assertEqual(result["checks"]["backup_restore_gate"], "ok")
         self.assertEqual(result["checks"]["security_gate"], "ok")
         self.assertEqual(result["checks"]["deployment_rollback_gate"], "ok")
-        self.assertEqual(result["checks"]["final_enablement_gate"], "blocked")
+        self.assertEqual(result["checks"]["final_enablement_gate"], "ok")
         self.assertNotIn("production_postgres_runtime_not_implemented", result["blockers"])
         self.assertNotIn("backup_restore_scripts_not_verified", result["blockers"])
         self.assertNotIn("basic_security_gate_not_completed", result["blockers"])
         self.assertNotIn("deployment_rollback_procedure_not_documented", result["blockers"])
-        self.assertEqual(result["blockers"], ["final_enablement_not_approved"])
+        self.assertEqual(result["blockers"], [])
 
     def test_runtime_remains_disabled_for_postgres_aliases(self):
         for backend in ("postgres", "postgresql"):
@@ -67,12 +67,12 @@ class PostgresProductionGateTests(unittest.TestCase):
             cwd=ROOT, capture_output=True, text=True, check=False,
         )
         self.assertEqual(non_strict.returncode, 0, non_strict.stderr)
-        self.assertEqual(json.loads(non_strict.stdout)["status"], "blocked")
+        self.assertEqual(json.loads(non_strict.stdout)["status"], "ready")
         strict = subprocess.run(
             [sys.executable, str(AUDIT_SCRIPT), "--strict"],
             cwd=ROOT, capture_output=True, text=True, check=False,
         )
-        self.assertNotEqual(strict.returncode, 0)
+        self.assertEqual(strict.returncode, 0, strict.stderr)
 
     def test_documentation_records_gate_contract(self):
         document = ROOT / "docs/postgres/production_readiness_gate.md"

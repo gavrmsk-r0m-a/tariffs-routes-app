@@ -860,3 +860,12 @@ The deployment rollback gate is implemented and smoke-tested by restoring a veri
 pre-deployment backup into a fresh disposable database. This stage does not enable
 PostgreSQL in production; SQLite remains the default and the runtime guard is unchanged.
 The next stage may implement the final explicit enablement gate, but only in a separate PR.
+
+## Stage 67F — explicit final enablement gate
+
+The final enablement gate is implemented and the strict production-readiness audit passes.
+Runtime enablement is explicitly approved by the gate, while SQLite remains the development
+default and PostgreSQL still requires `DB_BACKEND=postgres` plus the exact
+`POSTGRES_RUNTIME_ENABLED=1` guard. Actual production deployment remains an operator/hosting
+action using secret-managed `DATABASE_URL` and production authentication secrets; this stage
+does not deploy production or commit credentials.
