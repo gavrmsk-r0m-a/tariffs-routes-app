@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Audit the deliberately blocked PostgreSQL production-readiness gate."""
+"""Audit the PostgreSQL production-readiness and explicit enablement gates."""
 from __future__ import annotations
 
 import argparse
@@ -64,9 +64,7 @@ EXPECTED_PROBES = (
     "tariff_lifecycle_probe", "currency_rate_lifecycle_probe",
     "calling_company_tail_lifecycle_probe",
 )
-BLOCKERS = [
-    "final_enablement_not_approved",
-]
+BLOCKERS: list[str] = []
 
 BACKUP_RESTORE_ARTIFACTS = (
     "scripts/postgres_backup.py",
@@ -88,6 +86,41 @@ DEPLOYMENT_ROLLBACK_ARTIFACTS = (
     "tests/test_postgres_deployment_rollback_gate.py",
     "docs/postgres/deployment_rollback_runbook.md",
 )
+
+FINAL_ENABLEMENT_ARTIFACTS = (
+    "scripts/postgres_final_enablement_check.py",
+    "scripts/postgres_runtime_enablement_smoke.py",
+    "tests/test_postgres_final_enablement_gate.py",
+    "docs/postgres/final_enablement_runbook.md",
+    "docs/postgres/final_enablement_approval.md",
+)
+
+
+def _final_enablement_gate_is_complete() -> bool:
+    if not all((ROOT / path).is_file() for path in FINAL_ENABLEMENT_ARTIFACTS):
+        return False
+    check = (ROOT / "scripts/postgres_final_enablement_check.py").read_text(encoding="utf-8")
+    smoke = (ROOT / "scripts/postgres_runtime_enablement_smoke.py").read_text(encoding="utf-8")
+    approval = (ROOT / "docs/postgres/final_enablement_approval.md").read_text(encoding="utf-8")
+    workflow = (ROOT / ".github/workflows/postgres-migration-smoke.yml").read_text(encoding="utf-8")
+    required_check = (
+        '"--strict"', '"--format"', '"DB_BACKEND"', '"POSTGRES_RUNTIME_ENABLED"',
+        "validate_auth_secret", 'manifest.get("sha256")', 'manifest.get("table_counts")',
+    )
+    required_smoke = ("db.load_db_config(environ)", "db.connect_database(config, environ)")
+    required_workflow = (
+        "python -m unittest tests.test_postgres_final_enablement_gate",
+        "python scripts/postgres_runtime_enablement_smoke.py",
+        "python scripts/postgres_final_enablement_check.py",
+        "python scripts/audit_postgres_production_gate.py --strict",
+    )
+    return (
+        "APPROVED_FOR_POSTGRES_RUNTIME_ENABLEMENT" in approval
+        and "No production credentials are stored in this repository" in approval
+        and all(value in check for value in required_check)
+        and all(value in smoke for value in required_smoke)
+        and all(value in workflow for value in required_workflow)
+    )
 
 
 def _deployment_rollback_gate_is_complete() -> bool:
@@ -327,6 +360,7 @@ def audit() -> dict:
     backup_restore_ok = _backup_restore_gate_is_complete()
     security_ok = _security_gate_is_complete()
     deployment_rollback_ok = _deployment_rollback_gate_is_complete()
+    final_enablement_ok = _final_enablement_gate_is_complete()
     checks = {
         "coverage_baseline": "ok" if coverage_ok else "failed",
         "read_only_smoke_contract_documented": "ok",
@@ -337,7 +371,7 @@ def audit() -> dict:
         "backup_restore_gate": "ok" if backup_restore_ok else "failed",
         "security_gate": "ok" if security_ok else "failed",
         "deployment_rollback_gate": "ok" if deployment_rollback_ok else "failed",
-        "final_enablement_gate": "blocked",
+        "final_enablement_gate": "ok" if final_enablement_ok else "failed",
     }
     foundational_ok = all(checks[name] == "ok" for name in (
         "coverage_baseline", "read_only_smoke_contract_documented",
@@ -346,6 +380,7 @@ def audit() -> dict:
         "backup_restore_gate",
         "security_gate",
         "deployment_rollback_gate",
+        "final_enablement_gate",
     ))
     metrics = {key: coverage.get(key) for key in EXPECTED_COVERAGE}
     metrics.update({
@@ -356,8 +391,8 @@ def audit() -> dict:
         "rollback_harness_probe_count": len(probes),
     })
     return {
-        "status": "blocked" if foundational_ok else "failed",
-        "ready_for_runtime_enablement": False,
+        "status": "ready" if foundational_ok else "failed",
+        "ready_for_runtime_enablement": foundational_ok,
         "checks": checks,
         "metrics": metrics,
         "blockers": BLOCKERS,
