@@ -6,6 +6,26 @@ from scripts.postgres_full_app_smoke import wsgi_request
 
 
 class FullAppSmokeHarnessTests(unittest.TestCase):
+    def test_page_option_helpers_emit_postgres_placeholders_and_boolean_predicates(self):
+        from app import server
+
+        conn = Mock()
+        conn.execute.return_value = []
+        repo = Mock(backend="postgres", conn=conn)
+
+        server.active_options(repo, "countries")
+        server.prefix_options(repo)
+        server.phone_type_options(repo)
+        server.project_options(repo)
+        server.assignment_options(repo)
+
+        statements = [call.args[0] for call in conn.execute.call_args_list]
+        self.assertTrue(statements)
+        self.assertTrue(all("?" not in sql for sql in statements))
+        self.assertTrue(all("= 1" not in sql for sql in statements))
+        self.assertTrue(all("IS TRUE" in sql for sql in statements))
+        self.assertTrue(all("%s" in sql for sql in statements))
+
     def test_server_constructs_repository_with_postgres_backend(self):
         from app import server
 
