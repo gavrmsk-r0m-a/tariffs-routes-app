@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import ast
 import json
+import re
 import sys
 from pathlib import Path
 from unittest.mock import patch
@@ -50,11 +51,47 @@ EXPECTED_PROBES = (
     "calling_company_tail_lifecycle_probe",
 )
 BLOCKERS = [
-    "backup_restore_scripts_not_verified",
     "basic_security_gate_not_completed",
     "deployment_rollback_procedure_not_documented",
     "final_enablement_not_approved",
 ]
+
+BACKUP_RESTORE_ARTIFACTS = (
+    "scripts/postgres_backup.py",
+    "scripts/postgres_restore_verify.py",
+    "scripts/postgres_backup_restore_smoke.py",
+    "tests/test_postgres_backup_restore.py",
+    "docs/postgres/backup_restore_runbook.md",
+)
+
+
+def _backup_restore_gate_is_complete() -> bool:
+    if not all((ROOT / relative_path).is_file() for relative_path in BACKUP_RESTORE_ARTIFACTS):
+        return False
+    workflow = (ROOT / ".github/workflows/postgres-migration-smoke.yml").read_text(encoding="utf-8")
+    required_workflow_text = (
+        "python -m unittest tests.test_postgres_backup_restore",
+        "python scripts/postgres_backup_restore_smoke.py",
+        "--workdir \"$RUNNER_TEMP/postgres-backup-restore\"",
+    )
+    if not all(value in workflow for value in required_workflow_text):
+        return False
+    backup = (ROOT / "scripts/postgres_backup.py").read_text(encoding="utf-8")
+    restore = (ROOT / "scripts/postgres_restore_verify.py").read_text(encoding="utf-8")
+    runbook = (ROOT / "docs/postgres/backup_restore_runbook.md").read_text(encoding="utf-8")
+    credential_pattern = re.compile(r"postgres(?:ql)?://[^\s:/]+:([^@\s]+)@", re.IGNORECASE)
+    inspected = [backup, restore, runbook, (ROOT / "scripts/postgres_backup_restore_smoke.py").read_text(encoding="utf-8")]
+    if any(credential_pattern.search(text) for text in inspected):
+        return False
+    workflow_credentials = credential_pattern.findall(workflow)
+    # The hosted service's documented localhost-only test credential is the sole exception.
+    if not workflow_credentials or any(value != "postgres" for value in workflow_credentials):
+        return False
+    return (
+        all(value in backup for value in ("--format=custom", "--no-owner", "--no-acl", "PG_DUMP_BIN"))
+        and all(value in restore for value in ("--exit-on-error", "--dbname", "PG_RESTORE_BIN"))
+        and "example-password" not in runbook.lower()
+    )
 
 
 def _postgres_runtime_is_guarded() -> bool:
@@ -136,6 +173,7 @@ def audit() -> dict:
     )
     harness_ok = len(probes) == len(EXPECTED_PROBES) and set(probes) == set(EXPECTED_PROBES)
     runtime_guarded = _postgres_runtime_is_guarded()
+    backup_restore_ok = _backup_restore_gate_is_complete()
     checks = {
         "coverage_baseline": "ok" if coverage_ok else "failed",
         "read_only_smoke_contract_documented": "ok",
@@ -143,7 +181,7 @@ def audit() -> dict:
         "rollback_harness_complete": "ok" if harness_ok else "failed",
         "postgres_runtime_default_guarded": "ok" if runtime_guarded else "failed",
         "runtime_adapter_gate": "ok" if runtime_guarded else "failed",
-        "backup_restore_gate": "blocked",
+        "backup_restore_gate": "ok" if backup_restore_ok else "failed",
         "security_gate": "blocked",
         "deployment_rollback_gate": "blocked",
         "final_enablement_gate": "blocked",
@@ -152,6 +190,7 @@ def audit() -> dict:
         "coverage_baseline", "read_only_smoke_contract_documented",
         "write_plan_complete", "rollback_harness_complete",
         "postgres_runtime_default_guarded", "runtime_adapter_gate",
+        "backup_restore_gate",
     ))
     metrics = {key: coverage.get(key) for key in EXPECTED_COVERAGE}
     metrics.update({

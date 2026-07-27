@@ -11,6 +11,11 @@ on:
       - scripts/audit_repository_postgres_coverage.py
       - scripts/audit_repository_postgres_write_plan.py
       - scripts/audit_postgres_production_gate.py
+      - scripts/postgres_backup.py
+      - scripts/postgres_restore_verify.py
+      - scripts/postgres_backup_restore_smoke.py
+      - tests/test_postgres_backup_restore.py
+      - docs/postgres/backup_restore_runbook.md
       - tests/test_postgres_production_gate.py
       - tests/test_postgres_runtime_adapter.py
       - docs/postgres/production_readiness_gate.md
@@ -84,6 +89,7 @@ jobs:
           python -m unittest tests.test_postgres_repository_write_harness
           python -m unittest tests.test_postgres_production_gate
           python -m unittest tests.test_postgres_runtime_adapter
+          python -m unittest tests.test_postgres_backup_restore
           python scripts/audit_postgres_production_gate.py --format json
 
       - name: Create demo SQLite database
@@ -109,6 +115,12 @@ jobs:
             --postgres-url "postgresql://postgres:postgres@localhost:5432/teleroute_migration_test" \
             --schema docs/postgres/schema.postgres.sql \
             --apply --yes --create-schema
+
+      - name: Run PostgreSQL backup and restore smoke
+        run: |
+          python scripts/postgres_backup_restore_smoke.py \
+            --database-url "postgresql://postgres:postgres@localhost:5432/teleroute_migration_test" \
+            --workdir "$RUNNER_TEMP/postgres-backup-restore"
 
       - name: Run read-only PostgreSQL Repository smoke
         run: |
