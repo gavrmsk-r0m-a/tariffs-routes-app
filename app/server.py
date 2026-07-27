@@ -10226,7 +10226,7 @@ def user_error(exc: Exception) -> str:
 
 def app(environ, start_response):
     conn = connect_database(replace(DB_CONFIG, sqlite_path=DB_PATH))
-    repo = Repository(conn)
+    repo = Repository(conn, backend=DB_CONFIG.backend)
     if DB_CONFIG.backend == "sqlite":
         # SQLite owns its local schema lifecycle.  PostgreSQL is deliberately
         # different: its schema and data must already have been prepared by the
