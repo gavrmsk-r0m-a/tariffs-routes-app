@@ -837,3 +837,11 @@ enablement or deploy configuration is included.
 The next stage should complete either the backup/restore gate or the security
 gate. It must not skip directly to final enablement; deployment rollback and
 explicit final approval remain separate blockers.
+
+## Stage 67C — PostgreSQL backup/restore gate
+
+The backup/restore gate is implemented and smoke-tested with a custom-format `pg_dump`, a
+temporary restore database, manifest digest verification, and public-table count comparison.
+This stage does not enable PostgreSQL in production: SQLite remains the default and the
+existing runtime opt-in guard is unchanged. The next stage should address the security gate,
+not final enablement; deployment rollback and final approval also remain blocked.

@@ -1,6 +1,6 @@
 # PostgreSQL Production Readiness Gate
 
-## Current status after Stage 67B
+## Current status after Stage 67C
 
 - Read-only smoke: **611 checks**.
 - Coverage: **112 / 61 / 0 / 50 / 1 / 100.0%**.
@@ -10,6 +10,8 @@
 - `DB_BACKEND=postgres` requires both `POSTGRES_RUNTIME_ENABLED=1` (the exact
   value) and `DATABASE_URL`.
 - This is not production enablement; the production gate remains blocked.
+- The backup/restore gate is `ok`; the hosted smoke verifies a custom-format backup,
+  temporary restore, manifest digest, and public-table counts.
 
 ## What is ready
 
@@ -19,12 +21,11 @@
 - All public Repository write methods have rollback-smoke coverage.
 
 These checks establish surface coverage; they do not establish production readiness.
-The remaining backup, security, deployment rollback, and final enablement gates are explicit
+The remaining security, deployment rollback, and final enablement gates are explicit
 blockers rather than deferred assumptions.
 
 ## What is not ready yet
 
-- Backup/restore scripts and a verified restore runbook.
 - Security gate: no default production passwords, an implemented brute-force/login
   throttling decision, and documented secret/session configuration.
 - Deployment rollback gate and documented rollback procedure.
@@ -33,7 +34,7 @@ blockers rather than deferred assumptions.
 ## Required gates before enabling DB_BACKEND=postgres
 
 1. Guarded runtime adapter (completed in Stage 67B, without enabling production).
-2. Backup/restore PR, including a verified restore exercise and runbook.
+2. Backup/restore PR, including a verified restore exercise and runbook (completed in Stage 67C).
 3. Security hardening PR covering production credentials, login throttling, secrets,
    and session configuration.
 4. Production dry-run PR, including the deployment rollback procedure.
@@ -61,7 +62,8 @@ gate correctly remains blocked. This is the mode suitable for current CI.
 python scripts/audit_postgres_production_gate.py --strict
 ```
 
-Strict mode is expected to fail until production gates are completed. A successful
+Strict mode is still expected to fail until the security, deployment rollback, and
+final enablement gates are completed. A successful
 strict audit is a prerequisite for the later explicit runtime-enablement decision,
 not a signal that Stage 67B permits production enablement.
 
@@ -75,3 +77,14 @@ PRAGMAs, schema creation, or default-user seeding.
 `runtime_adapter_gate` is now `ok`, but backup/restore, security, deployment
 rollback, and explicit final enablement remain blocked. Consequently the strict
 audit is still expected to return non-zero.
+
+## Stage 67C backup/restore gate
+
+The backup/restore gate is now `ok`. Backups use `pg_dump` custom format, and restore
+verification checks the manifest SHA-256 digest and all public-table row counts. Hosted CI
+runs the rehearsal after migration apply and before the existing Repository smoke checks.
+
+The overall production gate remains `blocked` and
+`ready_for_runtime_enablement=false`. Security hardening, the deployment rollback procedure,
+and explicit final enablement approval remain blockers, so strict audit intentionally
+returns non-zero.
