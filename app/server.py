@@ -20,6 +20,7 @@ from urllib.error import HTTPError, URLError
 from wsgiref.simple_server import make_server
 
 from app.db import DEFAULT_PHONE_ASSIGNMENTS, DEFAULT_PROJECTS, connect, connect_database, ensure_db_initialized, init_db, load_db_config
+from app.db_adapter import placeholder
 from app.db_errors import UNKNOWN_DATABASE_ERROR, UNIQUE_VIOLATION, map_database_error
 from app.importer import apply_import, preview_import
 from app.repository import BusinessRuleError, COMPANY_CHANGE_LABELS, ROUTING_SCOPE_LABELS, Repository, normalize_phone_status, normalize_provider_name, normalize_real_prefix, validate_phone_number
@@ -4777,9 +4778,10 @@ def options(repo: Repository, table: str, label: str = "name", selected: object 
 
 
 def active_options(repo: Repository, table: str, label: str = "name", selected: object | None = None, empty: str | None = None) -> str:
+    p = placeholder(repo.backend)
     return select_options(
         repo,
-        f"SELECT id, {label} AS label FROM {table} WHERE is_active = 1 OR id = ? ORDER BY {label}",
+        f"SELECT id, {label} AS label FROM {table} WHERE is_active IS TRUE OR id = {p} ORDER BY {label}",
         (selected or 0,),
         selected=selected,
         empty=empty,
@@ -4787,15 +4789,16 @@ def active_options(repo: Repository, table: str, label: str = "name", selected: 
 
 
 def prefix_options(repo: Repository, selected: object | None = None, empty: str | None = "Без префикса") -> str:
+    p = placeholder(repo.backend)
     selected_text = "" if selected is None else str(selected)
     opts = f"<option value='' {'selected' if selected_text == '' else ''}>{esc(empty)}</option>" if empty is not None else ""
     if empty == "Все":
         opts += f"<option value='__none__' {'selected' if selected_text == '__none__' else ''}>Без префикса</option>"
     rows = repo.conn.execute(
-        """
+        f"""
         SELECT pp.id, pp.prefix AS label
         FROM provider_prefixes pp JOIN providers p ON p.id = pp.provider_id
-        WHERE (pp.is_active = 1 OR pp.id = ?)
+        WHERE (pp.is_active IS TRUE OR pp.id = {p})
           AND pp.prefix IS NOT NULL AND TRIM(pp.prefix) != ''
           AND TRIM(pp.prefix) NOT IN ('Без префикса', 'без префикса', 'no prefix', '—', '-')
         ORDER BY pp.prefix, p.name
@@ -4808,22 +4811,25 @@ def prefix_options(repo: Repository, selected: object | None = None, empty: str 
 
 
 def phone_type_options(repo: Repository, selected: str | None = None, empty: str | None = None) -> str:
+    p = placeholder(repo.backend)
     opts = f"<option value=''>{esc(empty)}</option>" if empty is not None else ""
-    for row in repo.conn.execute("SELECT name FROM phone_number_types WHERE is_active = 1 OR name = ? ORDER BY name", (selected or "",)):
+    for row in repo.conn.execute(f"SELECT name FROM phone_number_types WHERE is_active IS TRUE OR name = {p} ORDER BY name", (selected or "",)):
         opts += f"<option value='{esc(row['name'])}' {'selected' if row['name'] == selected else ''}>{esc(row['name'])}</option>"
     return opts
 
 
 def project_options(repo: Repository, selected: str | None = None, empty: str | None = None) -> str:
+    p = placeholder(repo.backend)
     opts = f"<option value=''>{esc(empty)}</option>" if empty is not None else ""
-    for row in repo.conn.execute("SELECT name FROM projects WHERE is_active = 1 OR name = ? ORDER BY sort_order, name", (selected or "",)):
+    for row in repo.conn.execute(f"SELECT name FROM projects WHERE is_active IS TRUE OR name = {p} ORDER BY sort_order, name", (selected or "",)):
         opts += f"<option value='{esc(row['name'])}' {'selected' if row['name'] == selected else ''}>{esc(row['name'])}</option>"
     return opts
 
 
 def assignment_options(repo: Repository, selected: str | None = None, empty: str | None = None) -> str:
+    p = placeholder(repo.backend)
     opts = f"<option value=''>{esc(empty)}</option>" if empty is not None else ""
-    for row in repo.conn.execute("SELECT code, name FROM phone_assignment_types WHERE is_active = 1 OR code = ? ORDER BY sort_order, name", (selected or "",)):
+    for row in repo.conn.execute(f"SELECT code, name FROM phone_assignment_types WHERE is_active IS TRUE OR code = {p} ORDER BY sort_order, name", (selected or "",)):
         opts += f"<option value='{esc(row['code'])}' {'selected' if row['code'] == selected else ''}>{esc(row['name'])}</option>"
     return opts
 
@@ -4855,11 +4861,11 @@ def active_server_priority_checkboxes(repo: Repository, selected: set[str] | Non
     }
     initial_country_id = str(country_id or "")
     if not initial_country_id:
-        active_countries = repo.conn.execute("SELECT id FROM countries WHERE is_active = 1 ORDER BY name").fetchall()
+        active_countries = repo.conn.execute("SELECT id FROM countries WHERE is_active IS TRUE ORDER BY name").fetchall()
         if len(active_countries) == 1:
             initial_country_id = str(active_countries[0]["id"])
     boxes = []
-    for row in repo.conn.execute("SELECT id, name FROM servers WHERE is_active = 1 ORDER BY name"):
+    for row in repo.conn.execute("SELECT id, name FROM servers WHERE is_active IS TRUE ORDER BY name"):
         checked = "checked" if str(row["id"]) in selected else ""
         hint = route_hints.get((initial_country_id, str(row["id"])), "—")
         boxes.append(
@@ -7924,18 +7930,19 @@ def routing_scope_options(selected: str | None = None, empty: str | None = "Вс
 
 
 def active_country_id_if_single(repo: Repository) -> int | None:
-    rows = repo.conn.execute("SELECT id FROM countries WHERE is_active = 1 ORDER BY name").fetchall()
+    rows = repo.conn.execute("SELECT id FROM countries WHERE is_active IS TRUE ORDER BY name").fetchall()
     return rows[0]["id"] if len(rows) == 1 else None
 
 def route_options_for_dynamic_form(repo: Repository, selected: object | None = None, empty: str | None = "—") -> str:
+    p = placeholder(repo.backend)
     opts = f"<option value=''>{esc(empty)}</option>" if empty is not None else ""
     rows = repo.conn.execute(
-        """
+        f"""
         SELECT r.id, r.name, r.country_id, r.provider_id, c.name AS country_name, p.name AS provider_name
         FROM routes r
         JOIN countries c ON c.id = r.country_id
         JOIN providers p ON p.id = r.provider_id
-        WHERE r.is_actual = 1 OR r.id = ?
+        WHERE r.is_actual IS TRUE OR r.id = {p}
         ORDER BY c.name, p.name, r.name
         """,
         (selected or 0,),
@@ -7950,14 +7957,15 @@ def route_options_for_dynamic_form(repo: Repository, selected: object | None = N
 
 
 def overflow_route_options(repo: Repository, selected: object | None = None, empty: str | None = "—") -> str:
+    p = placeholder(repo.backend)
     opts = f"<option value=''>{esc(empty)}</option>" if empty is not None else ""
     rows = repo.conn.execute(
-        """
+        f"""
         SELECT r.id, r.name, r.country_id, r.provider_id, c.name AS country_name, p.name AS provider_name
         FROM routes r
         JOIN countries c ON c.id = r.country_id
         JOIN providers p ON p.id = r.provider_id
-        WHERE r.is_actual = 1 OR r.id = ?
+        WHERE r.is_actual IS TRUE OR r.id = {p}
         ORDER BY c.name, p.name, r.name
         """,
         (selected or 0,),
@@ -7977,7 +7985,7 @@ def route_metadata_json(repo: Repository) -> str:
         FROM routes r
         JOIN countries c ON c.id = r.country_id
         JOIN providers p ON p.id = r.provider_id
-        WHERE r.is_actual = 1
+        WHERE r.is_actual IS TRUE
         ORDER BY c.name, p.name, r.name
         """
     ).fetchall()
@@ -8010,7 +8018,7 @@ def campaign_metadata_json(repo: Repository) -> str:
         SELECT cc.id, cc.country_id, cc.server_id, cc.company_id_external, cc.company_name, s.name AS server_name
         FROM calling_companies cc
         JOIN servers s ON s.id = cc.server_id
-        WHERE cc.is_active = 1
+        WHERE cc.is_active IS TRUE
         ORDER BY cc.company_id_external
         """).fetchall()
     return json.dumps([
@@ -8027,6 +8035,7 @@ def campaign_metadata_json(repo: Repository) -> str:
 
 
 def routing_event_form(repo: Repository, event=None, error_message: str | None = None) -> str:
+    p = placeholder(repo.backend)
     is_existing_event = bool(event) and "id" in event.keys()
     if is_existing_event:
         def one(sql, value):
@@ -8095,11 +8104,11 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
         elif event["calling_company_id"]:
             selected_company_ids = {str(event["calling_company_id"])}
     company_opts = ""
-    for company in repo.conn.execute("""
+    for company in repo.conn.execute(f"""
         SELECT cc.id, cc.server_id, cc.company_id_external, cc.company_name, s.name AS server_name
         FROM calling_companies cc
         JOIN servers s ON s.id = cc.server_id
-        WHERE cc.is_active = 1 OR cc.id = ?
+        WHERE cc.is_active IS TRUE OR cc.id = {p}
         ORDER BY cc.company_id_external
         """, (event["calling_company_id"] if event else 0,)):
         label = f"{company['company_id_external']} / {company['company_name']}"
@@ -8731,9 +8740,15 @@ def routing_event_snapshot(ev) -> dict:
     raw = ev["snapshot_json"] if "snapshot_json" in ev.keys() else None
     if not raw:
         return {}
+    if isinstance(raw, dict):
+        return raw
     try:
+        if isinstance(raw, (bytes, bytearray)):
+            raw = raw.decode("utf-8")
+        if not isinstance(raw, str):
+            return {}
         parsed = json.loads(raw)
-    except json.JSONDecodeError:
+    except (json.JSONDecodeError, UnicodeDecodeError, TypeError, ValueError):
         return {}
     return parsed if isinstance(parsed, dict) else {}
 
@@ -10226,9 +10241,13 @@ def user_error(exc: Exception) -> str:
 
 def app(environ, start_response):
     conn = connect_database(replace(DB_CONFIG, sqlite_path=DB_PATH))
-    ensure_db_initialized(conn, DB_PATH)
-    repo = Repository(conn)
-    ensure_seed(repo)
+    repo = Repository(conn, backend=DB_CONFIG.backend)
+    if DB_CONFIG.backend == "sqlite":
+        # SQLite owns its local schema lifecycle.  PostgreSQL is deliberately
+        # different: its schema and data must already have been prepared by the
+        # migration/cutover process before the WSGI application starts.
+        ensure_db_initialized(conn, DB_PATH)
+        ensure_seed(repo)
     method = environ["REQUEST_METHOD"]
     path = environ.get("PATH_INFO", "/")
     q = request_query(environ)

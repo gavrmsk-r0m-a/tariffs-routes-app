@@ -13,10 +13,13 @@ on:
       - scripts/audit_postgres_production_gate.py
       - scripts/postgres_final_enablement_check.py
       - scripts/postgres_runtime_enablement_smoke.py
+      - scripts/postgres_full_app_smoke.py
+      - tests/test_postgres_full_app_smoke.py
       - tests/test_postgres_final_enablement_gate.py
       - docs/postgres/final_enablement_runbook.md
       - docs/postgres/final_enablement_approval.md
       - app/security.py
+      - app/server.py
       - tests/test_postgres_security_gate.py
       - tests/test_server_auth_security.py
       - docs/postgres/security_gate.md
@@ -152,6 +155,13 @@ jobs:
           python scripts/postgres_runtime_enablement_smoke.py \
             --database-url "postgresql://postgres:postgres@localhost:5432/teleroute_migration_test" \
             --auth-secret "ci-only-runtime-enable-secret-at-least-32-chars" \
+            --format json
+
+      - name: Run full-app PostgreSQL WSGI smoke
+        run: |
+          python scripts/postgres_full_app_smoke.py \
+            --database-url "postgresql://postgres:postgres@localhost:5432/teleroute_migration_test" \
+            --auth-secret "ci-only-full-app-secret-at-least-32-characters" \
             --format json
 
       - name: Run strict PostgreSQL final enablement check
