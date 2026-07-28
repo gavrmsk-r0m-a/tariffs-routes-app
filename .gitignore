@@ -2,6 +2,7 @@
 .env
 .env.*
 !.env.example
+!.env.postgres.local.example
 
 # Database files and local persistent runtime data
 *.sqlite

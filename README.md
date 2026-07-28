@@ -1,6 +1,6 @@
 # Tariffs and Routes MVP
 
-Dependency-free Python/SQLite MVP foundation for replacing the Excel-based tariffs, routes, purchased numbers, provider-change logs and admin reference data workflow.
+Python/PostgreSQL MVP foundation for replacing the Excel-based tariffs, routes, purchased numbers, provider-change logs and admin reference data workflow.
 
 ## Implemented MVP foundation
 
@@ -30,7 +30,67 @@ Run the app and open the links in the top navigation:
 - `/admin/dictionaries` — admin reference values for countries, providers, currencies, prefixes, servers, projects, phone assignments, and phone number types with activation/deactivation.
 - `/admin/change-log` — technical change log for audit/API/AI archivist integration later.
 
-## Run locally
+## Local PostgreSQL runtime
+
+PostgreSQL is the recommended local application runtime. The compose file uses only
+the documented `postgres/postgres` development credential and stores its data in a
+named Docker volume; it contains no production credentials.
+
+1. Start PostgreSQL and wait until its health check passes:
+
+   ```bash
+   docker compose -f docker-compose.postgres.yml up -d
+   ```
+
+2. Create the schema and an idempotent `local-dev` administrator. The command prints
+   a newly generated **local login password**; save it for the next steps. It never
+   prints the database password:
+
+   ```bash
+   python scripts/setup_local_postgres.py \
+     --database-url postgresql://postgres:postgres@localhost:5432/teleroute_local
+   ```
+
+   Pass `--password 'a-local-password-you-chose'` when a stable local login is more
+   convenient. Re-running setup safely reapplies `CREATE ... IF NOT EXISTS` schema
+   statements and updates that user's password.
+
+3. Run the real `app.server.app` WSGI callable, then open the printed login URL:
+
+   ```bash
+   python scripts/run_local_postgres_app.py \
+     --database-url postgresql://postgres:postgres@localhost:5432/teleroute_local
+   # http://127.0.0.1:8000/login
+   ```
+
+   Optionally copy `.env.postgres.local.example` to `.env` as a reference for the
+   same guarded runtime settings. Both local scripts refuse database hosts other
+   than `localhost` and `127.0.0.1`.
+
+4. To exercise login plus the routes, tariffs, phones, companies, and provider
+   changes pages without a browser, use the password printed/chosen during setup:
+
+   ```bash
+   python scripts/local_postgres_app_smoke.py \
+     --database-url postgresql://postgres:postgres@localhost:5432/teleroute_local \
+     --password 'the-local-login-password'
+   ```
+
+Stop the container without deleting its data:
+
+```bash
+docker compose -f docker-compose.postgres.yml down
+```
+
+To completely reset **only this local database**, stop the stack and delete its
+named volume, then repeat setup:
+
+```bash
+docker compose -f docker-compose.postgres.yml down -v
+```
+
+SQLite is no longer the recommended local runtime. It remains physically present
+and supported as a legacy, migration, and demo/test path; for example:
 
 ```bash
 python -m app.server
@@ -50,4 +110,5 @@ python -m unittest discover -s tests
 
 ## Notes
 
-The current implementation intentionally uses only the Python standard library so the project can run in restricted environments without downloading packages. The schema mirrors the confirmed MVP model and can be migrated to PostgreSQL later if needed.
+The PostgreSQL runtime remains protected by `POSTGRES_RUNTIME_ENABLED=1`. Local
+bootstrap does not alter production secrets or deployment configuration.
