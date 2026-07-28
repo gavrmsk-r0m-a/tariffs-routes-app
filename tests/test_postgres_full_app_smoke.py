@@ -6,6 +6,42 @@ from scripts.postgres_full_app_smoke import SmokeFailure, wsgi_request
 
 
 class FullAppSmokeHarnessTests(unittest.TestCase):
+    def test_routing_event_snapshot_accepts_sqlite_json_text(self):
+        from app.server import routing_event_snapshot
+
+        self.assertEqual(
+            routing_event_snapshot({"snapshot_json": '{"affected_servers": [{"server_name": "EU1"}]}'}),
+            {"affected_servers": [{"server_name": "EU1"}]},
+        )
+
+    def test_routing_event_snapshot_accepts_psycopg_decoded_dict(self):
+        from app.server import routing_event_snapshot
+
+        snapshot = {"affected_servers": [{"server_name": "EU2"}]}
+        self.assertIs(routing_event_snapshot({"snapshot_json": snapshot}), snapshot)
+
+    def test_routing_event_snapshot_decodes_json_bytes(self):
+        from app.server import routing_event_snapshot
+
+        expected = {"overflow_provider_name": "Demo Provider"}
+        encoded = b'{"overflow_provider_name": "Demo Provider"}'
+        self.assertEqual(routing_event_snapshot({"snapshot_json": encoded}), expected)
+        self.assertEqual(routing_event_snapshot({"snapshot_json": bytearray(encoded)}), expected)
+
+    def test_routing_event_snapshot_returns_empty_for_missing_or_empty_value(self):
+        from app.server import routing_event_snapshot
+
+        for event in ({}, {"snapshot_json": None}, {"snapshot_json": ""}):
+            with self.subTest(event=event):
+                self.assertEqual(routing_event_snapshot(event), {})
+
+    def test_routing_event_snapshot_returns_empty_for_invalid_or_non_object_json(self):
+        from app.server import routing_event_snapshot
+
+        for raw in ("{invalid", "[]", b"not-json", bytearray(b"[1]"), 42):
+            with self.subTest(raw=raw):
+                self.assertEqual(routing_event_snapshot({"snapshot_json": raw}), {})
+
     def test_wsgi_request_reports_path_and_original_exception_type(self):
         def application(environ, start_response):
             raise TypeError("bad page SQL")

@@ -8740,9 +8740,15 @@ def routing_event_snapshot(ev) -> dict:
     raw = ev["snapshot_json"] if "snapshot_json" in ev.keys() else None
     if not raw:
         return {}
+    if isinstance(raw, dict):
+        return raw
     try:
+        if isinstance(raw, (bytes, bytearray)):
+            raw = raw.decode("utf-8")
+        if not isinstance(raw, str):
+            return {}
         parsed = json.loads(raw)
-    except json.JSONDecodeError:
+    except (json.JSONDecodeError, UnicodeDecodeError, TypeError, ValueError):
         return {}
     return parsed if isinstance(parsed, dict) else {}
 
