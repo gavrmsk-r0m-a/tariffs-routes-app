@@ -2,10 +2,21 @@ import unittest
 from unittest.mock import Mock, patch
 
 from app.db import DbConfig
-from scripts.postgres_full_app_smoke import wsgi_request
+from scripts.postgres_full_app_smoke import SmokeFailure, wsgi_request
 
 
 class FullAppSmokeHarnessTests(unittest.TestCase):
+    def test_wsgi_request_reports_path_and_original_exception_type(self):
+        def application(environ, start_response):
+            raise TypeError("bad page SQL")
+
+        with self.assertRaises(SmokeFailure) as raised:
+            wsgi_request(application, "/routes")
+
+        self.assertEqual(raised.exception.path, "/routes")
+        self.assertIsInstance(raised.exception.__cause__, TypeError)
+        self.assertIn("TypeError", str(raised.exception))
+
     def test_page_option_helpers_emit_postgres_placeholders_and_boolean_predicates(self):
         from app import server
 

@@ -14,6 +14,7 @@ import json
 import os
 import secrets
 import sys
+import traceback
 from pathlib import Path
 from urllib.parse import urlencode
 from wsgiref.util import setup_testing_defaults
@@ -29,6 +30,13 @@ from scripts.postgres_backup import sanitize_database_url, sanitize_text  # noqa
 
 USERNAME = "stage68a-full-app-ci"
 PAGES = ("/routes", "/tariffs", "/phones", "/companies", "/provider-changes")
+
+
+class SmokeFailure(RuntimeError):
+    def __init__(self, path: str, message: str, status: str | None = None):
+        super().__init__(message)
+        self.path = path
+        self.status = status
 
 
 def _install_test_user(database_url: str, password: str) -> None:
@@ -74,7 +82,10 @@ def wsgi_request(application, path: str, *, method: str = "GET", data=None, cook
         captured["status"] = status
         captured["headers"] = headers
 
-    response_body = b"".join(application(environ, start_response))
+    try:
+        response_body = b"".join(application(environ, start_response))
+    except Exception as exc:
+        raise SmokeFailure(path, f"{type(exc).__name__}: {exc}") from exc
     return str(captured["status"]), list(captured["headers"]), response_body
 
 
@@ -104,27 +115,27 @@ def run_smoke(database_url: str, auth_secret: str) -> dict[str, object]:
 
     status, _, body = wsgi_request(app, "/login")
     if not status.startswith("200 ") or b"TeleRoute" not in body:
-        raise RuntimeError(f"GET /login failed with {status}")
+        raise SmokeFailure("/login", "login page did not return the expected content", status)
 
     status, headers, _ = wsgi_request(app, "/routes")
-    if not status.startswith("302 ") or _header(headers, "Location") != "/login":
-        raise RuntimeError("unauthenticated GET /routes did not redirect to /login")
+    if status != "303 See Other" or _header(headers, "Location") != "/login":
+        raise SmokeFailure("/routes", "unauthenticated request did not redirect to /login", status)
 
     status, headers, _ = wsgi_request(
         app, "/login", method="POST", data={"username": USERNAME, "password": password}
     )
-    if not status.startswith("302 ") or _header(headers, "Location") != "/routes":
-        raise RuntimeError(f"test-user login failed with {status}")
+    if status != "303 See Other" or _header(headers, "Location") != "/routes":
+        raise SmokeFailure("/login", "test-user login did not redirect to /routes", status)
     set_cookie = _header(headers, "Set-Cookie")
     if not set_cookie:
-        raise RuntimeError("test-user login did not return an auth cookie")
+        raise SmokeFailure("/login", "test-user login did not return an auth cookie", status)
     cookie = set_cookie.split(";", 1)[0]
 
     checked = []
     for path in PAGES:
         status, _, body = wsgi_request(app, path, cookie=cookie)
         if not status.startswith("200 ") or not body:
-            raise RuntimeError(f"authenticated GET {path} failed with {status}")
+            raise SmokeFailure(path, "authenticated page did not return a non-empty 200 response", status)
         checked.append(path)
     return {
         "status": "ok",
@@ -146,7 +157,17 @@ def main(argv: list[str] | None = None) -> int:
         result = run_smoke(args.database_url, args.auth_secret)
     except Exception as exc:
         message = sanitize_text(str(exc), args.database_url).replace(args.auth_secret, "***")
-        print(json.dumps({"status": "failed", "error": message}) if args.format == "json" else message, file=sys.stderr)
+        short_traceback = sanitize_text(traceback.format_exc(limit=4), args.database_url).replace(args.auth_secret, "***")
+        root = exc.__cause__ or exc
+        failure = {
+            "status": "failed",
+            "path": getattr(exc, "path", None),
+            "http_status": getattr(exc, "status", None),
+            "error_type": type(root).__name__,
+            "error": message,
+            "traceback": short_traceback,
+        }
+        print(json.dumps(failure, indent=2, sort_keys=True) if args.format == "json" else f"{failure['path'] or 'startup'}: {failure['error_type']}: {message}\n{short_traceback}", file=sys.stderr)
         return 1
     print(json.dumps(result, indent=2, sort_keys=True) if args.format == "json" else "PostgreSQL full-app WSGI smoke: ok")
     return 0
