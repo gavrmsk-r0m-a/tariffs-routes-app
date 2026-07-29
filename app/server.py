@@ -5485,7 +5485,13 @@ def dot_status(label: str, tone: str = "neutral") -> str:
 
 def dashboard_metric(repo: Repository, sql: str, label: str, hint: str, icon: str, tone: str, points: str) -> str:
     row = repo.conn.execute(sql).fetchone()
-    value = row[0] if row else 0
+    if row is None:
+        value = 0
+    else:
+        try:
+            value = row["value"]
+        except (KeyError, TypeError, IndexError):
+            value = row[0]
     return f"<article class='metric-card {tone}'><div class='metric-top'><span class='metric-icon'>{icon}</span><svg class='sparkline' viewBox='0 0 96 32' aria-hidden='true'><polyline points='{points}' /></svg></div><span class='metric-label'>{esc(label)}</span><strong class='metric-value'>{esc(value)}</strong><span class='metric-hint'>{esc(hint)}</span></article>"
 
 
@@ -7444,10 +7450,10 @@ document.addEventListener("DOMContentLoaded", function () {{
 
 def dashboard_page(repo: Repository) -> bytes:
     metrics = "".join([
-        dashboard_metric(repo, "SELECT COUNT(*) FROM routes WHERE is_actual = 1", "Активные маршруты", "Всего активных маршрутов", nav_icon("routes"), "blue", "0,22 18,22 32,16 46,22 62,17 78,17 96,10"),
-        dashboard_metric(repo, "SELECT COUNT(*) FROM calling_companies WHERE is_active = 1", "Активные кампании", "Всего активных кампаний", nav_icon("companies"), "green", "0,22 12,17 28,16 44,16 58,15 72,10 84,15 96,9"),
-        dashboard_metric(repo, "SELECT COUNT(*) FROM phone_numbers WHERE is_active = 1", "Купленные номера", "Всего активных номеров", nav_icon("phones"), "violet", "0,20 18,20 30,17 46,17 62,14 78,9 96,9"),
-        dashboard_metric(repo, "SELECT COUNT(*) FROM routing_events WHERE is_active = 1", "Смены провайдеров", "Активные записи смен", nav_icon("provider_changes"), "teal", "0,8 16,10 32,10 48,12 64,12 80,14 96,14"),
+        dashboard_metric(repo, "SELECT COUNT(*) AS value FROM routes WHERE is_actual IS TRUE", "Активные маршруты", "Всего активных маршрутов", nav_icon("routes"), "blue", "0,22 18,22 32,16 46,22 62,17 78,17 96,10"),
+        dashboard_metric(repo, "SELECT COUNT(*) AS value FROM calling_companies WHERE is_active IS TRUE", "Активные кампании", "Всего активных кампаний", nav_icon("companies"), "green", "0,22 12,17 28,16 44,16 58,15 72,10 84,15 96,9"),
+        dashboard_metric(repo, "SELECT COUNT(*) AS value FROM phone_numbers WHERE is_active IS TRUE", "Купленные номера", "Всего активных номеров", nav_icon("phones"), "violet", "0,20 18,20 30,17 46,17 62,14 78,9 96,9"),
+        dashboard_metric(repo, "SELECT COUNT(*) AS value FROM routing_events WHERE is_active IS TRUE", "Смены провайдеров", "Активные записи смен", nav_icon("provider_changes"), "teal", "0,8 16,10 32,10 48,12 64,12 80,14 96,14"),
     ])
     work_links = "".join([
         dashboard_link("/provider-changes", "Смена провайдеров", "Операционный журнал изменений", "provider_changes"),
@@ -9011,22 +9017,23 @@ def users_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
 
 def server_priorities_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
     q = q or {}
+    p = placeholder(repo.backend)
     server_params: list[object] = []
-    server_where = "WHERE is_active = 1"
+    server_where = "WHERE is_active IS TRUE"
     if q.get("server_id"):
-        server_where += " AND id = ?"
+        server_where += f" AND id = {p}"
         server_params.append(q["server_id"])
     servers = list(repo.conn.execute(f"SELECT id, name FROM servers {server_where} ORDER BY name", server_params))
     server_names = {row["id"]: row["name"] for row in servers}
     server_rows: dict[int, list[str]] = {row["id"]: [] for row in servers}
 
-    priority_clauses = ["s.is_active = 1"]
+    priority_clauses = ["s.is_active IS TRUE"]
     priority_params: list[object] = []
     if q.get("country_id"):
-        priority_clauses.append("srp.country_id = ?")
+        priority_clauses.append(f"srp.country_id = {p}")
         priority_params.append(q["country_id"])
     if q.get("server_id"):
-        priority_clauses.append("srp.server_id = ?")
+        priority_clauses.append(f"srp.server_id = {p}")
         priority_params.append(q["server_id"])
     priority_where = " WHERE " + " AND ".join(priority_clauses)
     priority_records = list(repo.conn.execute(f"""
@@ -9051,16 +9058,16 @@ def server_priorities_page(repo: Repository, q: dict[str, str] | None = None) ->
         if not row["previous_route_id"]:
             return None
         event = repo.conn.execute(
-            """
+            f"""
             SELECT re.snapshot_json
             FROM routing_events re
             JOIN routing_event_servers res ON res.routing_event_id = re.id
             WHERE re.apply_scope = 'server_priority'
-              AND re.country_id = ?
-              AND res.server_id = ?
-              AND res.old_route_id = ?
-              AND res.new_route_id = ?
-              AND datetime(re.event_at) = datetime(?)
+              AND re.country_id = {p}
+              AND res.server_id = {p}
+              AND res.old_route_id = {p}
+              AND res.new_route_id = {p}
+              AND re.event_at = {p}
             ORDER BY re.id DESC
             LIMIT 1
             """,
@@ -9069,8 +9076,8 @@ def server_priorities_page(repo: Repository, q: dict[str, str] | None = None) ->
         if not event or not event["snapshot_json"]:
             return None
         try:
-            snapshot = json.loads(event["snapshot_json"])
-        except (TypeError, json.JSONDecodeError):
+            snapshot = routing_event_snapshot(event)
+        except (TypeError, ValueError):
             return None
         for affected in snapshot.get("affected_servers", []):
             if int(affected.get("server_id") or 0) != int(row["server_id"]):
@@ -9084,10 +9091,10 @@ def server_priorities_page(repo: Repository, q: dict[str, str] | None = None) ->
     previous_overflow_ids = {overflow_id for row in priority_records if (overflow_id := previous_overflow_route_id(row))}
     previous_overflow_names = {}
     if previous_overflow_ids:
-        placeholders = ",".join("?" for _ in previous_overflow_ids)
+        route_placeholders = ",".join(p for _ in previous_overflow_ids)
         previous_overflow_names = {
             route["id"]: route["name"]
-            for route in repo.conn.execute(f"SELECT id, name FROM routes WHERE id IN ({placeholders})", tuple(previous_overflow_ids))
+            for route in repo.conn.execute(f"SELECT id, name FROM routes WHERE id IN ({route_placeholders})", tuple(previous_overflow_ids))
         }
 
     priority_records, pagination_html = paginate_rows(priority_records, q, "/admin/server-priorities")
