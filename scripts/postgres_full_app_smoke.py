@@ -29,7 +29,10 @@ from app.security import validate_auth_secret  # noqa: E402
 from scripts.postgres_backup import sanitize_database_url, sanitize_text  # noqa: E402
 
 USERNAME = "stage68a-full-app-ci"
-PAGES = ("/routes", "/tariffs", "/phones", "/companies", "/provider-changes")
+PAGES = (
+    "/", "/dashboard", "/routes", "/tariffs", "/phones", "/companies",
+    "/provider-changes", "/admin/company-routing-settings", "/admin/server-priorities",
+)
 
 
 class SmokeFailure(RuntimeError):
@@ -100,6 +103,7 @@ def run_smoke(database_url: str, auth_secret: str) -> dict[str, object]:
         "DATABASE_URL": database_url,
         "MVP_PRODUCTION_SECURITY": "1",
         "MVP_AUTH_SECRET": auth_secret,
+        "HLR_MODE": "demo",
     }
     errors = validate_auth_secret(runtime_env)
     if errors:

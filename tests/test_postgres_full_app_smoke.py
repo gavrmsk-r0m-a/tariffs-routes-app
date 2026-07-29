@@ -2,10 +2,44 @@ import unittest
 from unittest.mock import Mock, patch
 
 from app.db import DbConfig
-from scripts.postgres_full_app_smoke import SmokeFailure, wsgi_request
+from scripts.postgres_full_app_smoke import PAGES, SmokeFailure, wsgi_request
 
 
 class FullAppSmokeHarnessTests(unittest.TestCase):
+    def test_pages_cover_dashboard_and_admin_routing_views(self):
+        self.assertTrue({
+            "/", "/dashboard", "/admin/company-routing-settings", "/admin/server-priorities"
+        }.issubset(PAGES))
+
+    def test_dashboard_metrics_use_portable_boolean_predicates(self):
+        from app import server
+
+        statements = []
+        with (
+            patch.object(server, "dashboard_metric", side_effect=lambda _repo, sql, *_args: statements.append(sql) or ""),
+            patch.object(server, "dashboard_events", return_value=""),
+        ):
+            server.dashboard_page(Mock())
+
+        self.assertEqual(len(statements), 4)
+        self.assertTrue(all("IS TRUE" in sql for sql in statements))
+        self.assertTrue(all("= 1" not in sql for sql in statements))
+
+    def test_server_priorities_page_uses_postgres_sql(self):
+        from app import server
+
+        conn = Mock()
+        conn.execute.return_value = []
+        repo = Mock(backend="postgres", conn=conn)
+        server.server_priorities_page(repo, {"country_id": "1", "server_id": "2"})
+
+        statements = [call.args[0] for call in conn.execute.call_args_list]
+        self.assertTrue(statements)
+        self.assertTrue(all("?" not in sql for sql in statements))
+        self.assertTrue(all("= 1" not in sql for sql in statements))
+        self.assertTrue(any("is_active IS TRUE" in sql for sql in statements))
+        self.assertTrue(any("%s" in sql for sql in statements))
+
     def test_routing_event_snapshot_accepts_sqlite_json_text(self):
         from app.server import routing_event_snapshot
 

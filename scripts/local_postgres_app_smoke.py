@@ -22,6 +22,7 @@ def run_smoke(database_url: str, username: str, password: str) -> None:
         "DB_BACKEND": "postgres", "POSTGRES_RUNTIME_ENABLED": "1",
         "DATABASE_URL": database_url, "MVP_PRODUCTION_SECURITY": "1",
         "MVP_AUTH_SECRET": "local-smoke-" + secrets.token_urlsafe(32),
+        "HLR_MODE": "demo",
     })
     from app.server import app
 
