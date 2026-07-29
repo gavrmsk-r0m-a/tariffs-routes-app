@@ -1468,9 +1468,9 @@ class ServerSmokeTest(unittest.TestCase):
             ("providers", {"name": "NewTel", "default_currency_id": "", "comment": "comment"}, "/admin/dictionaries?section=providers", "Выберите валюту провайдера"),
             ("currencies", {"code": " ", "name": "US Dollar"}, "/admin/dictionaries?section=currencies", "Заполните код валюты"),
             ("prefixes", {"provider_id": "", "prefix": "0333", "name": "prefix"}, "/admin/dictionaries?section=prefixes", "Выберите провайдера префикса"),
-            ("servers", {"name": "EU9", "comment": "  "}, "/admin/dictionaries?section=servers", "Заполните комментарий"),
+            ("servers", {"name": " ", "comment": "  "}, "/admin/dictionaries?section=servers", "Заполните название сервера"),
             ("phone-types", {"name": " ", "comment": "comment"}, "/admin/dictionaries?section=phone-types", "Заполните тип номера"),
-            ("projects", {"name": "Project", "comment": "\n"}, "/admin/dictionaries?section=projects", "Заполните комментарий"),
+            ("projects", {"name": " ", "comment": "\n"}, "/admin/dictionaries?section=projects", "Заполните название проекта"),
             ("phone-assignments", {"name": "Monitor", "code": " ", "comment": "comment"}, "/admin/dictionaries?section=phone-assignments", "Заполните код назначения номера"),
         ]
         for kind, body, return_path, message in cases:
@@ -1479,6 +1479,60 @@ class ServerSmokeTest(unittest.TestCase):
                 self.assertEqual(captured["status"], "400 Bad Request")
                 self.assertIn(message, content)
                 self.assertIn(f"href='{return_path}'", content)
+
+    def test_dictionary_optional_comments_are_not_rendered_as_required(self):
+        comment_fields = {
+            "providers": "comment",
+            "prefixes": "name",
+            "servers": "comment",
+            "phone-types": "comment",
+            "projects": "comment",
+            "phone-assignments": "comment",
+        }
+        for section, field_name in comment_fields.items():
+            with self.subTest(section=section):
+                captured, content = self.request(f"/admin/dictionaries?section={section}")
+                self.assertEqual(captured["status"], "200 OK")
+                form_match = re.search(
+                    rf"<form\b[^>]*action=['\"]/admin/dictionaries/{re.escape(section)}/create['\"][^>]*>(.*?)</form>",
+                    content,
+                    flags=re.S,
+                )
+                self.assertIsNotNone(form_match)
+                form = form_match.group(1)
+                field = re.search(rf"<input\b[^>]*name=['\"]{field_name}['\"][^>]*>", form)
+                self.assertIsNotNone(field)
+                self.assertNotRegex(field.group(0), r"\brequired\b")
+
+    def test_server_dictionary_create_and_edit_accept_empty_comment(self):
+        captured, _ = self.request(
+            "/admin/dictionaries/servers/create",
+            method="POST",
+            body=urlencode({"name": "EU69A", "comment": ""}),
+        )
+        self.assertEqual(captured["status"], "303 See Other")
+        conn = server.connect(server.DB_PATH)
+        try:
+            created = conn.execute("SELECT id, comment FROM servers WHERE name = ?", ("EU69A",)).fetchone()
+            self.assertIsNotNone(created)
+            self.assertIsNone(created["comment"])
+            server_id = created["id"]
+        finally:
+            conn.close()
+
+        captured, _ = self.request(
+            f"/admin/dictionaries/servers/{server_id}/update",
+            method="POST",
+            body=urlencode({"name": "EU69A-edited", "comment": "", "is_active": "1"}),
+        )
+        self.assertEqual(captured["status"], "303 See Other")
+        conn = server.connect(server.DB_PATH)
+        try:
+            updated = conn.execute("SELECT name, comment FROM servers WHERE id = ?", (server_id,)).fetchone()
+            self.assertEqual(updated["name"], "EU69A-edited")
+            self.assertIsNone(updated["comment"])
+        finally:
+            conn.close()
 
     def test_routes_csv_export_respects_prefix_filter(self):
         prefix_id = self.route_prefix_id("0828")
