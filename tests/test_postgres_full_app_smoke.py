@@ -22,8 +22,31 @@ class FullAppSmokeHarnessTests(unittest.TestCase):
             server.dashboard_page(Mock())
 
         self.assertEqual(len(statements), 4)
+        self.assertTrue(all("COUNT(*) AS value" in sql for sql in statements))
         self.assertTrue(all("IS TRUE" in sql for sql in statements))
         self.assertTrue(all("= 1" not in sql for sql in statements))
+
+    def test_dashboard_metric_accepts_postgres_dict_row(self):
+        from app import server
+
+        conn = Mock()
+        conn.execute.return_value.fetchone.return_value = {"value": 123}
+        content = server.dashboard_metric(
+            Mock(conn=conn), "SELECT COUNT(*) AS value FROM routes", "label", "hint", "icon", "tone", "points"
+        )
+
+        self.assertIn("<strong class='metric-value'>123</strong>", content)
+
+    def test_dashboard_metric_keeps_legacy_positional_row_fallback(self):
+        from app import server
+
+        conn = Mock()
+        conn.execute.return_value.fetchone.return_value = (7,)
+        content = server.dashboard_metric(
+            Mock(conn=conn), "SELECT COUNT(*) AS value FROM routes", "label", "hint", "icon", "tone", "points"
+        )
+
+        self.assertIn("<strong class='metric-value'>7</strong>", content)
 
     def test_server_priorities_page_uses_postgres_sql(self):
         from app import server

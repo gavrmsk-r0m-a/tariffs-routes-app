@@ -5485,7 +5485,13 @@ def dot_status(label: str, tone: str = "neutral") -> str:
 
 def dashboard_metric(repo: Repository, sql: str, label: str, hint: str, icon: str, tone: str, points: str) -> str:
     row = repo.conn.execute(sql).fetchone()
-    value = row[0] if row else 0
+    if row is None:
+        value = 0
+    else:
+        try:
+            value = row["value"]
+        except (KeyError, TypeError, IndexError):
+            value = row[0]
     return f"<article class='metric-card {tone}'><div class='metric-top'><span class='metric-icon'>{icon}</span><svg class='sparkline' viewBox='0 0 96 32' aria-hidden='true'><polyline points='{points}' /></svg></div><span class='metric-label'>{esc(label)}</span><strong class='metric-value'>{esc(value)}</strong><span class='metric-hint'>{esc(hint)}</span></article>"
 
 
@@ -7444,10 +7450,10 @@ document.addEventListener("DOMContentLoaded", function () {{
 
 def dashboard_page(repo: Repository) -> bytes:
     metrics = "".join([
-        dashboard_metric(repo, "SELECT COUNT(*) FROM routes WHERE is_actual IS TRUE", "Активные маршруты", "Всего активных маршрутов", nav_icon("routes"), "blue", "0,22 18,22 32,16 46,22 62,17 78,17 96,10"),
-        dashboard_metric(repo, "SELECT COUNT(*) FROM calling_companies WHERE is_active IS TRUE", "Активные кампании", "Всего активных кампаний", nav_icon("companies"), "green", "0,22 12,17 28,16 44,16 58,15 72,10 84,15 96,9"),
-        dashboard_metric(repo, "SELECT COUNT(*) FROM phone_numbers WHERE is_active IS TRUE", "Купленные номера", "Всего активных номеров", nav_icon("phones"), "violet", "0,20 18,20 30,17 46,17 62,14 78,9 96,9"),
-        dashboard_metric(repo, "SELECT COUNT(*) FROM routing_events WHERE is_active IS TRUE", "Смены провайдеров", "Активные записи смен", nav_icon("provider_changes"), "teal", "0,8 16,10 32,10 48,12 64,12 80,14 96,14"),
+        dashboard_metric(repo, "SELECT COUNT(*) AS value FROM routes WHERE is_actual IS TRUE", "Активные маршруты", "Всего активных маршрутов", nav_icon("routes"), "blue", "0,22 18,22 32,16 46,22 62,17 78,17 96,10"),
+        dashboard_metric(repo, "SELECT COUNT(*) AS value FROM calling_companies WHERE is_active IS TRUE", "Активные кампании", "Всего активных кампаний", nav_icon("companies"), "green", "0,22 12,17 28,16 44,16 58,15 72,10 84,15 96,9"),
+        dashboard_metric(repo, "SELECT COUNT(*) AS value FROM phone_numbers WHERE is_active IS TRUE", "Купленные номера", "Всего активных номеров", nav_icon("phones"), "violet", "0,20 18,20 30,17 46,17 62,14 78,9 96,9"),
+        dashboard_metric(repo, "SELECT COUNT(*) AS value FROM routing_events WHERE is_active IS TRUE", "Смены провайдеров", "Активные записи смен", nav_icon("provider_changes"), "teal", "0,8 16,10 32,10 48,12 64,12 80,14 96,14"),
     ])
     work_links = "".join([
         dashboard_link("/provider-changes", "Смена провайдеров", "Операционный журнал изменений", "provider_changes"),
