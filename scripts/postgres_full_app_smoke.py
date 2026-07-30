@@ -15,6 +15,7 @@ import os
 import secrets
 import sys
 import traceback
+from contextlib import contextmanager
 from pathlib import Path
 from urllib.parse import urlencode
 from wsgiref.util import setup_testing_defaults
@@ -60,6 +61,55 @@ def _install_test_user(database_url: str, password: str) -> None:
             (USERNAME, "Stage 68A CI user", password_hash, password_salt),
         )
         conn.commit()
+    finally:
+        conn.close()
+
+
+@contextmanager
+def _isolated_smoke_currency(database_url: str):
+    code = f"CI_SMOKE_{secrets.token_hex(6).upper()}"
+    conn = connect_postgres(database_url)
+    try:
+        row = conn.execute(
+            """
+            INSERT INTO currencies(code, name, symbol, is_active)
+            VALUES (%s, %s, %s, true)
+            RETURNING id
+            """,
+            (code, "CI full-app smoke currency", "CI"),
+        ).fetchone()
+        currency_id = int(row["id"])
+        conn.commit()
+    finally:
+        conn.close()
+    try:
+        yield currency_id
+    finally:
+        cleanup = connect_postgres(database_url)
+        try:
+            cleanup.execute(
+                """
+                DELETE FROM change_log
+                WHERE entity_type = 'currency_rate'
+                  AND entity_id IN (SELECT id FROM currency_rates WHERE currency_id = %s)
+                """,
+                (currency_id,),
+            )
+            cleanup.execute("DELETE FROM currency_rates WHERE currency_id = %s", (currency_id,))
+            cleanup.execute("DELETE FROM currencies WHERE id = %s", (currency_id,))
+            cleanup.commit()
+        finally:
+            cleanup.close()
+
+
+def _currency_rate_count(database_url: str, currency_id: int) -> int:
+    conn = connect_postgres(database_url)
+    try:
+        row = conn.execute(
+            "SELECT COUNT(*) AS value FROM currency_rates WHERE currency_id = %s",
+            (currency_id,),
+        ).fetchone()
+        return int(row["value"])
     finally:
         conn.close()
 
@@ -141,6 +191,29 @@ def run_smoke(database_url: str, auth_secret: str) -> dict[str, object]:
         if not status.startswith("200 ") or not body:
             raise SmokeFailure(path, "authenticated page did not return a non-empty 200 response", status)
         checked.append(path)
+    with _isolated_smoke_currency(database_url) as currency_id:
+        rate_count_before = _currency_rate_count(database_url, currency_id)
+        status, headers, _ = wsgi_request(
+            app,
+            "/admin/currency-rates/upsert",
+            method="POST",
+            data={"currency_id": str(currency_id), "rate_to_eur": "1.01"},
+            cookie=cookie,
+        )
+        if status != "303 See Other" or _header(headers, "Location") != "/admin/currency-rates":
+            raise SmokeFailure(
+                "/admin/currency-rates/upsert",
+                "currency-rate update did not redirect to /admin/currency-rates",
+                status,
+            )
+        rate_count_after = _currency_rate_count(database_url, currency_id)
+        if rate_count_after != rate_count_before + 1:
+            raise SmokeFailure(
+                "/admin/currency-rates/upsert",
+                "currency-rate update did not append exactly one currency_rates row",
+                status,
+            )
+    checked.append("/admin/currency-rates/upsert (authenticated POST)")
     return {
         "status": "ok",
         "backend": "postgres",
