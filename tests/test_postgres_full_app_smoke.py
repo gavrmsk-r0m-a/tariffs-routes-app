@@ -2,10 +2,40 @@ import unittest
 from unittest.mock import ANY, Mock, patch
 
 from app.db import DbConfig
-from scripts.postgres_full_app_smoke import PAGES, SmokeFailure, wsgi_request
+from scripts.postgres_full_app_smoke import PAGES, SmokeFailure, _isolated_smoke_currency, wsgi_request
 
 
 class FullAppSmokeHarnessTests(unittest.TestCase):
+    def test_currency_rate_smoke_uses_isolated_currency_and_always_cleans_it_up(self):
+        create_conn = Mock()
+        create_conn.execute.return_value.fetchone.return_value = {"id": 901}
+        cleanup_conn = Mock()
+
+        with patch(
+            "scripts.postgres_full_app_smoke.connect_postgres",
+            side_effect=[create_conn, cleanup_conn],
+        ):
+            with self.assertRaisesRegex(RuntimeError, "probe failed"):
+                with _isolated_smoke_currency("postgresql://ci.invalid/demo") as currency_id:
+                    self.assertEqual(currency_id, 901)
+                    raise RuntimeError("probe failed")
+
+        create_sql, create_params = create_conn.execute.call_args.args
+        self.assertIn("INSERT INTO currencies", create_sql)
+        self.assertTrue(create_params[0].startswith("CI_SMOKE_"))
+        self.assertNotIn("SELECT id FROM currencies ORDER BY id", create_sql)
+        create_conn.commit.assert_called_once_with()
+        create_conn.close.assert_called_once_with()
+
+        cleanup_statements = [call.args for call in cleanup_conn.execute.call_args_list]
+        self.assertEqual(len(cleanup_statements), 3)
+        self.assertIn("DELETE FROM change_log", cleanup_statements[0][0])
+        self.assertEqual(cleanup_statements[0][1], (901,))
+        self.assertEqual(cleanup_statements[1], ("DELETE FROM currency_rates WHERE currency_id = %s", (901,)))
+        self.assertEqual(cleanup_statements[2], ("DELETE FROM currencies WHERE id = %s", (901,)))
+        cleanup_conn.commit.assert_called_once_with()
+        cleanup_conn.close.assert_called_once_with()
+
     def test_pages_cover_dashboard_and_admin_routing_views(self):
         self.assertTrue({
             "/", "/dashboard", "/admin/company-routing-settings", "/admin/server-priorities"
