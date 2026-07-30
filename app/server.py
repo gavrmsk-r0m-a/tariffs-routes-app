@@ -9989,7 +9989,8 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
         raise BusinessRuleError("События смены провайдеров нельзя деактивировать")
     if path in {"/admin/currency-rates/create", "/admin/currency-rates/upsert"}:
         currency_id = int(data["currency_id"])
-        currency = repo.conn.execute("SELECT code FROM currencies WHERE id = ?", (currency_id,)).fetchone()
+        p = placeholder(repo.backend)
+        currency = repo.conn.execute(f"SELECT code FROM currencies WHERE id = {p}", (currency_id,)).fetchone()
         if currency is None:
             raise BusinessRuleError("Валюта не найдена")
         today = datetime.now().strftime("%Y-%m-%d")

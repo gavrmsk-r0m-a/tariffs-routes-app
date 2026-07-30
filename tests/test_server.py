@@ -2786,7 +2786,9 @@ class ServerSmokeTest(unittest.TestCase):
     def test_currency_rate_upsert_creates_historical_rows_and_shows_latest(self):
         self.request("/tariffs")
         body = urlencode({"currency_id": "2", "rate_to_eur": "0.91"})
-        self.request("/admin/currency-rates/upsert", method="POST", body=body)
+        captured, _ = self.request("/admin/currency-rates/upsert", method="POST", body=body)
+        self.assertEqual(captured["status"], "303 See Other")
+        self.assertIn(("Location", "/admin/currency-rates"), captured["headers"])
         self.request("/admin/currency-rates/upsert", method="POST", body=urlencode({"currency_id": "2", "rate_to_eur": "0.92"}))
 
         conn = server.connect(server.DB_PATH)
@@ -2802,6 +2804,32 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertEqual(captured["status"], "200 OK")
         self.assertIn("0.92", content)
         self.assertNotIn("0.91", content)
+
+    def test_currency_rate_upsert_succeeds_without_active_tariffs(self):
+        self.request("/tariffs")
+        conn = server.connect(server.DB_PATH)
+        try:
+            conn.execute("UPDATE tariffs SET is_current = 0 WHERE provider_currency_id = 2")
+            conn.commit()
+        finally:
+            conn.close()
+
+        captured, _ = self.request(
+            "/admin/currency-rates/upsert",
+            method="POST",
+            body=urlencode({"currency_id": "2", "rate_to_eur": "1.01"}),
+        )
+
+        self.assertEqual(captured["status"], "303 See Other")
+        self.assertIn(("Location", "/admin/currency-rates"), captured["headers"])
+        conn = server.connect(server.DB_PATH)
+        try:
+            rate = conn.execute(
+                "SELECT rate_to_eur FROM currency_rates WHERE currency_id = 2 ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+        finally:
+            conn.close()
+        self.assertEqual(str(rate["rate_to_eur"]), "1.01")
 
     def test_currency_rate_upsert_writes_change_log(self):
         self.request("/tariffs")

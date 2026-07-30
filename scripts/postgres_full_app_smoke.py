@@ -64,6 +64,22 @@ def _install_test_user(database_url: str, password: str) -> None:
         conn.close()
 
 
+def _existing_currency(database_url: str) -> tuple[int, int]:
+    conn = connect_postgres(database_url)
+    try:
+        row = conn.execute("SELECT id FROM currencies ORDER BY id LIMIT 1").fetchone()
+        if row is None:
+            raise SmokeFailure("/admin/currency-rates/upsert", "no existing currency is available for rate smoke")
+        currency_id = int(row["id"])
+        count = conn.execute(
+            "SELECT COUNT(*) AS value FROM currency_rates WHERE currency_id = %s",
+            (currency_id,),
+        ).fetchone()
+        return currency_id, int(count["value"])
+    finally:
+        conn.close()
+
+
 def wsgi_request(application, path: str, *, method: str = "GET", data=None, cookie: str | None = None):
     body = urlencode(data or {}).encode("utf-8")
     environ: dict[str, object] = {}
@@ -141,6 +157,28 @@ def run_smoke(database_url: str, auth_secret: str) -> dict[str, object]:
         if not status.startswith("200 ") or not body:
             raise SmokeFailure(path, "authenticated page did not return a non-empty 200 response", status)
         checked.append(path)
+    currency_id, rate_count_before = _existing_currency(database_url)
+    status, headers, _ = wsgi_request(
+        app,
+        "/admin/currency-rates/upsert",
+        method="POST",
+        data={"currency_id": str(currency_id), "rate_to_eur": "1.01"},
+        cookie=cookie,
+    )
+    if status != "303 See Other" or _header(headers, "Location") != "/admin/currency-rates":
+        raise SmokeFailure(
+            "/admin/currency-rates/upsert",
+            "currency-rate update did not redirect to /admin/currency-rates",
+            status,
+        )
+    _, rate_count_after = _existing_currency(database_url)
+    if rate_count_after != rate_count_before + 1:
+        raise SmokeFailure(
+            "/admin/currency-rates/upsert",
+            "currency-rate update did not append exactly one currency_rates row",
+            status,
+        )
+    checked.append("/admin/currency-rates/upsert (authenticated POST)")
     return {
         "status": "ok",
         "backend": "postgres",

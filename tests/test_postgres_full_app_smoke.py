@@ -1,5 +1,5 @@
 import unittest
-from unittest.mock import Mock, patch
+from unittest.mock import ANY, Mock, patch
 
 from app.db import DbConfig
 from scripts.postgres_full_app_smoke import PAGES, SmokeFailure, wsgi_request
@@ -151,6 +151,84 @@ class FullAppSmokeHarnessTests(unittest.TestCase):
         initialize.assert_not_called()
         seed.assert_not_called()
         conn.close.assert_called_once_with()
+
+    def test_currency_rate_upsert_uses_postgres_placeholder_and_completes_flow(self):
+        from app import server
+        from app.repository import Repository
+
+        conn = Mock()
+        conn.execute.return_value.fetchone.return_value = {"code": "USD"}
+        repo = Repository(conn, backend="postgres")
+        old_rate = {"id": 40, "currency_id": 2, "rate_to_eur": "1.00"}
+        new_rate = {"id": 41, "currency_id": 2, "rate_to_eur": "1.01"}
+        recalculated = [{"tariff_id": 7}]
+        server._REQUEST_CONTEXT.clear()
+        server._REQUEST_CONTEXT["current_user_id"] = 1
+        try:
+            with (
+                patch.object(repo, "latest_currency_rate", return_value=old_rate),
+                patch.object(repo, "create_currency_rate", return_value=41) as create_rate,
+                patch.object(repo, "get_currency_rate", return_value=new_rate),
+                patch.object(repo, "recalculate_current_tariffs_for_currency_rate", return_value=recalculated) as recalculate,
+                patch.object(repo, "log_currency_rate_change") as log_change,
+            ):
+                location = server.handle_post(
+                    repo,
+                    "/admin/currency-rates/upsert",
+                    {"currency_id": "2", "rate_to_eur": "1.01"},
+                )
+        finally:
+            server._REQUEST_CONTEXT.clear()
+
+        self.assertEqual(location, "/admin/currency-rates")
+        sql, params = conn.execute.call_args_list[0].args
+        self.assertEqual(sql, "SELECT code FROM currencies WHERE id = %s")
+        self.assertNotIn("?", sql)
+        self.assertEqual(params, (2,))
+        create_rate.assert_called_once_with(
+            currency_id=2,
+            rate_to_eur="1.01",
+            rate_date=ANY,
+            updated_by=1,
+            source="manual",
+            comment=None,
+            commit=False,
+        )
+        recalculate.assert_called_once_with(41, 1)
+        self.assertEqual(log_change.call_args.kwargs["recalculated_active_tariffs_count"], 1)
+        conn.commit.assert_called_once_with()
+        conn.rollback.assert_not_called()
+
+    def test_currency_rate_upsert_succeeds_without_active_tariffs(self):
+        from app import server
+        from app.repository import Repository
+
+        conn = Mock()
+        conn.execute.return_value.fetchone.return_value = {"code": "USD"}
+        repo = Repository(conn, backend="postgres")
+        rate = {"id": 42, "currency_id": 2, "rate_to_eur": "1.01"}
+        server._REQUEST_CONTEXT.clear()
+        server._REQUEST_CONTEXT["current_user_id"] = 1
+        try:
+            with (
+                patch.object(repo, "latest_currency_rate", return_value=None),
+                patch.object(repo, "create_currency_rate", return_value=42),
+                patch.object(repo, "get_currency_rate", return_value=rate),
+                patch.object(repo, "recalculate_current_tariffs_for_currency_rate", return_value=[]),
+                patch.object(repo, "log_currency_rate_change") as log_change,
+            ):
+                location = server.handle_post(
+                    repo,
+                    "/admin/currency-rates/create",
+                    {"currency_id": "2", "rate_to_eur": "1.01"},
+                )
+        finally:
+            server._REQUEST_CONTEXT.clear()
+
+        self.assertEqual(location, "/admin/currency-rates")
+        self.assertEqual(log_change.call_args.kwargs["recalculated_active_tariffs_count"], 0)
+        conn.commit.assert_called_once_with()
+        conn.rollback.assert_not_called()
 
     def test_wsgi_request_sends_form_and_cookie_to_real_callable_shape(self):
         observed = {}
