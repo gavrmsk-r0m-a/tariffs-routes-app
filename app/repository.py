@@ -2578,11 +2578,10 @@ class Repository:
             (setting["calling_company_id"], to_db_bool(True, self.backend)),
         ))
 
-    def _current_timestamp(self):
+    def _current_timestamp(self) -> str:
         row = self.conn.execute("SELECT CURRENT_TIMESTAMP AS value").fetchone()
-        if isinstance(row, dict):
-            return row["value"]
-        return row[0]
+        value = row["value"] if isinstance(row, dict) else row[0]
+        return str(value)
 
     def create_company_routing_setting(
         self,

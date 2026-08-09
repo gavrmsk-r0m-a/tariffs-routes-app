@@ -1084,18 +1084,18 @@ class RepositoryStage65ACompanyRoutingTest(unittest.TestCase):
             def __init__(self): self.calls = []
             def execute(self, sql, params=()):
                 self.calls.append((sql, params))
-                if "CURRENT_TIMESTAMP AS value" in sql: return Cursor({"value": "2026-07-30 12:34:56+00"})
+                if "CURRENT_TIMESTAMP AS value" in sql: return Cursor({"value": datetime(2026, 7, 30, 12, 34, 56, tzinfo=timezone.utc)})
                 if "RETURNING id" in sql: return Cursor({"id": 651})
                 return Cursor(None)
             def commit(self): pass
             def rollback(self): pass
         conn = Conn(); repo = Repository(conn, backend="postgres")
-        with patch.object(repo, "_validate_company_routing_values"), patch.object(repo, "_active_company_routing_setting", return_value=None), patch.object(repo, "_company_routing_summary", return_value="summary"), patch.object(repo, "_change_log"):
+        with patch.object(repo, "_validate_company_routing_values"), patch.object(repo, "_active_company_routing_setting", return_value=None), patch.object(repo, "_company_routing_summary", return_value="summary"):
             setting_id = repo.create_company_routing_setting(calling_company_id=1, country_id=2, server_id=3, route_id=None, routing_mode="autorotation", has_autorotation=True, comment="created", created_by=5)
         self.assertEqual(setting_id, 651)
         self.assertEqual(conn.calls[0][0], "SELECT CURRENT_TIMESTAMP AS value")
         insert_params = next(params for sql, params in conn.calls if "RETURNING id" in sql)
-        self.assertEqual(insert_params[8], "2026-07-30 12:34:56+00")
+        self.assertEqual(insert_params[8], "2026-07-30 12:34:56+00:00")
 
     def test_sqlite_routing_timestamp_keeps_legacy_positional_row_support(self):
         conn = Mock()
@@ -1111,14 +1111,14 @@ class RepositoryStage65ACompanyRoutingTest(unittest.TestCase):
             def __init__(self): self.calls = []; self.commits = 0
             def execute(self, sql, params=()):
                 self.calls.append((sql, params))
-                if "CURRENT_TIMESTAMP AS value" in sql: return Cursor({"value": "2026-07-30 12:34:56+00"})
+                if "CURRENT_TIMESTAMP AS value" in sql: return Cursor({"value": datetime(2026, 7, 30, 12, 34, 56, tzinfo=timezone.utc)})
                 if "INSERT INTO calling_companies" in sql: return Cursor({"id": 1001})
                 if "INSERT INTO company_routing_settings" in sql: return Cursor({"id": 2001})
                 return Cursor(None)
             def commit(self): self.commits += 1
             def rollback(self): pass
         conn = Conn(); repo = Repository(conn, backend="postgres")
-        with patch.object(repo, "_validate_company_routing_values"), patch.object(repo, "_active_company_routing_setting", return_value=None), patch.object(repo, "_company_routing_summary", return_value="summary"), patch.object(repo, "_change_log"):
+        with patch.object(repo, "_validate_company_routing_values"), patch.object(repo, "_active_company_routing_setting", return_value=None), patch.object(repo, "_company_routing_summary", return_value="summary"):
             company_id = repo.create_calling_company(server_id=1, country_id=2, company_name="CC TEST / BRAZIL", company_id_external="1001", has_autorotation=True, created_by=5, line_count=651, dial_set_count=67, retry_interval_seconds=67)
         self.assertEqual(company_id, 1001)
         self.assertTrue(any("INSERT INTO company_routing_settings" in sql for sql, _ in conn.calls))
