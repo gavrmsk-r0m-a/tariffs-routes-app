@@ -66,6 +66,20 @@ class DbErrorMapperTest(unittest.TestCase):
         self.assertEqual(info.backend, "postgres")
         self.assertEqual(info.sqlstate, "23505")
 
+    def test_postgres_diagnostics_are_preserved_for_user_mapping(self):
+        class Diag:
+            table_name = "servers"
+            constraint_name = "servers_name_key"
+            column_name = None
+
+        class FakePgError(Exception):
+            sqlstate = "23505"
+            diag = Diag()
+
+        info = map_database_error(FakePgError("duplicate key"), backend="postgres")
+        self.assertEqual((info.table, info.constraint), ("servers", "servers_name_key"))
+        self.assertEqual(user_error(FakePgError("duplicate key")), "Сервер с таким названием уже существует")
+
     def test_postgres_sqlstate_foreign_key_violation_is_mapped_without_psycopg(self):
         class FakePgError(Exception):
             sqlstate = "23503"
@@ -84,6 +98,21 @@ class DbErrorMapperTest(unittest.TestCase):
 
 
 class UserErrorMessageTest(unittest.TestCase):
+    def test_dictionary_duplicate_messages(self):
+        cases = {
+            "servers.name": "Сервер с таким названием уже существует",
+            "countries.name": "ГЕО с таким названием уже существует",
+            "providers.name": "Провайдер с таким названием уже существует",
+            "currencies.code": "Валюта с таким кодом уже существует",
+            "phone_number_types.name": "Тип номера с таким названием уже существует",
+            "projects.name": "Проект с таким названием уже существует",
+            "provider_prefixes.provider_id, provider_prefixes.prefix": "Такой префикс уже существует у выбранного провайдера",
+            "phone_assignment_types.name": "Назначение с таким названием уже существует",
+            "phone_assignment_types.code": "Назначение с таким кодом уже существует",
+        }
+        for columns, expected in cases.items():
+            with self.subTest(columns=columns):
+                self.assertEqual(user_error(sqlite3.IntegrityError(f"UNIQUE constraint failed: {columns}")), expected)
     def test_duplicate_route_error_message_is_preserved(self):
         message = user_error(sqlite3.IntegrityError("UNIQUE constraint failed: routes.country_id, routes.name"))
 

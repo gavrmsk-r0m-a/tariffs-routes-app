@@ -83,7 +83,17 @@ def map_database_error(exc: Exception, backend: str = "sqlite") -> DbErrorInfo:
 
     sqlstate = _get_sqlstate(exc)
     if sqlstate in SQLSTATE_ERROR_KINDS:
-        return DbErrorInfo(SQLSTATE_ERROR_KINDS[sqlstate], normalized_backend, sqlstate=sqlstate, raw_message=raw_message)
+        diagnostic = getattr(exc, "diag", None) or getattr(getattr(exc, "__cause__", None), "diag", None)
+        table = getattr(diagnostic, "table_name", None)
+        constraint = getattr(diagnostic, "constraint_name", None)
+        column = getattr(diagnostic, "column_name", None)
+        return DbErrorInfo(
+            SQLSTATE_ERROR_KINDS[sqlstate], normalized_backend,
+            table=str(table) if table else None,
+            columns=(str(column),) if column else (),
+            constraint=str(constraint) if constraint else None,
+            sqlstate=sqlstate, raw_message=raw_message,
+        )
 
     if normalized_backend == "sqlite":
         sqlite_info = _sqlite_error_info(exc, normalized_backend, raw_message)
