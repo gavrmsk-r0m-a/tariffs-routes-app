@@ -2578,6 +2578,12 @@ class Repository:
             (setting["calling_company_id"], to_db_bool(True, self.backend)),
         ))
 
+    def _current_timestamp(self):
+        row = self.conn.execute("SELECT CURRENT_TIMESTAMP AS value").fetchone()
+        if isinstance(row, dict):
+            return row["value"]
+        return row[0]
+
     def create_company_routing_setting(
         self,
         *,
@@ -2604,7 +2610,7 @@ class Repository:
             )
             if self._active_company_routing_setting(calling_company_id):
                 raise BusinessRuleError("У кампании уже есть активная схема маршрутизации")
-            now = effective_at or self.conn.execute("SELECT CURRENT_TIMESTAMP").fetchone()[0]
+            now = effective_at or self._current_timestamp()
             sql = prepare_insert_returning_id(
                 f"""
                 INSERT INTO company_routing_settings(
@@ -2731,7 +2737,7 @@ class Repository:
                     self.conn.commit()
                 return setting_id
 
-            now = effective_at or self.conn.execute("SELECT CURRENT_TIMESTAMP").fetchone()[0]
+            now = effective_at or self._current_timestamp()
             self.conn.execute(
                 f"""UPDATE company_routing_settings
                     SET valid_to = {p}, is_active = {p}, updated_at = CURRENT_TIMESTAMP, updated_by = {p}
@@ -2777,7 +2783,7 @@ class Repository:
                 raise BusinessRuleError("Схема маршрутизации кампании не найдена")
             if not existing["is_active"] or existing["valid_to"] is not None:
                 raise BusinessRuleError("Схема маршрутизации уже неактивна")
-            now = effective_at or self.conn.execute("SELECT CURRENT_TIMESTAMP").fetchone()[0]
+            now = effective_at or self._current_timestamp()
             self.conn.execute(
                 f"""UPDATE company_routing_settings
                     SET valid_to = {p}, is_active = {p}, updated_at = CURRENT_TIMESTAMP, updated_by = {p}
