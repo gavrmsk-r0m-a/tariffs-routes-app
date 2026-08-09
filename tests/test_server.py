@@ -1534,6 +1534,87 @@ class ServerSmokeTest(unittest.TestCase):
         finally:
             conn.close()
 
+    def test_dictionary_duplicates_are_readable_and_keep_section_and_create_values(self):
+        self.request("/routes")
+        self.request("/admin/dictionaries/servers/create", method="POST", body=urlencode({"name": "EU69D", "comment": "original"}))
+        cases = [
+            ("servers", {"name": "EU69D", "comment": "keep me"}, "Сервер с таким названием уже существует", "keep me"),
+            ("countries", {"name": "Мексика"}, "ГЕО с таким названием уже существует", "Мексика"),
+            ("currencies", {"code": "eur", "comment": "keep currency comment"}, "Валюта с таким кодом уже существует", "keep currency comment"),
+        ]
+        for section, body, message, preserved in cases:
+            with self.subTest(section=section):
+                captured, content = self.request(f"/admin/dictionaries/{section}/create", method="POST", body=urlencode(body))
+                self.assertEqual(captured["status"], "400 Bad Request")
+                self.assertIn(message, content)
+                self.assertIn(f"section={section}", content)
+                self.assertIn(preserved, content)
+
+    def test_duplicate_server_rename_is_readable(self):
+        self.request("/routes")
+        self.request("/admin/dictionaries/servers/create", method="POST", body=urlencode({"name": "EU69D-A", "comment": ""}))
+        self.request("/admin/dictionaries/servers/create", method="POST", body=urlencode({"name": "EU69D-B", "comment": ""}))
+        conn = server.connect(server.DB_PATH)
+        try:
+            other_id = conn.execute("SELECT id FROM servers WHERE name = 'EU69D-B'").fetchone()["id"]
+        finally:
+            conn.close()
+        captured, content = self.request(
+            f"/admin/dictionaries/servers/{other_id}/update", method="POST",
+            body=urlencode({"name": "EU69D-A", "comment": "", "is_active": "1"}),
+        )
+        self.assertEqual(captured["status"], "400 Bad Request")
+        self.assertIn("Сервер с таким названием уже существует", content)
+        self.assertIn("section=servers", content)
+
+    def test_geo_manual_ui_and_legacy_code_compatibility(self):
+        captured, content = self.request("/admin/dictionaries?section=countries")
+        self.assertEqual(captured["status"], "200 OK")
+        create_form = re.search(r"action='/admin/dictionaries/countries/create'>(.*?)</form>", content, re.S).group(1)
+        self.assertIn("name='name'", create_form)
+        self.assertNotIn("name='code'", create_form)
+        self.assertNotIn("Код GEO", content)
+
+        captured, _ = self.request("/admin/dictionaries/countries/create", method="POST", body=urlencode({"name": "Германия 69D"}))
+        self.assertEqual(captured["status"], "303 See Other")
+        conn = server.connect(server.DB_PATH)
+        try:
+            created = conn.execute("SELECT code FROM countries WHERE name = ?", ("Германия 69D",)).fetchone()
+            self.assertIsNone(created["code"])
+            legacy = conn.execute("SELECT id, code FROM countries WHERE code IS NOT NULL LIMIT 1").fetchone()
+        finally:
+            conn.close()
+        self.request(f"/admin/dictionaries/countries/{legacy['id']}/update", method="POST", body=urlencode({"name": "Legacy GEO renamed", "is_active": "1"}))
+        conn = server.connect(server.DB_PATH)
+        try:
+            self.assertEqual(conn.execute("SELECT code FROM countries WHERE id = ?", (legacy["id"],)).fetchone()["code"], legacy["code"])
+        finally:
+            conn.close()
+
+    def test_currency_comment_compatibility_and_usdt(self):
+        captured, content = self.request("/admin/dictionaries?section=currencies")
+        create_form = re.search(r"action='/admin/dictionaries/currencies/create'>(.*?)</form>", content, re.S).group(1)
+        self.assertRegex(create_form, r"name='code'[^>]*required")
+        self.assertIn("name='comment'", create_form)
+        self.assertNotIn("Название", create_form)
+
+        captured, _ = self.request("/admin/dictionaries/currencies/create", method="POST", body=urlencode({"code": "usdt69d", "comment": ""}))
+        self.assertEqual(captured["status"], "303 See Other")
+        conn = server.connect(server.DB_PATH)
+        try:
+            row = conn.execute("SELECT id, code, name FROM currencies WHERE code = 'USDT69D'").fetchone()
+            self.assertEqual((row["code"], row["name"]), ("USDT69D", "USDT69D"))
+            currency_id = row["id"]
+        finally:
+            conn.close()
+        self.request(f"/admin/dictionaries/currencies/{currency_id}/update", method="POST", body=urlencode({"code": "usdt69d", "comment": "Tether для расчётов", "is_active": "1"}))
+        self.request(f"/admin/dictionaries/currencies/{currency_id}/update", method="POST", body=urlencode({"code": "usdt69d", "comment": "   ", "is_active": "1"}))
+        conn = server.connect(server.DB_PATH)
+        try:
+            self.assertEqual(conn.execute("SELECT name FROM currencies WHERE id = ?", (currency_id,)).fetchone()["name"], "USDT69D")
+        finally:
+            conn.close()
+
     def test_routes_csv_export_respects_prefix_filter(self):
         prefix_id = self.route_prefix_id("0828")
         captured, content = self.request(f"/routes?prefix_id={prefix_id}&export=csv")
