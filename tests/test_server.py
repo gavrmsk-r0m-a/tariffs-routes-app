@@ -1464,14 +1464,14 @@ class ServerSmokeTest(unittest.TestCase):
     def test_dictionary_create_requires_visible_fields_and_returns_active_section(self):
         self.request("/routes")
         cases = [
-            ("countries", {"name": "   ", "code": "	"}, "/admin/dictionaries?section=countries", "Заполните название GEO"),
+            ("countries", {"name": "   ", "code": "	"}, "/admin/dictionaries?section=countries", "Кажется, мы забыли название GEO. Давай его укажем."),
             ("providers", {"name": "NewTel", "default_currency_id": "", "comment": "comment"}, "/admin/dictionaries?section=providers", "Выберите валюту провайдера"),
-            ("currencies", {"code": " ", "name": "US Dollar"}, "/admin/dictionaries?section=currencies", "Заполните код валюты"),
+            ("currencies", {"code": " ", "name": "US Dollar"}, "/admin/dictionaries?section=currencies", "Кажется, мы забыли код валюты. Давай его укажем."),
             ("prefixes", {"provider_id": "", "prefix": "0333", "name": "prefix"}, "/admin/dictionaries?section=prefixes", "Выберите провайдера префикса"),
-            ("servers", {"name": " ", "comment": "  "}, "/admin/dictionaries?section=servers", "Заполните название сервера"),
-            ("phone-types", {"name": " ", "comment": "comment"}, "/admin/dictionaries?section=phone-types", "Заполните тип номера"),
-            ("projects", {"name": " ", "comment": "\n"}, "/admin/dictionaries?section=projects", "Заполните название проекта"),
-            ("phone-assignments", {"name": "Monitor", "code": " ", "comment": "comment"}, "/admin/dictionaries?section=phone-assignments", "Заполните код назначения номера"),
+            ("servers", {"name": " ", "comment": "  "}, "/admin/dictionaries?section=servers", "Кажется, мы забыли название сервера. Давай его укажем."),
+            ("phone-types", {"name": " ", "comment": "comment"}, "/admin/dictionaries?section=phone-types", "Кажется, мы забыли название типа номера. Давай его укажем."),
+            ("projects", {"name": " ", "comment": "\n"}, "/admin/dictionaries?section=projects", "Кажется, мы забыли название проекта. Давай его укажем."),
+            ("phone-assignments", {"name": "Monitor", "code": " ", "comment": "comment"}, "/admin/dictionaries?section=phone-assignments", "Кажется, мы забыли код назначения номера. Давай его укажем."),
         ]
         for kind, body, return_path, message in cases:
             with self.subTest(kind=kind):
@@ -1538,9 +1538,9 @@ class ServerSmokeTest(unittest.TestCase):
         self.request("/routes")
         self.request("/admin/dictionaries/servers/create", method="POST", body=urlencode({"name": "EU69D", "comment": "original"}))
         cases = [
-            ("servers", {"name": "EU69D", "comment": "keep me"}, "Сервер с таким названием уже существует", "keep me"),
-            ("countries", {"name": "Мексика"}, "ГЕО с таким названием уже существует", "Мексика"),
-            ("currencies", {"code": "eur", "comment": "keep currency comment"}, "Валюта с таким кодом уже существует", "keep currency comment"),
+            ("servers", {"name": "EU69D", "comment": "keep me"}, "Кажется, такой сервер у нас уже есть. Давай назовём его иначе.", "keep me"),
+            ("countries", {"name": "Мексика"}, "Кажется, такое GEO у нас уже есть. Давай назовём его иначе.", "Мексика"),
+            ("currencies", {"code": "eur", "comment": "keep currency comment"}, "Кажется, такая валюта у нас уже есть. Давай используем другой код.", "keep currency comment"),
         ]
         for section, body, message, preserved in cases:
             with self.subTest(section=section):
@@ -1564,8 +1564,56 @@ class ServerSmokeTest(unittest.TestCase):
             body=urlencode({"name": "EU69D-A", "comment": "", "is_active": "1"}),
         )
         self.assertEqual(captured["status"], "400 Bad Request")
-        self.assertIn("Сервер с таким названием уже существует", content)
+        self.assertIn("Кажется, такой сервер у нас уже есть. Давай назовём его иначе.", content)
         self.assertIn("section=servers", content)
+
+    def test_dictionary_normalized_duplicates_and_server_self_update(self):
+        self.request("/routes")
+        friendly = "Кажется, такой сервер у нас уже есть. Давай назовём его иначе."
+        self.assertEqual(self.request("/admin/dictionaries/servers/create", method="POST", body=urlencode({"name": "U1", "comment": "first"}))[0]["status"], "303 See Other")
+        self.assertEqual(self.request("/admin/dictionaries/servers/create", method="POST", body=urlencode({"name": "123", "comment": "second"}))[0]["status"], "303 See Other")
+        conn = server.connect(server.DB_PATH)
+        try:
+            u1_id = conn.execute("SELECT id FROM servers WHERE name = 'U1'").fetchone()["id"]
+            other_id = conn.execute("SELECT id FROM servers WHERE name = '123'").fetchone()["id"]
+        finally:
+            conn.close()
+        for value in ("U1", "u1", " U1 "):
+            captured, content = self.request("/admin/dictionaries/servers/create", method="POST", body=urlencode({"name": value, "comment": "kept"}))
+            self.assertEqual(captured["status"], "400 Bad Request")
+            self.assertIn(friendly, content)
+            self.assertIn("friendly-validation", content)
+            self.assertIn(">info</span>", content)
+            self.assertIn("kept", content)
+        for value in ("U1", "u1"):
+            captured, content = self.request(f"/admin/dictionaries/servers/{other_id}/update", method="POST", body=urlencode({"name": value, "comment": "edit kept", "is_active": "1"}))
+            self.assertEqual(captured["status"], "400 Bad Request")
+            self.assertIn(friendly, content)
+            self.assertIn("edit kept", content)
+            self.assertNotIn("SQLSTATE", content)
+            conn = server.connect(server.DB_PATH)
+            try: self.assertEqual(conn.execute("SELECT name FROM servers WHERE id = ?", (other_id,)).fetchone()["name"], "123")
+            finally: conn.close()
+        captured, _ = self.request(f"/admin/dictionaries/servers/{u1_id}/update", method="POST", body=urlencode({"name": "u1", "comment": "first", "is_active": "1"}))
+        self.assertEqual(captured["status"], "303 See Other")
+
+    def test_other_dictionary_normalized_create_guards(self):
+        self.request("/routes")
+        cases = [
+            ("countries", {"name": "Germany 69E"}, {"name": " germany 69e "}, "Кажется, такое GEO у нас уже есть."),
+            ("projects", {"name": "Test 69E"}, {"name": "test 69e"}, "Кажется, такой проект у нас уже есть."),
+            ("phone-types", {"name": "Mobile 69E"}, {"name": "mobile 69e"}, "Кажется, такой тип номера у нас уже есть."),
+            ("currencies", {"code": "usdx69e"}, {"code": "USDX69E"}, "Кажется, такая валюта у нас уже есть."),
+            ("providers", {"name": "Provider   69E", "default_currency_id": "1"}, {"name": " provider 69e ", "default_currency_id": "1"}, "Кажется, такой провайдер у нас уже есть."),
+            ("phone-assignments", {"name": "Assignment 69E", "code": "assign69e"}, {"name": "assignment 69e", "code": "other69e"}, "Кажется, такое назначение у нас уже есть."),
+            ("phone-assignments", {"name": "Other Assignment 69E", "code": "code69e"}, {"name": "Unique Assignment 69E", "code": "CODE69E"}, "Кажется, такой код назначения у нас уже есть."),
+        ]
+        for kind, first, duplicate, message in cases:
+            with self.subTest(kind=kind, duplicate=duplicate):
+                self.assertEqual(self.request(f"/admin/dictionaries/{kind}/create", method="POST", body=urlencode(first))[0]["status"], "303 See Other")
+                captured, content = self.request(f"/admin/dictionaries/{kind}/create", method="POST", body=urlencode(duplicate))
+                self.assertEqual(captured["status"], "400 Bad Request")
+                self.assertIn(message, content)
 
     def test_geo_manual_ui_and_legacy_code_compatibility(self):
         captured, content = self.request("/admin/dictionaries?section=countries")
