@@ -78,7 +78,7 @@ class DbErrorMapperTest(unittest.TestCase):
 
         info = map_database_error(FakePgError("duplicate key"), backend="postgres")
         self.assertEqual((info.table, info.constraint), ("servers", "servers_name_key"))
-        self.assertEqual(user_error(FakePgError("duplicate key")), "Сервер с таким названием уже существует")
+        self.assertEqual(user_error(FakePgError("duplicate key")), "Кажется, такой сервер у нас уже есть. Давай назовём его иначе.")
 
     def test_postgres_sqlstate_foreign_key_violation_is_mapped_without_psycopg(self):
         class FakePgError(Exception):
@@ -100,15 +100,15 @@ class DbErrorMapperTest(unittest.TestCase):
 class UserErrorMessageTest(unittest.TestCase):
     def test_dictionary_duplicate_messages(self):
         cases = {
-            "servers.name": "Сервер с таким названием уже существует",
-            "countries.name": "ГЕО с таким названием уже существует",
-            "providers.name": "Провайдер с таким названием уже существует",
-            "currencies.code": "Валюта с таким кодом уже существует",
-            "phone_number_types.name": "Тип номера с таким названием уже существует",
-            "projects.name": "Проект с таким названием уже существует",
-            "provider_prefixes.provider_id, provider_prefixes.prefix": "Такой префикс уже существует у выбранного провайдера",
-            "phone_assignment_types.name": "Назначение с таким названием уже существует",
-            "phone_assignment_types.code": "Назначение с таким кодом уже существует",
+            "servers.name": "Кажется, такой сервер у нас уже есть. Давай назовём его иначе.",
+            "countries.name": "Кажется, такое GEO у нас уже есть. Давай назовём его иначе.",
+            "providers.name": "Кажется, такой провайдер у нас уже есть. Давай назовём его иначе.",
+            "currencies.code": "Кажется, такая валюта у нас уже есть. Давай используем другой код.",
+            "phone_number_types.name": "Кажется, такой тип номера у нас уже есть. Давай назовём его иначе.",
+            "projects.name": "Кажется, такой проект у нас уже есть. Давай назовём его иначе.",
+            "provider_prefixes.provider_id, provider_prefixes.prefix": "Кажется, такой префикс у этого провайдера уже есть. Давай укажем другой.",
+            "phone_assignment_types.name": "Кажется, такое назначение у нас уже есть. Давай назовём его иначе.",
+            "phone_assignment_types.code": "Кажется, такой код назначения у нас уже есть. Давай используем другой.",
         }
         for columns, expected in cases.items():
             with self.subTest(columns=columns):

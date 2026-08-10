@@ -951,6 +951,8 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .required {{ display: inline-flex; align-items: baseline; color: var(--danger); font-weight: 760; line-height: 1; white-space: nowrap; }}
     .muted {{ color: var(--muted); font-weight: 500; }}
     .message-card, .error {{ border: 1px solid var(--danger); background: var(--danger-soft); color: var(--danger); padding: 14px; border-radius: var(--radius-card); }}
+    .friendly-validation {{ display: flex; align-items: flex-start; gap: 10px; border: 1px solid #d99a2b; background: color-mix(in srgb, #f59e0b 12%, var(--surface)); color: var(--text); padding: 12px 14px; border-radius: var(--radius-card); line-height: 1.45; }}
+    .friendly-validation .material-symbols-rounded {{ flex: 0 0 auto; color: #b76e00; font-size: 20px; margin-top: 1px; }}
 
     .material-symbols-rounded {{
       font-family: 'Material Symbols Rounded';
@@ -9387,6 +9389,9 @@ def dictionaries_page(repo: Repository, q: dict[str, str] | None = None, *, form
     titles = dict(sections)
     active_section = q.get("section") if q.get("section") in titles else "countries"
 
+    def friendly_validation(message: str) -> str:
+        return f"<div class='friendly-validation' role='alert'><span class='material-symbols-rounded' aria-hidden='true'>info</span><span>{esc(message)}</span></div>"
+
     def active_label(value: object) -> str:
         return "Активен" if value else "Неактивен"
 
@@ -9414,19 +9419,19 @@ def dictionaries_page(repo: Repository, q: dict[str, str] | None = None, *, form
         if section == "countries":
             return f"<form class='form-grid' method='post' action='/admin/dictionaries/countries/create'><label>GEO <span class='required'>*</span><input name='name' value='{value('name')}' placeholder='Название GEO' required></label>{submit}</form>"
         if section == "providers":
-            return f"<form class='form-grid' method='post' action='/admin/dictionaries/providers/create'><label>Провайдер <input name='name' placeholder='Название провайдера' required></label><label>Валюта <select name='default_currency_id' required><option value=''>—</option>{options(repo, 'currencies', 'code')}</select></label><label>Комментарий <input name='comment' placeholder='Комментарий'></label>{submit}</form>"
+            return f"<form class='form-grid' method='post' action='/admin/dictionaries/providers/create'><label>Провайдер <input name='name' value='{value('name')}' placeholder='Название провайдера' required></label><label>Валюта <select name='default_currency_id' required><option value=''>—</option>{options(repo, 'currencies', 'code', selected=form_data.get('default_currency_id'))}</select></label><label>Комментарий <input name='comment' value='{value('comment')}' placeholder='Комментарий'></label>{submit}</form>"
         if section == "currencies":
             return f"<form class='form-grid' method='post' action='/admin/dictionaries/currencies/create'><label>Код <span class='required'>*</span><input name='code' value='{value('code')}' placeholder='USD' required></label><label>Комментарий <input name='comment' value='{value('comment')}' placeholder='Необязательно'></label>{submit}</form>"
         if section == "prefixes":
-            return f"<form class='form-grid' method='post' action='/admin/dictionaries/prefixes/create'><label>Провайдер <select name='provider_id' required><option value=''>—</option>{options(repo, 'providers')}</select></label><label>Префикс <input name='prefix' placeholder='0827' required></label><label>Комментарий <input name='name' placeholder='Комментарий'></label>{submit}</form>"
+            return f"<form class='form-grid' method='post' action='/admin/dictionaries/prefixes/create'><label>Провайдер <select name='provider_id' required><option value=''>—</option>{options(repo, 'providers', selected=form_data.get('provider_id'))}</select></label><label>Префикс <input name='prefix' value='{value('prefix')}' placeholder='0827' required></label><label>Комментарий <input name='name' value='{value('name')}' placeholder='Комментарий'></label>{submit}</form>"
         if section == "servers":
             return f"<form class='form-grid' method='post' action='/admin/dictionaries/servers/create'><label>Сервер <input name='name' value='{value('name')}' placeholder='EU3' required></label><label>Комментарий <input name='comment' value='{value('comment')}' placeholder='Комментарий'></label>{submit}</form>"
         if section == "phone-types":
-            return f"<form class='form-grid' method='post' action='/admin/dictionaries/phone-types/create'><label>Тип номера <input name='name' placeholder='Mobile' required></label><label>Комментарий <input name='comment' placeholder='Комментарий'></label>{submit}</form>"
+            return f"<form class='form-grid' method='post' action='/admin/dictionaries/phone-types/create'><label>Тип номера <input name='name' value='{value('name')}' placeholder='Mobile' required></label><label>Комментарий <input name='comment' value='{value('comment')}' placeholder='Комментарий'></label>{submit}</form>"
         if section == "projects":
-            return f"<form class='form-grid' method='post' action='/admin/dictionaries/projects/create'><label>Проект <input name='name' placeholder='Название проекта' required></label><label>Комментарий <input name='comment' placeholder='Комментарий'></label>{submit}</form>"
+            return f"<form class='form-grid' method='post' action='/admin/dictionaries/projects/create'><label>Проект <input name='name' value='{value('name')}' placeholder='Название проекта' required></label><label>Комментарий <input name='comment' value='{value('comment')}' placeholder='Комментарий'></label>{submit}</form>"
         if section == "phone-assignments":
-            return f"<form class='form-grid' method='post' action='/admin/dictionaries/phone-assignments/create'><label>Назначение <input name='name' placeholder='Назначение номера' required></label><label>Код <input name='code' placeholder='Код' required></label><label>Комментарий <input name='comment' placeholder='Комментарий'></label>{submit}</form>"
+            return f"<form class='form-grid' method='post' action='/admin/dictionaries/phone-assignments/create'><label>Назначение <input name='name' value='{value('name')}' placeholder='Назначение номера' required></label><label>Код <input name='code' value='{value('code')}' placeholder='Код' required></label><label>Комментарий <input name='comment' value='{value('comment')}' placeholder='Комментарий'></label>{submit}</form>"
         return ""
 
     dictionary_counts = repo.dictionary_counts()
@@ -9468,7 +9473,10 @@ def dictionaries_page(repo: Repository, q: dict[str, str] | None = None, *, form
         headers = ["Сервер", "Активен", "Комментарий", "Действия"]
         source = repo.list_servers()
         for row in source:
-            rows.append(f"""<tr{row_class(row)}><td>{esc(row['name'])}</td><td><span class='status-badge'>{active_label(row['is_active'])}</span></td><td>{esc(row['comment'])}</td><td data-col='actions'><details class='edit-details'><summary title='Редактировать' aria-label='Редактировать'>Редактировать</summary><form method='post' action='/admin/dictionaries/servers/{row['id']}/update'>{edit_field('Название сервера', f"<input name='name' value='{esc(row['name'])}'>")}{edit_field('Комментарий', f"<input name='comment' value='{esc(row['comment'])}' placeholder='Комментарий'>")}{edit_field('Статус', active_select(row['is_active']))}{rename_policy_block('servers', row['id'])}<button>Сохранить</button></form></details></td></tr>""")
+            editing = str(form_data.get("_entity_id", "")) == str(row["id"])
+            edit_name = form_data.get("name", row["name"]) if editing else row["name"]
+            edit_comment = form_data.get("comment", row["comment"] or "") if editing else row["comment"]
+            rows.append(f"""<tr{row_class(row)}><td>{esc(row['name'])}</td><td><span class='status-badge'>{active_label(row['is_active'])}</span></td><td>{esc(row['comment'])}</td><td data-col='actions'><details class='edit-details'{' open' if editing else ''}><summary title='Редактировать' aria-label='Редактировать'>Редактировать</summary><form method='post' action='/admin/dictionaries/servers/{row['id']}/update'>{edit_field('Название сервера', f"<input name='name' value='{esc(edit_name)}'>")}{edit_field('Комментарий', f"<input name='comment' value='{esc(edit_comment)}' placeholder='Комментарий'>")}{edit_field('Статус', active_select(row['is_active']))}{rename_policy_block('servers', row['id'])}<button>Сохранить</button></form></details></td></tr>""")
     elif active_section == "phone-types":
         headers = ["Тип номера", "Активен", "Комментарий", "Действия"]
         source = repo.list_phone_number_types()
@@ -9494,8 +9502,8 @@ def dictionaries_page(repo: Repository, q: dict[str, str] | None = None, *, form
   <aside class='dictionary-sidebar'><p class='dictionary-sidebar-title'>Справочники</p>{''.join(cards)}</aside>
   <section class='dictionary-workspace'>
     <div class='dictionary-toolbar'><h2>Справочник: {esc(titles[active_section])}</h2><span class='dictionary-total'>Всего записей: {len(source)}</span></div>
-    {f"<div class='notice error'><strong>Ошибка</strong><br>{esc(form_error)}</div>" if form_error else ''}
-    <details class='dictionary-add'{' open' if form_error else ''}><summary>+ Добавить значение</summary>{add_form(active_section)}</details>
+    {friendly_validation(form_error) if form_error else ''}
+    <details class='dictionary-add'{' open' if form_error and '_entity_id' not in form_data else ''}><summary>+ Добавить значение</summary>{add_form(active_section)}</details>
     {table_card(table_html)}
     {table_footer(f"<nav class='pagination table-status-nav' aria-label='Статус таблицы'><span class='table-status-summary'><span class='table-status-item'>Всего записей: {len(source)}</span><span class='table-status-item table-selection-status' data-selected-count hidden>Выбрано: <strong>0</strong></span><span class='table-status-item'>Страница 1 из 1</span></span></nav>")}
   </section>
@@ -9725,6 +9733,42 @@ def required_dictionary_text(data: dict[str, str], field: str, message: str) -> 
     if not value:
         raise BusinessRuleError(message)
     return value
+
+
+DICTIONARY_DUPLICATE_MESSAGES = {
+    "countries": "Кажется, такое GEO у нас уже есть. Давай назовём его иначе.",
+    "providers": "Кажется, такой провайдер у нас уже есть. Давай назовём его иначе.",
+    "currencies": "Кажется, такая валюта у нас уже есть. Давай используем другой код.",
+    "prefixes": "Кажется, такой префикс у этого провайдера уже есть. Давай укажем другой.",
+    "servers": "Кажется, такой сервер у нас уже есть. Давай назовём его иначе.",
+    "phone-types": "Кажется, такой тип номера у нас уже есть. Давай назовём его иначе.",
+    "projects": "Кажется, такой проект у нас уже есть. Давай назовём его иначе.",
+    "phone-assignments": "Кажется, такое назначение у нас уже есть. Давай назовём его иначе.",
+}
+
+
+def ensure_dictionary_value_unique(repo: Repository, kind: str, value: str, *, entity_id: int | None = None, provider_id: int | None = None, column: str | None = None) -> None:
+    """Apply the user-facing normalized guard while retaining DB UNIQUE fallback."""
+    tables = {
+        "countries": ("countries", "name"), "currencies": ("currencies", "code"),
+        "servers": ("servers", "name"), "phone-types": ("phone_number_types", "name"),
+        "projects": ("projects", "name"), "phone-assignments": ("phone_assignment_types", column or "name"),
+    }
+    p = placeholder(repo.backend)
+    if kind == "providers":
+        sql, params = f"SELECT id FROM providers WHERE normalized_name = {p}", [normalize_provider_name(value)]
+    elif kind == "prefixes":
+        sql, params = f"SELECT id FROM provider_prefixes WHERE provider_id = {p} AND prefix = {p}", [provider_id, value]
+    else:
+        table, field = tables[kind]
+        sql, params = f"SELECT id FROM {table} WHERE LOWER(TRIM({field})) = {p}", [value.strip().lower()]
+    if entity_id is not None:
+        sql += f" AND id <> {p}"
+        params.append(entity_id)
+    if repo.conn.execute(sql + " LIMIT 1", tuple(params)).fetchone():
+        if kind == "phone-assignments" and column == "code":
+            raise BusinessRuleError("Кажется, такой код назначения у нас уже есть. Давай используем другой.")
+        raise BusinessRuleError(DICTIONARY_DUPLICATE_MESSAGES[kind])
 
 def required_dictionary_int(data: dict[str, str], field: str, message: str) -> int:
     value = (data.get(field) or "").strip()
@@ -10054,15 +10098,18 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
         parts = path.strip("/").split("/")
         kind = parts[2]
         if kind == "countries":
-            name = required_dictionary_text(data, "name", "Заполните название GEO.")
+            name = required_dictionary_text(data, "name", "Кажется, мы забыли название GEO. Давай его укажем.")
+            ensure_dictionary_value_unique(repo, kind, name)
             repo.create_country(name, code=None)
         elif kind == "providers":
-            name = required_dictionary_text(data, "name", "Заполните название провайдера.")
+            name = required_dictionary_text(data, "name", "Кажется, мы забыли название провайдера. Давай его укажем.")
+            ensure_dictionary_value_unique(repo, kind, name)
             default_currency_id = required_dictionary_int(data, "default_currency_id", "Выберите валюту провайдера.")
             comment = (data.get("comment") or "").strip() or None
             repo.create_provider(name, default_currency_id=default_currency_id, comment=comment)
         elif kind == "currencies":
-            code = required_dictionary_text(data, "code", "Заполните код валюты.").upper()
+            code = required_dictionary_text(data, "code", "Кажется, мы забыли код валюты. Давай его укажем.").upper()
+            ensure_dictionary_value_unique(repo, kind, code)
             comment = (data.get("comment") or "").strip()
             # Temporary compatibility shim: the legacy NOT NULL name column
             # stores the optional UI comment until a later schema cleanup.
@@ -10072,24 +10119,30 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
             raw_prefix = (data.get("prefix") or "").strip() or None
             name = (data.get("name") or "").strip() or None
             prefix = normalize_real_prefix(raw_prefix)
+            ensure_dictionary_value_unique(repo, kind, prefix, provider_id=provider_id)
             repo.create_prefix(provider_id, prefix, name)
         elif kind == "servers":
-            name = required_dictionary_text(data, "name", "Заполните название сервера.")
+            name = required_dictionary_text(data, "name", "Кажется, мы забыли название сервера. Давай его укажем.")
+            ensure_dictionary_value_unique(repo, kind, name)
             comment = (data.get("comment") or "").strip() or None
             repo.create_server(name, comment)
         elif kind == "phone-types":
-            name = required_dictionary_text(data, "name", "Заполните тип номера.")
+            name = required_dictionary_text(data, "name", "Кажется, мы забыли название типа номера. Давай его укажем.")
+            ensure_dictionary_value_unique(repo, kind, name)
             comment = (data.get("comment") or "").strip() or None
             repo.conn.execute("INSERT INTO phone_number_types(name, is_active, comment) VALUES (?, 1, ?)", (name, comment))
             repo.conn.commit()
         elif kind == "projects":
-            name = required_dictionary_text(data, "name", "Заполните название проекта.")
+            name = required_dictionary_text(data, "name", "Кажется, мы забыли название проекта. Давай его укажем.")
+            ensure_dictionary_value_unique(repo, kind, name)
             comment = (data.get("comment") or "").strip() or None
             repo.conn.execute("INSERT INTO projects(name, is_active, comment) VALUES (?, 1, ?)", (name, comment))
             repo.conn.commit()
         elif kind == "phone-assignments":
-            name = required_dictionary_text(data, "name", "Заполните назначение номера.")
-            code = required_dictionary_text(data, "code", "Заполните код назначения номера.")
+            name = required_dictionary_text(data, "name", "Кажется, мы забыли название назначения номера. Давай его укажем.")
+            code = required_dictionary_text(data, "code", "Кажется, мы забыли код назначения номера. Давай его укажем.")
+            ensure_dictionary_value_unique(repo, kind, name, column="name")
+            ensure_dictionary_value_unique(repo, kind, code, column="code")
             comment = (data.get("comment") or "").strip() or None
             repo.conn.execute("INSERT INTO phone_assignment_types(code, name, is_active, comment) VALUES (?, ?, 1, ?)", (code, name, comment))
             repo.conn.commit()
@@ -10117,32 +10170,40 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
         before = repo.conn.execute(f"SELECT * FROM {table} WHERE id = ?", (entity_id,)).fetchone()
         old_label = before[label_column] if before else None
         if kind == "countries":
-            new_label = required_dictionary_text(data, "name", "Заполните название GEO.")
+            new_label = required_dictionary_text(data, "name", "Кажется, мы забыли название GEO. Давай его укажем.")
+            ensure_dictionary_value_unique(repo, kind, new_label, entity_id=entity_id)
             # Deliberately leave a legacy country code untouched on manual rename.
             repo.conn.execute("UPDATE countries SET name = ?, is_active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (new_label, is_active, entity_id))
         elif kind == "providers":
-            new_label = data["name"].strip()
+            new_label = required_dictionary_text(data, "name", "Кажется, мы забыли название провайдера. Давай его укажем.")
+            ensure_dictionary_value_unique(repo, kind, new_label, entity_id=entity_id)
             repo.conn.execute("UPDATE providers SET name = ?, normalized_name = ?, default_currency_id = ?, comment = ?, is_active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (new_label, normalize_provider_name(data["name"]), parse_int(data.get("default_currency_id")), data.get("comment") or None, is_active, entity_id))
         elif kind == "currencies":
-            new_label = required_dictionary_text(data, "code", "Заполните код валюты.").upper()
+            new_label = required_dictionary_text(data, "code", "Кажется, мы забыли код валюты. Давай его укажем.").upper()
+            ensure_dictionary_value_unique(repo, kind, new_label, entity_id=entity_id)
             comment = (data.get("comment") or "").strip()
             # Temporary compatibility shim; blank comments are represented by name=code.
             repo.conn.execute("UPDATE currencies SET code = ?, name = ?, is_active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (new_label, comment or new_label, is_active, entity_id))
         elif kind == "prefixes":
             prefix = normalize_real_prefix(data.get("prefix") or None)
             new_label = prefix
+            ensure_dictionary_value_unique(repo, kind, prefix, entity_id=entity_id, provider_id=int(data["provider_id"]))
             repo.conn.execute("UPDATE provider_prefixes SET provider_id = ?, prefix = ?, name = ?, is_active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (int(data["provider_id"]), prefix, data.get("name") or None, is_active, entity_id))
         elif kind == "servers":
-            new_label = data["name"].strip()
+            new_label = required_dictionary_text(data, "name", "Кажется, мы забыли название сервера. Давай его укажем.")
+            ensure_dictionary_value_unique(repo, kind, new_label, entity_id=entity_id)
             repo.conn.execute("UPDATE servers SET name = ?, comment = ?, is_active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (new_label, data.get("comment") or None, is_active, entity_id))
         elif kind == "phone-types":
-            new_label = data["name"].strip()
+            new_label = required_dictionary_text(data, "name", "Кажется, мы забыли название типа номера. Давай его укажем.")
+            ensure_dictionary_value_unique(repo, kind, new_label, entity_id=entity_id)
             repo.conn.execute("UPDATE phone_number_types SET name = ?, comment = ?, is_active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (new_label, data.get("comment") or None, is_active, entity_id))
         elif kind == "projects":
-            new_label = data["name"].strip()
+            new_label = required_dictionary_text(data, "name", "Кажется, мы забыли название проекта. Давай его укажем.")
+            ensure_dictionary_value_unique(repo, kind, new_label, entity_id=entity_id)
             repo.conn.execute("UPDATE projects SET name = ?, comment = ?, is_active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (new_label, data.get("comment") or None, is_active, entity_id))
         elif kind == "phone-assignments":
-            new_label = data["name"].strip()
+            new_label = required_dictionary_text(data, "name", "Кажется, мы забыли название назначения номера. Давай его укажем.")
+            ensure_dictionary_value_unique(repo, kind, new_label, entity_id=entity_id, column="name")
             repo.conn.execute("UPDATE phone_assignment_types SET name = ?, comment = ?, is_active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (new_label, data.get("comment") or None, is_active, entity_id))
         update_linked = data.get("rename_mode") == "update_linked" and old_label != new_label
         if update_linked and data.get("confirm_update_linked") != "1":
@@ -10246,16 +10307,16 @@ def user_error(exc: Exception) -> str:
         if table == "tariffs" or "tariffs" in metadata:
             return "Активный тариф с такой связкой ГЕО + провайдер + префикс уже существует"
         dictionary_duplicates = (
-            ("provider_prefixes", "Такой префикс уже существует у выбранного провайдера"),
-            ("phone_number_types", "Тип номера с таким названием уже существует"),
-            ("currencies", "Валюта с таким кодом уже существует"),
-            ("countries", "ГЕО с таким названием уже существует"),
-            ("providers", "Провайдер с таким названием уже существует"),
-            ("servers", "Сервер с таким названием уже существует"),
-            ("projects", "Проект с таким названием уже существует"),
+            ("provider_prefixes", DICTIONARY_DUPLICATE_MESSAGES["prefixes"]),
+            ("phone_number_types", DICTIONARY_DUPLICATE_MESSAGES["phone-types"]),
+            ("currencies", DICTIONARY_DUPLICATE_MESSAGES["currencies"]),
+            ("countries", DICTIONARY_DUPLICATE_MESSAGES["countries"]),
+            ("providers", DICTIONARY_DUPLICATE_MESSAGES["providers"]),
+            ("servers", DICTIONARY_DUPLICATE_MESSAGES["servers"]),
+            ("projects", DICTIONARY_DUPLICATE_MESSAGES["projects"]),
         )
         if "phone_assignment_types" in metadata:
-            return "Назначение с таким кодом уже существует" if "code" in columns or "code" in metadata else "Назначение с таким названием уже существует"
+            return "Кажется, такой код назначения у нас уже есть. Давай используем другой." if "code" in columns or "code" in metadata else DICTIONARY_DUPLICATE_MESSAGES["phone-assignments"]
         for dictionary_table, message in dictionary_duplicates:
             if table == dictionary_table or dictionary_table in metadata:
                 return message
@@ -10495,12 +10556,14 @@ def app(environ, start_response):
     except Exception as exc:
         # Business/validation errors are expected. Database errors are expected
         # only when the backend-neutral mapper recognizes their category.
-        if not isinstance(exc, (BusinessRuleError, ValueError)):
+        is_dictionary_request = path.startswith("/admin/dictionaries/")
+        if not isinstance(exc, BusinessRuleError) and not (isinstance(exc, ValueError) and not is_dictionary_request):
             db_error = map_database_error(exc, backend=DB_CONFIG.backend)
             if db_error.kind == UNKNOWN_DATABASE_ERROR:
                 raise
-            # PostgreSQL marks the transaction failed after a constraint error;
-            # reset it before rendering the dictionary page from the same connection.
+        # PostgreSQL marks a transaction failed after a constraint error.  Also
+        # discard partial dictionary UPDATE work after a later business error.
+        if is_dictionary_request:
             conn.rollback()
         start_response("400 Bad Request", html_headers())
         return_path = error_return_path(path)
@@ -10509,7 +10572,9 @@ def app(environ, start_response):
             section = parts[2]
             # CREATE errors retain user input and the active dictionary section.
             # UPDATE returns to the same section without a modal/JS migration.
-            preserved = parsed if path.endswith("/create") else None
+            preserved = dict(parsed)
+            if path.endswith("/update"):
+                preserved["_entity_id"] = parts[3]
             return [dictionaries_page(repo, {"section": section}, form_error=user_error(exc), form_data=preserved)]
         if return_path.startswith("/routes/") and return_path.endswith("/numbers/manage"):
             route_id = int(return_path.strip("/").split("/")[1])
