@@ -122,6 +122,10 @@ def _isolated_smoke_dictionaries(database_url: str):
         "server_b": f"CI_SMOKE_SERVER_B_{suffix}",
         "server_renamed": f"CI_SMOKE_SERVER_B_RENAMED_{suffix}",
         "project": f"CI_SMOKE_PROJECT_{suffix}",
+        "provider_a": f"CI_SMOKE_PROVIDER_A_{suffix}",
+        "provider_b": f"CI_SMOKE_PROVIDER_B_{suffix}",
+        "prefix": f"69{suffix[:4]}",
+        "prefix_renamed": f"70{suffix[:4]}",
     }
     conn = connect_postgres(database_url)
     try:
@@ -131,11 +135,27 @@ def _isolated_smoke_dictionaries(database_url: str):
                 "INSERT INTO servers(name, is_active) VALUES (%s, true) RETURNING id", (name,)
             ).fetchone()
             server_ids.append(int(row["id"]))
+        currency = conn.execute("SELECT id FROM currencies ORDER BY id LIMIT 1").fetchone()
+        if not currency:
+            raise SmokeFailure("/admin/dictionaries?section=prefixes", "currency is required for prefix smoke")
+        provider_ids = []
+        for name in (names["provider_a"], names["provider_b"]):
+            row = conn.execute(
+                "INSERT INTO providers(name, normalized_name, default_currency_id, is_active) VALUES (%s, %s, %s, true) RETURNING id",
+                (name, name.lower(), currency["id"]),
+            ).fetchone()
+            provider_ids.append(int(row["id"]))
+        prefix = conn.execute(
+            "INSERT INTO provider_prefixes(provider_id, prefix, name, is_active) VALUES (%s, %s, %s, true) RETURNING id",
+            (provider_ids[0], names["prefix"], "CI prefix"),
+        ).fetchone()
+        prefix_id = int(prefix["id"])
         conn.commit()
     finally:
         conn.close()
     try:
-        yield {**names, "server_a_id": server_ids[0], "server_b_id": server_ids[1]}
+        yield {**names, "server_a_id": server_ids[0], "server_b_id": server_ids[1],
+               "provider_a_id": provider_ids[0], "provider_b_id": provider_ids[1], "prefix_id": prefix_id}
     finally:
         cleanup = connect_postgres(database_url)
         try:
@@ -148,6 +168,9 @@ def _isolated_smoke_dictionaries(database_url: str):
                 )
             if project:
                 cleanup.execute("DELETE FROM projects WHERE id = %s", (project["id"],))
+            cleanup.execute("DELETE FROM change_log WHERE entity_type = 'prefixes' AND entity_id = %s", (prefix_id,))
+            cleanup.execute("DELETE FROM provider_prefixes WHERE id = %s", (prefix_id,))
+            cleanup.execute("DELETE FROM providers WHERE id = ANY(%s)", (provider_ids,))
             cleanup.execute("DELETE FROM servers WHERE id = ANY(%s)", (server_ids,))
             cleanup.commit()
         finally:
@@ -161,6 +184,17 @@ def _dictionary_value(database_url: str, table: str, entity_id: int) -> str | No
     try:
         row = conn.execute(f"SELECT name FROM {table} WHERE id = %s", (entity_id,)).fetchone()
         return str(row["name"]) if row else None
+    finally:
+        conn.close()
+
+
+def _prefix_value(database_url: str, prefix_id: int) -> dict[str, object] | None:
+    conn = connect_postgres(database_url)
+    try:
+        row = conn.execute(
+            "SELECT provider_id, prefix, name FROM provider_prefixes WHERE id = %s", (prefix_id,)
+        ).fetchone()
+        return dict(row) if row else None
     finally:
         conn.close()
 
@@ -297,6 +331,24 @@ def run_smoke(database_url: str, auth_secret: str) -> dict[str, object]:
             )
     checked.append("/admin/currency-rates/upsert (authenticated POST)")
     with _isolated_smoke_dictionaries(database_url) as dictionaries:
+        prefix_path = f"/admin/dictionaries/prefixes/{dictionaries['prefix_id']}/update"
+        status, _, body = wsgi_request(
+            app, prefix_path, method="POST",
+            data={"provider_id": str(dictionaries["provider_b_id"]), "prefix": dictionaries["prefix_renamed"], "name": "attack", "is_active": "1"},
+            cookie=cookie,
+        )
+        if status != "400 Bad Request" or "провайдера у существующего префикса менять нельзя".encode() not in body:
+            raise SmokeFailure(prefix_path, "prefix ownership substitution did not return friendly validation", status)
+        prefix_after_attack = _prefix_value(database_url, dictionaries["prefix_id"])
+        if not prefix_after_attack or prefix_after_attack["provider_id"] != dictionaries["provider_a_id"] or prefix_after_attack["prefix"] != dictionaries["prefix"]:
+            raise SmokeFailure(prefix_path, "prefix ownership substitution changed the database row", status)
+        status, headers, _ = wsgi_request(
+            app, prefix_path, method="POST",
+            data={"prefix": dictionaries["prefix_renamed"], "name": "normal edit", "is_active": "1"}, cookie=cookie,
+        )
+        prefix_after_edit = _prefix_value(database_url, dictionaries["prefix_id"])
+        if status != "303 See Other" or not prefix_after_edit or prefix_after_edit["provider_id"] != dictionaries["provider_a_id"] or prefix_after_edit["prefix"] != dictionaries["prefix_renamed"] or prefix_after_edit["name"] != "normal edit":
+            raise SmokeFailure(prefix_path, "normal prefix edit did not preserve ownership", status)
         update_path = f"/admin/dictionaries/servers/{dictionaries['server_b_id']}/update"
         status, _, body = wsgi_request(
             app, update_path, method="POST",
@@ -334,6 +386,7 @@ def run_smoke(database_url: str, auth_secret: str) -> dict[str, object]:
         finally:
             verify.close()
     checked.extend([
+        "/admin/dictionaries/prefixes/{id}/update (ownership rejection and normal edit)",
         "/admin/dictionaries/servers/{id}/update (duplicate authenticated POST)",
         "/admin/dictionaries/servers/{id}/update (successful authenticated POST)",
         "/admin/dictionaries/projects/create (authenticated POST)",

@@ -9493,7 +9493,7 @@ def dictionaries_page(repo: Repository, q: dict[str, str] | None = None, *, form
         headers = ["Префикс", "Провайдер", "Активен", "Комментарий", "Действия"]
         source = repo.list_provider_prefixes_with_provider()
         for row in source:
-            rows.append(f"""<tr{row_class(row)}><td>{esc(row['prefix'] or 'Без префикса')}</td><td>{esc(row['provider_name'])}</td><td><span class='status-badge'>{active_label(row['is_active'])}</span></td><td>{esc(row['name'])}</td><td data-col='actions'><details class='edit-details'{' open' if is_editing(row) else ''}><summary title='Редактировать' aria-label='Редактировать'>Редактировать</summary><form method='post' action='/admin/dictionaries/prefixes/{row['id']}/update'>{edit_field('Провайдер префикса', f"<select name='provider_id'>{options(repo, 'providers', selected=submitted(row, 'provider_id', row['provider_id']))}</select>")}{edit_field('Префикс', f"<input name='prefix' value='{esc(submitted(row, 'prefix', row['prefix']))}' placeholder='Без префикса или цифры'>")}{edit_field('Комментарий', f"<input name='name' value='{esc(submitted(row, 'name', row['name']))}' placeholder='Комментарий'>")}{edit_field('Статус', edit_active_select(row))}{rename_policy_block('prefixes', row['id'])}<button>Сохранить</button></form></details></td></tr>""")
+            rows.append(f"""<tr{row_class(row)}><td>{esc(row['prefix'] or 'Без префикса')}</td><td>{esc(row['provider_name'])}</td><td><span class='status-badge'>{active_label(row['is_active'])}</span></td><td>{esc(row['name'])}</td><td data-col='actions'><details class='edit-details'{' open' if is_editing(row) else ''}><summary title='Редактировать' aria-label='Редактировать'>Редактировать</summary><form method='post' action='/admin/dictionaries/prefixes/{row['id']}/update'>{edit_field('Провайдер', f"<input value='{esc(row['provider_name'])}' readonly aria-readonly='true'>")}{edit_field('Префикс', f"<input name='prefix' value='{esc(submitted(row, 'prefix', row['prefix']))}' placeholder='Без префикса или цифры'>")}{edit_field('Комментарий', f"<input name='name' value='{esc(submitted(row, 'name', row['name']))}' placeholder='Комментарий'>")}{edit_field('Статус', edit_active_select(row))}{rename_policy_block('prefixes', row['id'])}<button>Сохранить</button></form></details></td></tr>""")
     elif active_section == "servers":
         headers = ["Сервер", "Активен", "Комментарий", "Действия"]
         source = repo.list_servers()
@@ -10216,8 +10216,14 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
         elif kind == "prefixes":
             prefix = normalize_real_prefix(data.get("prefix") or None)
             new_label = prefix
-            ensure_dictionary_value_unique(repo, kind, prefix, entity_id=entity_id, provider_id=int(data["provider_id"]))
-            repo.conn.execute(f"UPDATE provider_prefixes SET provider_id = {p}, prefix = {p}, name = {p}, is_active = {p}, updated_at = CURRENT_TIMESTAMP WHERE id = {p}", (int(data["provider_id"]), prefix, data.get("name") or None, is_active, entity_id))
+            current_provider_id = int(before["provider_id"])
+            submitted_provider_id = parse_int(data.get("provider_id"))
+            if submitted_provider_id is not None and submitted_provider_id != current_provider_id:
+                raise BusinessRuleError("Кажется, провайдера у существующего префикса менять нельзя. Создай новый префикс у нужного провайдера.")
+            # Provider + prefix is this entity's business identity. Ownership stays
+            # fixed so existing routes, tariffs, snapshots, and history keep meaning.
+            ensure_dictionary_value_unique(repo, kind, prefix, entity_id=entity_id, provider_id=current_provider_id)
+            repo.conn.execute(f"UPDATE provider_prefixes SET prefix = {p}, name = {p}, is_active = {p}, updated_at = CURRENT_TIMESTAMP WHERE id = {p}", (prefix, data.get("name") or None, is_active, entity_id))
         elif kind == "servers":
             new_label = required_dictionary_text(data, "name", "Кажется, мы забыли название сервера. Давай его укажем.")
             ensure_dictionary_value_unique(repo, kind, new_label, entity_id=entity_id)

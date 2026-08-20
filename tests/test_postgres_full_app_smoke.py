@@ -6,6 +6,42 @@ from scripts.postgres_full_app_smoke import PAGES, SmokeFailure, _isolated_smoke
 
 
 class FullAppSmokeHarnessTests(unittest.TestCase):
+    def test_prefix_update_uses_database_owner_and_postgres_placeholders(self):
+        from app import server
+
+        conn = Mock()
+        conn.execute.return_value.fetchone.return_value = {"id": 81, "provider_id": 7, "prefix": "0808"}
+        repo = Mock(backend="postgres", conn=conn)
+        repo.dictionary_rename_preview.return_value = {}
+        with patch.object(server, "ensure_dictionary_value_unique") as unique:
+            location = server.handle_post(
+                repo, "/admin/dictionaries/prefixes/81/update",
+                {"prefix": "0809", "name": "normal edit", "is_active": "1"},
+            )
+
+        self.assertEqual(location, "/admin/dictionaries?section=prefixes")
+        unique.assert_called_once_with(repo, "prefixes", "0809", entity_id=81, provider_id=7)
+        update_sql, update_params = next(
+            call.args for call in conn.execute.call_args_list if "UPDATE provider_prefixes" in call.args[0]
+        )
+        self.assertNotIn("provider_id", update_sql)
+        self.assertNotIn("?", update_sql)
+        self.assertEqual(update_params, ("0809", "normal edit", True, 81))
+
+    def test_prefix_update_rejects_submitted_postgres_owner_substitution(self):
+        from app import server
+
+        conn = Mock()
+        conn.execute.return_value.fetchone.return_value = {"id": 81, "provider_id": 7, "prefix": "0808"}
+        repo = Mock(backend="postgres", conn=conn)
+        with self.assertRaisesRegex(server.BusinessRuleError, "провайдера у существующего префикса менять нельзя"):
+            server.handle_post(
+                repo, "/admin/dictionaries/prefixes/81/update",
+                {"provider_id": "8", "prefix": "0809", "name": "attack", "is_active": "1"},
+            )
+
+        self.assertFalse(any("UPDATE provider_prefixes" in call.args[0] for call in conn.execute.call_args_list))
+
     def test_dictionary_server_update_uses_only_postgres_placeholders(self):
         from app import server
 
