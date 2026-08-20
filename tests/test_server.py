@@ -1567,6 +1567,68 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertIn("Кажется, такой сервер у нас уже есть. Давай назовём его иначе.", content)
         self.assertIn("section=servers", content)
 
+    def test_server_linked_rename_missing_confirmation_preserves_inline_modal_state(self):
+        self.request("/admin/dictionaries/servers/create", method="POST", body=urlencode({"name": "123", "comment": "before"}))
+        conn = server.connect(server.DB_PATH)
+        try:
+            server_id = conn.execute("SELECT id FROM servers WHERE name = ?", ("123",)).fetchone()["id"]
+        finally:
+            conn.close()
+
+        captured, content = self.request(
+            f"/admin/dictionaries/servers/{server_id}/update", method="POST",
+            body=urlencode({"name": "1234", "comment": "kept comment", "is_active": "0", "rename_mode": "update_linked"}),
+        )
+        self.assertEqual(captured["status"], "400 Bad Request")
+        form = re.search(rf"<details class='edit-details' open>.*?<form[^>]+servers/{server_id}/update'>(.*?)</form>", content, re.S).group(1)
+        self.assertIn(server.DICTIONARY_CONFIRMATION_ERROR, form)
+        self.assertEqual(content.count(server.DICTIONARY_CONFIRMATION_ERROR), 1)
+        self.assertRegex(form, r"name='name' value='1234'")
+        self.assertRegex(form, r"name='comment' value='kept comment'")
+        self.assertRegex(form, r"(?s)name='is_active'>.*?value='0' selected")
+        self.assertRegex(form, r"name='rename_mode' value='update_linked' checked")
+        self.assertNotRegex(form, r"name='rename_mode' value='dictionary_only' checked")
+        self.assertRegex(form, r"name='confirm_update_linked' value='1'\s+\s*autofocus")
+        self.assertIn("Preview массового обновления:", form)
+        conn = server.connect(server.DB_PATH)
+        try:
+            unchanged = conn.execute("SELECT name, comment, is_active FROM servers WHERE id = ?", (server_id,)).fetchone()
+            self.assertEqual((unchanged["name"], unchanged["comment"], unchanged["is_active"]), ("123", "before", 1))
+        finally:
+            conn.close()
+
+    def test_currency_linked_rename_and_checked_other_error_preserve_state(self):
+        self.request("/admin/dictionaries/currencies/create", method="POST", body=urlencode({"code": "Z69G", "comment": "before"}))
+        self.request("/admin/dictionaries/currencies/create", method="POST", body=urlencode({"code": "DUP69G", "comment": "duplicate"}))
+        conn = server.connect(server.DB_PATH)
+        try:
+            currency_id = conn.execute("SELECT id FROM currencies WHERE code = ?", ("Z69G",)).fetchone()["id"]
+        finally:
+            conn.close()
+
+        captured, content = self.request(
+            f"/admin/dictionaries/currencies/{currency_id}/update", method="POST",
+            body=urlencode({"code": "NEW69G", "comment": "currency kept", "is_active": "0", "rename_mode": "update_linked"}),
+        )
+        self.assertEqual(captured["status"], "400 Bad Request")
+        form = re.search(rf"<details class='edit-details' open>.*?<form[^>]+currencies/{currency_id}/update'>(.*?)</form>", content, re.S).group(1)
+        self.assertIn(server.DICTIONARY_CONFIRMATION_ERROR, form)
+        self.assertRegex(form, r"name='code' value='NEW69G'")
+        self.assertRegex(form, r"name='rename_mode' value='update_linked' checked")
+        self.assertNotRegex(form, r"name='confirm_update_linked' value='1'\s+checked")
+
+        captured, content = self.request(
+            f"/admin/dictionaries/currencies/{currency_id}/update", method="POST",
+            body=urlencode({"code": "DUP69G", "comment": "still kept", "is_active": "0", "rename_mode": "update_linked", "confirm_update_linked": "1"}),
+        )
+        self.assertEqual(captured["status"], "400 Bad Request")
+        form = re.search(rf"<details class='edit-details' open>.*?<form[^>]+currencies/{currency_id}/update'>(.*?)</form>", content, re.S).group(1)
+        self.assertRegex(form, r"name='code' value='DUP69G'")
+        self.assertRegex(form, r"name='comment' value='still kept'")
+        self.assertRegex(form, r"name='rename_mode' value='update_linked' checked")
+        self.assertRegex(form, r"name='confirm_update_linked' value='1'\s+checked")
+        self.assertNotIn(server.DICTIONARY_CONFIRMATION_ERROR, content)
+
     def test_dictionary_normalized_duplicates_and_server_self_update(self):
         self.request("/routes")
         friendly = "Кажется, такой сервер у нас уже есть. Давай назовём его иначе."
