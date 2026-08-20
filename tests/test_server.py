@@ -1166,7 +1166,7 @@ class ServerSmokeTest(unittest.TestCase):
             link_id = conn.execute("SELECT id FROM route_phone_numbers WHERE route_id = 1 AND phone_number_id = ?", (phone_id,)).fetchone()["id"]
         finally:
             conn.close()
-        self.request("/routes/1/numbers/remove", method="POST", body=urlencode({"link_ids": str(link_id), "reason": "roman remove"}), cookie=roman_cookie)
+        self.request("/routes/1/numbers/remove", method="POST", body=urlencode({"link_ids": str(link_id), "reason": "roman remove", "confirm_remove": "1"}), cookie=roman_cookie)
         conn = server.connect(server.DB_PATH)
         try:
             added = conn.execute("SELECT changed_by FROM route_phone_number_history WHERE route_id = 1 AND phone_number_id = ? AND action = 'added'", (phone_id,)).fetchone()
@@ -2644,7 +2644,7 @@ class ServerSmokeTest(unittest.TestCase):
             link_id = conn.execute("SELECT id FROM route_phone_numbers WHERE route_id = 1 AND phone_number_id = ?", (phone_id,)).fetchone()["id"]
         finally:
             conn.close()
-        self.request("/routes/1/numbers/remove", method="POST", body=urlencode({"link_ids": str(link_id), "reason": "Проверка"}))
+        self.request("/routes/1/numbers/remove", method="POST", body=urlencode({"link_ids": str(link_id), "reason": "Проверка", "confirm_remove": "1"}))
 
         captured, content = self.request(f"/phones/{phone_id}/history")
         self.assertEqual(captured["status"], "200 OK")
@@ -3513,6 +3513,92 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertIn('<option value="tariffs" selected>Тарифы</option>', content)
         self.assertIn(csv_text, content)
         self.assertIn("Режим «Заменить выбранный раздел» временно отключён", content)
+
+    def test_route_number_removal_error_preserves_confirmation_form_state(self):
+        self.request("/routes")
+        conn = server.connect(server.DB_PATH)
+        try:
+            link_id = conn.execute(
+                "SELECT id FROM route_phone_numbers WHERE route_id = 1 AND is_active = 1 ORDER BY id LIMIT 1"
+            ).fetchone()["id"]
+        finally:
+            conn.close()
+
+        with patch.object(server.Repository, "remove_phone_links_from_route", side_effect=server.BusinessRuleError("Проверьте выбранные номера")):
+            captured, content = self.request(
+                "/routes/1/numbers/remove",
+                method="POST",
+                body=urlencode({"link_ids": str(link_id), "reason": "Ошибочная привязка", "confirm_remove": "1"}),
+            )
+
+        self.assertEqual(captured["status"], "400 Bad Request")
+        form = _form_fragment(content, "/routes/1/numbers/remove")
+        self.assertIn("Проверьте выбранные номера", form)
+        self.assertIn('value="Ошибочная привязка"', form)
+        self.assertRegex(form, rf"name='link_ids' value='{link_id}' checked")
+        self.assertRegex(form, r"name='confirm_remove' value='1' checked")
+        self.assertNotIn("Вернуться и исправить", content)
+
+    def test_route_number_removal_without_selection_is_blocked_and_keeps_reason(self):
+        self.request("/routes")
+        conn = server.connect(server.DB_PATH)
+        try:
+            before = conn.execute(
+                "SELECT COUNT(*) FROM route_phone_numbers WHERE route_id = 1 AND is_active = 1"
+            ).fetchone()[0]
+        finally:
+            conn.close()
+
+        captured, content = self.request(
+            "/routes/1/numbers/remove",
+            method="POST",
+            body=urlencode({"reason": "Не тот пул", "confirm_remove": "1"}),
+        )
+
+        self.assertEqual(captured["status"], "400 Bad Request")
+        form = _form_fragment(content, "/routes/1/numbers/remove")
+        self.assertIn("Выберите номера для исключения из маршрута", form)
+        self.assertIn('value="Не тот пул"', form)
+        self.assertRegex(form, r"name='confirm_remove' value='1' checked")
+        conn = server.connect(server.DB_PATH)
+        try:
+            after = conn.execute(
+                "SELECT COUNT(*) FROM route_phone_numbers WHERE route_id = 1 AND is_active = 1"
+            ).fetchone()[0]
+        finally:
+            conn.close()
+        self.assertEqual(after, before)
+
+    def test_route_number_removal_requires_confirmation_and_preserves_selection(self):
+        self.request("/routes")
+        conn = server.connect(server.DB_PATH)
+        try:
+            link_id = conn.execute(
+                "SELECT id FROM route_phone_numbers WHERE route_id = 1 AND is_active = 1 ORDER BY id LIMIT 1"
+            ).fetchone()["id"]
+        finally:
+            conn.close()
+
+        captured, content = self.request(
+            "/routes/1/numbers/remove",
+            method="POST",
+            body=urlencode({"link_ids": str(link_id), "reason": "Смена пула"}),
+        )
+
+        self.assertEqual(captured["status"], "400 Bad Request")
+        form = _form_fragment(content, "/routes/1/numbers/remove")
+        self.assertIn(server.ROUTE_NUMBER_REMOVAL_CONFIRMATION_ERROR, form)
+        self.assertIn('value="Смена пула"', form)
+        self.assertRegex(form, rf"name='link_ids' value='{link_id}' checked")
+        self.assertNotRegex(form, r"name='confirm_remove' value='1' checked")
+        conn = server.connect(server.DB_PATH)
+        try:
+            self.assertEqual(
+                conn.execute("SELECT is_active FROM route_phone_numbers WHERE id = ?", (link_id,)).fetchone()[0],
+                1,
+            )
+        finally:
+            conn.close()
 
 
     def test_phone_import_requirements_and_csv_template(self):
