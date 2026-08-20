@@ -6,6 +6,48 @@ from scripts.postgres_full_app_smoke import PAGES, SmokeFailure, _isolated_smoke
 
 
 class FullAppSmokeHarnessTests(unittest.TestCase):
+    def test_dictionary_server_update_uses_only_postgres_placeholders(self):
+        from app import server
+
+        conn = Mock()
+        conn.execute.return_value.fetchone.return_value = {"id": 71, "name": "OLD"}
+        repo = Mock(backend="postgres", conn=conn)
+        repo.dictionary_rename_preview.return_value = {}
+        with patch.object(server, "ensure_dictionary_value_unique"):
+            location = server.handle_post(
+                repo,
+                "/admin/dictionaries/servers/71/update",
+                {"name": "NEW", "comment": "probe", "is_active": "1"},
+            )
+
+        self.assertEqual(location, "/admin/dictionaries?section=servers")
+        statements = [call.args[0] for call in conn.execute.call_args_list]
+        self.assertEqual(statements[0], "SELECT * FROM servers WHERE id = %s")
+        self.assertTrue(any("UPDATE servers SET name = %s" in sql for sql in statements))
+        self.assertTrue(all("?" not in sql for sql in statements))
+        update_params = next(call.args[1] for call in conn.execute.call_args_list if "UPDATE servers" in call.args[0])
+        self.assertIs(update_params[2], True)
+
+    def test_direct_dictionary_creates_use_only_postgres_placeholders(self):
+        from app import server
+
+        cases = (
+            ("phone-types", {"name": "Mobile CI", "comment": "probe"}, "phone_number_types"),
+            ("projects", {"name": "Project CI", "comment": "probe"}, "projects"),
+            ("phone-assignments", {"name": "Assignment CI", "code": "assign_ci", "comment": "probe"}, "phone_assignment_types"),
+        )
+        for kind, data, table in cases:
+            with self.subTest(kind=kind):
+                conn = Mock()
+                repo = Mock(backend="postgres", conn=conn)
+                with patch.object(server, "ensure_dictionary_value_unique"):
+                    server.handle_post(repo, f"/admin/dictionaries/{kind}/create", data)
+                sql, params = conn.execute.call_args.args
+                self.assertIn(f"INSERT INTO {table}", sql)
+                self.assertNotIn("?", sql)
+                self.assertIn("%s", sql)
+                self.assertIn(True, params)
+
     def test_currency_rate_smoke_uses_isolated_currency_and_always_cleans_it_up(self):
         create_conn = Mock()
         create_conn.execute.return_value.fetchone.return_value = {"id": 901}
