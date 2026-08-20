@@ -7728,12 +7728,13 @@ def review_required_icon() -> str:
         "</span>"
     )
 
-def route_number_rows(repo: Repository, route_id: int, *, selectable: bool = False) -> tuple[list[sqlite3.Row], str, str]:
+def route_number_rows(repo: Repository, route_id: int, *, selectable: bool = False, selected_link_ids: set[int] | None = None) -> tuple[list[sqlite3.Row], str, str]:
     numbers = repo.route_numbers(route_id)
+    selected_link_ids = selected_link_ids or set()
     rows = []
     for phone in numbers:
         cost = f"Подкл: {phone['connection_cost'] or '—'} / Абон: {display_monthly_fee(phone['monthly_fee'])} / Исх: {phone['outgoing_rate'] or '—'} / Вх: {phone['incoming_rate'] or '—'}"
-        select_cell = f"<td><input type='checkbox' name='link_ids' value='{phone['link_id']}'></td>" if selectable else ""
+        select_cell = f"<td><input type='checkbox' name='link_ids' value='{phone['link_id']}' {'checked' if int(phone['link_id']) in selected_link_ids else ''}></td>" if selectable else ""
         rows.append(f"<tr>{select_cell}<td>{esc(phone['number'])}</td><td>{esc(STATUS_LABELS.get(phone['status'], phone['status']))}</td><td>{esc(ASSIGNMENT_LABELS.get(phone['assignment_type'], phone['assignment_type']))}</td><td>{esc(cost)}</td><td class='comment-cell'>{esc(phone['link_comment'] or phone['phone_comment'])}</td></tr>")
     select_header = "<th></th>" if selectable else ""
     table_html = f"<table><thead><tr>{select_header}<th>Номер</th><th>Статус</th><th>Назначение</th><th>Стоимость</th><th>Комментарий</th></tr></thead><tbody>{''.join(rows)}</tbody></table>"
@@ -7755,16 +7756,19 @@ def route_numbers_page(repo: Repository, route_id: int, q: dict[str, str] | None
     return page("Номера маршрута", body, q.get("notice"), "error" if q.get("notice_type") == "error" else "success")
 
 
-def route_numbers_manage_page(repo: Repository, route_id: int, q: dict[str, str] | None = None) -> bytes:
+def route_numbers_manage_page(repo: Repository, route_id: int, q: dict[str, str] | None = None, *, form_error: str | None = None, form_data: dict | None = None) -> bytes:
     q = q or {}
+    form_data = form_data or {}
     route = repo.conn.execute("SELECT name FROM routes WHERE id = ?", (route_id,)).fetchone()
     if route is None:
         return page("Маршрут не найден", "<h1>Маршрут не найден</h1>")
-    _, all_numbers, table_html = route_number_rows(repo, route_id, selectable=True)
+    selected_link_ids = {int(value) for value in form_data.get("link_ids", []) if str(value).isdigit()}
+    _, all_numbers, table_html = route_number_rows(repo, route_id, selectable=True, selected_link_ids=selected_link_ids)
     add_tools = f"""
 <div class="card"><h2>+ Добавить номер <span class="muted">Admin</span></h2><form method="post" action="/routes/{route_id}/numbers/add"><label>Номер телефона <span class="required">*</span><input name="phone_number"></label><label>Назначение <span class="required">*</span><input name="usage_type" value="pool_member"></label><label>Комментарий <input name="comment"></label><button>Добавить</button></form></div>
 <div class="card"><h2>Массовое добавление</h2><form method="post" action="/routes/{route_id}/numbers/bulk-add"><textarea name="phone_numbers" rows="7" cols="40" placeholder="по одному номеру в строке"></textarea><br><button>Добавить список</button></form></div>"""
-    remove_form = f"""<form method="post" action="/routes/{route_id}/numbers/remove"><label>Причина <input name="reason"></label><button onclick="return confirm('Исключить выбранные номера из маршрута?')">Исключить из маршрута</button>{table_html}</form>"""
+    inline_error = f"<div class='friendly-validation' role='alert'>{esc(form_error)}</div>" if form_error else ""
+    remove_form = f"""<form method='post' action='/routes/{route_id}/numbers/remove'><label>Причина <input name="reason" value="{esc(form_data.get('reason', ''))}"></label><div class='notice warning{' has-validation-error' if form_error else ''}'>{inline_error}<label><input type='checkbox' name='confirm_remove' value='1' {'checked' if form_data.get('confirm_remove') == '1' else ''} {'autofocus' if form_error == ROUTE_NUMBER_REMOVAL_CONFIRMATION_ERROR else ''}> <span>Подтверждаю исключение выбранных номеров из маршрута.</span></label></div><button>Исключить из маршрута</button>{table_html}</form>"""
     body = f"""
 <h1>Номера маршрута / АОНы: {esc(route['name'])}</h1><p><a href="/routes/{route_id}/edit">← Назад к маршруту</a> · <a href="/routes/{route_id}/numbers">Только просмотр</a></p>
 <div class="grid"><div class="card"><h2>Скопировать все</h2><textarea rows="7" cols="40" readonly>{esc(all_numbers)}</textarea></div>{add_tools}</div>
@@ -9376,6 +9380,7 @@ def change_reasons_page(repo: Repository) -> bytes:
 
 
 DICTIONARY_CONFIRMATION_ERROR = "Кажется, осталось подтвердить это действие. Отметь чекбокс ниже, если уверен."
+ROUTE_NUMBER_REMOVAL_CONFIRMATION_ERROR = "Подтвердите исключение выбранных номеров из маршрута."
 
 
 def dictionaries_page(repo: Repository, q: dict[str, str] | None = None, *, form_error: str | None = None, form_data: dict[str, str] | None = None) -> bytes:
@@ -9896,6 +9901,8 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
     if path.startswith("/routes/") and path.endswith("/numbers/remove"):
         route_id = int(path.strip("/").split("/")[1])
         link_ids = [int(v) for v in parse_qs(data.get("_raw", "")).get("link_ids", []) if v]
+        if data.get("confirm_remove") != "1":
+            raise BusinessRuleError(ROUTE_NUMBER_REMOVAL_CONFIRMATION_ERROR)
         removed = repo.remove_phone_links_from_route(route_id=route_id, link_ids=link_ids, removed_by=actor_id, reason=data.get("reason"))
         if removed == 0:
             raise BusinessRuleError("Выберите номера для исключения из маршрута")
@@ -10600,7 +10607,15 @@ def app(environ, start_response):
             return [dictionaries_page(repo, {"section": section}, form_error=user_error(exc), form_data=preserved)]
         if return_path.startswith("/routes/") and return_path.endswith("/numbers/manage"):
             route_id = int(return_path.strip("/").split("/")[1])
-            return [route_numbers_manage_page(repo, route_id, {"notice": user_error(exc), "notice_type": "error"})]
+            if not path.endswith("/numbers/remove"):
+                return [route_numbers_manage_page(repo, route_id, {"notice": user_error(exc), "notice_type": "error"})]
+            submitted_link_ids = parse_qs(parsed.get("_raw", ""), keep_blank_values=True).get("link_ids", [])
+            return [route_numbers_manage_page(
+                repo,
+                route_id,
+                form_error=user_error(exc),
+                form_data={"reason": parsed.get("reason", ""), "link_ids": submitted_link_ids, "confirm_remove": parsed.get("confirm_remove", "")},
+            )]
         if path.startswith("/provider-changes/") and path.endswith("/update"):
             change_id = int(path.strip("/").split("/")[1])
             return [provider_change_edit_page_with_error(repo, change_id, user_error(exc))]
