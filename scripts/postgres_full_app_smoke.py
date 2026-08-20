@@ -115,6 +115,57 @@ def _currency_rate_count(database_url: str, currency_id: int) -> int:
 
 
 @contextmanager
+def _isolated_smoke_dictionaries(database_url: str):
+    suffix = secrets.token_hex(6).upper()
+    names = {
+        "server_a": f"CI_SMOKE_SERVER_A_{suffix}",
+        "server_b": f"CI_SMOKE_SERVER_B_{suffix}",
+        "server_renamed": f"CI_SMOKE_SERVER_B_RENAMED_{suffix}",
+        "project": f"CI_SMOKE_PROJECT_{suffix}",
+    }
+    conn = connect_postgres(database_url)
+    try:
+        server_ids = []
+        for name in (names["server_a"], names["server_b"]):
+            row = conn.execute(
+                "INSERT INTO servers(name, is_active) VALUES (%s, true) RETURNING id", (name,)
+            ).fetchone()
+            server_ids.append(int(row["id"]))
+        conn.commit()
+    finally:
+        conn.close()
+    try:
+        yield {**names, "server_a_id": server_ids[0], "server_b_id": server_ids[1]}
+    finally:
+        cleanup = connect_postgres(database_url)
+        try:
+            project = cleanup.execute("SELECT id FROM projects WHERE name = %s", (names["project"],)).fetchone()
+            entity_ids = [*server_ids, *([int(project["id"])] if project else [])]
+            if entity_ids:
+                cleanup.execute(
+                    "DELETE FROM change_log WHERE entity_id = ANY(%s) AND entity_type IN ('servers', 'projects')",
+                    (entity_ids,),
+                )
+            if project:
+                cleanup.execute("DELETE FROM projects WHERE id = %s", (project["id"],))
+            cleanup.execute("DELETE FROM servers WHERE id = ANY(%s)", (server_ids,))
+            cleanup.commit()
+        finally:
+            cleanup.close()
+
+
+def _dictionary_value(database_url: str, table: str, entity_id: int) -> str | None:
+    if table not in {"servers", "projects"}:
+        raise ValueError("unsupported smoke dictionary")
+    conn = connect_postgres(database_url)
+    try:
+        row = conn.execute(f"SELECT name FROM {table} WHERE id = %s", (entity_id,)).fetchone()
+        return str(row["name"]) if row else None
+    finally:
+        conn.close()
+
+
+@contextmanager
 def _isolated_smoke_campaign(database_url: str):
     external_id = f"CI_SMOKE_{secrets.token_hex(6).upper()}"
     conn = connect_postgres(database_url)
@@ -245,6 +296,48 @@ def run_smoke(database_url: str, auth_secret: str) -> dict[str, object]:
                 status,
             )
     checked.append("/admin/currency-rates/upsert (authenticated POST)")
+    with _isolated_smoke_dictionaries(database_url) as dictionaries:
+        update_path = f"/admin/dictionaries/servers/{dictionaries['server_b_id']}/update"
+        status, _, body = wsgi_request(
+            app, update_path, method="POST",
+            data={"name": dictionaries["server_a"], "comment": "duplicate probe", "is_active": "1"},
+            cookie=cookie,
+        )
+        if status != "400 Bad Request" or "Кажется, такой сервер у нас уже есть".encode() not in body:
+            raise SmokeFailure(update_path, "duplicate server update did not return friendly validation", status)
+        if _dictionary_value(database_url, "servers", dictionaries["server_b_id"]) != dictionaries["server_b"]:
+            raise SmokeFailure(update_path, "duplicate server update changed the database row", status)
+
+        status, headers, _ = wsgi_request(
+            app, update_path, method="POST",
+            data={"name": dictionaries["server_renamed"], "comment": "successful probe", "is_active": "1"},
+            cookie=cookie,
+        )
+        expected_location = "/admin/dictionaries?section=servers"
+        if status != "303 See Other" or _header(headers, "Location") != expected_location:
+            raise SmokeFailure(update_path, "unique server update did not redirect successfully", status)
+        if _dictionary_value(database_url, "servers", dictionaries["server_b_id"]) != dictionaries["server_renamed"]:
+            raise SmokeFailure(update_path, "unique server update was not persisted", status)
+
+        create_path = "/admin/dictionaries/projects/create"
+        status, headers, _ = wsgi_request(
+            app, create_path, method="POST",
+            data={"name": dictionaries["project"], "comment": "direct SQL create probe"}, cookie=cookie,
+        )
+        if status != "303 See Other" or _header(headers, "Location") != "/admin/dictionaries?section=projects":
+            raise SmokeFailure(create_path, "project dictionary create did not redirect successfully", status)
+        verify = connect_postgres(database_url)
+        try:
+            project = verify.execute("SELECT id FROM projects WHERE name = %s", (dictionaries["project"],)).fetchone()
+            if not project:
+                raise SmokeFailure(create_path, "project dictionary row was not created", status)
+        finally:
+            verify.close()
+    checked.extend([
+        "/admin/dictionaries/servers/{id}/update (duplicate authenticated POST)",
+        "/admin/dictionaries/servers/{id}/update (successful authenticated POST)",
+        "/admin/dictionaries/projects/create (authenticated POST)",
+    ])
     with _isolated_smoke_campaign(database_url) as campaign:
         status, headers, _ = wsgi_request(
             app,

@@ -20,7 +20,7 @@ from urllib.error import HTTPError, URLError
 from wsgiref.simple_server import make_server
 
 from app.db import DEFAULT_PHONE_ASSIGNMENTS, DEFAULT_PROJECTS, connect, connect_database, ensure_db_initialized, init_db, load_db_config
-from app.db_adapter import placeholder
+from app.db_adapter import placeholder, to_db_bool
 from app.db_errors import UNKNOWN_DATABASE_ERROR, UNIQUE_VIOLATION, map_database_error
 from app.importer import apply_import, preview_import
 from app.repository import BusinessRuleError, COMPANY_CHANGE_LABELS, ROUTING_SCOPE_LABELS, Repository, normalize_phone_status, normalize_provider_name, normalize_real_prefix, validate_phone_number
@@ -10097,6 +10097,7 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
     if path.startswith("/admin/dictionaries/") and path.endswith("/create"):
         parts = path.strip("/").split("/")
         kind = parts[2]
+        p = placeholder(repo.backend)
         if kind == "countries":
             name = required_dictionary_text(data, "name", "Кажется, мы забыли название GEO. Давай его укажем.")
             ensure_dictionary_value_unique(repo, kind, name)
@@ -10130,13 +10131,13 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
             name = required_dictionary_text(data, "name", "Кажется, мы забыли название типа номера. Давай его укажем.")
             ensure_dictionary_value_unique(repo, kind, name)
             comment = (data.get("comment") or "").strip() or None
-            repo.conn.execute("INSERT INTO phone_number_types(name, is_active, comment) VALUES (?, 1, ?)", (name, comment))
+            repo.conn.execute(f"INSERT INTO phone_number_types(name, is_active, comment) VALUES ({p}, {p}, {p})", (name, to_db_bool(True, repo.backend), comment))
             repo.conn.commit()
         elif kind == "projects":
             name = required_dictionary_text(data, "name", "Кажется, мы забыли название проекта. Давай его укажем.")
             ensure_dictionary_value_unique(repo, kind, name)
             comment = (data.get("comment") or "").strip() or None
-            repo.conn.execute("INSERT INTO projects(name, is_active, comment) VALUES (?, 1, ?)", (name, comment))
+            repo.conn.execute(f"INSERT INTO projects(name, is_active, comment) VALUES ({p}, {p}, {p})", (name, to_db_bool(True, repo.backend), comment))
             repo.conn.commit()
         elif kind == "phone-assignments":
             name = required_dictionary_text(data, "name", "Кажется, мы забыли название назначения номера. Давай его укажем.")
@@ -10144,7 +10145,7 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
             ensure_dictionary_value_unique(repo, kind, name, column="name")
             ensure_dictionary_value_unique(repo, kind, code, column="code")
             comment = (data.get("comment") or "").strip() or None
-            repo.conn.execute("INSERT INTO phone_assignment_types(code, name, is_active, comment) VALUES (?, ?, 1, ?)", (code, name, comment))
+            repo.conn.execute(f"INSERT INTO phone_assignment_types(code, name, is_active, comment) VALUES ({p}, {p}, {p}, {p})", (code, name, to_db_bool(True, repo.backend), comment))
             repo.conn.commit()
         else:
             raise BusinessRuleError("Неизвестный справочник")
@@ -10153,7 +10154,8 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
         parts = path.strip("/").split("/")
         kind = parts[2]
         entity_id = int(parts[3])
-        is_active = 1 if data.get("is_active") == "1" else 0
+        p = placeholder(repo.backend)
+        is_active = to_db_bool(data.get("is_active") == "1", repo.backend)
         label_tables = {
             "countries": ("countries", "name"),
             "providers": ("providers", "name"),
@@ -10167,44 +10169,44 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
         table, label_column = label_tables.get(kind, (None, None))
         if table is None:
             raise BusinessRuleError("Неизвестный справочник")
-        before = repo.conn.execute(f"SELECT * FROM {table} WHERE id = ?", (entity_id,)).fetchone()
+        before = repo.conn.execute(f"SELECT * FROM {table} WHERE id = {p}", (entity_id,)).fetchone()
         old_label = before[label_column] if before else None
         if kind == "countries":
             new_label = required_dictionary_text(data, "name", "Кажется, мы забыли название GEO. Давай его укажем.")
             ensure_dictionary_value_unique(repo, kind, new_label, entity_id=entity_id)
             # Deliberately leave a legacy country code untouched on manual rename.
-            repo.conn.execute("UPDATE countries SET name = ?, is_active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (new_label, is_active, entity_id))
+            repo.conn.execute(f"UPDATE countries SET name = {p}, is_active = {p}, updated_at = CURRENT_TIMESTAMP WHERE id = {p}", (new_label, is_active, entity_id))
         elif kind == "providers":
             new_label = required_dictionary_text(data, "name", "Кажется, мы забыли название провайдера. Давай его укажем.")
             ensure_dictionary_value_unique(repo, kind, new_label, entity_id=entity_id)
-            repo.conn.execute("UPDATE providers SET name = ?, normalized_name = ?, default_currency_id = ?, comment = ?, is_active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (new_label, normalize_provider_name(data["name"]), parse_int(data.get("default_currency_id")), data.get("comment") or None, is_active, entity_id))
+            repo.conn.execute(f"UPDATE providers SET name = {p}, normalized_name = {p}, default_currency_id = {p}, comment = {p}, is_active = {p}, updated_at = CURRENT_TIMESTAMP WHERE id = {p}", (new_label, normalize_provider_name(data["name"]), parse_int(data.get("default_currency_id")), data.get("comment") or None, is_active, entity_id))
         elif kind == "currencies":
             new_label = required_dictionary_text(data, "code", "Кажется, мы забыли код валюты. Давай его укажем.").upper()
             ensure_dictionary_value_unique(repo, kind, new_label, entity_id=entity_id)
             comment = (data.get("comment") or "").strip()
             # Temporary compatibility shim; blank comments are represented by name=code.
-            repo.conn.execute("UPDATE currencies SET code = ?, name = ?, is_active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (new_label, comment or new_label, is_active, entity_id))
+            repo.conn.execute(f"UPDATE currencies SET code = {p}, name = {p}, is_active = {p}, updated_at = CURRENT_TIMESTAMP WHERE id = {p}", (new_label, comment or new_label, is_active, entity_id))
         elif kind == "prefixes":
             prefix = normalize_real_prefix(data.get("prefix") or None)
             new_label = prefix
             ensure_dictionary_value_unique(repo, kind, prefix, entity_id=entity_id, provider_id=int(data["provider_id"]))
-            repo.conn.execute("UPDATE provider_prefixes SET provider_id = ?, prefix = ?, name = ?, is_active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (int(data["provider_id"]), prefix, data.get("name") or None, is_active, entity_id))
+            repo.conn.execute(f"UPDATE provider_prefixes SET provider_id = {p}, prefix = {p}, name = {p}, is_active = {p}, updated_at = CURRENT_TIMESTAMP WHERE id = {p}", (int(data["provider_id"]), prefix, data.get("name") or None, is_active, entity_id))
         elif kind == "servers":
             new_label = required_dictionary_text(data, "name", "Кажется, мы забыли название сервера. Давай его укажем.")
             ensure_dictionary_value_unique(repo, kind, new_label, entity_id=entity_id)
-            repo.conn.execute("UPDATE servers SET name = ?, comment = ?, is_active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (new_label, data.get("comment") or None, is_active, entity_id))
+            repo.conn.execute(f"UPDATE servers SET name = {p}, comment = {p}, is_active = {p}, updated_at = CURRENT_TIMESTAMP WHERE id = {p}", (new_label, data.get("comment") or None, is_active, entity_id))
         elif kind == "phone-types":
             new_label = required_dictionary_text(data, "name", "Кажется, мы забыли название типа номера. Давай его укажем.")
             ensure_dictionary_value_unique(repo, kind, new_label, entity_id=entity_id)
-            repo.conn.execute("UPDATE phone_number_types SET name = ?, comment = ?, is_active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (new_label, data.get("comment") or None, is_active, entity_id))
+            repo.conn.execute(f"UPDATE phone_number_types SET name = {p}, comment = {p}, is_active = {p}, updated_at = CURRENT_TIMESTAMP WHERE id = {p}", (new_label, data.get("comment") or None, is_active, entity_id))
         elif kind == "projects":
             new_label = required_dictionary_text(data, "name", "Кажется, мы забыли название проекта. Давай его укажем.")
             ensure_dictionary_value_unique(repo, kind, new_label, entity_id=entity_id)
-            repo.conn.execute("UPDATE projects SET name = ?, comment = ?, is_active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (new_label, data.get("comment") or None, is_active, entity_id))
+            repo.conn.execute(f"UPDATE projects SET name = {p}, comment = {p}, is_active = {p}, updated_at = CURRENT_TIMESTAMP WHERE id = {p}", (new_label, data.get("comment") or None, is_active, entity_id))
         elif kind == "phone-assignments":
             new_label = required_dictionary_text(data, "name", "Кажется, мы забыли название назначения номера. Давай его укажем.")
             ensure_dictionary_value_unique(repo, kind, new_label, entity_id=entity_id, column="name")
-            repo.conn.execute("UPDATE phone_assignment_types SET name = ?, comment = ?, is_active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (new_label, data.get("comment") or None, is_active, entity_id))
+            repo.conn.execute(f"UPDATE phone_assignment_types SET name = {p}, comment = {p}, is_active = {p}, updated_at = CURRENT_TIMESTAMP WHERE id = {p}", (new_label, data.get("comment") or None, is_active, entity_id))
         update_linked = data.get("rename_mode") == "update_linked" and old_label != new_label
         if update_linked and data.get("confirm_update_linked") != "1":
             raise BusinessRuleError("Подтвердите массовое обновление связанных записей")
