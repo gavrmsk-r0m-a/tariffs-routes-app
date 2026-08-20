@@ -1111,6 +1111,8 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .dictionary-workspace .dictionary-mass-confirm {{ display: flex; align-items: flex-start; gap: 8px; margin-top: 8px; font-weight: 700; line-height: 1.35; white-space: normal; }}
     .dictionary-workspace .dictionary-mass-confirm input[type="checkbox"] {{ flex: 0 0 auto; width: 14px !important; min-width: 14px; max-width: 14px; height: 14px; min-height: 14px; margin: 2px 0 0; padding: 0; box-sizing: border-box; }}
     .dictionary-workspace .dictionary-mass-confirm span {{ min-width: 0; }}
+    .dictionary-workspace .dictionary-confirmation-area.has-validation-error {{ border-color: var(--warning-border); background: var(--warning-soft); box-shadow: 0 0 0 1px var(--warning-border) inset; }}
+    .dictionary-workspace .dictionary-confirmation-area .friendly-validation {{ margin: 8px 0; border-color: var(--warning-border); background: color-mix(in srgb, var(--warning-soft) 72%, var(--surface)); color: var(--text-strong); }}
     .dictionary-add .dictionary-add-submit {{ background: #2563eb; border-color: #2563eb; color: #fff; }}
     .dictionary-add .dictionary-add-submit:hover, .dictionary-add .dictionary-add-submit:focus-visible {{ background: #1d4ed8; border-color: #1d4ed8; color: #fff; }}
     .dictionary-add .dictionary-add-submit:active {{ background: #1e40af; border-color: #1e40af; color: #fff; }}
@@ -9373,6 +9375,9 @@ def change_reasons_page(repo: Repository) -> bytes:
     return page("Причины смены провайдера", table_page_container(f"<h1>Администрирование → Причины смены провайдера</h1>{form_card('Добавить причину', create_html, summary_class='admin-reason-primary-summary')}{table_card(table_html)}", extra_class="admin-change-reasons-page"))
 
 
+DICTIONARY_CONFIRMATION_ERROR = "Кажется, осталось подтвердить это действие. Отметь чекбокс ниже, если уверен."
+
+
 def dictionaries_page(repo: Repository, q: dict[str, str] | None = None, *, form_error: str | None = None, form_data: dict[str, str] | None = None) -> bytes:
     q = q or {}
     form_data = form_data or {}
@@ -9398,6 +9403,16 @@ def dictionaries_page(repo: Repository, q: dict[str, str] | None = None, *, form
     def active_select(value: object) -> str:
         return f"""<select name='is_active'><option value='1' {'selected' if value else ''}>Активен</option><option value='0' {'selected' if not value else ''}>Неактивен</option></select>"""
 
+    def is_editing(row: sqlite3.Row) -> bool:
+        return str(form_data.get("_entity_id", "")) == str(row["id"])
+
+    def submitted(row: sqlite3.Row, field: str, default: object) -> object:
+        return form_data.get(field, default) if is_editing(row) else default
+
+    def edit_active_select(row: sqlite3.Row) -> str:
+        value = submitted(row, "is_active", "1" if row["is_active"] else "0")
+        return active_select(str(value) == "1")
+
     def edit_field(label: str, control_html: str) -> str:
         return f"<label>{label} {control_html}</label>"
 
@@ -9407,10 +9422,15 @@ def dictionaries_page(repo: Repository, q: dict[str, str] | None = None, *, form
     def rename_policy_block(section: str, entity_id: int) -> str:
         counts = repo.dictionary_rename_preview(section, int(entity_id))
         count_items = "".join(f"<li>{esc(label)}: {count}</li>" for label, count in counts.items()) or "<li>Связанные записи не найдены</li>"
+        editing = str(form_data.get("_entity_id", "")) == str(entity_id)
+        rename_mode = form_data.get("rename_mode", "dictionary_only") if editing else "dictionary_only"
+        confirmation_checked = editing and form_data.get("confirm_update_linked") == "1"
+        confirmation_error = editing and form_error == DICTIONARY_CONFIRMATION_ERROR
+        inline_error = friendly_validation(DICTIONARY_CONFIRMATION_ERROR) if confirmation_error else ""
         return f"""<fieldset class='safe-rename-block'><legend>Что сделать со связанными записями?</legend>
-<label class='safe-rename-option'><input type='radio' name='rename_mode' value='dictionary_only' checked><span class='safe-rename-indicator' aria-hidden='true'></span><span><strong>Только переименовать справочник</strong><span class='muted'>Новые записи будут использовать новое название. Уже связанные записи сохранят текущее отображаемое значение.</span></span></label>
-<label class='safe-rename-option'><input type='radio' name='rename_mode' value='update_linked'><span class='safe-rename-indicator' aria-hidden='true'></span><span><strong>Переименовать справочник и обновить связанные записи</strong><span class='muted'>Все связанные записи будут показывать новое название. Используйте для исправления опечаток или неправильных названий.</span></span></label>
-<div class='notice warning'><strong>Preview массового обновления:</strong><ul>{count_items}</ul><label class='dictionary-mass-confirm'><input type='checkbox' name='confirm_update_linked' value='1'><span>Подтверждаю обновление связанных записей, если выбран массовый режим.</span></label></div>
+<label class='safe-rename-option'><input type='radio' name='rename_mode' value='dictionary_only' {'checked' if rename_mode == 'dictionary_only' else ''}><span class='safe-rename-indicator' aria-hidden='true'></span><span><strong>Только переименовать справочник</strong><span class='muted'>Новые записи будут использовать новое название. Уже связанные записи сохранят текущее отображаемое значение.</span></span></label>
+<label class='safe-rename-option'><input type='radio' name='rename_mode' value='update_linked' {'checked' if rename_mode == 'update_linked' else ''}><span class='safe-rename-indicator' aria-hidden='true'></span><span><strong>Переименовать справочник и обновить связанные записи</strong><span class='muted'>Все связанные записи будут показывать новое название. Используйте для исправления опечаток или неправильных названий.</span></span></label>
+<div class='notice warning dictionary-confirmation-area{' has-validation-error' if confirmation_error else ''}'><strong>Preview массового обновления:</strong><ul>{count_items}</ul>{inline_error}<label class='dictionary-mass-confirm'><input type='checkbox' name='confirm_update_linked' value='1' {'checked' if confirmation_checked else ''} {'autofocus' if confirmation_error else ''}><span>Подтверждаю обновление связанных записей, если выбран массовый режим.</span></label></div>
 </fieldset>"""
 
     def add_form(section: str) -> str:
@@ -9452,23 +9472,23 @@ def dictionaries_page(repo: Repository, q: dict[str, str] | None = None, *, form
         headers = ["GEO", "Активен", "Действия"]
         source = repo.list_countries()
         for row in source:
-            rows.append(f"""<tr{row_class(row)}><td>{esc(row['name'])}</td><td><span class='status-badge'>{active_label(row['is_active'])}</span></td><td data-col='actions'><details class='edit-details'><summary title='Редактировать' aria-label='Редактировать'>Редактировать</summary><form method='post' action='/admin/dictionaries/countries/{row['id']}/update'>{edit_field('Название GEO', f"<input name='name' value='{esc(row['name'])}'>")}{edit_field('Статус', active_select(row['is_active']))}{rename_policy_block('countries', row['id'])}<button>Сохранить</button></form></details></td></tr>""")
+            rows.append(f"""<tr{row_class(row)}><td>{esc(row['name'])}</td><td><span class='status-badge'>{active_label(row['is_active'])}</span></td><td data-col='actions'><details class='edit-details'{' open' if is_editing(row) else ''}><summary title='Редактировать' aria-label='Редактировать'>Редактировать</summary><form method='post' action='/admin/dictionaries/countries/{row['id']}/update'>{edit_field('Название GEO', f"<input name='name' value='{esc(submitted(row, 'name', row['name']))}'>")}{edit_field('Статус', edit_active_select(row))}{rename_policy_block('countries', row['id'])}<button>Сохранить</button></form></details></td></tr>""")
     elif active_section == "providers":
         headers = ["Название", "Активен", "Комментарий", "Действия"]
         source = repo.list_providers_with_currency()
         for row in source:
-            rows.append(f"""<tr{row_class(row)}><td>{esc(row['name'])}</td><td><span class='status-badge'>{active_label(row['is_active'])}</span></td><td>{esc(row['comment'])}</td><td data-col='actions'><details class='edit-details'><summary title='Редактировать' aria-label='Редактировать'>Редактировать</summary><form method='post' action='/admin/dictionaries/providers/{row['id']}/update'>{edit_field('Название провайдера', f"<input name='name' value='{esc(row['name'])}'>")}{edit_field('Валюта провайдера', f"<select name='default_currency_id'><option value=''>—</option>{options(repo, 'currencies', 'code', selected=row['default_currency_id'])}</select>")}{edit_field('Комментарий', f"<input name='comment' value='{esc(row['comment'])}' placeholder='Комментарий'>")}{edit_field('Статус', active_select(row['is_active']))}{rename_policy_block('providers', row['id'])}<button>Сохранить</button></form></details></td></tr>""")
+            rows.append(f"""<tr{row_class(row)}><td>{esc(row['name'])}</td><td><span class='status-badge'>{active_label(row['is_active'])}</span></td><td>{esc(row['comment'])}</td><td data-col='actions'><details class='edit-details'{' open' if is_editing(row) else ''}><summary title='Редактировать' aria-label='Редактировать'>Редактировать</summary><form method='post' action='/admin/dictionaries/providers/{row['id']}/update'>{edit_field('Название провайдера', f"<input name='name' value='{esc(submitted(row, 'name', row['name']))}'>")}{edit_field('Валюта провайдера', f"<select name='default_currency_id'><option value=''>—</option>{options(repo, 'currencies', 'code', selected=submitted(row, 'default_currency_id', row['default_currency_id']))}</select>")}{edit_field('Комментарий', f"<input name='comment' value='{esc(submitted(row, 'comment', row['comment']))}' placeholder='Комментарий'>")}{edit_field('Статус', edit_active_select(row))}{rename_policy_block('providers', row['id'])}<button>Сохранить</button></form></details></td></tr>""")
     elif active_section == "currencies":
         headers = ["Код валюты", "Активен", "Комментарий", "Действия"]
         source = repo.list_currencies()
         for row in source:
             comment = "" if row["name"] == row["code"] else row["name"]
-            rows.append(f"""<tr{row_class(row)}><td>{esc(row['code'])}</td><td><span class='status-badge'>{active_label(row['is_active'])}</span></td><td>{esc(comment) or '—'}</td><td data-col='actions'><details class='edit-details'><summary title='Редактировать' aria-label='Редактировать'>Редактировать</summary><form method='post' action='/admin/dictionaries/currencies/{row['id']}/update'>{edit_field('Код', f"<input name='code' value='{esc(row['code'])}' required>")}{edit_field('Комментарий', f"<input name='comment' value='{esc(comment)}' placeholder='Необязательно'>")}{edit_field('Статус', active_select(row['is_active']))}{rename_policy_block('currencies', row['id'])}<button>Сохранить</button></form></details></td></tr>""")
+            rows.append(f"""<tr{row_class(row)}><td>{esc(row['code'])}</td><td><span class='status-badge'>{active_label(row['is_active'])}</span></td><td>{esc(comment) or '—'}</td><td data-col='actions'><details class='edit-details'{' open' if is_editing(row) else ''}><summary title='Редактировать' aria-label='Редактировать'>Редактировать</summary><form method='post' action='/admin/dictionaries/currencies/{row['id']}/update'>{edit_field('Код', f"<input name='code' value='{esc(submitted(row, 'code', row['code']))}' required>")}{edit_field('Комментарий', f"<input name='comment' value='{esc(submitted(row, 'comment', comment))}' placeholder='Необязательно'>")}{edit_field('Статус', edit_active_select(row))}{rename_policy_block('currencies', row['id'])}<button>Сохранить</button></form></details></td></tr>""")
     elif active_section == "prefixes":
         headers = ["Префикс", "Провайдер", "Активен", "Комментарий", "Действия"]
         source = repo.list_provider_prefixes_with_provider()
         for row in source:
-            rows.append(f"""<tr{row_class(row)}><td>{esc(row['prefix'] or 'Без префикса')}</td><td>{esc(row['provider_name'])}</td><td><span class='status-badge'>{active_label(row['is_active'])}</span></td><td>{esc(row['name'])}</td><td data-col='actions'><details class='edit-details'><summary title='Редактировать' aria-label='Редактировать'>Редактировать</summary><form method='post' action='/admin/dictionaries/prefixes/{row['id']}/update'>{edit_field('Провайдер префикса', f"<select name='provider_id'>{options(repo, 'providers', selected=row['provider_id'])}</select>")}{edit_field('Префикс', f"<input name='prefix' value='{esc(row['prefix'])}' placeholder='Без префикса или цифры'>")}{edit_field('Комментарий', f"<input name='name' value='{esc(row['name'])}' placeholder='Комментарий'>")}{edit_field('Статус', active_select(row['is_active']))}{rename_policy_block('prefixes', row['id'])}<button>Сохранить</button></form></details></td></tr>""")
+            rows.append(f"""<tr{row_class(row)}><td>{esc(row['prefix'] or 'Без префикса')}</td><td>{esc(row['provider_name'])}</td><td><span class='status-badge'>{active_label(row['is_active'])}</span></td><td>{esc(row['name'])}</td><td data-col='actions'><details class='edit-details'{' open' if is_editing(row) else ''}><summary title='Редактировать' aria-label='Редактировать'>Редактировать</summary><form method='post' action='/admin/dictionaries/prefixes/{row['id']}/update'>{edit_field('Провайдер префикса', f"<select name='provider_id'>{options(repo, 'providers', selected=submitted(row, 'provider_id', row['provider_id']))}</select>")}{edit_field('Префикс', f"<input name='prefix' value='{esc(submitted(row, 'prefix', row['prefix']))}' placeholder='Без префикса или цифры'>")}{edit_field('Комментарий', f"<input name='name' value='{esc(submitted(row, 'name', row['name']))}' placeholder='Комментарий'>")}{edit_field('Статус', edit_active_select(row))}{rename_policy_block('prefixes', row['id'])}<button>Сохранить</button></form></details></td></tr>""")
     elif active_section == "servers":
         headers = ["Сервер", "Активен", "Комментарий", "Действия"]
         source = repo.list_servers()
@@ -9476,22 +9496,22 @@ def dictionaries_page(repo: Repository, q: dict[str, str] | None = None, *, form
             editing = str(form_data.get("_entity_id", "")) == str(row["id"])
             edit_name = form_data.get("name", row["name"]) if editing else row["name"]
             edit_comment = form_data.get("comment", row["comment"] or "") if editing else row["comment"]
-            rows.append(f"""<tr{row_class(row)}><td>{esc(row['name'])}</td><td><span class='status-badge'>{active_label(row['is_active'])}</span></td><td>{esc(row['comment'])}</td><td data-col='actions'><details class='edit-details'{' open' if editing else ''}><summary title='Редактировать' aria-label='Редактировать'>Редактировать</summary><form method='post' action='/admin/dictionaries/servers/{row['id']}/update'>{edit_field('Название сервера', f"<input name='name' value='{esc(edit_name)}'>")}{edit_field('Комментарий', f"<input name='comment' value='{esc(edit_comment)}' placeholder='Комментарий'>")}{edit_field('Статус', active_select(row['is_active']))}{rename_policy_block('servers', row['id'])}<button>Сохранить</button></form></details></td></tr>""")
+            rows.append(f"""<tr{row_class(row)}><td>{esc(row['name'])}</td><td><span class='status-badge'>{active_label(row['is_active'])}</span></td><td>{esc(row['comment'])}</td><td data-col='actions'><details class='edit-details'{' open' if editing else ''}><summary title='Редактировать' aria-label='Редактировать'>Редактировать</summary><form method='post' action='/admin/dictionaries/servers/{row['id']}/update'>{edit_field('Название сервера', f"<input name='name' value='{esc(edit_name)}'>")}{edit_field('Комментарий', f"<input name='comment' value='{esc(edit_comment)}' placeholder='Комментарий'>")}{edit_field('Статус', edit_active_select(row))}{rename_policy_block('servers', row['id'])}<button>Сохранить</button></form></details></td></tr>""")
     elif active_section == "phone-types":
         headers = ["Тип номера", "Активен", "Комментарий", "Действия"]
         source = repo.list_phone_number_types()
         for row in source:
-            rows.append(f"""<tr{row_class(row)}><td>{esc(row['name'])}</td><td><span class='status-badge'>{active_label(row['is_active'])}</span></td><td>{esc(row['comment'])}</td><td data-col='actions'><details class='edit-details'><summary title='Редактировать' aria-label='Редактировать'>Редактировать</summary><form method='post' action='/admin/dictionaries/phone-types/{row['id']}/update'>{edit_field('Тип номера', f"<input name='name' value='{esc(row['name'])}'>")}{edit_field('Комментарий', f"<input name='comment' value='{esc(row['comment'])}' placeholder='Комментарий'>")}{edit_field('Статус', active_select(row['is_active']))}{rename_policy_block('phone-types', row['id'])}<button>Сохранить</button></form></details></td></tr>""")
+            rows.append(f"""<tr{row_class(row)}><td>{esc(row['name'])}</td><td><span class='status-badge'>{active_label(row['is_active'])}</span></td><td>{esc(row['comment'])}</td><td data-col='actions'><details class='edit-details'{' open' if is_editing(row) else ''}><summary title='Редактировать' aria-label='Редактировать'>Редактировать</summary><form method='post' action='/admin/dictionaries/phone-types/{row['id']}/update'>{edit_field('Тип номера', f"<input name='name' value='{esc(submitted(row, 'name', row['name']))}'>")}{edit_field('Комментарий', f"<input name='comment' value='{esc(submitted(row, 'comment', row['comment']))}' placeholder='Комментарий'>")}{edit_field('Статус', edit_active_select(row))}{rename_policy_block('phone-types', row['id'])}<button>Сохранить</button></form></details></td></tr>""")
     elif active_section == "projects":
         headers = ["Название проекта", "Активен", "Комментарий", "Действия"]
         source = repo.list_projects()
         for row in source:
-            rows.append(f"""<tr{row_class(row)}><td>{esc(row['name'])}</td><td><span class='status-badge'>{active_label(row['is_active'])}</span></td><td>{esc(row['comment'])}</td><td data-col='actions'><details class='edit-details'><summary title='Редактировать' aria-label='Редактировать'>Редактировать</summary><form method='post' action='/admin/dictionaries/projects/{row['id']}/update'>{edit_field('Название проекта', f"<input name='name' value='{esc(row['name'])}'>")}{edit_field('Комментарий', f"<input name='comment' value='{esc(row['comment'])}' placeholder='Комментарий'>")}{edit_field('Статус', active_select(row['is_active']))}{rename_policy_block('projects', row['id'])}<button>Сохранить</button></form></details></td></tr>""")
+            rows.append(f"""<tr{row_class(row)}><td>{esc(row['name'])}</td><td><span class='status-badge'>{active_label(row['is_active'])}</span></td><td>{esc(row['comment'])}</td><td data-col='actions'><details class='edit-details'{' open' if is_editing(row) else ''}><summary title='Редактировать' aria-label='Редактировать'>Редактировать</summary><form method='post' action='/admin/dictionaries/projects/{row['id']}/update'>{edit_field('Название проекта', f"<input name='name' value='{esc(submitted(row, 'name', row['name']))}'>")}{edit_field('Комментарий', f"<input name='comment' value='{esc(submitted(row, 'comment', row['comment']))}' placeholder='Комментарий'>")}{edit_field('Статус', edit_active_select(row))}{rename_policy_block('projects', row['id'])}<button>Сохранить</button></form></details></td></tr>""")
     else:
         headers = ["Назначение", "Активен", "Комментарий", "Действия"]
         source = repo.list_phone_assignment_types()
         for row in source:
-            rows.append(f"""<tr{row_class(row)}><td>{esc(row['name'])}</td><td><span class='status-badge'>{active_label(row['is_active'])}</span></td><td>{esc(row['comment'])}</td><td data-col='actions'><details class='edit-details'><summary title='Редактировать' aria-label='Редактировать'>Редактировать</summary><form method='post' action='/admin/dictionaries/phone-assignments/{row['id']}/update'>{edit_field('Назначение номера', f"<input name='name' value='{esc(row['name'])}'>")}{edit_field('Код / системное значение', f"<input name='code' value='{esc(row['code'])}' readonly>")}{edit_field('Комментарий', f"<input name='comment' value='{esc(row['comment'])}' placeholder='Комментарий'>")}{edit_field('Статус', active_select(row['is_active']))}{rename_policy_block('phone-assignments', row['id'])}<button>Сохранить</button></form></details></td></tr>""")
+            rows.append(f"""<tr{row_class(row)}><td>{esc(row['name'])}</td><td><span class='status-badge'>{active_label(row['is_active'])}</span></td><td>{esc(row['comment'])}</td><td data-col='actions'><details class='edit-details'{' open' if is_editing(row) else ''}><summary title='Редактировать' aria-label='Редактировать'>Редактировать</summary><form method='post' action='/admin/dictionaries/phone-assignments/{row['id']}/update'>{edit_field('Назначение номера', f"<input name='name' value='{esc(submitted(row, 'name', row['name']))}'>")}{edit_field('Код / системное значение', f"<input name='code' value='{esc(submitted(row, 'code', row['code']))}' readonly>")}{edit_field('Комментарий', f"<input name='comment' value='{esc(submitted(row, 'comment', row['comment']))}' placeholder='Комментарий'>")}{edit_field('Статус', edit_active_select(row))}{rename_policy_block('phone-assignments', row['id'])}<button>Сохранить</button></form></details></td></tr>""")
 
     header_html = "".join(f"<th>{esc(header)}</th>" for header in headers)
     table_html = f"<table><thead><tr>{header_html}</tr></thead><tbody>{''.join(rows)}</tbody></table>"
@@ -9502,7 +9522,7 @@ def dictionaries_page(repo: Repository, q: dict[str, str] | None = None, *, form
   <aside class='dictionary-sidebar'><p class='dictionary-sidebar-title'>Справочники</p>{''.join(cards)}</aside>
   <section class='dictionary-workspace'>
     <div class='dictionary-toolbar'><h2>Справочник: {esc(titles[active_section])}</h2><span class='dictionary-total'>Всего записей: {len(source)}</span></div>
-    {friendly_validation(form_error) if form_error else ''}
+    {friendly_validation(form_error) if form_error and form_error != DICTIONARY_CONFIRMATION_ERROR else ''}
     <details class='dictionary-add'{' open' if form_error and '_entity_id' not in form_data else ''}><summary>+ Добавить значение</summary>{add_form(active_section)}</details>
     {table_card(table_html)}
     {table_footer(f"<nav class='pagination table-status-nav' aria-label='Статус таблицы'><span class='table-status-summary'><span class='table-status-item'>Всего записей: {len(source)}</span><span class='table-status-item table-selection-status' data-selected-count hidden>Выбрано: <strong>0</strong></span><span class='table-status-item'>Страница 1 из 1</span></span></nav>")}
@@ -10209,7 +10229,7 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
             repo.conn.execute(f"UPDATE phone_assignment_types SET name = {p}, comment = {p}, is_active = {p}, updated_at = CURRENT_TIMESTAMP WHERE id = {p}", (new_label, data.get("comment") or None, is_active, entity_id))
         update_linked = data.get("rename_mode") == "update_linked" and old_label != new_label
         if update_linked and data.get("confirm_update_linked") != "1":
-            raise BusinessRuleError("Подтвердите массовое обновление связанных записей")
+            raise BusinessRuleError(DICTIONARY_CONFIRMATION_ERROR)
         counts = repo.update_dictionary_snapshots(kind, entity_id, old_label, new_label) if update_linked else repo.dictionary_rename_preview(kind, entity_id)
         repo._change_log(kind, entity_id, "dictionary.updated", actor_id, old_values={"label": old_label}, new_values={"label": new_label, "is_active": is_active, "update_linked": update_linked, "updated_counts": counts}, summary=f"{old_label} → {new_label}; linked update: {'yes' if update_linked else 'no'}; counts: {counts}")
         repo.conn.commit()
