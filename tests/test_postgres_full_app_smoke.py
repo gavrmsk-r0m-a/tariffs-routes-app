@@ -2,10 +2,23 @@ import unittest
 from unittest.mock import ANY, Mock, patch
 
 from app.db import DbConfig
-from scripts.postgres_full_app_smoke import PAGES, SmokeFailure, _body_excerpt, _isolated_smoke_currency, _normalized_body_text, wsgi_request
+from scripts.postgres_full_app_smoke import PAGES, SmokeFailure, _body_excerpt, _isolated_smoke_currency, _normalized_body_text, _smoke_prefix_values, wsgi_request
 
 
 class FullAppSmokeHarnessTests(unittest.TestCase):
+    def test_smoke_prefix_fixtures_are_distinct_numeric_and_runtime_valid(self):
+        from app.repository import normalize_real_prefix
+
+        with patch("scripts.postgres_full_app_smoke.secrets.randbelow", return_value=10_175):
+            prefix, prefix_renamed = _smoke_prefix_values()
+
+        self.assertEqual((prefix, prefix_renamed), ("69010175", "70010175"))
+        self.assertTrue(prefix.isdigit())
+        self.assertTrue(prefix_renamed.isdigit())
+        self.assertNotEqual(prefix, prefix_renamed)
+        self.assertEqual(normalize_real_prefix(prefix), prefix)
+        self.assertEqual(normalize_real_prefix(prefix_renamed), prefix_renamed)
+
     def test_smoke_body_matching_uses_full_text_after_large_style_and_script_blocks(self):
         css = ".dictionary-card { color: red; }" * 40
         self.assertGreater(len(css), 1000)

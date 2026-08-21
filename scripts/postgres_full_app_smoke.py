@@ -116,9 +116,16 @@ def _currency_rate_count(database_url: str, currency_id: int) -> int:
         conn.close()
 
 
+def _smoke_prefix_values() -> tuple[str, str]:
+    """Create distinct numeric-only prefix values accepted by production validation."""
+    numeric_suffix = f"{secrets.randbelow(1_000_000):06d}"
+    return f"69{numeric_suffix}", f"70{numeric_suffix}"
+
+
 @contextmanager
 def _isolated_smoke_dictionaries(database_url: str):
     suffix = secrets.token_hex(6).upper()
+    prefix, prefix_renamed = _smoke_prefix_values()
     names = {
         "server_a": f"CI_SMOKE_SERVER_A_{suffix}",
         "server_b": f"CI_SMOKE_SERVER_B_{suffix}",
@@ -126,8 +133,8 @@ def _isolated_smoke_dictionaries(database_url: str):
         "project": f"CI_SMOKE_PROJECT_{suffix}",
         "provider_a": f"CI_SMOKE_PROVIDER_A_{suffix}",
         "provider_b": f"CI_SMOKE_PROVIDER_B_{suffix}",
-        "prefix": f"69{suffix[:4]}",
-        "prefix_renamed": f"70{suffix[:4]}",
+        "prefix": prefix,
+        "prefix_renamed": prefix_renamed,
     }
     conn = connect_postgres(database_url)
     try:
