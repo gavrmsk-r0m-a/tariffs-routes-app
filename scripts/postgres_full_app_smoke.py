@@ -9,9 +9,11 @@ the guarded PostgreSQL environment enabled, and exercises authenticated pages.
 from __future__ import annotations
 
 import argparse
+import html
 import io
 import json
 import os
+import re
 import secrets
 import sys
 import traceback
@@ -114,14 +116,25 @@ def _currency_rate_count(database_url: str, currency_id: int) -> int:
         conn.close()
 
 
+def _smoke_prefix_values() -> tuple[str, str]:
+    """Create distinct numeric-only prefix values accepted by production validation."""
+    numeric_suffix = f"{secrets.randbelow(1_000_000):06d}"
+    return f"69{numeric_suffix}", f"70{numeric_suffix}"
+
+
 @contextmanager
 def _isolated_smoke_dictionaries(database_url: str):
     suffix = secrets.token_hex(6).upper()
+    prefix, prefix_renamed = _smoke_prefix_values()
     names = {
         "server_a": f"CI_SMOKE_SERVER_A_{suffix}",
         "server_b": f"CI_SMOKE_SERVER_B_{suffix}",
         "server_renamed": f"CI_SMOKE_SERVER_B_RENAMED_{suffix}",
         "project": f"CI_SMOKE_PROJECT_{suffix}",
+        "provider_a": f"CI_SMOKE_PROVIDER_A_{suffix}",
+        "provider_b": f"CI_SMOKE_PROVIDER_B_{suffix}",
+        "prefix": prefix,
+        "prefix_renamed": prefix_renamed,
     }
     conn = connect_postgres(database_url)
     try:
@@ -131,11 +144,27 @@ def _isolated_smoke_dictionaries(database_url: str):
                 "INSERT INTO servers(name, is_active) VALUES (%s, true) RETURNING id", (name,)
             ).fetchone()
             server_ids.append(int(row["id"]))
+        currency = conn.execute("SELECT id FROM currencies ORDER BY id LIMIT 1").fetchone()
+        if not currency:
+            raise SmokeFailure("/admin/dictionaries?section=prefixes", "currency is required for prefix smoke")
+        provider_ids = []
+        for name in (names["provider_a"], names["provider_b"]):
+            row = conn.execute(
+                "INSERT INTO providers(name, normalized_name, default_currency_id, is_active) VALUES (%s, %s, %s, true) RETURNING id",
+                (name, name.lower(), currency["id"]),
+            ).fetchone()
+            provider_ids.append(int(row["id"]))
+        prefix = conn.execute(
+            "INSERT INTO provider_prefixes(provider_id, prefix, name, is_active) VALUES (%s, %s, %s, true) RETURNING id",
+            (provider_ids[0], names["prefix"], "CI prefix"),
+        ).fetchone()
+        prefix_id = int(prefix["id"])
         conn.commit()
     finally:
         conn.close()
     try:
-        yield {**names, "server_a_id": server_ids[0], "server_b_id": server_ids[1]}
+        yield {**names, "server_a_id": server_ids[0], "server_b_id": server_ids[1],
+               "provider_a_id": provider_ids[0], "provider_b_id": provider_ids[1], "prefix_id": prefix_id}
     finally:
         cleanup = connect_postgres(database_url)
         try:
@@ -148,6 +177,9 @@ def _isolated_smoke_dictionaries(database_url: str):
                 )
             if project:
                 cleanup.execute("DELETE FROM projects WHERE id = %s", (project["id"],))
+            cleanup.execute("DELETE FROM change_log WHERE entity_type = 'prefixes' AND entity_id = %s", (prefix_id,))
+            cleanup.execute("DELETE FROM provider_prefixes WHERE id = %s", (prefix_id,))
+            cleanup.execute("DELETE FROM providers WHERE id = ANY(%s)", (provider_ids,))
             cleanup.execute("DELETE FROM servers WHERE id = ANY(%s)", (server_ids,))
             cleanup.commit()
         finally:
@@ -163,6 +195,42 @@ def _dictionary_value(database_url: str, table: str, entity_id: int) -> str | No
         return str(row["name"]) if row else None
     finally:
         conn.close()
+
+
+def _prefix_value(database_url: str, prefix_id: int) -> dict[str, object] | None:
+    conn = connect_postgres(database_url)
+    try:
+        row = conn.execute(
+            "SELECT provider_id, prefix, name FROM provider_prefixes WHERE id = %s", (prefix_id,)
+        ).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def _prefix_change_log_count(database_url: str, prefix_id: int) -> int:
+    conn = connect_postgres(database_url)
+    try:
+        row = conn.execute(
+            "SELECT COUNT(*) AS value FROM change_log WHERE entity_type = 'prefixes' AND entity_id = %s",
+            (prefix_id,),
+        ).fetchone()
+        return int(row["value"])
+    finally:
+        conn.close()
+
+
+def _normalized_body_text(body: bytes) -> str:
+    """Return the complete normalized user-visible text from an HTML response."""
+    decoded = body.decode("utf-8", errors="replace")
+    without_nonvisible = re.sub(r"<(style|script)\b[^>]*>.*?</\1\s*>", " ", decoded, flags=re.I | re.S)
+    without_markup = re.sub(r"<[^>]+>", " ", without_nonvisible)
+    return " ".join(html.unescape(without_markup).split())
+
+
+def _body_excerpt(text: str, *, limit: int = 500) -> str:
+    """Bound already-normalized text for safe smoke failure diagnostics only."""
+    return text[:limit]
 
 
 @contextmanager
@@ -297,6 +365,34 @@ def run_smoke(database_url: str, auth_secret: str) -> dict[str, object]:
             )
     checked.append("/admin/currency-rates/upsert (authenticated POST)")
     with _isolated_smoke_dictionaries(database_url) as dictionaries:
+        prefix_path = f"/admin/dictionaries/prefixes/{dictionaries['prefix_id']}/update"
+        prefix_before_attack = _prefix_value(database_url, dictionaries["prefix_id"])
+        log_count_before_attack = _prefix_change_log_count(database_url, dictionaries["prefix_id"])
+        status, _, body = wsgi_request(
+            app, prefix_path, method="POST",
+            data={"provider_id": str(dictionaries["provider_b_id"]), "prefix": dictionaries["prefix_renamed"], "name": "attack", "is_active": "1"},
+            cookie=cookie,
+        )
+        prefix_after_attack = _prefix_value(database_url, dictionaries["prefix_id"])
+        log_count_after_attack = _prefix_change_log_count(database_url, dictionaries["prefix_id"])
+        if prefix_after_attack != prefix_before_attack or log_count_after_attack != log_count_before_attack:
+            raise SmokeFailure(prefix_path, "prefix ownership substitution changed the database row", status)
+        full_body_text = _normalized_body_text(body)
+        expected_message = "провайдера у существующего префикса менять нельзя"
+        if status != "400 Bad Request" or expected_message not in full_body_text:
+            raise SmokeFailure(
+                prefix_path,
+                f"prefix ownership substitution did not return friendly validation; "
+                f"expected={expected_message!r}; actual body excerpt={_body_excerpt(full_body_text)!r}",
+                status,
+            )
+        status, headers, _ = wsgi_request(
+            app, prefix_path, method="POST",
+            data={"prefix": dictionaries["prefix_renamed"], "name": "normal edit", "is_active": "1"}, cookie=cookie,
+        )
+        prefix_after_edit = _prefix_value(database_url, dictionaries["prefix_id"])
+        if status != "303 See Other" or not prefix_after_edit or prefix_after_edit["provider_id"] != dictionaries["provider_a_id"] or prefix_after_edit["prefix"] != dictionaries["prefix_renamed"] or prefix_after_edit["name"] != "normal edit":
+            raise SmokeFailure(prefix_path, "normal prefix edit did not preserve ownership", status)
         update_path = f"/admin/dictionaries/servers/{dictionaries['server_b_id']}/update"
         status, _, body = wsgi_request(
             app, update_path, method="POST",
@@ -334,6 +430,7 @@ def run_smoke(database_url: str, auth_secret: str) -> dict[str, object]:
         finally:
             verify.close()
     checked.extend([
+        "/admin/dictionaries/prefixes/{id}/update (ownership rejection and normal edit)",
         "/admin/dictionaries/servers/{id}/update (duplicate authenticated POST)",
         "/admin/dictionaries/servers/{id}/update (successful authenticated POST)",
         "/admin/dictionaries/projects/create (authenticated POST)",

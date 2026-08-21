@@ -2,10 +2,86 @@ import unittest
 from unittest.mock import ANY, Mock, patch
 
 from app.db import DbConfig
-from scripts.postgres_full_app_smoke import PAGES, SmokeFailure, _isolated_smoke_currency, wsgi_request
+from scripts.postgres_full_app_smoke import PAGES, SmokeFailure, _body_excerpt, _isolated_smoke_currency, _normalized_body_text, _smoke_prefix_values, wsgi_request
 
 
 class FullAppSmokeHarnessTests(unittest.TestCase):
+    def test_smoke_prefix_fixtures_are_distinct_numeric_and_runtime_valid(self):
+        from app.repository import normalize_real_prefix
+
+        with patch("scripts.postgres_full_app_smoke.secrets.randbelow", return_value=10_175):
+            prefix, prefix_renamed = _smoke_prefix_values()
+
+        self.assertEqual((prefix, prefix_renamed), ("69010175", "70010175"))
+        self.assertTrue(prefix.isdigit())
+        self.assertTrue(prefix_renamed.isdigit())
+        self.assertNotEqual(prefix, prefix_renamed)
+        self.assertEqual(normalize_real_prefix(prefix), prefix)
+        self.assertEqual(normalize_real_prefix(prefix_renamed), prefix_renamed)
+
+    def test_smoke_body_matching_uses_full_text_after_large_style_and_script_blocks(self):
+        css = ".dictionary-card { color: red; }" * 40
+        self.assertGreater(len(css), 1000)
+        body = (
+            f"<html><head><style>{css}</style><script>{'const hidden = true;' * 40}</script></head><body>"
+            "<div class='friendly-validation'><span>Кажется, провайдера у существующего "
+            "префикса менять нельзя.&nbsp; Создай новый префикс у нужного провайдера.</span></div>"
+            "</body></html>"
+        ).encode("utf-8")
+
+        visible = _normalized_body_text(body)
+
+        self.assertIn("провайдера у существующего префикса менять нельзя", visible)
+        self.assertIn("нельзя. Создай", visible)
+        self.assertNotIn("dictionary-card", visible)
+        self.assertNotIn("hidden", visible)
+        self.assertNotIn("<span>", visible)
+
+    def test_smoke_body_normalization_handles_invalid_utf8_and_excerpt_is_bounded(self):
+        visible = _normalized_body_text(b"<p>friendly</p>\xff" + b"x" * 1000)
+        excerpt = _body_excerpt(visible, limit=40)
+
+        self.assertGreater(len(visible), 500)
+        self.assertIn("\ufffd", visible)
+        self.assertLessEqual(len(excerpt), 40)
+        self.assertIn("friendly", excerpt)
+
+    def test_prefix_update_uses_database_owner_and_postgres_placeholders(self):
+        from app import server
+
+        conn = Mock()
+        conn.execute.return_value.fetchone.return_value = {"id": 81, "provider_id": 7, "prefix": "0808"}
+        repo = Mock(backend="postgres", conn=conn)
+        repo.dictionary_rename_preview.return_value = {}
+        with patch.object(server, "ensure_dictionary_value_unique") as unique:
+            location = server.handle_post(
+                repo, "/admin/dictionaries/prefixes/81/update",
+                {"prefix": "0809", "name": "normal edit", "is_active": "1"},
+            )
+
+        self.assertEqual(location, "/admin/dictionaries?section=prefixes")
+        unique.assert_called_once_with(repo, "prefixes", "0809", entity_id=81, provider_id=7)
+        update_sql, update_params = next(
+            call.args for call in conn.execute.call_args_list if "UPDATE provider_prefixes" in call.args[0]
+        )
+        self.assertNotIn("provider_id", update_sql)
+        self.assertNotIn("?", update_sql)
+        self.assertEqual(update_params, ("0809", "normal edit", True, 81))
+
+    def test_prefix_update_rejects_submitted_postgres_owner_substitution(self):
+        from app import server
+
+        conn = Mock()
+        conn.execute.return_value.fetchone.return_value = {"id": 81, "provider_id": 7, "prefix": "0808"}
+        repo = Mock(backend="postgres", conn=conn)
+        with self.assertRaisesRegex(server.BusinessRuleError, "провайдера у существующего префикса менять нельзя"):
+            server.handle_post(
+                repo, "/admin/dictionaries/prefixes/81/update",
+                {"provider_id": "8", "prefix": "0809", "name": "attack", "is_active": "1"},
+            )
+
+        self.assertFalse(any("UPDATE provider_prefixes" in call.args[0] for call in conn.execute.call_args_list))
+
     def test_dictionary_server_update_uses_only_postgres_placeholders(self):
         from app import server
 

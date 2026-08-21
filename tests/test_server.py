@@ -1461,6 +1461,80 @@ class ServerSmokeTest(unittest.TestCase):
             self.assertEqual(captured["status"], "400 Bad Request")
             self.assertIn("Префикс должен быть реальным кодом", content)
 
+    def test_prefix_create_keeps_provider_select_but_edit_shows_readonly_provider(self):
+        self.request("/routes")
+        conn = server.connect(server.DB_PATH)
+        repo = server.Repository(conn)
+        provider_id = repo.create_provider("Stage 69I Provider")
+        prefix_id = repo.create_prefix(provider_id, "6911", "immutable owner")
+        conn.close()
+
+        captured, content = self.request("/admin/dictionaries?section=prefixes")
+
+        self.assertEqual(captured["status"], "200 OK")
+        create_form = re.search(
+            r"<form\b[^>]*action=['\"]/admin/dictionaries/prefixes/create['\"][^>]*>(.*?)</form>",
+            content, flags=re.S,
+        ).group(1)
+        self.assertRegex(create_form, r"<select\b[^>]*name=['\"]provider_id['\"]")
+        edit_form = _form_fragment(content, f"/admin/dictionaries/prefixes/{prefix_id}/update")
+        self.assertNotRegex(edit_form, r"<select\b[^>]*name=['\"]provider_id['\"]")
+        self.assertNotRegex(edit_form, r"<input\b[^>]*name=['\"]provider_id['\"]")
+        self.assertIn("Stage 69I Provider", edit_form)
+        self.assertRegex(edit_form, r"<input\b[^>]*readonly[^>]*aria-readonly=['\"]true['\"]")
+
+    def test_prefix_update_rejects_provider_substitution_and_preserves_row(self):
+        self.request("/routes")
+        conn = server.connect(server.DB_PATH)
+        repo = server.Repository(conn)
+        provider_a = repo.create_provider("Stage 69I Owner A")
+        provider_b = repo.create_provider("Stage 69I Owner B")
+        prefix_id = repo.create_prefix(provider_a, "6921", "original")
+        conn.close()
+
+        captured, content = self.request(
+            f"/admin/dictionaries/prefixes/{prefix_id}/update", method="POST",
+            body=urlencode({"provider_id": str(provider_b), "prefix": "6922", "name": "attack", "is_active": "1"}),
+        )
+
+        self.assertEqual(captured["status"], "400 Bad Request")
+        self.assertIn("Кажется, провайдера у существующего префикса менять нельзя. Создай новый префикс у нужного провайдера.", content)
+        self.assertIn("class='friendly-validation' role='alert'", content)
+        edit_form = content.split(f"action='/admin/dictionaries/prefixes/{prefix_id}/update'", 1)[0]
+        self.assertRegex(edit_form[-300:], r"<details class='edit-details' open>")
+        conn = server.connect(server.DB_PATH)
+        row = conn.execute("SELECT provider_id, prefix, name FROM provider_prefixes WHERE id = ?", (prefix_id,)).fetchone()
+        self.assertEqual((row["provider_id"], row["prefix"], row["name"]), (provider_a, "6921", "original"))
+        conn.close()
+
+    def test_prefix_normal_edit_and_duplicates_use_current_provider(self):
+        self.request("/routes")
+        conn = server.connect(server.DB_PATH)
+        repo = server.Repository(conn)
+        provider_a = repo.create_provider("Stage 69I Duplicate A")
+        provider_b = repo.create_provider("Stage 69I Duplicate B")
+        prefix_id = repo.create_prefix(provider_a, "6931", "original")
+        repo.create_prefix(provider_a, "6932", "same owner duplicate")
+        repo.create_prefix(provider_b, "6932", "other owner allowed")
+        conn.close()
+
+        captured, content = self.request(
+            f"/admin/dictionaries/prefixes/{prefix_id}/update", method="POST",
+            body=urlencode({"prefix": "6932", "name": "duplicate", "is_active": "1"}),
+        )
+        self.assertEqual(captured["status"], "400 Bad Request")
+        self.assertIn("Кажется, такой префикс у этого провайдера уже есть", content)
+
+        captured, _ = self.request(
+            f"/admin/dictionaries/prefixes/{prefix_id}/update", method="POST",
+            body=urlencode({"prefix": "6933", "name": "normal rename", "is_active": "1"}),
+        )
+        self.assertEqual(captured["status"], "303 See Other")
+        conn = server.connect(server.DB_PATH)
+        row = conn.execute("SELECT provider_id, prefix, name FROM provider_prefixes WHERE id = ?", (prefix_id,)).fetchone()
+        self.assertEqual((row["provider_id"], row["prefix"], row["name"]), (provider_a, "6933", "normal rename"))
+        conn.close()
+
     def test_dictionary_create_requires_visible_fields_and_returns_active_section(self):
         self.request("/routes")
         cases = [
