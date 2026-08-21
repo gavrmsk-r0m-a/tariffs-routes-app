@@ -2,10 +2,28 @@ import unittest
 from unittest.mock import ANY, Mock, patch
 
 from app.db import DbConfig
-from scripts.postgres_full_app_smoke import PAGES, SmokeFailure, _isolated_smoke_currency, wsgi_request
+from scripts.postgres_full_app_smoke import PAGES, SmokeFailure, _isolated_smoke_currency, _visible_body_text, wsgi_request
 
 
 class FullAppSmokeHarnessTests(unittest.TestCase):
+    def test_smoke_visible_body_matching_decodes_utf8_and_html_entities(self):
+        body = (
+            "<div class='friendly-validation'><span>Кажется, провайдера у существующего "
+            "префикса менять нельзя. Создай новый префикс у нужного провайдера.</span></div>"
+        ).encode("utf-8")
+
+        visible = _visible_body_text(body)
+
+        self.assertIn("провайдера у существующего префикса менять нельзя", visible)
+        self.assertNotIn("<span>", visible)
+
+    def test_smoke_visible_body_excerpt_is_bounded_and_replaces_invalid_utf8(self):
+        visible = _visible_body_text(b"<p>friendly</p>\xff" + b"x" * 1000, limit=40)
+
+        self.assertLessEqual(len(visible), 40)
+        self.assertIn("friendly", visible)
+        self.assertIn("\ufffd", visible)
+
     def test_prefix_update_uses_database_owner_and_postgres_placeholders(self):
         from app import server
 

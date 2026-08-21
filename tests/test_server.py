@@ -1499,6 +1499,9 @@ class ServerSmokeTest(unittest.TestCase):
 
         self.assertEqual(captured["status"], "400 Bad Request")
         self.assertIn("Кажется, провайдера у существующего префикса менять нельзя. Создай новый префикс у нужного провайдера.", content)
+        self.assertIn("class='friendly-validation' role='alert'", content)
+        edit_form = content.split(f"action='/admin/dictionaries/prefixes/{prefix_id}/update'", 1)[0]
+        self.assertRegex(edit_form[-300:], r"<details class='edit-details' open>")
         conn = server.connect(server.DB_PATH)
         row = conn.execute("SELECT provider_id, prefix, name FROM provider_prefixes WHERE id = ?", (prefix_id,)).fetchone()
         self.assertEqual((row["provider_id"], row["prefix"], row["name"]), (provider_a, "6921", "original"))

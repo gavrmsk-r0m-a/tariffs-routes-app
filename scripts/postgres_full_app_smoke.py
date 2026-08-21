@@ -9,9 +9,11 @@ the guarded PostgreSQL environment enabled, and exercises authenticated pages.
 from __future__ import annotations
 
 import argparse
+import html
 import io
 import json
 import os
+import re
 import secrets
 import sys
 import traceback
@@ -199,6 +201,26 @@ def _prefix_value(database_url: str, prefix_id: int) -> dict[str, object] | None
         conn.close()
 
 
+def _prefix_change_log_count(database_url: str, prefix_id: int) -> int:
+    conn = connect_postgres(database_url)
+    try:
+        row = conn.execute(
+            "SELECT COUNT(*) AS value FROM change_log WHERE entity_type = 'prefixes' AND entity_id = %s",
+            (prefix_id,),
+        ).fetchone()
+        return int(row["value"])
+    finally:
+        conn.close()
+
+
+def _visible_body_text(body: bytes, *, limit: int = 500) -> str:
+    """Return a bounded, HTML-free UTF-8 excerpt suitable for smoke diagnostics."""
+    decoded = body.decode("utf-8", errors="replace")
+    without_markup = re.sub(r"<[^>]+>", " ", decoded)
+    visible = " ".join(html.unescape(without_markup).split())
+    return visible[:limit]
+
+
 @contextmanager
 def _isolated_smoke_campaign(database_url: str):
     external_id = f"CI_SMOKE_{secrets.token_hex(6).upper()}"
@@ -332,16 +354,26 @@ def run_smoke(database_url: str, auth_secret: str) -> dict[str, object]:
     checked.append("/admin/currency-rates/upsert (authenticated POST)")
     with _isolated_smoke_dictionaries(database_url) as dictionaries:
         prefix_path = f"/admin/dictionaries/prefixes/{dictionaries['prefix_id']}/update"
+        prefix_before_attack = _prefix_value(database_url, dictionaries["prefix_id"])
+        log_count_before_attack = _prefix_change_log_count(database_url, dictionaries["prefix_id"])
         status, _, body = wsgi_request(
             app, prefix_path, method="POST",
             data={"provider_id": str(dictionaries["provider_b_id"]), "prefix": dictionaries["prefix_renamed"], "name": "attack", "is_active": "1"},
             cookie=cookie,
         )
-        if status != "400 Bad Request" or "провайдера у существующего префикса менять нельзя".encode() not in body:
-            raise SmokeFailure(prefix_path, "prefix ownership substitution did not return friendly validation", status)
         prefix_after_attack = _prefix_value(database_url, dictionaries["prefix_id"])
-        if not prefix_after_attack or prefix_after_attack["provider_id"] != dictionaries["provider_a_id"] or prefix_after_attack["prefix"] != dictionaries["prefix"]:
+        log_count_after_attack = _prefix_change_log_count(database_url, dictionaries["prefix_id"])
+        if prefix_after_attack != prefix_before_attack or log_count_after_attack != log_count_before_attack:
             raise SmokeFailure(prefix_path, "prefix ownership substitution changed the database row", status)
+        visible_body = _visible_body_text(body)
+        expected_message = "провайдера у существующего префикса менять нельзя"
+        if status != "400 Bad Request" or expected_message not in visible_body:
+            raise SmokeFailure(
+                prefix_path,
+                f"prefix ownership substitution did not return friendly validation; "
+                f"expected={expected_message!r}; actual body excerpt={visible_body!r}",
+                status,
+            )
         status, headers, _ = wsgi_request(
             app, prefix_path, method="POST",
             data={"prefix": dictionaries["prefix_renamed"], "name": "normal edit", "is_active": "1"}, cookie=cookie,
