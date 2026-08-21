@@ -3214,6 +3214,33 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertEqual(captured["status"], "200 OK")
         self.assertNotIn("Временно не использовать", content)
 
+    def test_duplicate_change_reason_update_is_friendly_and_preserves_open_form(self):
+        self.request("/routes")
+        self.request(
+            "/admin/change-reasons/create", method="POST",
+            body=urlencode({"name": "Занято", "is_active": "1", "comment": "existing"}),
+        )
+        self.request(
+            "/admin/change-reasons/create", method="POST",
+            body=urlencode({"name": "ITM", "is_active": "1", "comment": "before"}),
+        )
+        conn = server.connect(server.DB_PATH)
+        try:
+            reason_id = conn.execute("SELECT id FROM change_reasons WHERE name = ?", ("ITM",)).fetchone()["id"]
+        finally:
+            conn.close()
+        captured, content = self.request(
+            f"/admin/change-reasons/{reason_id}/update", method="POST",
+            body=urlencode({"name": "Занято", "is_active": "0", "comment": "введённый комментарий"}),
+        )
+        self.assertEqual(captured["status"], "400 Bad Request")
+        self.assertIn("Причина смены провайдера с таким названием уже существует", content)
+        self.assertNotIn("UNIQUE constraint", content)
+        self.assertIn("<details class='edit-details' open>", content)
+        self.assertIn("value='Занято'", content)
+        self.assertIn("value='введённый комментарий'", content)
+        self.assertIn("<option value='0' selected>Нет</option>", content)
+
     def test_deactivated_dictionary_values_hidden_from_new_record_forms(self):
         self.request("/routes")
         self.request("/admin/dictionaries/countries/1/update", method="POST", body=urlencode({"name": "Мексика", "code": "MEX", "is_active": "0"}))

@@ -9360,10 +9360,16 @@ def currency_rates_page(repo: Repository) -> bytes:
     return page("Курсы валют", table_page_container(body, extra_class="admin-currency-page"))
 
 
-def change_reasons_page(repo: Repository) -> bytes:
+def change_reasons_page(repo: Repository, *, form_error: str | None = None, form_data: dict | None = None) -> bytes:
+    form_data = form_data or {}
+    validation_html = f"<div class='friendly-validation' role='alert'><span>{esc(form_error)}</span></div>" if form_error else ""
     rows = []
     for reason in repo.list_change_reasons():
-        rows.append(f"""<tr><td>{esc(reason['name'])}</td><td>{'Да' if reason['is_active'] else 'Нет'}</td><td>{esc(reason['description'])}</td><td data-col='actions'><details class='edit-details'><summary title='Редактировать' aria-label='Редактировать'>Редактировать</summary><form method='post' action='/admin/change-reasons/{reason['id']}/update'><label>Название <input name='name' value='{esc(reason['name'])}'></label><label>Активна <select name='is_active'><option value='1' {'selected' if reason['is_active'] else ''}>Да</option><option value='0' {'selected' if not reason['is_active'] else ''}>Нет</option></select></label><label>Комментарий <input name='comment' value='{esc(reason['description'])}'></label><button>Сохранить</button></form></details></td></tr>""")
+        editing = str(form_data.get("_entity_id", "")) == str(reason["id"])
+        name = form_data.get("name", reason["name"]) if editing else reason["name"]
+        comment = form_data.get("comment", reason["description"] or "") if editing else reason["description"]
+        active = form_data.get("is_active") == "1" if editing else bool(reason["is_active"])
+        rows.append(f"""<tr><td>{esc(reason['name'])}</td><td>{'Да' if reason['is_active'] else 'Нет'}</td><td>{esc(reason['description'])}</td><td data-col='actions'><details class='edit-details'{' open' if editing else ''}><summary title='Редактировать' aria-label='Редактировать'>Редактировать</summary><form method='post' action='/admin/change-reasons/{reason['id']}/update'><label>Название <input name='name' value='{esc(name)}'></label><label>Активна <select name='is_active'><option value='1' {'selected' if active else ''}>Да</option><option value='0' {'selected' if not active else ''}>Нет</option></select></label><label>Комментарий <input name='comment' value='{esc(comment)}'></label><button>Сохранить</button></form></details></td></tr>""")
     create_html = """<form class='reason-dialog reason-dialog-form' method='post' action='/admin/change-reasons/create'>
   <header class='reason-dialog-header'><h2>Добавить причину</h2></header>
   <div class='reason-dialog-body'>
@@ -9376,7 +9382,7 @@ def change_reasons_page(repo: Repository) -> bytes:
   <footer class='reason-dialog-footer'><button type='submit' class='modal-save'>Сохранить</button><button type='button' class='modal-cancel' data-modal-close>Отмена</button></footer>
 </form>"""
     table_html = f"<table><thead><tr><th>Название причины</th><th>Активна</th><th>Комментарий</th><th data-col='actions'>Действия</th></tr></thead><tbody>{''.join(rows)}</tbody></table>"
-    return page("Причины смены провайдера", table_page_container(f"<h1>Администрирование → Причины смены провайдера</h1>{form_card('Добавить причину', create_html, summary_class='admin-reason-primary-summary')}{table_card(table_html)}", extra_class="admin-change-reasons-page"))
+    return page("Причины смены провайдера", table_page_container(f"<h1>Администрирование → Причины смены провайдера</h1>{validation_html}{form_card('Добавить причину', create_html, summary_class='admin-reason-primary-summary')}{table_card(table_html)}", extra_class="admin-change-reasons-page"))
 
 
 DICTIONARY_CONFIRMATION_ERROR = "Кажется, осталось подтвердить это действие. Отметь чекбокс ниже, если уверен."
@@ -10099,9 +10105,8 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
         repo.create_change_reason(data["name"], created_by=actor_id, comment=data.get("comment"), is_active=data.get("is_active") == "1"); return "/admin/change-reasons"
     if path.startswith("/admin/change-reasons/") and path.endswith("/update"):
         reason_id = int(path.strip("/").split("/")[2])
-        repo.conn.execute("UPDATE change_reasons SET name = ?, description = ?, is_active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (data["name"].strip(), data.get("comment"), 1 if data.get("is_active") == "1" else 0, reason_id))
-        repo._change_log("change_reason", reason_id, "change_reason.updated", actor_id, new_values={"name": data["name"].strip(), "is_active": data.get("is_active")})
-        repo.conn.commit(); return "/admin/change-reasons"
+        repo.update_change_reason(reason_id, data["name"], comment=data.get("comment"), is_active=data.get("is_active") == "1", updated_by=actor_id)
+        return "/admin/change-reasons"
     if path == "/tariffs/countries/create":
         repo.create_country(data["name"].strip()); return "/tariffs"
     if path == "/tariffs/providers/create":
@@ -10611,6 +10616,10 @@ def app(environ, start_response):
             if path.endswith("/update"):
                 preserved["_entity_id"] = parts[3]
             return [dictionaries_page(repo, {"section": section}, form_error=user_error(exc), form_data=preserved)]
+        if path.startswith("/admin/change-reasons/") and path.endswith("/update"):
+            preserved = dict(parsed)
+            preserved["_entity_id"] = path.strip("/").split("/")[2]
+            return [change_reasons_page(repo, form_error=user_error(exc), form_data=preserved)]
         if return_path.startswith("/routes/") and return_path.endswith("/numbers/manage"):
             route_id = int(return_path.strip("/").split("/")[1])
             if not path.endswith("/numbers/remove"):

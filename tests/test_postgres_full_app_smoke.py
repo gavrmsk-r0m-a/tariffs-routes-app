@@ -2,7 +2,7 @@ import unittest
 from unittest.mock import ANY, Mock, patch
 
 from app.db import DbConfig
-from scripts.postgres_full_app_smoke import PAGES, SmokeFailure, _body_excerpt, _isolated_smoke_currency, _normalized_body_text, _smoke_prefix_values, wsgi_request
+from scripts.postgres_full_app_smoke import PAGES, SmokeFailure, _body_excerpt, _isolated_smoke_change_reason, _isolated_smoke_currency, _normalized_body_text, _smoke_prefix_values, wsgi_request
 
 
 class FullAppSmokeHarnessTests(unittest.TestCase):
@@ -153,6 +153,21 @@ class FullAppSmokeHarnessTests(unittest.TestCase):
         self.assertEqual(cleanup_statements[2], ("DELETE FROM currencies WHERE id = %s", (901,)))
         cleanup_conn.commit.assert_called_once_with()
         cleanup_conn.close.assert_called_once_with()
+
+    def test_change_reason_smoke_fixture_always_cleans_reason_and_audit(self):
+        create_conn = Mock()
+        create_conn.execute.return_value.fetchone.return_value = {"id": 902}
+        cleanup_conn = Mock()
+        with patch("scripts.postgres_full_app_smoke.connect_postgres", side_effect=[create_conn, cleanup_conn]):
+            with _isolated_smoke_change_reason("postgresql://ci.invalid/demo") as reason:
+                self.assertEqual(reason["id"], 902)
+                self.assertTrue(reason["name"].startswith("CI_SMOKE_REASON_UPDATED_"))
+        self.assertIn("VALUES (%s, %s, true)", create_conn.execute.call_args.args[0])
+        cleanup_calls = [call.args for call in cleanup_conn.execute.call_args_list]
+        self.assertIn("DELETE FROM change_log", cleanup_calls[0][0])
+        self.assertEqual(cleanup_calls[0][1], (902,))
+        self.assertEqual(cleanup_calls[1], ("DELETE FROM change_reasons WHERE id = %s", (902,)))
+        cleanup_conn.commit.assert_called_once_with()
 
     def test_pages_cover_dashboard_and_admin_routing_views(self):
         self.assertTrue({

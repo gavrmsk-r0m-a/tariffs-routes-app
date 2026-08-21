@@ -4416,6 +4416,44 @@ class Repository:
                 self.conn.rollback()
             raise
 
+    def update_change_reason(
+        self,
+        reason_id: int,
+        name: str,
+        *,
+        comment: str | None = None,
+        is_active: bool = True,
+        updated_by: int | None = None,
+        commit: bool = True,
+    ) -> None:
+        p = placeholder(self.backend)
+        normalized_name = name.strip()
+        try:
+            duplicate = self.conn.execute(
+                f"SELECT id FROM change_reasons WHERE name = {p} AND id <> {p}",
+                (normalized_name, reason_id),
+            ).fetchone()
+            if duplicate:
+                raise BusinessRuleError("Причина смены провайдера с таким названием уже существует")
+            self.conn.execute(
+                f"UPDATE change_reasons SET name = {p}, description = {p}, is_active = {p}, "
+                f"updated_at = CURRENT_TIMESTAMP WHERE id = {p}",
+                (normalized_name, comment, to_db_bool(is_active, self.backend), reason_id),
+            )
+            self._change_log(
+                "change_reason",
+                reason_id,
+                "change_reason.updated",
+                updated_by,
+                new_values={"name": normalized_name, "is_active": is_active},
+            )
+            if commit:
+                self.conn.commit()
+        except Exception:
+            if commit:
+                self.conn.rollback()
+            raise
+
     def get_or_create_country(self, name: str, *, commit: bool = True) -> int:
         param = placeholder(self.backend)
         row = self.conn.execute(f"SELECT id FROM countries WHERE name = {param}", (name,)).fetchone()
