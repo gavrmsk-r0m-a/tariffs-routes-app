@@ -213,12 +213,17 @@ def _prefix_change_log_count(database_url: str, prefix_id: int) -> int:
         conn.close()
 
 
-def _visible_body_text(body: bytes, *, limit: int = 500) -> str:
-    """Return a bounded, HTML-free UTF-8 excerpt suitable for smoke diagnostics."""
+def _normalized_body_text(body: bytes) -> str:
+    """Return the complete normalized user-visible text from an HTML response."""
     decoded = body.decode("utf-8", errors="replace")
-    without_markup = re.sub(r"<[^>]+>", " ", decoded)
-    visible = " ".join(html.unescape(without_markup).split())
-    return visible[:limit]
+    without_nonvisible = re.sub(r"<(style|script)\b[^>]*>.*?</\1\s*>", " ", decoded, flags=re.I | re.S)
+    without_markup = re.sub(r"<[^>]+>", " ", without_nonvisible)
+    return " ".join(html.unescape(without_markup).split())
+
+
+def _body_excerpt(text: str, *, limit: int = 500) -> str:
+    """Bound already-normalized text for safe smoke failure diagnostics only."""
+    return text[:limit]
 
 
 @contextmanager
@@ -365,13 +370,13 @@ def run_smoke(database_url: str, auth_secret: str) -> dict[str, object]:
         log_count_after_attack = _prefix_change_log_count(database_url, dictionaries["prefix_id"])
         if prefix_after_attack != prefix_before_attack or log_count_after_attack != log_count_before_attack:
             raise SmokeFailure(prefix_path, "prefix ownership substitution changed the database row", status)
-        visible_body = _visible_body_text(body)
+        full_body_text = _normalized_body_text(body)
         expected_message = "провайдера у существующего префикса менять нельзя"
-        if status != "400 Bad Request" or expected_message not in visible_body:
+        if status != "400 Bad Request" or expected_message not in full_body_text:
             raise SmokeFailure(
                 prefix_path,
                 f"prefix ownership substitution did not return friendly validation; "
-                f"expected={expected_message!r}; actual body excerpt={visible_body!r}",
+                f"expected={expected_message!r}; actual body excerpt={_body_excerpt(full_body_text)!r}",
                 status,
             )
         status, headers, _ = wsgi_request(

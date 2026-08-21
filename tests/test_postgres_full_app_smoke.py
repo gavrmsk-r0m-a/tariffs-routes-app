@@ -2,27 +2,36 @@ import unittest
 from unittest.mock import ANY, Mock, patch
 
 from app.db import DbConfig
-from scripts.postgres_full_app_smoke import PAGES, SmokeFailure, _isolated_smoke_currency, _visible_body_text, wsgi_request
+from scripts.postgres_full_app_smoke import PAGES, SmokeFailure, _body_excerpt, _isolated_smoke_currency, _normalized_body_text, wsgi_request
 
 
 class FullAppSmokeHarnessTests(unittest.TestCase):
-    def test_smoke_visible_body_matching_decodes_utf8_and_html_entities(self):
+    def test_smoke_body_matching_uses_full_text_after_large_style_and_script_blocks(self):
+        css = ".dictionary-card { color: red; }" * 40
+        self.assertGreater(len(css), 1000)
         body = (
+            f"<html><head><style>{css}</style><script>{'const hidden = true;' * 40}</script></head><body>"
             "<div class='friendly-validation'><span>Кажется, провайдера у существующего "
-            "префикса менять нельзя. Создай новый префикс у нужного провайдера.</span></div>"
+            "префикса менять нельзя.&nbsp; Создай новый префикс у нужного провайдера.</span></div>"
+            "</body></html>"
         ).encode("utf-8")
 
-        visible = _visible_body_text(body)
+        visible = _normalized_body_text(body)
 
         self.assertIn("провайдера у существующего префикса менять нельзя", visible)
+        self.assertIn("нельзя. Создай", visible)
+        self.assertNotIn("dictionary-card", visible)
+        self.assertNotIn("hidden", visible)
         self.assertNotIn("<span>", visible)
 
-    def test_smoke_visible_body_excerpt_is_bounded_and_replaces_invalid_utf8(self):
-        visible = _visible_body_text(b"<p>friendly</p>\xff" + b"x" * 1000, limit=40)
+    def test_smoke_body_normalization_handles_invalid_utf8_and_excerpt_is_bounded(self):
+        visible = _normalized_body_text(b"<p>friendly</p>\xff" + b"x" * 1000)
+        excerpt = _body_excerpt(visible, limit=40)
 
-        self.assertLessEqual(len(visible), 40)
-        self.assertIn("friendly", visible)
+        self.assertGreater(len(visible), 500)
         self.assertIn("\ufffd", visible)
+        self.assertLessEqual(len(excerpt), 40)
+        self.assertIn("friendly", excerpt)
 
     def test_prefix_update_uses_database_owner_and_postgres_placeholders(self):
         from app import server
