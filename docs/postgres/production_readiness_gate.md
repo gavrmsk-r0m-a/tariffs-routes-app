@@ -8,8 +8,8 @@
   `security_gate`, `deployment_rollback_gate`, and `final_enablement_gate` are all `ok`.
 - `blockers=[]`.
 - Read-only smoke remains **611 checks**.
-- Coverage remains **112 / 61 / 0 / 50 / 1 / 100.0%**.
-- The write plan remains **50/50** rollback-smoked and the harness remains **25 probes**.
+- Coverage remains **113 / 61 / 0 / 51 / 1 / 100.0%**.
+- The write plan remains **51/51** rollback-smoked and the harness remains **25 probes**.
 
 This readiness result does not store production secrets and does not deploy production.
 Actual deployment remains a separate operator/hosting action using secret-managed environment

@@ -18,14 +18,14 @@ class PostgresProductionGateTests(unittest.TestCase):
         self.assertEqual(result["status"], "ready")
         self.assertIs(result["ready_for_runtime_enablement"], True)
         expected = {
-            "repository_public_methods_count": 112,
+            "repository_public_methods_count": 113,
             "smoke_covered_read_count": 61,
             "deferred_read_only_count": 0,
-            "write_or_mutating_count": 50,
+            "write_or_mutating_count": 51,
             "infrastructure_or_mixed_count": 1,
             "read_surface_coverage_percent": 100.0,
             "repository_smoke_checks_count": 611,
-            "rollback_smoke_covered_methods_count": 50,
+            "rollback_smoke_covered_methods_count": 51,
             "rollback_harness_probe_count": 25,
         }
         for name, value in expected.items():
@@ -34,9 +34,9 @@ class PostgresProductionGateTests(unittest.TestCase):
     def test_write_plan_is_complete(self):
         result = audit()
         self.assertEqual(result["checks"]["write_plan_complete"], "ok")
-        self.assertEqual(result["metrics"]["planned_write_methods_count"], 50)
-        self.assertEqual(result["metrics"]["expected_write_methods_count"], 50)
-        self.assertEqual(result["metrics"]["rollback_smoke_covered_methods_count"], 50)
+        self.assertEqual(result["metrics"]["planned_write_methods_count"], 51)
+        self.assertEqual(result["metrics"]["expected_write_methods_count"], 51)
+        self.assertEqual(result["metrics"]["rollback_smoke_covered_methods_count"], 51)
 
     def test_all_production_readiness_gates_are_ok(self):
         result = audit()
@@ -78,7 +78,7 @@ class PostgresProductionGateTests(unittest.TestCase):
         document = ROOT / "docs/postgres/production_readiness_gate.md"
         self.assertTrue(document.exists())
         text = document.read_text(encoding="utf-8")
-        for phrase in ("611", "50/50", "DB_BACKEND=postgres", "must not be enabled",
+        for phrase in ("611", "51/51", "DB_BACKEND=postgres", "must not be enabled",
                        "backup", "security", "rollback"):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, text)

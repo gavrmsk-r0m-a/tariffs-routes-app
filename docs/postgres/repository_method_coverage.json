@@ -155,6 +155,10 @@
       "mutation_kind": "multi_write",
       "reason": "Audited public Repository method can mutate database/application state through direct SQL writes, commit/rollback, private change-log helpers, or public write-method calls; Stage 44 does not adapt write paths."
     },
+    "update_change_reason": {
+      "mutation_kind": "write_with_history",
+      "reason": "Updates a change_reasons row and writes the corresponding change_reason.updated audit entry through the private change-log helper, with optional commit/rollback ownership."
+    },
     "update_company_routing_setting": {
       "mutation_kind": "multi_write",
       "reason": "Audited public Repository method can mutate database/application state through direct SQL writes, commit/rollback, private change-log helpers, or public write-method calls; Stage 44 does not adapt write paths."

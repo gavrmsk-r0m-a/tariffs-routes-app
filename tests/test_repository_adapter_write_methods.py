@@ -277,6 +277,26 @@ class RepositoryAdapterWriteMethodsTest(unittest.TestCase):
         self.assertEqual(self.conn.execute("SELECT comment FROM servers WHERE id = ?", (server_id,)).fetchone()["comment"], "plain write path")
         self.assertEqual(self.conn.execute("SELECT description FROM change_reasons WHERE id = ?", (reason_id,)).fetchone()["description"], "plain write path")
 
+    def test_change_reason_update_persists_sqlite_fields_and_one_audit_row(self):
+        reason_id = self.repo.create_change_reason("ITM", comment="before", is_active=True)
+        before_logs = self.conn.execute(
+            "SELECT COUNT(*) AS value FROM change_log WHERE entity_type = ? AND entity_id = ?",
+            ("change_reason", reason_id),
+        ).fetchone()["value"]
+        self.repo.update_change_reason(
+            reason_id, "вызовы уходят в занято", comment="after", is_active=False, updated_by=1
+        )
+        row = self.conn.execute(
+            "SELECT name, description, is_active FROM change_reasons WHERE id = ?", (reason_id,)
+        ).fetchone()
+        self.assertEqual(tuple(row), ("вызовы уходят в занято", "after", 0))
+        logs = self.conn.execute(
+            "SELECT change_type, changed_by FROM change_log WHERE entity_type = ? AND entity_id = ? ORDER BY id",
+            ("change_reason", reason_id),
+        ).fetchall()
+        self.assertEqual(len(logs), before_logs + 1)
+        self.assertEqual(tuple(logs[-1]), ("change_reason.updated", 1))
+
     def test_change_reason_caller_transaction_rolls_back_reason_and_audit_row(self):
         reason_id = self.repo.create_change_reason("Rollback reason", comment="rollback", commit=False)
         self.assertIsNotNone(self.conn.execute("SELECT id FROM change_reasons WHERE id = ?", (reason_id,)).fetchone())
@@ -457,6 +477,28 @@ class RepositoryAdapterWriteMethodsTest(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "write failed"):
             Repository(caller_owned, backend="postgres").create_change_reason("broken", commit=False)
         self.assertEqual(caller_owned.rollbacks, 0)
+
+    def test_change_reason_update_uses_postgres_placeholders_boolean_and_single_log(self):
+        class Cursor:
+            def __init__(self, row=None): self.row = row
+            def fetchone(self): return self.row
+        class RecordingConnection:
+            def __init__(self): self.calls=[]; self.commits=0; self.rollbacks=0
+            def execute(self, sql, params=()): self.calls.append((sql, params)); return Cursor()
+            def commit(self): self.commits += 1
+            def rollback(self): self.rollbacks += 1
+        connection = RecordingConnection(); repo = Repository(connection, backend="postgres")
+        with patch.object(repo, "_change_log") as change_log:
+            repo.update_change_reason(41, " вызовы уходят в занято ", comment="ITM", is_active=False, updated_by=7)
+        self.assertTrue(all("?" not in sql for sql, _ in connection.calls))
+        update_sql, update_params = next(call for call in connection.calls if "UPDATE change_reasons" in call[0])
+        self.assertEqual(update_sql.count("%s"), 4)
+        self.assertEqual(update_params, ("вызовы уходят в занято", "ITM", False, 41))
+        change_log.assert_called_once_with(
+            "change_reason", 41, "change_reason.updated", 7,
+            new_values={"name": "вызовы уходят в занято", "is_active": False},
+        )
+        self.assertEqual(connection.commits, 1)
 
     def test_server_priority_update_uses_postgres_placeholders_and_optional_commit(self):
         class Cursor:

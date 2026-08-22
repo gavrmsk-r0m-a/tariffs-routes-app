@@ -9,7 +9,7 @@ class WritePlanTests(unittest.TestCase):
  def bad(self,p): self.assertEqual('failed',self.execute_plan(p)['status'])
  def name(self): return next(iter(self.plan['methods']))
  def test_actual_baseline_write_plan_passes(self):
-  summary=self.execute_plan(self.plan); self.assertEqual('ok',summary['status']); self.assertEqual(50,summary['rollback_smoke_covered_methods_count'])
+  summary=self.execute_plan(self.plan); self.assertEqual('ok',summary['status']); self.assertEqual(51,summary['rollback_smoke_covered_methods_count'])
  def test_stage66f_all_write_methods_are_rollback_smoked(self):
   self.assertEqual(set(self.plan['methods']), set(self.plan['rollback_smoke_covered_methods']))
   for name in ('create_calling_company','update_calling_company','update_company_routing_setting_comment','update_calling_company_import_fields'):
@@ -78,6 +78,12 @@ class WritePlanTests(unittest.TestCase):
    p=copy.deepcopy(self.plan); p['rollback_smoke_covered_methods'].append(name); self.bad(p)
  def test_stage58_change_reason_in_wrong_batch_fails(self):
   p=copy.deepcopy(self.plan); p['methods']['create_change_reason']['batch']='app_settings_and_admin_low_risk'; self.bad(p)
+ def test_update_change_reason_write_plan_and_rollback_rules(self):
+  self.assertIn('update_change_reason', self.plan['methods'])
+  self.assertEqual('dictionary_and_snapshot_writes', self.plan['methods']['update_change_reason']['batch'])
+  self.assertIn('update_change_reason', self.plan['rollback_smoke_covered_methods'])
+  p=copy.deepcopy(self.plan); p['rollback_smoke_covered_methods'].remove('update_change_reason'); self.bad(p)
+  p=copy.deepcopy(self.plan); p['methods']['update_change_reason']['batch']='app_settings_and_admin_low_risk'; self.bad(p)
  def test_missing_rollback_smoke_tracking_is_config_error(self):
   p=copy.deepcopy(self.plan); del p['rollback_smoke_covered_methods']
   with tempfile.TemporaryDirectory() as d:
