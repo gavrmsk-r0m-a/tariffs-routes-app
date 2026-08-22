@@ -42,6 +42,8 @@ PHONE_ASSIGNMENT_NAME = "Stage 56 Assignment Probe"
 SERVER_PROBE_NAME = "__stage57_server_probe__"
 CHANGE_REASON_PROBE_NAME = "__stage58_change_reason_probe__"
 CHANGE_REASON_PROBE_COMMENT = "Stage 58 change reason rollback probe"
+CHANGE_REASON_PROBE_UPDATED_NAME = "__stage58_change_reason_probe_updated__"
+CHANGE_REASON_PROBE_UPDATED_COMMENT = "Stage 58 updated change reason rollback probe"
 PRIORITY_CHANGED_COMMENT = "__stage60_priority_changed_comment__"
 PRIORITY_SAME_ROUTE_COMMENT = "__stage60_priority_same_route_comment__"
 PROVIDER_CHANGE_REASON = "__stage61_provider_change_reason__"
@@ -429,19 +431,37 @@ def run_dictionary_server_probe(repo: Repository, conn) -> None:
 
 
 def _dictionary_change_reason_probe_rows(conn, reason_id=None):
-    """Read the deterministic Stage 58 change reason and its audit row."""
-    reason = conn.execute(
-        "SELECT id, name, description, is_active FROM change_reasons WHERE name = %s",
-        (CHANGE_REASON_PROBE_NAME,),
-    ).fetchone()
-    log = None
+    """Read the deterministic change reason and its create/update audit rows."""
+    reason = None
+    created_log = update_log = None
+    log_count = 0
     if reason_id is not None:
-        log = conn.execute(
+        reason = conn.execute(
+            "SELECT id, name, description, is_active FROM change_reasons WHERE id = %s",
+            (reason_id,),
+        ).fetchone()
+        created_log = conn.execute(
             "SELECT entity_type, entity_id, change_type, changed_by, new_values, source "
             "FROM change_log WHERE entity_type = %s AND entity_id = %s AND change_type = %s",
             ("change_reason", reason_id, "change_reason.created"),
         ).fetchone()
-    return reason, log
+        update_log = conn.execute(
+            "SELECT entity_type, entity_id, change_type, changed_by, new_values, source "
+            "FROM change_log WHERE entity_type = %s AND entity_id = %s AND change_type = %s",
+            ("change_reason", reason_id, "change_reason.updated"),
+        ).fetchone()
+        count_row = conn.execute(
+            "SELECT COUNT(*) AS count FROM change_log WHERE entity_type = %s AND entity_id = %s "
+            "AND change_type IN (%s, %s)",
+            ("change_reason", reason_id, "change_reason.created", "change_reason.updated"),
+        ).fetchone()
+        log_count = int(count_row["count"])
+    else:
+        reason = conn.execute(
+            "SELECT id, name, description, is_active FROM change_reasons WHERE name IN (%s, %s)",
+            (CHANGE_REASON_PROBE_NAME, CHANGE_REASON_PROBE_UPDATED_NAME),
+        ).fetchone()
+    return reason, created_log, update_log, log_count
 
 
 def run_dictionary_change_reason_probe(repo: Repository, conn) -> None:
@@ -456,25 +476,38 @@ def run_dictionary_change_reason_probe(repo: Repository, conn) -> None:
             CHANGE_REASON_PROBE_NAME, created_by=None,
             comment=CHANGE_REASON_PROBE_COMMENT, is_active=True, commit=False,
         )
-        reason, log = _dictionary_change_reason_probe_rows(conn, reason_id)
+        reason, created_log, update_log, log_count = _dictionary_change_reason_probe_rows(conn, reason_id)
         if (not reason or reason["id"] != reason_id or reason["name"] != CHANGE_REASON_PROBE_NAME
                 or reason["description"] != CHANGE_REASON_PROBE_COMMENT or not bool(reason["is_active"])):
             raise AssertionError("change reason is not visible and active inside the transaction")
-        if (not log or log["entity_type"] != "change_reason" or log["entity_id"] != reason_id
-                or log["change_type"] != "change_reason.created" or log["changed_by"] is not None
-                or ("source" in log and log["source"] != "ui")):
+        if (not created_log or created_log["entity_type"] != "change_reason" or created_log["entity_id"] != reason_id
+                or created_log["change_type"] != "change_reason.created" or created_log["changed_by"] is not None
+                or ("source" in created_log and created_log["source"] != "ui")):
             raise AssertionError("change reason audit row is not visible inside the transaction")
-        values = log.get("new_values") if hasattr(log, "get") else log["new_values"]
+        values = created_log.get("new_values") if hasattr(created_log, "get") else created_log["new_values"]
         if isinstance(values, str):
             if CHANGE_REASON_PROBE_NAME not in values:
                 raise AssertionError("change reason audit values do not include the name")
         elif not isinstance(values, dict) or values.get("name") != CHANGE_REASON_PROBE_NAME:
             raise AssertionError("change reason audit values do not include the name")
+        if update_log is not None or log_count != 1:
+            raise AssertionError("change reason update audit exists before update")
+        repo.update_change_reason(
+            reason_id, CHANGE_REASON_PROBE_UPDATED_NAME,
+            comment=CHANGE_REASON_PROBE_UPDATED_COMMENT, is_active=False,
+            updated_by=None, commit=False,
+        )
+        reason, created_log, update_log, log_count = _dictionary_change_reason_probe_rows(conn, reason_id)
+        if (not reason or reason["name"] != CHANGE_REASON_PROBE_UPDATED_NAME
+                or reason["description"] != CHANGE_REASON_PROBE_UPDATED_COMMENT or bool(reason["is_active"])):
+            raise AssertionError("change reason update is not visible and inactive inside the transaction")
+        if created_log is None or not update_log or update_log["change_type"] != "change_reason.updated" or log_count != 2:
+            raise AssertionError("change reason create/update audit rows are not both visible")
     finally:
         conn.rollback()
     try:
-        reason, log = _dictionary_change_reason_probe_rows(conn, reason_id)
-        if reason is not None or log is not None:
+        reason, created_log, update_log, log_count = _dictionary_change_reason_probe_rows(conn, reason_id)
+        if reason is not None or created_log is not None or update_log is not None or log_count != 0:
             raise AssertionError("rollback did not remove Stage 58 change reason probe rows")
     finally:
         conn.rollback()

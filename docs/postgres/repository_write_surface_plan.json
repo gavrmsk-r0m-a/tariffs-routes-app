@@ -3,10 +3,10 @@
     "deferred_read_only_count": 0,
     "infrastructure_or_mixed_count": 1,
     "read_surface_coverage_percent": 100.0,
-    "repository_public_methods_count": 112,
+    "repository_public_methods_count": 113,
     "repository_smoke_checks_count": 611,
     "smoke_covered_read_count": 61,
-    "write_or_mutating_count": 50
+    "write_or_mutating_count": 51
   },
   "batches": {
     "app_settings_and_admin_low_risk": {
@@ -69,6 +69,7 @@
       ],
       "methods": [
         "create_change_reason",
+        "update_change_reason",
         "create_country",
         "create_currency",
         "create_prefix",
@@ -319,6 +320,32 @@
       ],
       "sqlite_postgres_blockers": [
         "dynamic_sql",
+        "needs_integration_test",
+        "postgres_transaction_aborted_behavior",
+        "sqlite_placeholder"
+      ],
+      "test_strategy": [
+        "SQL-recording test",
+        "SQLite regression test",
+        "PostgreSQL rollback-only integration test"
+      ],
+      "transaction_contract": "optional_commit_parameter"
+    },
+    "update_change_reason": {
+      "batch": "dictionary_and_snapshot_writes",
+      "current_commit_behavior": "mixed",
+      "dependencies": [],
+      "mutation_kind": "write_with_history",
+      "notes": "PostgreSQL rollback probe performs the duplicate SELECT, UPDATE, boolean conversion, and change_reason.updated audit write in the caller-owned transaction.",
+      "postgres_strategy": "Use backend-aware placeholders and boolean conversion with commit=False so the caller owns PostgreSQL rollback.",
+      "returns": "None",
+      "risk": "medium",
+      "rollback_strategy": "Invoke commit=False inside an explicit PostgreSQL rollback-only transaction and verify the updated row and both audit rows are removed.",
+      "side_effects": [
+        "change_log_write",
+        "database_write"
+      ],
+      "sqlite_postgres_blockers": [
         "needs_integration_test",
         "postgres_transaction_aborted_behavior",
         "sqlite_placeholder"
@@ -1595,6 +1622,7 @@
     "ensure_phone_assignment_type_exists",
     "create_server",
     "create_change_reason",
+    "update_change_reason",
     "update_dictionary_snapshots",
     "update_server_route_priority",
     "create_provider_change",

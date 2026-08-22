@@ -35,8 +35,11 @@ class FakeConnection:
         if "FROM phone_number_types WHERE name" in sql: return self.Cursor(self.dictionary.get("phone_type"))
         if "FROM phone_assignment_types WHERE code" in sql: return self.Cursor(self.dictionary.get("assignment"))
         if "FROM servers WHERE name" in sql: return self.Cursor(self.dictionary.get("server"))
-        if "FROM change_reasons WHERE name" in sql: return self.Cursor(self.dictionary.get("change_reason"))
-        if "FROM change_log WHERE entity_type" in sql: return self.Cursor(self.dictionary.get("change_log"))
+        if "FROM change_reasons WHERE name" in sql or "FROM change_reasons WHERE id" in sql: return self.Cursor(self.dictionary.get("change_reason"))
+        if "FROM change_log WHERE entity_type" in sql:
+            if "COUNT(*) AS count" in sql: return self.Cursor({"count": len(self.dictionary.get("change_logs", []))})
+            change_type = params[-1]
+            return self.Cursor(next((row for row in self.dictionary.get("change_logs", []) if row["change_type"] == change_type), None))
         if sql == "BEGIN":
             self.aborted = False
         if "definitely_missing" in sql:
@@ -122,8 +125,12 @@ class FakeRepo:
     def create_change_reason(self, name, created_by=None, comment=None, is_active=True, **kwargs):
         self.calls.append(("create_change_reason", name, created_by, comment, is_active, kwargs))
         self.conn.dictionary["change_reason"] = {"id": 160, "name": name, "description": comment, "is_active": is_active}
-        self.conn.dictionary["change_log"] = {"entity_type": "change_reason", "entity_id": 160, "change_type": "change_reason.created", "changed_by": created_by, "new_values": {"name": name}, "source": "ui"}
+        self.conn.dictionary["change_logs"] = [{"entity_type": "change_reason", "entity_id": 160, "change_type": "change_reason.created", "changed_by": created_by, "new_values": {"name": name}, "source": "ui"}]
         return 160
+    def update_change_reason(self, reason_id, name, **kwargs):
+        self.calls.append(("update_change_reason", reason_id, name, kwargs))
+        self.conn.dictionary["change_reason"].update(name=name, description=kwargs["comment"], is_active=kwargs["is_active"])
+        self.conn.dictionary["change_logs"].append({"entity_type": "change_reason", "entity_id": reason_id, "change_type": "change_reason.updated", "changed_by": kwargs["updated_by"], "new_values": {"name": name, "is_active": kwargs["is_active"]}, "source": "ui"})
     def ensure_project_exists(self, name, **kwargs):
         self.calls.append(("ensure_project_exists", name, kwargs))
         if "project" in self.conn.dictionary: return 0
@@ -369,7 +376,8 @@ class WriteHarnessTest(unittest.TestCase):
     def test_stage58_change_reason_probe_is_rollback_only_and_verifies_audit_cleanup(self):
         conn, repo = FakeConnection(), FakeRepo(None); repo.conn = conn
         harness.run_dictionary_change_reason_probe(repo, conn)
-        self.assertEqual(repo.calls[-1], ("create_change_reason", harness.CHANGE_REASON_PROBE_NAME, None, harness.CHANGE_REASON_PROBE_COMMENT, True, {"commit": False}))
+        self.assertEqual(repo.calls[-2], ("create_change_reason", harness.CHANGE_REASON_PROBE_NAME, None, harness.CHANGE_REASON_PROBE_COMMENT, True, {"commit": False}))
+        self.assertEqual(repo.calls[-1], ("update_change_reason", 160, harness.CHANGE_REASON_PROBE_UPDATED_NAME, {"comment": harness.CHANGE_REASON_PROBE_UPDATED_COMMENT, "is_active": False, "updated_by": None, "commit": False}))
         self.assertEqual(conn.dictionary, {})
         self.assertEqual(conn.commits, 0)
         self.assertGreaterEqual(conn.rollbacks, 3)
