@@ -1148,10 +1148,12 @@ class Repository:
 
     def get_calling_company(self, company_id: int) -> sqlite3.Row | None:
         p = placeholder(self.backend)
+        active_literal = "TRUE" if self.backend == "postgres" else "1"
+        false_literal = "FALSE" if self.backend == "postgres" else "0"
         return self.conn.execute(
             """
             SELECT cc.*, s.name AS server_name, c.name AS country_name,
-                   COALESCE(active_crs.has_autorotation, 0) AS current_has_autorotation
+                   COALESCE(active_crs.has_autorotation, {false_value}) AS current_has_autorotation
             FROM calling_companies cc
             JOIN servers s ON s.id = cc.server_id
             JOIN countries c ON c.id = cc.country_id
@@ -1160,7 +1162,7 @@ class Repository:
              AND active_crs.is_active = {active}
              AND active_crs.valid_to IS NULL
             WHERE cc.id = {p}
-            """.format(active="TRUE" if self.backend == "postgres" else "1", p=p),
+            """.format(active=active_literal, false_value=false_literal, p=p),
             (company_id,),
         ).fetchone()
 
