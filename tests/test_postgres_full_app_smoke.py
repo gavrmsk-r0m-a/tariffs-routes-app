@@ -1,11 +1,36 @@
 import unittest
+from decimal import Decimal
 from unittest.mock import ANY, Mock, patch
 
 from app.db import DbConfig
-from scripts.postgres_full_app_smoke import PAGES, SmokeFailure, _body_excerpt, _isolated_smoke_change_reason, _isolated_smoke_currency, _normalized_body_text, _smoke_prefix_values, wsgi_request
+from scripts.postgres_full_app_smoke import PAGES, SmokeFailure, _body_excerpt, _isolated_smoke_change_reason, _isolated_smoke_currency, _normalized_body_text, _smoke_prefix_values, _tariff_edit_state_is_expected, _tariff_state_diagnostic, wsgi_request
 
 
 class FullAppSmokeHarnessTests(unittest.TestCase):
+    def test_tariff_edit_state_compares_postgres_numeric_semantically(self):
+        original_token = "2026-08-23 10:00:00+00:00"
+        tariff = {
+            "price_in_provider_currency": Decimal("2.250000"),
+            "comment": "tariff updated",
+            "is_current": False,
+            "updated_at": "2026-08-23 10:00:01+00:00",
+        }
+
+        self.assertTrue(_tariff_edit_state_is_expected(tariff, original_token))
+        self.assertFalse(_tariff_edit_state_is_expected({**tariff, "updated_at": original_token}, original_token))
+
+    def test_tariff_failure_diagnostic_is_bounded_and_includes_actual_fields(self):
+        diagnostic = _tariff_state_diagnostic({
+            "price_in_provider_currency": Decimal("2.250000"),
+            "comment": "x" * 1000,
+            "is_current": False,
+            "updated_at": "2026-08-23 10:00:01+00:00",
+        })
+
+        self.assertLessEqual(len(diagnostic), 400)
+        self.assertIn("price_in_provider_currency=Decimal('2.250000')", diagnostic)
+        self.assertIn("is_current=False", diagnostic)
+
     def test_smoke_prefix_fixtures_are_distinct_numeric_and_runtime_valid(self):
         from app.repository import normalize_real_prefix
 

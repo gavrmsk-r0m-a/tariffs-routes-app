@@ -18,6 +18,7 @@ import secrets
 import sys
 import traceback
 from contextlib import contextmanager
+from decimal import Decimal
 from pathlib import Path
 from urllib.parse import urlencode
 from wsgiref.util import setup_testing_defaults
@@ -277,6 +278,22 @@ def _normalized_body_text(body: bytes) -> str:
 def _body_excerpt(text: str, *, limit: int = 500) -> str:
     """Bound already-normalized text for safe smoke failure diagnostics only."""
     return text[:limit]
+
+
+def _tariff_state_diagnostic(tariff) -> str:
+    """Return bounded, non-secret tariff fields for actionable smoke failures."""
+    fields = ("price_in_provider_currency", "comment", "is_current", "updated_at")
+    state = ", ".join(f"{field}={_body_excerpt(repr(tariff.get(field)), limit=120)}" for field in fields)
+    return _body_excerpt(state, limit=400)
+
+
+def _tariff_edit_state_is_expected(tariff, original_token) -> bool:
+    return (
+        Decimal(str(tariff["price_in_provider_currency"])) == Decimal("2.25")
+        and tariff["comment"] == "tariff updated"
+        and tariff["is_current"] is False
+        and tariff["updated_at"] != original_token
+    )
 
 
 @contextmanager
@@ -635,8 +652,12 @@ def run_smoke(database_url: str, auth_secret: str) -> dict[str, object]:
                 raise SmokeFailure(event_path, "provider-change update was not persisted with a new token", status)
             if route["comment"] != "route updated" or route["updated_at"] == edit["route_token"]:
                 raise SmokeFailure(route_path, "route update was not persisted with a new token", status)
-            if str(tariff["price_in_provider_currency"]) != "2.25" or tariff["comment"] != "tariff updated" or tariff["is_current"]:
-                raise SmokeFailure(tariff_path, "normal tariff fields were not persisted", status)
+            if not _tariff_edit_state_is_expected(tariff, edit["tariff_token"]):
+                raise SmokeFailure(
+                    tariff_path,
+                    f"normal tariff fields were not persisted: {_tariff_state_diagnostic(tariff)}",
+                    status,
+                )
         finally:
             verify.close()
 
@@ -648,9 +669,13 @@ def run_smoke(database_url: str, auth_secret: str) -> dict[str, object]:
             raise SmokeFailure(tariff_path, "stale tariff token was not rejected as friendly concurrency", status)
         verify = connect_postgres(database_url)
         try:
-            tariff = verify.execute("SELECT price_in_provider_currency, comment, is_current FROM tariffs WHERE id=%s", (edit["tariff"],)).fetchone()
-            if str(tariff["price_in_provider_currency"]) != "2.25" or tariff["comment"] != "tariff updated" or tariff["is_current"]:
-                raise SmokeFailure(tariff_path, "stale tariff POST overwrote the latest row", status)
+            tariff = verify.execute("SELECT price_in_provider_currency, comment, is_current, updated_at FROM tariffs WHERE id=%s", (edit["tariff"],)).fetchone()
+            if not _tariff_edit_state_is_expected(tariff, edit["tariff_token"]):
+                raise SmokeFailure(
+                    tariff_path,
+                    f"stale tariff POST overwrote the latest row: {_tariff_state_diagnostic(tariff)}",
+                    status,
+                )
         finally:
             verify.close()
     checked.extend([
