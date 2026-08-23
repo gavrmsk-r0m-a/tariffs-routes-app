@@ -9639,7 +9639,7 @@ def route_edit_form(repo: Repository, route_id: int, route: sqlite3.Row, *, moda
 
 
 def route_edit_page(repo: Repository, route_id: int) -> bytes:
-    route = repo.conn.execute("SELECT r.*, c.name AS country_name FROM routes r JOIN countries c ON c.id = r.country_id WHERE r.id = ?", (route_id,)).fetchone()
+    route = repo.get_route(route_id)
     if route is None:
         return page("Маршрут не найден", "<h1>Маршрут не найден</h1>")
     is_modal = _REQUEST_CONTEXT.get("is_modal_request") is True
@@ -9654,7 +9654,7 @@ def route_edit_page(repo: Repository, route_id: int) -> bytes:
 
 
 def phone_edit_page(repo: Repository, phone_id: int) -> bytes:
-    phone = repo.conn.execute("SELECT * FROM phone_numbers WHERE id = ?", (phone_id,)).fetchone()
+    phone = repo.get_phone_number(phone_id)
     if phone is None:
         return page("Номер не найден", "<h1>Номер не найден</h1>")
     body = f"""<h1>Редактировать номер</h1><p><a href='/phones'>← Назад</a></p>
@@ -9680,19 +9680,7 @@ def phone_edit_page(repo: Repository, phone_id: int) -> bytes:
 
 
 def company_edit_page(repo: Repository, company_id: int) -> bytes:
-    cc = repo.conn.execute(
-        """
-        SELECT cc.*, s.name AS server_name, COALESCE(active_crs.has_autorotation, 0) AS current_has_autorotation
-        FROM calling_companies cc
-        JOIN servers s ON s.id = cc.server_id
-        LEFT JOIN company_routing_settings active_crs
-          ON active_crs.calling_company_id = cc.id
-         AND active_crs.is_active = 1
-         AND active_crs.valid_to IS NULL
-        WHERE cc.id = ?
-        """,
-        (company_id,),
-    ).fetchone()
+    cc = repo.get_calling_company(company_id)
     if cc is None:
         return page("Кампания не найдена", "<h1>Кампания не найдена</h1>")
     body = f"""<h1>Редактировать кампанию</h1><p><a href='/companies'>← Назад</a></p>
@@ -9714,7 +9702,7 @@ def company_edit_page(repo: Repository, company_id: int) -> bytes:
 
 
 def provider_change_edit_page(repo: Repository, change_id: int) -> bytes:
-    event = repo.conn.execute("SELECT * FROM routing_events WHERE id = ?", (change_id,)).fetchone()
+    event = repo.get_routing_event(change_id)
     if event is None:
         return page("Событие не найдено", "<h1>Событие не найдено</h1>")
     body = f"""<h1>Редактировать событие смены провайдеров</h1><p><a href='/provider-changes'>← Назад</a></p>
@@ -9724,7 +9712,7 @@ def provider_change_edit_page(repo: Repository, change_id: int) -> bytes:
 
 
 def provider_change_edit_page_with_error(repo: Repository, change_id: int, error_message: str) -> bytes:
-    event = repo.conn.execute("SELECT * FROM routing_events WHERE id = ?", (change_id,)).fetchone()
+    event = repo.get_routing_event(change_id)
     if event is None:
         return page("Событие не найдено", f"<h1>Событие не найдено</h1><div class='error'>{esc(error_message)}</div>")
     body = f"""<h1>Редактировать событие смены провайдеров</h1><p><a href='/provider-changes'>← Назад</a></p>
@@ -9873,12 +9861,13 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
         provider_id = int(data["provider_id"])
         prefix_id = parse_int(data.get("provider_prefix_id"))
         if prefix_id:
-            prefix_provider = repo.conn.execute("SELECT provider_id FROM provider_prefixes WHERE id = ?", (prefix_id,)).fetchone()
+            p = placeholder(repo.backend)
+            prefix_provider = repo.conn.execute(f"SELECT provider_id FROM provider_prefixes WHERE id = {p}", (prefix_id,)).fetchone()
             if prefix_provider and int(prefix_provider["provider_id"]) != provider_id:
                 raise BusinessRuleError("Префикс не принадлежит провайдеру маршрута")
         if not name:
             raise BusinessRuleError("Название маршрута обязательно")
-        route_existing = repo.conn.execute("SELECT cli_source_type, cli_source_label, aon_pool, rnd_type, rnd_pool_owner FROM routes WHERE id = ?", (route_id,)).fetchone()
+        route_existing = repo.get_route(route_id)
         if route_existing is None:
             raise BusinessRuleError("Route not found")
         aon_data = dict(data)
