@@ -19,6 +19,41 @@ class RepositoryAdapterWriteMethodsTest(unittest.TestCase):
     def tearDown(self):
         self.conn.close()
 
+    def test_get_calling_company_uses_backend_native_boolean_literals(self):
+        postgres_conn = Mock()
+        postgres_conn.execute.return_value.fetchone.return_value = {"current_has_autorotation": False}
+        postgres_row = Repository(postgres_conn, backend="postgres").get_calling_company(17)
+        postgres_sql, postgres_params = postgres_conn.execute.call_args.args
+
+        self.assertIn("COALESCE(active_crs.has_autorotation, FALSE)", postgres_sql)
+        self.assertIn("active_crs.is_active = TRUE", postgres_sql)
+        self.assertNotIn("COALESCE(active_crs.has_autorotation, 0)", postgres_sql)
+        self.assertEqual(postgres_params, (17,))
+        self.assertIs(postgres_row["current_has_autorotation"], False)
+        postgres_conn.execute.return_value.fetchone.return_value = {"current_has_autorotation": True}
+        self.assertIs(
+            Repository(postgres_conn, backend="postgres").get_calling_company(18)["current_has_autorotation"],
+            True,
+        )
+
+        sqlite_company = self.repo.create_calling_company(
+            server_id=self.repo.create_server("boolean fallback server"),
+            country_id=self.repo.create_country("boolean fallback country", "BFC"),
+            company_name="boolean fallback", company_id_external="boolean-fallback",
+            has_autorotation=False,
+            created_by=self.conn.execute("SELECT id FROM users ORDER BY id LIMIT 1").fetchone()["id"],
+        )
+        sqlite_row = self.repo.get_calling_company(sqlite_company)
+        self.assertEqual(sqlite_row["current_has_autorotation"], 0)
+
+        active_setting = self.repo.create_company_routing_setting(
+            calling_company_id=sqlite_company, country_id=sqlite_row["country_id"],
+            server_id=sqlite_row["server_id"], route_id=None, routing_mode="autorotation",
+            has_autorotation=True, comment="active boolean", created_by=sqlite_row["created_by"],
+        )
+        self.assertGreater(active_setting, 0)
+        self.assertEqual(self.repo.get_calling_company(sqlite_company)["current_has_autorotation"], 1)
+
     def test_calling_company_tail_supports_sqlite_caller_owned_rollback(self):
         user_id = self.conn.execute("SELECT id FROM users ORDER BY id LIMIT 1").fetchone()["id"]
         country_id = self.repo.create_country("Stage 66F GEO", "66F")

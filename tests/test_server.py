@@ -6,7 +6,7 @@ import re
 import tempfile
 import unittest
 from decimal import Decimal
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 from urllib.parse import urlencode
 
 import app.server as server
@@ -30,6 +30,21 @@ def _select_fragment(content, select_id):
     if not match:
         raise AssertionError(f"select #{select_id} not found")
     return match.group(0)
+
+
+class _PostgresFormCursor:
+    def __init__(self, *, one=None, many=()):
+        self._one = one
+        self._many = list(many)
+
+    def fetchone(self):
+        return self._one
+
+    def fetchall(self):
+        return self._many
+
+    def __iter__(self):
+        return iter(self._many)
 
 
 def _cell_text(row_html, data_col):
@@ -393,6 +408,86 @@ class ServerSmokeTest(unittest.TestCase):
         _captured, html = self.request(f"/provider-changes/{event_id}/edit")
         self.assertIn("name='updated_at_original'", html)
         self.assertIn(f"value='{updated_at}'", html)
+
+    def test_routing_event_form_uses_postgres_placeholders_and_dict_rows(self):
+        statements = []
+        values = {
+            "servers": "Server PG", "countries": "Country PG", "providers": "Provider PG",
+            "routes": "Route PG", "calling_companies": "cmp-pg / Campaign PG",
+        }
+
+        def execute(sql, params):
+            statements.append((sql, params))
+            self.assertNotIn("?", sql)
+            self.assertIn("%s", sql)
+            if "routing_event_servers" in sql:
+                return _PostgresFormCursor(many=[])
+            table = next(name for name in values if f"FROM {name}" in sql)
+            return _PostgresFormCursor(one={"value": values[table]})
+
+        repo = Mock(backend="postgres")
+        repo.conn.execute.side_effect = execute
+        event = {
+            "id": 69, "event_at": "2026-08-23 10:00:00", "apply_scope": "campaign_setting",
+            "country_id": 1, "server_id": 2, "provider_id": 3, "affected_route_id": 4,
+            "old_route_id": 5, "new_route_id": 6, "overflow_route_id": None, "has_overflow": False,
+            "calling_company_id": 7, "company_change_type": "set_campaign_route",
+            "new_company_routing_mode": "campaign_route", "new_company_route_id": 8,
+            "new_company_has_autorotation": False, "is_active": True, "reason": "Задача руководства",
+            "updated_at": "2026-08-23 10:00:00+00:00", "comment": "existing PG comment",
+        }
+
+        content = server.routing_event_form(repo, event)
+
+        self.assertIn("Country PG", content)
+        self.assertIn("Server PG", content)
+        self.assertIn("Provider PG", content)
+        self.assertIn("Route PG", content)
+        self.assertIn("cmp-pg / Campaign PG", content)
+        self.assertGreaterEqual(len(statements), 9)
+
+    def test_routing_event_form_has_no_sqlite_only_parameterized_queries(self):
+        import inspect
+
+        source = inspect.getsource(server.routing_event_form)
+        parameterized_sql = re.findall(r"(?:execute|one)\((?:f)?[\"']{1,3}(.*?)(?:[\"']{1,3})\s*,", source, re.S)
+
+        self.assertTrue(parameterized_sql)
+        self.assertTrue(all("?" not in sql for sql in parameterized_sql))
+        self.assertIn('SELECT provider_id FROM routes WHERE id = {p}', source)
+
+    def test_routing_event_form_overflow_provider_lookup_uses_postgres_placeholder(self):
+        repo = Mock(backend="postgres")
+        repo.conn.execute.side_effect = [
+            _PostgresFormCursor(one={"provider_id": 44}),
+            _PostgresFormCursor(many=[]),
+        ]
+        event = {
+            "event_at": "2026-08-23 10:00", "apply_scope": "server_priority", "country_id": 1,
+            "server_id": 2, "provider_id": 3, "affected_route_id": None, "old_route_id": None,
+            "new_route_id": 4, "overflow_route_id": 5, "has_overflow": True,
+            "calling_company_id": None, "company_change_type": None, "new_company_routing_mode": None,
+            "new_company_route_id": None, "new_company_has_autorotation": None, "is_active": True,
+            "reason": "Другое", "updated_at": "2026-08-23 10:00:00+00:00", "comment": "retry",
+        }
+        simple_helpers = (
+            "route_options_for_dynamic_form", "overflow_route_options", "active_server_priority_checkboxes",
+            "active_options", "options", "routing_reason_options", "route_metadata_json",
+            "current_priorities_json", "campaign_metadata_json",
+        )
+        patches = [patch.object(server, name, return_value="") for name in simple_helpers]
+        for active_patch in patches:
+            active_patch.start()
+        try:
+            content = server.routing_event_form(repo, event, "validation")
+        finally:
+            for active_patch in reversed(patches):
+                active_patch.stop()
+
+        sql, params = repo.conn.execute.call_args_list[0].args
+        self.assertEqual(sql, "SELECT provider_id FROM routes WHERE id = %s")
+        self.assertEqual(params, (5,))
+        self.assertIn("validation", content)
 
     def test_provider_change_update_conflict_shows_error(self):
         self.request("/login")

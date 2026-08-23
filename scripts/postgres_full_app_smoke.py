@@ -18,6 +18,7 @@ import secrets
 import sys
 import traceback
 from contextlib import contextmanager
+from decimal import Decimal
 from pathlib import Path
 from urllib.parse import urlencode
 from wsgiref.util import setup_testing_defaults
@@ -279,6 +280,22 @@ def _body_excerpt(text: str, *, limit: int = 500) -> str:
     return text[:limit]
 
 
+def _tariff_state_diagnostic(tariff) -> str:
+    """Return bounded, non-secret tariff fields for actionable smoke failures."""
+    fields = ("price_in_provider_currency", "comment", "is_current", "updated_at")
+    state = ", ".join(f"{field}={_body_excerpt(repr(tariff.get(field)), limit=120)}" for field in fields)
+    return _body_excerpt(state, limit=400)
+
+
+def _tariff_edit_state_is_expected(tariff, original_token) -> bool:
+    return (
+        Decimal(str(tariff["price_in_provider_currency"])) == Decimal("2.25")
+        and tariff["comment"] == "tariff updated"
+        and tariff["is_current"] is False
+        and tariff["updated_at"] != original_token
+    )
+
+
 @contextmanager
 def _isolated_smoke_campaign(database_url: str):
     external_id = f"CI_SMOKE_{secrets.token_hex(6).upper()}"
@@ -310,7 +327,64 @@ def _isolated_smoke_campaign(database_url: str):
             conn.close()
 
 
-def wsgi_request(application, path: str, *, method: str = "GET", data=None, cookie: str | None = None):
+@contextmanager
+def _isolated_edit_paths(database_url: str):
+    """Create mutually isolated rows for the three PostgreSQL edit lifecycles."""
+    suffix = secrets.token_hex(6).upper()
+    conn = connect_postgres(database_url)
+    ids = {}
+    try:
+        user = conn.execute("SELECT id FROM users WHERE username = %s", (USERNAME,)).fetchone()
+        currency = conn.execute(
+            "SELECT c.id, cr.id AS rate_id, cr.rate_to_eur, cr.rate_date FROM currencies c "
+            "JOIN LATERAL (SELECT * FROM currency_rates WHERE currency_id=c.id ORDER BY rate_date DESC, id DESC LIMIT 1) cr ON true "
+            "WHERE c.is_active IS TRUE ORDER BY c.id LIMIT 1"
+        ).fetchone()
+        if not user or not currency:
+            raise SmokeFailure("/tariffs/{id}/edit", "CI user and an active currency rate are required")
+        country = conn.execute("INSERT INTO countries(name, is_active) VALUES (%s, true) RETURNING id", (f"CI_EDIT_{suffix}",)).fetchone()
+        provider = conn.execute(
+            "INSERT INTO providers(name, normalized_name, default_currency_id, is_active) VALUES (%s, %s, %s, true) RETURNING id",
+            (f"CI_EDIT_PROVIDER_{suffix}", f"ci_edit_provider_{suffix.lower()}", currency["id"]),
+        ).fetchone()
+        route = conn.execute(
+            "INSERT INTO routes(country_id,provider_id,name,cli_source_type,cli_source_label,aon_pool,comment,created_by) "
+            "VALUES (%s,%s,%s,'pool',%s,'pool',%s,%s) RETURNING id, updated_at",
+            (country["id"], provider["id"], f"CI_EDIT_ROUTE_{suffix}", f"CI_EDIT_{suffix}", "route initial", user["id"]),
+        ).fetchone()
+        tariff = conn.execute(
+            "INSERT INTO tariffs(country_id,provider_id,provider_currency_id,price_in_provider_currency,conversion_rate_to_eur,conversion_rate_date,currency_rate_id,eur_price,comment,created_by) "
+            "VALUES (%s,%s,%s,1,%s,%s,%s,%s,%s,%s) RETURNING id, updated_at",
+            (country["id"], provider["id"], currency["id"], currency["rate_to_eur"], currency["rate_date"], currency["rate_id"], currency["rate_to_eur"], "tariff initial", user["id"]),
+        ).fetchone()
+        event = conn.execute(
+            "INSERT INTO routing_events(event_at,apply_scope,reason,country_id,provider_id,affected_route_id,comment,created_by) "
+            "VALUES (CURRENT_TIMESTAMP,'none','Провайдер сменил маршрут',%s,%s,%s,%s,%s) RETURNING id, updated_at",
+            (country["id"], provider["id"], route["id"], "event initial", user["id"]),
+        ).fetchone()
+        ids = {"user": int(user["id"]), "country": int(country["id"]), "provider": int(provider["id"]),
+               "currency": int(currency["id"]), "rate": int(currency["rate_id"]),
+               "route": int(route["id"]), "tariff": int(tariff["id"]), "event": int(event["id"]),
+               "route_token": route["updated_at"], "tariff_token": tariff["updated_at"], "event_token": event["updated_at"]}
+        conn.commit()
+        yield ids
+    finally:
+        try:
+            if ids:
+                conn.execute("DELETE FROM change_log WHERE (entity_type='route' AND entity_id=%s) OR (entity_type='tariff' AND entity_id=%s) OR (entity_type='routing_event' AND entity_id=%s)", (ids["route"], ids["tariff"], ids["event"]))
+                conn.execute("DELETE FROM tariff_change_history WHERE tariff_id=%s", (ids["tariff"],))
+                conn.execute("DELETE FROM route_history WHERE route_id=%s", (ids["route"],))
+                conn.execute("DELETE FROM routing_events WHERE id=%s", (ids["event"],))
+                conn.execute("DELETE FROM tariffs WHERE id=%s", (ids["tariff"],))
+                conn.execute("DELETE FROM routes WHERE id=%s", (ids["route"],))
+                conn.execute("DELETE FROM providers WHERE id=%s", (ids["provider"],))
+                conn.execute("DELETE FROM countries WHERE id=%s", (ids["country"],))
+                conn.commit()
+        finally:
+            conn.close()
+
+
+def wsgi_request(application, path: str, *, method: str = "GET", data=None, cookie: str | None = None, headers=None):
     body = urlencode(data or {}).encode("utf-8")
     environ: dict[str, object] = {}
     setup_testing_defaults(environ)
@@ -325,6 +399,7 @@ def wsgi_request(application, path: str, *, method: str = "GET", data=None, cook
     })
     if cookie:
         environ["HTTP_COOKIE"] = cookie
+    environ.update(headers or {})
     captured: dict[str, object] = {}
 
     def start_response(status, headers, exc_info=None):
@@ -529,6 +604,85 @@ def run_smoke(database_url: str, auth_secret: str) -> dict[str, object]:
         finally:
             verify.close()
     checked.append("/companies/create (authenticated POST)")
+    with _isolated_edit_paths(database_url) as edit:
+        scenarios = (
+            (f"/provider-changes/{edit['event']}/edit", b"event initial", False),
+            (f"/routes/{edit['route']}/edit", b"route initial", True),
+            (f"/tariffs/{edit['tariff']}/edit", b"tariff initial", True),
+        )
+        for path, current_value, modal in scenarios:
+            status, _, body = wsgi_request(
+                app, path, cookie=cookie,
+                headers={"HTTP_X_REQUESTED_WITH": "fetch"} if modal else None,
+            )
+            if status != "200 OK" or current_value not in body or (modal and b"data-modal-ready='1'" not in body):
+                raise SmokeFailure(path, "edit GET did not render the current row and concurrency form", status)
+
+        event_path = f"/provider-changes/{edit['event']}/update"
+        status, headers, _ = wsgi_request(app, event_path, method="POST", cookie=cookie, data={
+            "comment": "event updated", "updated_at_original": str(edit["event_token"]),
+        })
+        if status != "303 See Other" or _header(headers, "Location") != "/provider-changes":
+            raise SmokeFailure(event_path, "provider-change comment update did not redirect", status)
+
+        route_path = f"/routes/{edit['route']}/update"
+        status, headers, _ = wsgi_request(app, route_path, method="POST", cookie=cookie, data={
+            "name": f"CI_EDIT_ROUTE_UPDATED_{edit['route']}", "provider_id": str(edit["provider"]),
+            "provider_prefix_id": "", "cli_source_type": "pool", "cli_source_label": "CI edit",
+            "aon_pool": "pool", "rnd_type": "", "rnd_pool_owner": "", "is_actual": "1",
+            "priority_status": "unknown", "comment": "route updated", "expected_updated_at": str(edit["route_token"]),
+        })
+        if status != "303 See Other" or _header(headers, "Location") != "/routes":
+            raise SmokeFailure(route_path, "route update did not redirect", status)
+
+        tariff_path = f"/tariffs/{edit['tariff']}/update"
+        status, headers, _ = wsgi_request(app, tariff_path, method="POST", cookie=cookie, data={
+            "currency_id": str(edit["currency"]), "price": "2.25", "comment": "tariff updated",
+            "is_current": "0", "expected_updated_at": str(edit["tariff_token"]),
+        })
+        if status != "303 See Other" or _header(headers, "Location") != f"/tariffs/{edit['tariff']}/edit":
+            raise SmokeFailure(tariff_path, "normal tariff update reported a false concurrency conflict", status)
+
+        verify = connect_postgres(database_url)
+        try:
+            event = verify.execute("SELECT comment, updated_at FROM routing_events WHERE id=%s", (edit["event"],)).fetchone()
+            route = verify.execute("SELECT comment, updated_at FROM routes WHERE id=%s", (edit["route"],)).fetchone()
+            tariff = verify.execute("SELECT price_in_provider_currency, comment, is_current, updated_at FROM tariffs WHERE id=%s", (edit["tariff"],)).fetchone()
+            if event["comment"] != "event updated" or event["updated_at"] == edit["event_token"]:
+                raise SmokeFailure(event_path, "provider-change update was not persisted with a new token", status)
+            if route["comment"] != "route updated" or route["updated_at"] == edit["route_token"]:
+                raise SmokeFailure(route_path, "route update was not persisted with a new token", status)
+            if not _tariff_edit_state_is_expected(tariff, edit["tariff_token"]):
+                raise SmokeFailure(
+                    tariff_path,
+                    f"normal tariff fields were not persisted: {_tariff_state_diagnostic(tariff)}",
+                    status,
+                )
+        finally:
+            verify.close()
+
+        status, _, body = wsgi_request(app, tariff_path, method="POST", cookie=cookie, data={
+            "currency_id": str(edit["currency"]), "price": "9.99", "comment": "stale overwrite",
+            "is_current": "1", "expected_updated_at": str(edit["tariff_token"]),
+        })
+        if status != "400 Bad Request" or "Запись была изменена другим пользователем".encode() not in body:
+            raise SmokeFailure(tariff_path, "stale tariff token was not rejected as friendly concurrency", status)
+        verify = connect_postgres(database_url)
+        try:
+            tariff = verify.execute("SELECT price_in_provider_currency, comment, is_current, updated_at FROM tariffs WHERE id=%s", (edit["tariff"],)).fetchone()
+            if not _tariff_edit_state_is_expected(tariff, edit["tariff_token"]):
+                raise SmokeFailure(
+                    tariff_path,
+                    f"stale tariff POST overwrote the latest row: {_tariff_state_diagnostic(tariff)}",
+                    status,
+                )
+        finally:
+            verify.close()
+    checked.extend([
+        "/provider-changes/{id}/edit + update (PostgreSQL lifecycle)",
+        "/routes/{id}/edit modal + update (PostgreSQL lifecycle)",
+        "/tariffs/{id}/edit modal + normal/stale updates (PostgreSQL lifecycle)",
+    ])
     return {
         "status": "ok",
         "backend": "postgres",

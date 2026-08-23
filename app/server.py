@@ -8056,30 +8056,32 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
             if not value:
                 return "—"
             row = repo.conn.execute(sql, (value,)).fetchone()
-            return row[0] if row else "—"
+            if row is None:
+                return "—"
+            return row["value"] if hasattr(row, "keys") else row[0]
         scope_labels = {"none": "Не меняли настройки в нашей системе", "server_priority": "Серверный приоритет", "campaign_setting": "Настройка кампании"}
         change_type_labels = {"enable_autorotation": "Включили авторотацию", "disable_autorotation": "Выключили авторотацию", "set_campaign_route": "Прописали ручной маршрут", "remove_campaign_route": "Убрали ручной маршрут"}
         mode_labels = {"server_priority": "Приоритет сервера", "autorotation": "Авторотация", "campaign_route": "Маршрут кампании", "mixed": "Смешанный"}
-        server_names = [row["name"] for row in repo.conn.execute("""
+        server_names = [row["name"] for row in repo.conn.execute(f"""
             SELECT s.name FROM routing_event_servers res JOIN servers s ON s.id = res.server_id
-            WHERE res.routing_event_id = ? ORDER BY s.name
+            WHERE res.routing_event_id = {p} ORDER BY s.name
         """, (event["id"],)).fetchall()]
         if not server_names and event["server_id"]:
-            server_names = [one("SELECT name FROM servers WHERE id = ?", event["server_id"])]
+            server_names = [one(f"SELECT name AS value FROM servers WHERE id = {p}", event["server_id"])]
         readonly_rows = [
             ("Дата события", event["event_at"]),
             ("Область применения", scope_labels.get(event["apply_scope"], event["apply_scope"] or "—")),
-            ("GEO", one("SELECT name FROM countries WHERE id = ?", event["country_id"])),
+            ("GEO", one(f"SELECT name AS value FROM countries WHERE id = {p}", event["country_id"])),
             ("Серверы", ", ".join(server_names) if server_names else "—"),
-            ("Провайдер", one("SELECT name FROM providers WHERE id = ?", event["provider_id"])),
-            ("Маршрут/префикс", one("SELECT name FROM routes WHERE id = ?", event["affected_route_id"])),
-            ("Старый маршрут", one("SELECT name FROM routes WHERE id = ?", event["old_route_id"])),
-            ("Новый маршрут", one("SELECT name FROM routes WHERE id = ?", event["new_route_id"])),
-            ("Перелив", one("SELECT name FROM routes WHERE id = ?", event["overflow_route_id"]) if event["apply_scope"] == "server_priority" and event["has_overflow"] else "—"),
-            ("Кампания", one("SELECT company_id_external || ' / ' || company_name FROM calling_companies WHERE id = ?", event["calling_company_id"])),
+            ("Провайдер", one(f"SELECT name AS value FROM providers WHERE id = {p}", event["provider_id"])),
+            ("Маршрут/префикс", one(f"SELECT name AS value FROM routes WHERE id = {p}", event["affected_route_id"])),
+            ("Старый маршрут", one(f"SELECT name AS value FROM routes WHERE id = {p}", event["old_route_id"])),
+            ("Новый маршрут", one(f"SELECT name AS value FROM routes WHERE id = {p}", event["new_route_id"])),
+            ("Перелив", one(f"SELECT name AS value FROM routes WHERE id = {p}", event["overflow_route_id"]) if event["apply_scope"] == "server_priority" and event["has_overflow"] else "—"),
+            ("Кампания", one(f"SELECT company_id_external || ' / ' || company_name AS value FROM calling_companies WHERE id = {p}", event["calling_company_id"])),
             ("Тип изменения кампании", change_type_labels.get(event["company_change_type"], event["company_change_type"] or "—")),
             ("Режим маршрутизации", mode_labels.get(event["new_company_routing_mode"], event["new_company_routing_mode"] or "—")),
-            ("Маршрут кампании", one("SELECT name FROM routes WHERE id = ?", event["new_company_route_id"])),
+            ("Маршрут кампании", one(f"SELECT name AS value FROM routes WHERE id = {p}", event["new_company_route_id"])),
             ("Авторотация", "Да" if event["new_company_has_autorotation"] else ("Нет" if event["new_company_has_autorotation"] == 0 else "—")),
             ("Активна", "Да" if event["is_active"] else "Нет"),
             ("Причина", event["reason"]),
@@ -8106,7 +8108,7 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
     has_overflow_value = event.get("has_overflow") if isinstance(event, dict) else (event["has_overflow"] if event else 0)
     overflow_provider_selected = event.get("overflow_provider_id") if isinstance(event, dict) else None
     if not overflow_provider_selected and overflow_route_selected:
-        overflow_provider_row = repo.conn.execute("SELECT provider_id FROM routes WHERE id = ?", (overflow_route_selected,)).fetchone()
+        overflow_provider_row = repo.conn.execute(f"SELECT provider_id FROM routes WHERE id = {p}", (overflow_route_selected,)).fetchone()
         overflow_provider_selected = overflow_provider_row["provider_id"] if overflow_provider_row else None
     overflow_opts = overflow_route_options(repo, selected=overflow_route_selected, empty="—")
     has_overflow_checked = "checked" if has_overflow_value else ""
@@ -9639,7 +9641,7 @@ def route_edit_form(repo: Repository, route_id: int, route: sqlite3.Row, *, moda
 
 
 def route_edit_page(repo: Repository, route_id: int) -> bytes:
-    route = repo.conn.execute("SELECT r.*, c.name AS country_name FROM routes r JOIN countries c ON c.id = r.country_id WHERE r.id = ?", (route_id,)).fetchone()
+    route = repo.get_route(route_id)
     if route is None:
         return page("Маршрут не найден", "<h1>Маршрут не найден</h1>")
     is_modal = _REQUEST_CONTEXT.get("is_modal_request") is True
@@ -9654,7 +9656,7 @@ def route_edit_page(repo: Repository, route_id: int) -> bytes:
 
 
 def phone_edit_page(repo: Repository, phone_id: int) -> bytes:
-    phone = repo.conn.execute("SELECT * FROM phone_numbers WHERE id = ?", (phone_id,)).fetchone()
+    phone = repo.get_phone_number(phone_id)
     if phone is None:
         return page("Номер не найден", "<h1>Номер не найден</h1>")
     body = f"""<h1>Редактировать номер</h1><p><a href='/phones'>← Назад</a></p>
@@ -9680,19 +9682,7 @@ def phone_edit_page(repo: Repository, phone_id: int) -> bytes:
 
 
 def company_edit_page(repo: Repository, company_id: int) -> bytes:
-    cc = repo.conn.execute(
-        """
-        SELECT cc.*, s.name AS server_name, COALESCE(active_crs.has_autorotation, 0) AS current_has_autorotation
-        FROM calling_companies cc
-        JOIN servers s ON s.id = cc.server_id
-        LEFT JOIN company_routing_settings active_crs
-          ON active_crs.calling_company_id = cc.id
-         AND active_crs.is_active = 1
-         AND active_crs.valid_to IS NULL
-        WHERE cc.id = ?
-        """,
-        (company_id,),
-    ).fetchone()
+    cc = repo.get_calling_company(company_id)
     if cc is None:
         return page("Кампания не найдена", "<h1>Кампания не найдена</h1>")
     body = f"""<h1>Редактировать кампанию</h1><p><a href='/companies'>← Назад</a></p>
@@ -9714,7 +9704,7 @@ def company_edit_page(repo: Repository, company_id: int) -> bytes:
 
 
 def provider_change_edit_page(repo: Repository, change_id: int) -> bytes:
-    event = repo.conn.execute("SELECT * FROM routing_events WHERE id = ?", (change_id,)).fetchone()
+    event = repo.get_routing_event(change_id)
     if event is None:
         return page("Событие не найдено", "<h1>Событие не найдено</h1>")
     body = f"""<h1>Редактировать событие смены провайдеров</h1><p><a href='/provider-changes'>← Назад</a></p>
@@ -9724,7 +9714,7 @@ def provider_change_edit_page(repo: Repository, change_id: int) -> bytes:
 
 
 def provider_change_edit_page_with_error(repo: Repository, change_id: int, error_message: str) -> bytes:
-    event = repo.conn.execute("SELECT * FROM routing_events WHERE id = ?", (change_id,)).fetchone()
+    event = repo.get_routing_event(change_id)
     if event is None:
         return page("Событие не найдено", f"<h1>Событие не найдено</h1><div class='error'>{esc(error_message)}</div>")
     body = f"""<h1>Редактировать событие смены провайдеров</h1><p><a href='/provider-changes'>← Назад</a></p>
@@ -9873,12 +9863,13 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
         provider_id = int(data["provider_id"])
         prefix_id = parse_int(data.get("provider_prefix_id"))
         if prefix_id:
-            prefix_provider = repo.conn.execute("SELECT provider_id FROM provider_prefixes WHERE id = ?", (prefix_id,)).fetchone()
+            p = placeholder(repo.backend)
+            prefix_provider = repo.conn.execute(f"SELECT provider_id FROM provider_prefixes WHERE id = {p}", (prefix_id,)).fetchone()
             if prefix_provider and int(prefix_provider["provider_id"]) != provider_id:
                 raise BusinessRuleError("Префикс не принадлежит провайдеру маршрута")
         if not name:
             raise BusinessRuleError("Название маршрута обязательно")
-        route_existing = repo.conn.execute("SELECT cli_source_type, cli_source_label, aon_pool, rnd_type, rnd_pool_owner FROM routes WHERE id = ?", (route_id,)).fetchone()
+        route_existing = repo.get_route(route_id)
         if route_existing is None:
             raise BusinessRuleError("Route not found")
         aon_data = dict(data)

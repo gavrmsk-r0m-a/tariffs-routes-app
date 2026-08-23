@@ -8,7 +8,7 @@ import sqlite3
 import json
 from contextlib import contextmanager
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
 from app.db_adapter import (
@@ -295,6 +295,29 @@ class Repository:
         self.backend = normalize_backend_name(backend)
         if self.backend == "sqlite":
             self.conn.create_function("search_text_matches", 2, search_text_matches)
+
+    @staticmethod
+    def _normalize_concurrency_timestamp(value: object) -> datetime | object:
+        """Return a semantic timestamp suitable for browser/DB token comparison."""
+        if value is None:
+            return value
+        if isinstance(value, datetime):
+            parsed = value
+        else:
+            text = str(value).strip()
+            if text.endswith(("Z", "z")):
+                text = f"{text[:-1]}+00:00"
+            try:
+                parsed = datetime.fromisoformat(text)
+            except ValueError:
+                return value
+        if parsed.tzinfo is not None:
+            parsed = parsed.astimezone(timezone.utc).replace(tzinfo=None)
+        return parsed
+
+    @classmethod
+    def _concurrency_timestamps_match(cls, expected: object, current: object) -> bool:
+        return cls._normalize_concurrency_timestamp(expected) == cls._normalize_concurrency_timestamp(current)
 
     @contextmanager
     def transaction(self):
@@ -1125,14 +1148,21 @@ class Repository:
 
     def get_calling_company(self, company_id: int) -> sqlite3.Row | None:
         p = placeholder(self.backend)
+        active_literal = "TRUE" if self.backend == "postgres" else "1"
+        false_literal = "FALSE" if self.backend == "postgres" else "0"
         return self.conn.execute(
-            f"""
-            SELECT cc.*, s.name AS server_name, c.name AS country_name
+            """
+            SELECT cc.*, s.name AS server_name, c.name AS country_name,
+                   COALESCE(active_crs.has_autorotation, {false_value}) AS current_has_autorotation
             FROM calling_companies cc
             JOIN servers s ON s.id = cc.server_id
             JOIN countries c ON c.id = cc.country_id
+            LEFT JOIN company_routing_settings active_crs
+              ON active_crs.calling_company_id = cc.id
+             AND active_crs.is_active = {active}
+             AND active_crs.valid_to IS NULL
             WHERE cc.id = {p}
-            """,
+            """.format(active=active_literal, false_value=false_literal, p=p),
             (company_id,),
         ).fetchone()
 
@@ -1726,6 +1756,8 @@ class Repository:
             existing = self.conn.execute(f"SELECT * FROM routes WHERE id = {p}", (route_id,)).fetchone()
             if existing is None:
                 raise BusinessRuleError("Route not found")
+            if expected_updated_at is not None and not self._concurrency_timestamps_match(expected_updated_at, existing["updated_at"]):
+                raise ConcurrencyConflict("Запись была изменена другим пользователем. Обновите страницу и повторите действие.")
             old_values = dict(existing)
             final_provider_id = provider_id if provider_id is not None else int(existing["provider_id"])
             final_cli_source_type = cli_source_type if cli_source_type is not None else existing["cli_source_type"]
@@ -1748,7 +1780,7 @@ class Repository:
             token_clause = ""
             if expected_updated_at is not None:
                 token_clause = f" AND updated_at = {p}"
-                update_params.append(expected_updated_at)
+                update_params.append(existing["updated_at"])
             updated_at_sql = ("CURRENT_TIMESTAMP" if self.backend == "postgres" else "STRFTIME('%Y-%m-%d %H:%M:%f', MAX(julianday('now'), julianday(updated_at) + (1.0 / 86400000.0)))")
             cur = self.conn.execute(
                 f"""
@@ -1939,7 +1971,7 @@ class Repository:
         old = self.get_tariff(tariff_id)
         if old is None:
             raise BusinessRuleError("Тариф не найден")
-        if expected_updated_at is not None and old["updated_at"] != expected_updated_at:
+        if expected_updated_at is not None and not self._concurrency_timestamps_match(expected_updated_at, old["updated_at"]):
             raise ConcurrencyConflict("Запись была изменена другим пользователем. Обновите страницу и повторите действие.")
         price_value = validate_tariff_price(price_in_provider_currency)
         price_eur = eur_price(price_value, conversion_rate_to_eur)
@@ -1961,7 +1993,7 @@ class Repository:
         token_clause = ""
         if expected_updated_at is not None:
             token_clause = f" AND updated_at = {p}"
-            update_params.append(expected_updated_at)
+            update_params.append(old["updated_at"])
         cur = self.conn.execute(
             f"""
             UPDATE tariffs
@@ -3540,33 +3572,26 @@ class Repository:
             updated_at_original = kwargs.get("updated_at_original")
             current_updated_at = existing["updated_at"]
             if updated_at_original is not None:
-                if self.backend == "postgres":
-                    def normalized_timestamp(value):
-                        if isinstance(value, datetime):
-                            return value.isoformat(sep=" ")
-                        text = str(value).strip().replace("T", " ")
-                        if text.endswith("Z"):
-                            text = f"{text[:-1]}+00:00"
-                        try:
-                            return datetime.fromisoformat(text).isoformat(sep=" ")
-                        except ValueError:
-                            return text
-                    timestamps_match = normalized_timestamp(updated_at_original) == normalized_timestamp(current_updated_at)
-                else:
-                    timestamps_match = updated_at_original == current_updated_at
-                if not timestamps_match:
+                if not self._concurrency_timestamps_match(updated_at_original, current_updated_at):
                     raise BusinessRuleError("Запись была изменена другим пользователем. Обновите страницу и повторите действие.")
             comment = self._require_text(kwargs.get("comment"), "Комментарий обязателен")
             if comment == existing["comment"]:
                 return
-            self.conn.execute(
+            update_params = [comment, updated_by, event_id]
+            token_clause = ""
+            if updated_at_original is not None:
+                token_clause = f" AND updated_at = {p}"
+                update_params.append(current_updated_at)
+            cur = self.conn.execute(
                 f"""
                 UPDATE routing_events
                 SET comment = {p}, updated_by = {p}, updated_at = {updated_at_sql}
-                WHERE id = {p}
+                WHERE id = {p}{token_clause}
                 """,
-                (comment, updated_by, event_id),
+                tuple(update_params),
             )
+            if getattr(cur, "rowcount", 1) == 0:
+                raise BusinessRuleError("Запись была изменена другим пользователем. Обновите страницу и повторите действие.")
             self._change_log(
                 "routing_event", event_id, "routing_event.comment_updated", updated_by,
                 old_values={"comment": existing["comment"]}, new_values={"comment": comment},
