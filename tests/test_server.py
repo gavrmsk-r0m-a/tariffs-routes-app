@@ -3441,6 +3441,33 @@ class ServerSmokeTest(unittest.TestCase):
         finally:
             conn.close()
 
+    def test_company_name_required_create_and_edit_blocking_ux(self):
+        create = {"server_id": "1", "country_id": "", "company_id_external": "blank-name-ui", "company_name": "   ", "line_count": "0", "dial_set_count": "0", "has_autorotation": "1", "retry_interval_seconds": "0", "is_active": "0", "comment": "preserved comment"}
+        captured, content = self.request("/companies/create", method="POST", body=urlencode(create))
+        self.assertEqual(captured["status"], "400 Bad Request")
+        self.assertIn("Не получилось сохранить.", content)
+        self.assertIn("Укажи название кампании.", content)
+        self.assertRegex(content, r'name="company_name"[^>]*has-blocking-error[^>]*aria-invalid="true"[^>]*autofocus')
+        self.assertIn("preserved comment", content)
+        conn = server.connect(server.DB_PATH)
+        try:
+            self.assertIsNone(conn.execute("SELECT id FROM calling_companies WHERE company_id_external = 'blank-name-ui'").fetchone())
+            company = conn.execute("SELECT id, company_name FROM calling_companies ORDER BY id LIMIT 1").fetchone()
+            before_history = conn.execute("SELECT COUNT(*) FROM change_log WHERE entity_type = 'calling_company' AND entity_id = ?", (company["id"],)).fetchone()[0]
+        finally:
+            conn.close()
+        update = {"server_id": "1", "country_id": "", "company_name": "", "line_count": "0", "dial_set_count": "0", "retry_interval_seconds": "0", "is_active": "0", "comment": "submitted edit"}
+        captured, content = self.request(f"/companies/{company['id']}/update", method="POST", body=urlencode(update))
+        self.assertEqual(captured["status"], "400 Bad Request")
+        self.assertIn("has-blocking-error", content)
+        self.assertIn("submitted edit", content)
+        conn = server.connect(server.DB_PATH)
+        try:
+            current = conn.execute("SELECT company_name FROM calling_companies WHERE id = ?", (company["id"],)).fetchone()
+            self.assertEqual(current["company_name"], company["company_name"])
+            self.assertEqual(conn.execute("SELECT COUNT(*) FROM change_log WHERE entity_type = 'calling_company' AND entity_id = ?", (company["id"],)).fetchone()[0], before_history)
+        finally:
+            conn.close()
 
     def test_calling_company_edit_form_includes_concurrency_token(self):
         body = urlencode({"server_id": "1", "country_id": "1", "company_id_external": "token-form", "company_name": "Token Form", "line_count": "1", "dial_set_count": "2", "has_autorotation": "0", "retry_interval_seconds": "30", "is_active": "1", "comment": ""})

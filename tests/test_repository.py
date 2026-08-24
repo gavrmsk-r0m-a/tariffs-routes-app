@@ -1547,6 +1547,26 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
                 company_id_external="123", has_autorotation=False, created_by=self.admin_id,
             )
 
+    def test_calling_company_name_is_required_normalized_and_atomic(self):
+        server_id = self.repo.create_server("EU-name-required")
+        for name in ("", "   ", "\t"):
+            with self.subTest(name=repr(name)), self.assertRaisesRegex(BusinessRuleError, "Название кампании обязательно"):
+                self.repo.create_calling_company(server_id=server_id, country_id=self.country_id, company_name=name, company_id_external=f"blank-{len(name)}", has_autorotation=True, created_by=self.admin_id)
+        self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM calling_companies WHERE server_id = ?", (server_id,)).fetchone()[0], 0)
+        self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM company_routing_settings").fetchone()[0], 0)
+        company_id = self.repo.create_calling_company(server_id=server_id, country_id=self.country_id, company_name="  CC Mexico  ", company_id_external="trimmed", has_autorotation=False, created_by=self.admin_id, line_count=0, dial_set_count=0, retry_interval_seconds=0)
+        self.assertEqual(self.repo.get_calling_company(company_id)["company_name"], "CC Mexico")
+
+    def test_calling_company_blank_update_preserves_row_and_history(self):
+        server_id = self.repo.create_server("EU-name-update")
+        company_id = self.repo.create_calling_company(server_id=server_id, country_id=self.country_id, company_name="Old name", company_id_external="update-name", has_autorotation=False, created_by=self.admin_id, comment="old")
+        history_count = self.conn.execute("SELECT COUNT(*) FROM change_log WHERE entity_type = 'calling_company' AND entity_id = ?", (company_id,)).fetchone()[0]
+        with self.assertRaisesRegex(BusinessRuleError, "Название кампании обязательно"):
+            self.repo.update_calling_company(company_id, server_id=server_id, country_id=None, company_name="   ", line_count=9, dial_set_count=8, has_autorotation=False, retry_interval_seconds=7, is_active=False, comment="new", updated_by=self.admin_id)
+        row = self.repo.get_calling_company(company_id)
+        self.assertEqual((row["company_name"], row["country_id"], row["line_count"], row["comment"]), ("Old name", self.country_id, 0, "old"))
+        self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM change_log WHERE entity_type = 'calling_company' AND entity_id = ?", (company_id,)).fetchone()[0], history_count)
+
     def test_multi_geo_calling_company_create_list_edit_and_history(self):
         server_id = self.repo.create_server("EU-multi")
         company_id = self.repo.create_calling_company(

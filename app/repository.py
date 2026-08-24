@@ -27,6 +27,13 @@ PHONE_RE = re.compile(r"^[1-9][0-9]{6,20}$")
 VALID_PHONE_STATUSES = {"used", "unused", "free", "problem", "unknown"}
 
 
+def _normalize_required_company_name(company_name: str) -> str:
+    normalized_company_name = company_name.strip()
+    if not normalized_company_name:
+        raise BusinessRuleError("Название кампании обязательно")
+    return normalized_company_name
+
+
 def generate_password_hash(password: str) -> str:
     salt = os.urandom(16)
     digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, 200_000)
@@ -1064,6 +1071,7 @@ class Repository:
     ) -> int:
         p = placeholder(self.backend)
         try:
+            normalized_company_name = _normalize_required_company_name(company_name)
             normalized_external_id = company_id_external.strip()
             if not normalized_external_id:
                 raise BusinessRuleError("Company external ID is required")
@@ -1092,7 +1100,7 @@ class Repository:
             (
                 server_id,
                 country_id,
-                company_name,
+                normalized_company_name,
                 normalized_external_id,
                 to_db_bool(has_autorotation, self.backend),
                 int(line_count),
@@ -1116,7 +1124,7 @@ class Repository:
                 created_by=created_by, commit=False,
                 )
             details = [
-            f"Название: {_company_history_value(company_name)}",
+            f"Название: {_company_history_value(normalized_company_name)}",
             f"ID кампании: {_company_history_value(normalized_external_id)}",
             f"Активна: {_company_history_value(is_active, 'bool')}",
             f"Количество линий: {_company_history_value(line_count, 'number')}",
@@ -1134,7 +1142,7 @@ class Repository:
                 "event": "Компания создана",
                 "description": "Компания создана",
                 "details": "; ".join(details),
-                "search_text": "; ".join([_company_history_value(comment), company_name, normalized_external_id]),
+                "search_text": "; ".join([_company_history_value(comment), normalized_company_name, normalized_external_id]),
             },
             summary="Компания создана",
             )
@@ -1185,6 +1193,7 @@ class Repository:
     ) -> None:
         p = placeholder(self.backend)
         try:
+            normalized_company_name = _normalize_required_company_name(company_name)
             old = self.conn.execute(f"SELECT * FROM calling_companies WHERE id = {p}", (company_id,)).fetchone()
             if old is None:
                 raise BusinessRuleError("Calling company not found")
@@ -1196,7 +1205,7 @@ class Repository:
             specs = [
                 ("Сервер", old_server["name"] if old_server else old["server_id"], new_server["name"] if new_server else server_id, "text"),
                 ("GEO", old_country["name"] if old_country else "Несколько GEO", new_country["name"] if new_country else "Несколько GEO", "text"),
-                ("Название", old["company_name"], company_name, "text"),
+                ("Название", old["company_name"], normalized_company_name, "text"),
                 ("Активна", old["is_active"], 1 if is_active else 0, "bool"),
                 ("Количество наборов", old["dial_set_count"], dial_set_count, "number"),
                 ("Интервал, сек.", old["retry_interval_seconds"], retry_interval_seconds, "number"),
@@ -1207,7 +1216,7 @@ class Repository:
                 change = _company_history_change(label, old_value, new_value, kind)
                 if change:
                     changes.append(change)
-            update_params = [server_id, country_id, company_name, int(line_count), int(dial_set_count), int(retry_interval_seconds), to_db_bool(is_active, self.backend), comment, updated_by, company_id]
+            update_params = [server_id, country_id, normalized_company_name, int(line_count), int(dial_set_count), int(retry_interval_seconds), to_db_bool(is_active, self.backend), comment, updated_by, company_id]
             token_clause = ""
             if expected_updated_at is not None:
                 token_clause = f" AND updated_at = {p}"
@@ -1240,7 +1249,7 @@ class Repository:
                 self._change_log(
                     "calling_company", company_id, "calling_company.updated", updated_by,
                     old_values={"company_name": old["company_name"], "comment": old["comment"]},
-                    new_values={"event": event, "description": description, "details": details, "search_text": f"{old['company_name']} {company_name} {old['comment'] or ''} {comment or ''} {details}"},
+                    new_values={"event": event, "description": description, "details": details, "search_text": f"{old['company_name']} {normalized_company_name} {old['comment'] or ''} {comment or ''} {details}"},
                     summary=event,
                 )
             if commit:

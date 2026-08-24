@@ -7921,8 +7921,10 @@ def phones_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
     return page("Купленные номера", table_page_container(body, extra_class="phones-page"))
 
 
-def companies_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
+def companies_page(repo: Repository, q: dict[str, str] | None = None, *, form_error: str | None = None, form_data: dict[str, str] | None = None) -> bytes:
     q = q or {}
+    form_data = form_data or {}
+    submitted = lambda name, default="": form_data.get(name, default)
     filters = {"server_id": q.get("server_id"), "country_id": q.get("country_id"), "company_like": q.get("company"), "external_id_like": q.get("external_id"), "has_autorotation": q.get("has_autorotation"), "is_active": q.get("is_active")}
     records = list(repo.list_calling_companies(filters))
     if q.get("export") == "csv":
@@ -7937,22 +7939,23 @@ def companies_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
 <label>Сервер <select name="server_id">{options(repo, 'servers', selected=q.get('server_id'), empty='Все')}</select></label><label>ГЕО <select name="country_id">{options(repo, 'countries', selected=q.get('country_id'), empty='Все')}</select></label><label>Название кампании <input name="company" value="{esc(q.get('company'))}"></label><label>ID кампании <input name="external_id" value="{esc(q.get('external_id'))}"></label><label>Авторотация <select name="has_autorotation"><option value="">Все</option><option value="1" {'selected' if q.get('has_autorotation')=='1' else ''}>Да</option><option value="0" {'selected' if q.get('has_autorotation')=='0' else ''}>Нет</option></select></label><label>Активность <select name="is_active"><option value="">Все</option><option value="1" {'selected' if q.get('is_active')=='1' else ''}>Активна</option><option value="0" {'selected' if q.get('is_active')=='0' else ''}>Неактивна</option></select></label><button>Найти</button></form>"""
     create_html = f"""<form class="company-dialog company-dialog-form" method="post" action="/companies/create">
   <header class="company-dialog-header"><h2>Добавить кампанию</h2></header>
+  {modal_blocking_error(form_error)}
   <div class="company-dialog-body">
     <section class="company-dialog-section"><h3>Основные параметры</h3><div class="company-dialog-grid">
-      <label>Сервер <span class="required">*</span><select name="server_id">{active_options(repo, 'servers')}</select></label>
-      <label>ГЕО <select name="country_id">{active_options(repo, 'countries', empty='Несколько GEO')}</select></label>
-      <label>ID кампании <span class="required">*</span><input name="company_id_external"></label>
-      <label>Название кампании <span class="required">*</span><input name="company_name"></label>
+      <label>Сервер <span class="required">*</span><select name="server_id">{active_options(repo, 'servers', selected=submitted('server_id') or None)}</select></label>
+      <label>ГЕО <select name="country_id">{active_options(repo, 'countries', selected=submitted('country_id') or None, empty='Несколько GEO')}</select></label>
+      <label>ID кампании <span class="required">*</span><input name="company_id_external" value="{esc(submitted('company_id_external'))}"></label>
+      <label>Название кампании <span class="required">*</span><input name="company_name" value="{esc(submitted('company_name'))}" required{' class="has-blocking-error" aria-invalid="true" autofocus' if form_error else ''}></label>
     </div></section>
     <section class="company-dialog-section"><h3>Настройки прозвона</h3><div class="company-dialog-grid">
-      <label>Количество линий <span class="required">*</span><input name="line_count" value="0"></label>
-      <label>Количество наборов <span class="required">*</span><input name="dial_set_count" value="0"></label>
-      <label>Авторотация <span class="required">*</span><select name="has_autorotation"><option value="1">Да</option><option value="0">Нет</option></select></label>
-      <label>Интервал дозвона, сек. <span class="required">*</span><input name="retry_interval_seconds" value="0"></label>
-      <label>Активна <span class="required">*</span><select name="is_active"><option value="1">Да</option><option value="0">Нет</option></select></label>
+      <label>Количество линий <span class="required">*</span><input name="line_count" value="{esc(submitted('line_count', '0'))}"></label>
+      <label>Количество наборов <span class="required">*</span><input name="dial_set_count" value="{esc(submitted('dial_set_count', '0'))}"></label>
+      <label>Авторотация <span class="required">*</span><select name="has_autorotation"><option value="1" {'selected' if submitted('has_autorotation', '1') == '1' else ''}>Да</option><option value="0" {'selected' if submitted('has_autorotation', '1') == '0' else ''}>Нет</option></select></label>
+      <label>Интервал дозвона, сек. <span class="required">*</span><input name="retry_interval_seconds" value="{esc(submitted('retry_interval_seconds', '0'))}"></label>
+      <label>Активна <span class="required">*</span><select name="is_active"><option value="1" {'selected' if submitted('is_active', '1') == '1' else ''}>Да</option><option value="0" {'selected' if submitted('is_active', '1') == '0' else ''}>Нет</option></select></label>
     </div></section>
     <section class="company-dialog-section"><h3>Описание</h3><div class="company-dialog-grid">
-      <label class="company-dialog-full">Комментарий <textarea name="comment" rows="5"></textarea></label>
+      <label class="company-dialog-full">Комментарий <textarea name="comment" rows="5">{esc(submitted('comment'))}</textarea></label>
     </div></section>
   </div>
   <footer class="company-dialog-footer"><button type="submit" class="modal-save">Сохранить</button><button type="button" class="modal-cancel" data-modal-close>Отмена</button></footer>
@@ -7960,7 +7963,7 @@ def companies_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
     table_html = f"{data_table('companies', [('server', 'Сервер'), ('geo', 'ГЕО'), ('company_name', 'Название кампании'), ('company_id', 'ID кампании'), ('lines', 'Количество линий'), ('dial_sets', 'Количество наборов'), ('autorotation', 'Авторотация'), ('retry_interval', 'Интервал между попытками дозвона (сек.)'), ('active', 'Активна'), ('comment', 'Комментарий'), ('history', 'Ист.'), ('actions', 'Действия')], ''.join(rows))}"
     body = f"""
 {filter_card(filters_html, q, ('server_id', 'country_id', 'company', 'external_id', 'has_autorotation', 'is_active'))}
-{form_card('+ Добавить кампанию', create_html, extra_class='company-create-shell', summary_class='company-primary-summary') if can_write("companies") else ""}
+{form_card('+ Добавить кампанию', create_html, extra_class='company-create-shell', summary_class='company-primary-summary', open_by_default=bool(form_error)) if can_write("companies") else ""}
 {table_card(table_html)}
 {table_footer(pagination_html, "<a class='button table-utility-button' href='/calling-companies/history'>Журнал событий</a>" + column_settings('companies', [('server', 'Сервер'), ('geo', 'ГЕО'), ('company_name', 'Название кампании'), ('company_id', 'ID кампании'), ('lines', 'Количество линий'), ('dial_sets', 'Количество наборов'), ('autorotation', 'Авторотация'), ('retry_interval', 'Интервал дозвона'), ('active', 'Активна'), ('comment', 'Комментарий'), ('actions', 'Действия')], hlr_style=True) + export_link('/companies', q, text=True))}"""
     return page("Кампании прозвона", table_page_container(body, extra_class="companies-page"))
@@ -9731,24 +9734,27 @@ def phone_edit_page(repo: Repository, phone_id: int) -> bytes:
     return page("Редактировать номер", body)
 
 
-def company_edit_page(repo: Repository, company_id: int) -> bytes:
+def company_edit_page(repo: Repository, company_id: int, *, form_error: str | None = None, form_data: dict[str, str] | None = None) -> bytes:
     cc = repo.get_calling_company(company_id)
     if cc is None:
         return page("Кампания не найдена", "<h1>Кампания не найдена</h1>")
+    form_data = form_data or {}
+    submitted = lambda name, default: form_data.get(name, default)
     body = f"""<h1>Редактировать кампанию</h1><p><a href='/companies'>← Назад</a></p>
 <form method='post' action='/companies/{company_id}/update'>
+{modal_blocking_error(form_error)}
 <input type='hidden' name='expected_updated_at' value='{esc(cc['updated_at'])}'>
 <label>ID кампании <input value='{esc(cc['company_id_external'])}' readonly></label>
-<label>Сервер <span class='required'>*</span><select name='server_id'>{active_options(repo, 'servers', selected=cc['server_id'])}</select></label>
-<label>ГЕО <select name='country_id'>{active_options(repo, 'countries', selected=cc['country_id'], empty='Несколько GEO')}</select></label>
-<label>Название кампании <span class='required'>*</span><input name='company_name' value='{esc(cc['company_name'])}'></label>
-<label>Количество линий <span class='required'>*</span><input name='line_count' value='{esc(cc['line_count'])}'></label>
-<label>Количество наборов <span class='required'>*</span><input name='dial_set_count' value='{esc(cc['dial_set_count'])}'></label>
+<label>Сервер <span class='required'>*</span><select name='server_id'>{active_options(repo, 'servers', selected=submitted('server_id', cc['server_id']))}</select></label>
+<label>ГЕО <select name='country_id'>{active_options(repo, 'countries', selected=submitted('country_id', cc['country_id']) or None, empty='Несколько GEO')}</select></label>
+<label>Название кампании <span class='required'>*</span><input name='company_name' value='{esc(submitted('company_name', cc['company_name']))}' required{' class="has-blocking-error" aria-invalid="true" autofocus' if form_error else ''}></label>
+<label>Количество линий <span class='required'>*</span><input name='line_count' value='{esc(submitted('line_count', cc['line_count']))}'></label>
+<label>Количество наборов <span class='required'>*</span><input name='dial_set_count' value='{esc(submitted('dial_set_count', cc['dial_set_count']))}'></label>
 <div class='muted'>Авторотация: {'Да' if cc['current_has_autorotation'] else 'Нет'}</div>
 <p class='muted'>Маршрутизация компании изменяется через ‘Смена провайдеров’.</p>
-<label>Интервал дозвона, сек. <input name='retry_interval_seconds' value='{esc(cc['retry_interval_seconds'])}'></label>
-<label>Активна <select name='is_active'><option value='1' {'selected' if cc['is_active'] else ''}>Да</option><option value='0' {'selected' if not cc['is_active'] else ''}>Нет</option></select></label>
-<label>Комментарий <input name='comment' value='{esc(cc['comment'])}'></label>
+<label>Интервал дозвона, сек. <input name='retry_interval_seconds' value='{esc(submitted('retry_interval_seconds', cc['retry_interval_seconds']))}'></label>
+<label>Активна <select name='is_active'><option value='1' {'selected' if str(submitted('is_active', '1' if cc['is_active'] else '0')) == '1' else ''}>Да</option><option value='0' {'selected' if str(submitted('is_active', '1' if cc['is_active'] else '0')) == '0' else ''}>Нет</option></select></label>
+<label>Комментарий <input name='comment' value='{esc(submitted('comment', cc['comment'] or ''))}'></label>
 <button>Сохранить</button></form>"""
     return page("Редактировать кампанию", body)
 
@@ -10374,6 +10380,8 @@ def validation_error_page(return_path: str, message: str) -> bytes:
 
 def user_error(exc: Exception) -> str:
     text = str(exc)
+    if text == "Название кампании обязательно":
+        return "Укажи название кампании."
     db_error = map_database_error(exc, backend=DB_CONFIG.backend)
     if db_error.kind == UNIQUE_VIOLATION:
         table = db_error.table
@@ -10661,6 +10669,11 @@ def app(environ, start_response):
             preserved = dict(parsed)
             preserved["_entity_id"] = path.strip("/").split("/")[2]
             return [change_reasons_page(repo, form_error=user_error(exc), form_data=preserved)]
+        if path == "/companies/create":
+            return [companies_page(repo, form_error=user_error(exc), form_data=dict(parsed))]
+        if path.startswith("/companies/") and path.endswith("/update"):
+            company_id = int(path.strip("/").split("/")[1])
+            return [company_edit_page(repo, company_id, form_error=user_error(exc), form_data=dict(parsed))]
         if return_path.startswith("/routes/") and return_path.endswith("/numbers/manage"):
             route_id = int(return_path.strip("/").split("/")[1])
             if not path.endswith("/numbers/remove"):
