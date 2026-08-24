@@ -335,7 +335,7 @@ CREATE TABLE IF NOT EXISTS calling_companies (
 CREATE TABLE IF NOT EXISTS company_routing_settings (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     calling_company_id INTEGER NOT NULL REFERENCES calling_companies(id) ON DELETE RESTRICT,
-    country_id INTEGER NOT NULL REFERENCES countries(id) ON DELETE RESTRICT,
+    country_id INTEGER REFERENCES countries(id) ON DELETE RESTRICT,
     server_id INTEGER NOT NULL REFERENCES servers(id) ON DELETE RESTRICT,
     route_id INTEGER REFERENCES routes(id) ON DELETE RESTRICT,
     routing_mode TEXT NOT NULL CHECK (routing_mode IN ('server_priority', 'campaign_route', 'autorotation', 'mixed')),

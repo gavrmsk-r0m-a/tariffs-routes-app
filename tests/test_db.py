@@ -60,7 +60,7 @@ class DbConfigTest(unittest.TestCase):
             columns = {row[1]: row for row in conn.execute("PRAGMA table_info(calling_companies)")}
             self.assertEqual(columns["country_id"][3], 0)
             routing_columns = {row[1]: row for row in conn.execute("PRAGMA table_info(company_routing_settings)")}
-            self.assertEqual(routing_columns["country_id"][3], 1)
+            self.assertEqual(routing_columns["country_id"][3], 0)
         finally:
             conn.close()
 
@@ -94,6 +94,44 @@ class DbConfigTest(unittest.TestCase):
             self.assertEqual(foreign_tables, {"users", "countries", "servers"})
             conn.execute("UPDATE calling_companies SET country_id = NULL WHERE id = 4")
             conn.commit()
+        finally:
+            conn.close()
+
+    def test_existing_sqlite_routing_setting_nullable_migration_preserves_state_and_indexes(self):
+        conn = connect(":memory:")
+        try:
+            schema = (Path(__file__).parents[1] / "app/schema.sql").read_text(encoding="utf-8")
+            marker = "CREATE TABLE IF NOT EXISTS company_routing_settings"
+            start = schema.index(marker)
+            nullable = "    country_id INTEGER REFERENCES countries(id) ON DELETE RESTRICT,"
+            offset = schema.index(nullable, start)
+            schema = schema[:offset] + schema[offset:].replace(nullable, nullable.replace(" INTEGER ", " INTEGER NOT NULL "), 1)
+            conn.executescript(schema)
+            conn.executescript("""
+                INSERT INTO users(id, username, display_name, role_key, is_active) VALUES (1, 'legacy', 'Legacy', 'admin', 1);
+                INSERT INTO servers(id, name) VALUES (2, 'Legacy server');
+                INSERT INTO countries(id, name) VALUES (3, 'Legacy GEO');
+                INSERT INTO currencies(id, code, name) VALUES (4, 'EUR', 'Euro');
+                INSERT INTO providers(id, name, normalized_name, default_currency_id) VALUES (5, 'Legacy provider', 'legacy provider', 4);
+                INSERT INTO routes(id, country_id, provider_id, name, cli_source_type, cli_source_label, created_by)
+                    VALUES (6, 3, 5, 'Legacy route', 'pool', 'Legacy pool', 1);
+                INSERT INTO calling_companies(id, server_id, country_id, company_name, company_id_external, created_by)
+                    VALUES (7, 2, 3, 'Legacy campaign', 'legacy-7', 1);
+                INSERT INTO company_routing_settings(id, calling_company_id, country_id, server_id, route_id, routing_mode, has_autorotation, comment, valid_from, created_by)
+                    VALUES (8, 7, 3, 2, 6, 'mixed', 1, 'preserve', '2026-01-02', 1);
+            """)
+            run_lightweight_migrations(conn)
+            run_lightweight_migrations(conn)
+            row = conn.execute("SELECT * FROM company_routing_settings WHERE id = 8").fetchone()
+            self.assertEqual((row["route_id"], row["routing_mode"], row["has_autorotation"], row["valid_from"]), (6, "mixed", 1, "2026-01-02"))
+            self.assertEqual({r[1] for r in conn.execute("PRAGMA index_list(company_routing_settings)")}, {
+                "idx_company_routing_settings_company_id", "idx_company_routing_settings_country_id",
+                "idx_company_routing_settings_server_id", "idx_company_routing_settings_route_id",
+                "ux_company_routing_settings_one_active",
+            })
+            self.assertEqual({r[2] for r in conn.execute("PRAGMA foreign_key_list(company_routing_settings)")}, {"calling_companies", "countries", "servers", "routes", "users"})
+            self.assertEqual({r[1]: r for r in conn.execute("PRAGMA table_info(company_routing_settings)")}["country_id"][3], 0)
+            conn.execute("UPDATE company_routing_settings SET country_id = NULL WHERE id = 8")
         finally:
             conn.close()
 

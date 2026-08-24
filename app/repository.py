@@ -1079,11 +1079,6 @@ class Repository:
             ).fetchone()
             if duplicate is not None:
                 raise BusinessRuleError(f"Кампания с ID {normalized_external_id} уже существует: {duplicate['company_name']} / {duplicate['server_name']}")
-            if country_id is None and has_autorotation:
-                raise BusinessRuleError(
-                    "Для кампании с несколькими GEO начальную авторотацию нельзя создать без конкретного GEO. "
-                    "Создай кампанию без начальной авторотации и настрой маршрутизацию через «Смена провайдеров»."
-                )
             insert_sql = prepare_insert_returning_id(f"""
             INSERT INTO calling_companies(
                 server_id, country_id, company_name, company_id_external,
@@ -2430,7 +2425,7 @@ class Repository:
         self,
         *,
         calling_company_id: int,
-        country_id: int,
+        country_id: int | None,
         server_id: int,
         route_id: int | None,
         routing_mode: str,
@@ -2446,11 +2441,11 @@ class Repository:
         company = self.conn.execute(f"SELECT id, country_id, server_id FROM calling_companies WHERE id = {p}", (calling_company_id,)).fetchone()
         if not company:
             raise BusinessRuleError("Кампания прозвона не найдена")
-        if company["country_id"] is not None and int(company["country_id"]) != int(country_id):
+        if company["country_id"] is not None and company["country_id"] != country_id:
             raise BusinessRuleError("GEO схемы маршрутизации должен совпадать с GEO выбранной кампании")
         if int(company["server_id"]) != int(server_id):
             raise BusinessRuleError("Сервер схемы маршрутизации должен совпадать с сервером выбранной кампании")
-        if not self.conn.execute(f"SELECT id FROM countries WHERE id = {p}", (country_id,)).fetchone():
+        if country_id is not None and not self.conn.execute(f"SELECT id FROM countries WHERE id = {p}", (country_id,)).fetchone():
             raise BusinessRuleError("GEO не найден")
         if not self.conn.execute(f"SELECT id FROM servers WHERE id = {p}", (server_id,)).fetchone():
             raise BusinessRuleError("Сервер не найден")
@@ -2458,14 +2453,14 @@ class Repository:
             route = self.conn.execute(f"SELECT id, country_id FROM routes WHERE id = {p}", (route_id,)).fetchone()
             if not route:
                 raise BusinessRuleError("Маршрут не найден")
-            if int(route["country_id"]) != int(country_id):
+            if country_id is not None and int(route["country_id"]) != int(country_id):
                 raise BusinessRuleError("Маршрут кампании должен относиться к выбранному GEO")
 
     def _company_routing_summary(
         self,
         *,
         calling_company_id: int,
-        country_id: int,
+        country_id: int | None,
         server_id: int,
         old_values: dict | None = None,
         new_values: dict | None = None,
@@ -2627,7 +2622,7 @@ class Repository:
         self,
         *,
         calling_company_id: int,
-        country_id: int,
+        country_id: int | None,
         server_id: int,
         route_id: int | None,
         routing_mode: str,
@@ -2732,7 +2727,7 @@ class Repository:
         self,
         *,
         setting_id: int,
-        country_id: int,
+        country_id: int | None,
         server_id: int,
         route_id: int | None,
         routing_mode: str,
@@ -2756,7 +2751,7 @@ class Repository:
             )
             new_autorotation = to_db_bool(has_autorotation, self.backend)
             routing_changed = any(
-                int(existing[key]) != int(value) if key in {"country_id", "server_id"} else existing[key] != value
+                existing[key] != value
                 for key, value in {"country_id": country_id, "server_id": server_id, "route_id": route_id,
                                    "routing_mode": routing_mode, "has_autorotation": new_autorotation}.items()
             )

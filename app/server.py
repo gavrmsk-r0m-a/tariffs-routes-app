@@ -9869,7 +9869,8 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
     if path == "/routes/create":
         country_id = int(data["country_id"]); provider_id = int(data["provider_id"]); prefix_id = parse_int(data.get("provider_prefix_id"))
         if prefix_id:
-            prefix_provider = repo.conn.execute("SELECT provider_id FROM provider_prefixes WHERE id = ?", (prefix_id,)).fetchone()
+            p = placeholder(repo.backend)
+            prefix_provider = repo.conn.execute(f"SELECT provider_id FROM provider_prefixes WHERE id = {p}", (prefix_id,)).fetchone()
             if prefix_provider and int(prefix_provider["provider_id"]) != provider_id:
                 raise BusinessRuleError("Префикс не принадлежит выбранному провайдеру")
         cli_source_type, cli_source_label, aon_pool, rnd_type, rnd_pool_owner = normalize_route_aon_fields(data)
