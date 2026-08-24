@@ -16,6 +16,7 @@ from app.db import connect_postgres  # noqa: E402
 from app.repository import hash_password  # noqa: E402
 
 SCHEMA_PATH = ROOT / "docs/postgres/schema.postgres.sql"
+MIGRATIONS_PATH = ROOT / "docs/postgres/migrations"
 LOCAL_HOSTS = {"localhost", "127.0.0.1"}
 DEFAULT_USERNAME = "local-dev"
 
@@ -37,6 +38,8 @@ def setup_database(database_url: str, username: str, password: str) -> None:
     conn = connect_postgres(database_url)
     try:
         conn.execute(schema)
+        for migration_path in sorted(MIGRATIONS_PATH.glob("*.sql")):
+            conn.execute(migration_path.read_text(encoding="utf-8"))
         conn.execute(
             """
             INSERT INTO users(username, display_name, role_key, role, must_change_password,
@@ -84,4 +87,3 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
-

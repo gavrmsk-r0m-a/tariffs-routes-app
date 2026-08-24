@@ -5,6 +5,7 @@ import unittest
 REPO_ROOT = Path(__file__).resolve().parents[1]
 POSTGRES_SCHEMA = REPO_ROOT / "docs" / "postgres" / "schema.postgres.sql"
 SQLITE_SCHEMA = REPO_ROOT / "app" / "schema.sql"
+OPTIONAL_CAMPAIGN_GEO_MIGRATION = REPO_ROOT / "docs/postgres/migrations/0069l_optional_campaign_geo.sql"
 
 
 class PostgresSchemaDraftTests(unittest.TestCase):
@@ -45,6 +46,20 @@ class PostgresSchemaDraftTests(unittest.TestCase):
         self.assertIn("PRAGMA foreign_keys = ON;", sql)
         self.assertIn("CREATE TABLE IF NOT EXISTS users", sql)
         self.assertIn("INTEGER PRIMARY KEY AUTOINCREMENT", sql)
+
+    def test_optional_campaign_geo_schema_and_migration_contract(self):
+        schema = POSTGRES_SCHEMA.read_text(encoding="utf-8")
+        migration = OPTIONAL_CAMPAIGN_GEO_MIGRATION.read_text(encoding="utf-8")
+        calling_company = schema.split("CREATE TABLE IF NOT EXISTS calling_companies", 1)[1].split(");", 1)[0]
+        routing_setting = schema.split("CREATE TABLE IF NOT EXISTS company_routing_settings", 1)[1].split(");", 1)[0]
+
+        self.assertIn("country_id BIGINT,", calling_company)
+        self.assertNotIn("country_id BIGINT NOT NULL", calling_company)
+        self.assertIn("FOREIGN KEY (country_id) REFERENCES countries(id)", calling_company)
+        self.assertIn("country_id BIGINT NOT NULL", routing_setting)
+        self.assertIn("ALTER TABLE calling_companies ALTER COLUMN country_id DROP NOT NULL", migration)
+        self.assertNotIn("ALTER TABLE calling_companies ALTER COLUMN country_id DROP NOT NULL", schema)
+        self.assertIn("CREATE UNIQUE INDEX IF NOT EXISTS ux_calling_companies_multi_geo_identity", migration)
 
 
 if __name__ == "__main__":

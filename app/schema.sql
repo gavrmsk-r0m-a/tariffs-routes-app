@@ -315,7 +315,7 @@ CREATE TABLE IF NOT EXISTS phone_assignment_types (
 CREATE TABLE IF NOT EXISTS calling_companies (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     server_id INTEGER NOT NULL REFERENCES servers(id) ON DELETE RESTRICT,
-    country_id INTEGER NOT NULL REFERENCES countries(id) ON DELETE RESTRICT,
+    country_id INTEGER REFERENCES countries(id) ON DELETE RESTRICT,
     company_name TEXT NOT NULL,
     company_id_external TEXT NOT NULL CHECK (length(trim(company_id_external)) > 0),
     has_autorotation INTEGER NOT NULL DEFAULT 0 CHECK (has_autorotation IN (0, 1)),
@@ -557,6 +557,8 @@ CREATE INDEX IF NOT EXISTS idx_route_phone_numbers_phone_number_id ON route_phon
 CREATE INDEX IF NOT EXISTS idx_provider_change_logs_changed_at ON provider_change_logs(changed_at);
 CREATE INDEX IF NOT EXISTS idx_provider_change_logs_country_id ON provider_change_logs(country_id);
 CREATE INDEX IF NOT EXISTS idx_calling_companies_server_id ON calling_companies(server_id);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_calling_companies_multi_geo_identity
+    ON calling_companies(server_id, company_id_external) WHERE country_id IS NULL;
 CREATE INDEX IF NOT EXISTS idx_calling_companies_country_id ON calling_companies(country_id);
 CREATE INDEX IF NOT EXISTS idx_calling_companies_external_id ON calling_companies(company_id_external);
 CREATE INDEX IF NOT EXISTS idx_company_routing_settings_company_id ON company_routing_settings(calling_company_id);
