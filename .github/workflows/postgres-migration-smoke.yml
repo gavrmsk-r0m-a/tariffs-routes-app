@@ -51,6 +51,7 @@ on:
       - tests/test_postgres_runtime_audit.py
       - scripts/create_migration_demo_sqlite.py
       - docs/postgres/schema.postgres.sql
+      - docs/postgres/migrations/**
       - docs/postgres/schema_decisions.md
       - app/schema.sql
       - app/db.py

@@ -236,6 +236,47 @@ def _rebuild_phone_numbers_if_needed(conn: sqlite3.Connection) -> None:
     conn.execute("PRAGMA foreign_keys = ON")
 
 
+def _rebuild_calling_companies_if_needed(conn: sqlite3.Connection) -> None:
+    """Make the campaign GEO nullable in legacy SQLite databases without changing rows."""
+    columns = {row[1]: row for row in conn.execute("PRAGMA table_info(calling_companies)")}
+    if not columns or not columns["country_id"][3]:
+        return
+    conn.commit()
+    conn.execute("PRAGMA foreign_keys = OFF")
+    try:
+        conn.execute("""
+            CREATE TABLE calling_companies_new (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                server_id INTEGER NOT NULL REFERENCES servers(id) ON DELETE RESTRICT,
+                country_id INTEGER REFERENCES countries(id) ON DELETE RESTRICT,
+                company_name TEXT NOT NULL,
+                company_id_external TEXT NOT NULL CHECK (length(trim(company_id_external)) > 0),
+                has_autorotation INTEGER NOT NULL DEFAULT 0 CHECK (has_autorotation IN (0, 1)),
+                line_count INTEGER NOT NULL DEFAULT 0 CHECK (line_count >= 0),
+                dial_set_count INTEGER NOT NULL DEFAULT 0 CHECK (dial_set_count >= 0),
+                retry_interval_seconds INTEGER NOT NULL DEFAULT 0 CHECK (retry_interval_seconds >= 0),
+                comment TEXT,
+                is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
+                created_by INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_by INTEGER REFERENCES users(id) ON DELETE RESTRICT,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(server_id, country_id, company_id_external)
+            )
+        """)
+        column_list = "id, server_id, country_id, company_name, company_id_external, has_autorotation, line_count, dial_set_count, retry_interval_seconds, comment, is_active, created_by, created_at, updated_by, updated_at"
+        conn.execute(f"INSERT INTO calling_companies_new({column_list}) SELECT {column_list} FROM calling_companies")
+        conn.execute("DROP TABLE calling_companies")
+        conn.execute("ALTER TABLE calling_companies_new RENAME TO calling_companies")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_calling_companies_server_id ON calling_companies(server_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_calling_companies_country_id ON calling_companies(country_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_calling_companies_external_id ON calling_companies(company_id_external)")
+        conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_calling_companies_multi_geo_identity ON calling_companies(server_id, company_id_external) WHERE country_id IS NULL")
+        conn.commit()
+    finally:
+        conn.execute("PRAGMA foreign_keys = ON")
+
+
 def _seed_default_users_if_empty(conn: sqlite3.Connection) -> None:
     if conn.execute("SELECT COUNT(*) FROM users").fetchone()[0] != 0:
         return
@@ -279,6 +320,7 @@ def _seed_default_users_if_empty(conn: sqlite3.Connection) -> None:
 
 def run_lightweight_migrations(conn: sqlite3.Connection) -> None:
     """Keep already-created MVP databases compatible with additive UI changes."""
+    _rebuild_calling_companies_if_needed(conn)
     conn.execute("""
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,

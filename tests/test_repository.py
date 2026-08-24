@@ -1538,22 +1538,48 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
                 created_by=self.admin_id,
             )
         self.repo.create_calling_company(
-            server_id=server_id,
-            country_id=self.country_id,
-            company_name="CC Italy",
-            company_id_external="123",
-            has_autorotation=True,
-            created_by=self.admin_id,
+            server_id=server_id, country_id=self.country_id, company_name="CC Italy",
+            company_id_external="123", has_autorotation=True, created_by=self.admin_id,
         )
         with self.assertRaisesRegex(BusinessRuleError, "Кампания с ID 123 уже существует: CC Italy / EU1"):
             self.repo.create_calling_company(
-                server_id=server_id,
-                country_id=self.country_id,
-                company_name="CC Italy Duplicate",
-                company_id_external="123",
-                has_autorotation=False,
-                created_by=self.admin_id,
+                server_id=server_id, country_id=self.country_id, company_name="CC Italy Duplicate",
+                company_id_external="123", has_autorotation=False, created_by=self.admin_id,
             )
+
+    def test_multi_geo_calling_company_create_list_edit_and_history(self):
+        server_id = self.repo.create_server("EU-multi")
+        company_id = self.repo.create_calling_company(
+            server_id=server_id, country_id=None, company_name="Multi campaign",
+            company_id_external="multi-geo-1", has_autorotation=False, created_by=self.admin_id,
+        )
+        self.assertIsNone(self.repo.get_calling_company(company_id)["country_id"])
+        self.assertIsNone(self.repo.get_calling_company(company_id)["country_name"])
+        self.assertIn(company_id, [row["id"] for row in self.repo.list_calling_companies()])
+
+        self.repo.update_calling_company(
+            company_id, server_id=server_id, country_id=self.country_id, company_name="Multi campaign",
+            line_count=0, dial_set_count=0, has_autorotation=False, retry_interval_seconds=0,
+            is_active=True, comment=None, updated_by=self.admin_id,
+        )
+        self.assertEqual(self.repo.get_calling_company(company_id)["country_id"], self.country_id)
+        self.assertIn("GEO: Несколько GEO →", self.repo.list_calling_company_history(company_id)[0]["new_value"])
+        self.repo.update_calling_company(
+            company_id, server_id=server_id, country_id=None, company_name="Multi campaign",
+            line_count=0, dial_set_count=0, has_autorotation=False, retry_interval_seconds=0,
+            is_active=True, comment=None, updated_by=self.admin_id,
+        )
+        self.assertIsNone(self.repo.get_calling_company(company_id)["country_id"])
+        self.assertIn("→ Несколько GEO", self.repo.list_calling_company_history(company_id)[0]["new_value"])
+
+    def test_multi_geo_calling_company_rejects_initial_autorotation_without_partial_rows(self):
+        server_id = self.repo.create_server("EU-multi-auto")
+        with self.assertRaisesRegex(BusinessRuleError, "начальную авторотацию нельзя"):
+            self.repo.create_calling_company(
+                server_id=server_id, country_id=None, company_name="Invalid multi",
+                company_id_external="multi-auto-1", has_autorotation=True, created_by=self.admin_id,
+            )
+        self.assertIsNone(self.conn.execute("SELECT id FROM calling_companies WHERE company_id_external = ?", ("multi-auto-1",)).fetchone())
 
     def test_calling_company_external_id_is_globally_unique_across_servers_and_inactive(self):
         eu1_id = self.repo.create_server("EU1-global")

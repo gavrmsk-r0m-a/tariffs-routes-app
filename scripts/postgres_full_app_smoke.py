@@ -610,6 +610,65 @@ def run_smoke(database_url: str, auth_secret: str) -> dict[str, object]:
         finally:
             verify.close()
     checked.append("/companies/create (authenticated POST)")
+    with _isolated_smoke_campaign(database_url) as campaign:
+        multi_data = {
+            "server_id": str(campaign["server_id"]), "country_id": "",
+            "company_id_external": campaign["external_id"], "company_name": "CI_SMOKE multi-GEO",
+            "line_count": "1", "dial_set_count": "1", "retry_interval_seconds": "30",
+            "has_autorotation": "1", "is_active": "1", "comment": "CI_SMOKE multi-GEO campaign",
+        }
+        status, _, body = wsgi_request(app, "/companies/create", method="POST", data=multi_data, cookie=cookie)
+        if status != "400 Bad Request" or "начальную авторотацию нельзя" not in _normalized_body_text(body):
+            raise SmokeFailure("/companies/create", "multi-GEO autorotation did not return friendly validation", status)
+        verify = connect_postgres(database_url)
+        try:
+            if verify.execute("SELECT 1 FROM calling_companies WHERE company_id_external = %s", (campaign["external_id"],)).fetchone():
+                raise SmokeFailure("/companies/create", "rejected multi-GEO campaign was partially created", status)
+        finally:
+            verify.close()
+
+        multi_data["has_autorotation"] = "0"
+        status, headers, _ = wsgi_request(app, "/companies/create", method="POST", data=multi_data, cookie=cookie)
+        if status != "303 See Other" or _header(headers, "Location") != "/companies":
+            raise SmokeFailure("/companies/create", "multi-GEO campaign creation failed", status)
+        verify = connect_postgres(database_url)
+        try:
+            company = verify.execute("SELECT id, country_id, updated_at FROM calling_companies WHERE company_id_external = %s", (campaign["external_id"],)).fetchone()
+            if not company or company["country_id"] is not None:
+                raise SmokeFailure("/companies/create", "multi-GEO campaign was not stored with NULL country_id", status)
+            company_id = int(company["id"])
+            token = str(company["updated_at"])
+        finally:
+            verify.close()
+        status, _, body = wsgi_request(app, "/companies", cookie=cookie)
+        if status != "200 OK" or "Несколько GEO" not in _normalized_body_text(body):
+            raise SmokeFailure("/companies", "multi-GEO label was not rendered", status)
+        edit_path = f"/companies/{company_id}/edit"
+        status, _, _ = wsgi_request(app, edit_path, cookie=cookie)
+        if status != "200 OK":
+            raise SmokeFailure(edit_path, "multi-GEO edit form failed", status)
+        update = {**multi_data, "country_id": str(campaign["country_id"]), "expected_updated_at": token}
+        status, _, _ = wsgi_request(app, f"/companies/{company_id}/update", method="POST", data=update, cookie=cookie)
+        if status != "303 See Other":
+            raise SmokeFailure(edit_path, "multi-GEO to single-GEO update failed", status)
+        verify = connect_postgres(database_url)
+        try:
+            changed = verify.execute("SELECT country_id, updated_at FROM calling_companies WHERE id = %s", (company_id,)).fetchone()
+            if int(changed["country_id"]) != campaign["country_id"]:
+                raise SmokeFailure(edit_path, "single-GEO value was not persisted", status)
+            update["country_id"] = ""
+            update["expected_updated_at"] = str(changed["updated_at"])
+        finally:
+            verify.close()
+        status, _, _ = wsgi_request(app, f"/companies/{company_id}/update", method="POST", data=update, cookie=cookie)
+        verify = connect_postgres(database_url)
+        try:
+            changed = verify.execute("SELECT country_id FROM calling_companies WHERE id = %s", (company_id,)).fetchone()
+            if status != "303 See Other" or changed["country_id"] is not None:
+                raise SmokeFailure(edit_path, "single-GEO to multi-GEO update failed", status)
+        finally:
+            verify.close()
+    checked.append("/companies multi-GEO create/edit/validation (authenticated WSGI)")
     with _isolated_edit_paths(database_url) as edit:
         numbers_path = f"/routes/{edit['route']}/numbers"
         status, _, body = wsgi_request(app, numbers_path, cookie=cookie)

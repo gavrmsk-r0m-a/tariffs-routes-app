@@ -1050,7 +1050,7 @@ class Repository:
         self,
         *,
         server_id: int,
-        country_id: int,
+        country_id: int | None,
         company_name: str,
         company_id_external: str,
         has_autorotation: bool,
@@ -1079,6 +1079,11 @@ class Repository:
             ).fetchone()
             if duplicate is not None:
                 raise BusinessRuleError(f"Кампания с ID {normalized_external_id} уже существует: {duplicate['company_name']} / {duplicate['server_name']}")
+            if country_id is None and has_autorotation:
+                raise BusinessRuleError(
+                    "Для кампании с несколькими GEO начальную авторотацию нельзя создать без конкретного GEO. "
+                    "Создай кампанию без начальной авторотации и настрой маршрутизацию через «Смена провайдеров»."
+                )
             insert_sql = prepare_insert_returning_id(f"""
             INSERT INTO calling_companies(
                 server_id, country_id, company_name, company_id_external,
@@ -1156,7 +1161,7 @@ class Repository:
                    COALESCE(active_crs.has_autorotation, {false_value}) AS current_has_autorotation
             FROM calling_companies cc
             JOIN servers s ON s.id = cc.server_id
-            JOIN countries c ON c.id = cc.country_id
+            LEFT JOIN countries c ON c.id = cc.country_id
             LEFT JOIN company_routing_settings active_crs
               ON active_crs.calling_company_id = cc.id
              AND active_crs.is_active = {active}
@@ -1171,7 +1176,7 @@ class Repository:
         company_id: int,
         *,
         server_id: int,
-        country_id: int,
+        country_id: int | None,
         company_name: str,
         line_count: int,
         dial_set_count: int,
@@ -1191,8 +1196,11 @@ class Repository:
             changes = []
             new_server = self.conn.execute(f"SELECT name FROM servers WHERE id = {p}", (server_id,)).fetchone()
             old_server = self.conn.execute(f"SELECT name FROM servers WHERE id = {p}", (old["server_id"],)).fetchone()
+            old_country = self.conn.execute(f"SELECT name FROM countries WHERE id = {p}", (old["country_id"],)).fetchone() if old["country_id"] is not None else None
+            new_country = self.conn.execute(f"SELECT name FROM countries WHERE id = {p}", (country_id,)).fetchone() if country_id is not None else None
             specs = [
                 ("Сервер", old_server["name"] if old_server else old["server_id"], new_server["name"] if new_server else server_id, "text"),
+                ("GEO", old_country["name"] if old_country else "Несколько GEO", new_country["name"] if new_country else "Несколько GEO", "text"),
                 ("Название", old["company_name"], company_name, "text"),
                 ("Активна", old["is_active"], 1 if is_active else 0, "bool"),
                 ("Количество наборов", old["dial_set_count"], dial_set_count, "number"),
@@ -2331,13 +2339,13 @@ class Repository:
                        active_crs.routing_mode AS current_routing_mode, active_crs.route_id AS current_route_id
                 FROM calling_companies cc
                 JOIN servers s ON s.id = cc.server_id
-                JOIN countries c ON c.id = cc.country_id
+                LEFT JOIN countries c ON c.id = cc.country_id
                 LEFT JOIN company_routing_settings active_crs
                   ON active_crs.calling_company_id = cc.id
                  AND {active_join}
                  AND active_crs.valid_to IS NULL
                 {where}
-                ORDER BY c.name, s.name, cc.company_name
+                ORDER BY (c.name IS NOT NULL), c.name, s.name, cc.company_name
                 """,
                 [inactive, active, *params],
             )
@@ -2438,7 +2446,7 @@ class Repository:
         company = self.conn.execute(f"SELECT id, country_id, server_id FROM calling_companies WHERE id = {p}", (calling_company_id,)).fetchone()
         if not company:
             raise BusinessRuleError("Кампания прозвона не найдена")
-        if int(company["country_id"]) != int(country_id):
+        if company["country_id"] is not None and int(company["country_id"]) != int(country_id):
             raise BusinessRuleError("GEO схемы маршрутизации должен совпадать с GEO выбранной кампании")
         if int(company["server_id"]) != int(server_id):
             raise BusinessRuleError("Сервер схемы маршрутизации должен совпадать с сервером выбранной кампании")
