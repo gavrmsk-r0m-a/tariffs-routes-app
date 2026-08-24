@@ -135,7 +135,7 @@ class FullAppSmokeHarnessTests(unittest.TestCase):
         cases = (
             ("phone-types", {"name": "Mobile CI", "comment": "probe"}, "phone_number_types"),
             ("projects", {"name": "Project CI", "comment": "probe"}, "projects"),
-            ("phone-assignments", {"name": "Assignment CI", "code": "assign_ci", "comment": "probe"}, "phone_assignment_types"),
+            ("phone-assignments", {"name": "Assignment CI", "comment": "probe"}, "phone_assignment_types"),
         )
         for kind, data, table in cases:
             with self.subTest(kind=kind):

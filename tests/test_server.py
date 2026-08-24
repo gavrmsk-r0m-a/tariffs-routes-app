@@ -311,6 +311,15 @@ class ServerSmokeTest(unittest.TestCase):
         content = b"".join(server.app(environ, start_response)).decode("utf-8")
         return captured, content
 
+    def make_route_purchased_pool(self, route_id=1):
+        self.request("/routes")
+        conn = server.connect(server.DB_PATH)
+        try:
+            conn.execute("UPDATE routes SET cli_source_type = 'pool', aon_pool = 'Пул купленных номеров' WHERE id = ?", (route_id,))
+            conn.commit()
+        finally:
+            conn.close()
+
     def user_cookie(self, username):
         self.request("/login")
         conn = server.connect(server.DB_PATH)
@@ -688,6 +697,7 @@ class ServerSmokeTest(unittest.TestCase):
         captured, _content = self.request(f"/tariffs/{tariff_id}/update", method="POST", body=body)
 
         self.assertEqual(captured["status"], "303 See Other")
+        self.assertEqual(dict(captured["headers"])["Location"], "/tariffs")
         conn = server.connect(server.DB_PATH)
         try:
             row = conn.execute("SELECT price_in_provider_currency, comment, is_current FROM tariffs WHERE id = ?", (tariff_id,)).fetchone()
@@ -1640,7 +1650,7 @@ class ServerSmokeTest(unittest.TestCase):
             ("servers", {"name": " ", "comment": "  "}, "/admin/dictionaries?section=servers", "Кажется, мы забыли название сервера. Давай его укажем."),
             ("phone-types", {"name": " ", "comment": "comment"}, "/admin/dictionaries?section=phone-types", "Кажется, мы забыли название типа номера. Давай его укажем."),
             ("projects", {"name": " ", "comment": "\n"}, "/admin/dictionaries?section=projects", "Кажется, мы забыли название проекта. Давай его укажем."),
-            ("phone-assignments", {"name": "Monitor", "code": " ", "comment": "comment"}, "/admin/dictionaries?section=phone-assignments", "Кажется, мы забыли код назначения номера. Давай его укажем."),
+            ("phone-assignments", {"name": " ", "comment": "comment"}, "/admin/dictionaries?section=phone-assignments", "Кажется, мы забыли название назначения номера. Давай его укажем."),
         ]
         for kind, body, return_path, message in cases:
             with self.subTest(kind=kind):
@@ -1836,8 +1846,7 @@ class ServerSmokeTest(unittest.TestCase):
             ("phone-types", {"name": "Mobile 69E"}, {"name": "mobile 69e"}, "Кажется, такой тип номера у нас уже есть."),
             ("currencies", {"code": "usdx69e"}, {"code": "USDX69E"}, "Кажется, такая валюта у нас уже есть."),
             ("providers", {"name": "Provider   69E", "default_currency_id": "1"}, {"name": " provider 69e ", "default_currency_id": "1"}, "Кажется, такой провайдер у нас уже есть."),
-            ("phone-assignments", {"name": "Assignment 69E", "code": "assign69e"}, {"name": "assignment 69e", "code": "other69e"}, "Кажется, такое назначение у нас уже есть."),
-            ("phone-assignments", {"name": "Other Assignment 69E", "code": "code69e"}, {"name": "Unique Assignment 69E", "code": "CODE69E"}, "Кажется, такой код назначения у нас уже есть."),
+            ("phone-assignments", {"name": "Assignment 69E"}, {"name": "assignment 69e"}, "Кажется, такое назначение у нас уже есть."),
         ]
         for kind, first, duplicate, message in cases:
             with self.subTest(kind=kind, duplicate=duplicate):
@@ -2843,6 +2852,7 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertNotIn("<h1>Маршруты</h1>", content)
 
     def test_route_number_add_uses_phone_number_not_internal_id(self):
+        self.make_route_purchased_pool(2)
         self.request("/routes")
         body = urlencode({"phone_number": "525550000001", "usage_type": "pool_member"})
         captured, content = self.request("/routes/2/numbers/add", method="POST", body=body)
@@ -2850,6 +2860,7 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertIn("Номер уже добавлен", content)
 
     def test_route_number_add_rejects_non_used_phone_status(self):
+        self.make_route_purchased_pool()
         self.request("/routes")
         body = urlencode({"number": "525550099998", "country_id": "1", "provider_id": "1", "assignment_type": "gl", "status": "free", "is_active": "1"})
         self.request("/phones/create", method="POST", body=body)
@@ -2862,7 +2873,8 @@ class ServerSmokeTest(unittest.TestCase):
         self.request("/routes")
         conn = server.connect(server.DB_PATH)
         try:
-            route_id = conn.execute("SELECT id FROM routes WHERE id NOT IN (SELECT route_id FROM route_phone_numbers WHERE is_active = 1) LIMIT 1").fetchone()["id"]
+            repo = server.Repository(conn)
+            route_id = repo.create_route(country_id=1, provider_id=1, name="Purchased Pool Empty", cli_source_type="pool", cli_source_label="Pool_A", aon_pool="Пул купленных номеров", created_by=1)
             conn.execute("UPDATE phone_numbers SET status = 'free' WHERE number = '525550000005'")
             conn.commit()
         finally:
@@ -2879,6 +2891,7 @@ class ServerSmokeTest(unittest.TestCase):
 
 
     def test_route_numbers_read_only_page_shows_numbers_without_management_forms(self):
+        self.make_route_purchased_pool()
         self.request("/routes")
         captured, content = self.request("/routes/1/numbers")
         self.assertEqual(captured["status"], "200 OK")
@@ -2890,6 +2903,7 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertNotIn("Причина", content)
 
     def test_route_number_management_errors_stay_in_context_and_use_error_style(self):
+        self.make_route_purchased_pool()
         self.request("/routes")
         body = urlencode({"number": "525550099997", "country_id": "1", "provider_id": "1", "assignment_type": "gl", "status": "free", "is_active": "1"})
         self.request("/phones/create", method="POST", body=body)
@@ -2902,6 +2916,7 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertIn('action="/routes/1/numbers/add"', content)
 
     def test_route_number_bulk_add_error_notice_uses_error_style(self):
+        self.make_route_purchased_pool()
         self.request("/routes")
         body = urlencode({"number": "525550099996", "country_id": "1", "provider_id": "1", "assignment_type": "gl", "status": "free", "is_active": "1"})
         self.request("/phones/create", method="POST", body=body)
@@ -2915,6 +2930,7 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertNotIn("class='ok'", content)
 
     def test_route_number_provider_inactive_error_text_is_preserved(self):
+        self.make_route_purchased_pool()
         self.request("/routes")
         body = urlencode({"number": "525550099995", "country_id": "1", "provider_id": "1", "assignment_type": "gl", "status": "used"})
         self.request("/phones/create", method="POST", body=body)
@@ -2965,7 +2981,8 @@ class ServerSmokeTest(unittest.TestCase):
         self.request("/routes")
         conn = server.connect(server.DB_PATH)
         try:
-            route_id = conn.execute("SELECT id FROM routes WHERE id NOT IN (SELECT route_id FROM route_phone_numbers WHERE is_active = 1) LIMIT 1").fetchone()["id"]
+            repo = server.Repository(conn)
+            route_id = repo.create_route(country_id=1, provider_id=1, name="Purchased Pool Empty", cli_source_type="pool", cli_source_label="Pool_A", aon_pool="Пул купленных номеров", created_by=1)
         finally:
             conn.close()
         captured, content = self.request(f"/routes/{route_id}/numbers")
@@ -3014,6 +3031,30 @@ class ServerSmokeTest(unittest.TestCase):
             conn.close()
         captured, content = self.request("/routes")
         self.assertIn("Пул купленных номеров", content)
+
+    def test_only_purchased_pool_routes_offer_number_management(self):
+        self.request("/routes")
+        conn = server.connect(server.DB_PATH)
+        try:
+            repo = server.Repository(conn)
+            purchased_id = repo.create_route(country_id=1, provider_id=1, name="Stage69K Purchased", cli_source_type="pool", cli_source_label="Pool_B", aon_pool="Пул купленных номеров: owner", created_by=1)
+            rnd_id = repo.create_route(country_id=1, provider_id=1, name="Stage69K RND", cli_source_type="rnd", cli_source_label="RND", aon_pool="Локальный пул", rnd_type="local", created_by=1)
+            sim_id = repo.create_route(country_id=1, provider_id=1, name="Stage69K SIM", cli_source_type="sim", cli_source_label="SIM", aon_pool="SIM / GSM-шлюз", created_by=1)
+        finally:
+            conn.close()
+
+        captured, content = self.request("/routes")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn(f'href="/routes/{purchased_id}/numbers">Показать номера</a>', content)
+        self.assertNotIn(f'href="/routes/{rnd_id}/numbers"', content)
+        self.assertNotIn(f'href="/routes/{sim_id}/numbers"', content)
+        captured, content = self.request(f"/routes/{purchased_id}/numbers")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("Скопировать все", content)
+        for route_id in (rnd_id, sim_id):
+            captured, content = self.request(f"/routes/{route_id}/numbers")
+            self.assertEqual(captured["status"], "200 OK")
+            self.assertIn("нет пула купленных номеров", content)
 
     def test_rnd_local_sets_label_and_pool_info(self):
         self.request("/routes")
@@ -3467,7 +3508,7 @@ class ServerSmokeTest(unittest.TestCase):
             repo = server.Repository(conn)
             server.ensure_seed(repo)
             admin_id = conn.execute("SELECT id FROM users WHERE username = 'admin'").fetchone()["id"]
-            return repo.create_route(country_id=1, provider_id=1, name=name, cli_source_type="pool", cli_source_label=name, created_by=admin_id)
+            return repo.create_route(country_id=1, provider_id=1, name=name, cli_source_type="pool", cli_source_label=name, aon_pool="Пул купленных номеров", created_by=admin_id)
         finally:
             conn.close()
 
@@ -3711,6 +3752,7 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertIn("Режим «Заменить выбранный раздел» временно отключён", content)
 
     def test_route_number_removal_error_preserves_confirmation_form_state(self):
+        self.make_route_purchased_pool()
         self.request("/routes")
         conn = server.connect(server.DB_PATH)
         try:
@@ -3736,6 +3778,7 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertNotIn("Вернуться и исправить", content)
 
     def test_route_number_removal_without_selection_is_blocked_and_keeps_reason(self):
+        self.make_route_purchased_pool()
         self.request("/routes")
         conn = server.connect(server.DB_PATH)
         try:
@@ -3766,6 +3809,7 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertEqual(after, before)
 
     def test_route_number_removal_requires_confirmation_and_preserves_selection(self):
+        self.make_route_purchased_pool()
         self.request("/routes")
         conn = server.connect(server.DB_PATH)
         try:
@@ -3839,6 +3883,8 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertLess(content.index("REP"), content.index("ИТМ"))
         captured, content = self.request("/admin/dictionaries?section=phone-assignments")
         self.assertEqual(captured["status"], "200 OK")
+        create_form = content.split("action='/admin/dictionaries/phone-assignments/create'", 1)[1].split("</form>", 1)[0]
+        self.assertNotIn("name='code'", create_form)
         for expected in ("ГЛ", "АОН", "Scratchcards", "Competitors", "SMS", "Корп.телефония", "Дожим", "IVR"):
             self.assertIn(expected, content)
         for obsolete in ("SIM-карта", "Входящая линия", "Горячая линия", "Другое", "Номер из пула"):
@@ -3846,7 +3892,24 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertLess(content.index("ГЛ"), content.index("АОН"))
         self.assertLess(content.index("АОН"), content.index("Scratchcards"))
         self.request("/admin/dictionaries/projects/create", method="POST", body=urlencode({"name": "NewProject", "comment": "Project comment"}))
-        self.request("/admin/dictionaries/phone-assignments/create", method="POST", body=urlencode({"name": "Мониторинг", "code": "monitoring", "comment": "Assignment comment"}))
+        self.request("/admin/dictionaries/phone-assignments/create", method="POST", body=urlencode({"name": "Мониторинг", "comment": "Assignment comment"}))
+        self.request("/admin/dictionaries/phone-assignments/create", method="POST", body=urlencode({"name": "Мониторинг 2"}))
+        conn = server.connect(server.DB_PATH)
+        try:
+            assignments = conn.execute("SELECT id, code, name FROM phone_assignment_types WHERE name IN ('Мониторинг', 'Мониторинг 2') ORDER BY name").fetchall()
+            self.assertEqual(len(assignments), 2)
+            self.assertTrue(all(row["code"] for row in assignments))
+            self.assertEqual(len({row["code"] for row in assignments}), 2)
+            original_code = assignments[0]["code"]
+            assignment_id = assignments[0]["id"]
+        finally:
+            conn.close()
+        self.request(f"/admin/dictionaries/phone-assignments/{assignment_id}/update", method="POST", body=urlencode({"name": "Мониторинг renamed", "is_active": "1"}))
+        conn = server.connect(server.DB_PATH)
+        try:
+            self.assertEqual(conn.execute("SELECT code FROM phone_assignment_types WHERE id = ?", (assignment_id,)).fetchone()["code"], original_code)
+        finally:
+            conn.close()
         captured, content = self.request("/phones")
         self.assertEqual(captured["status"], "200 OK")
         for expected in ("Меж.деп.", "REP", "ИТМ", "Предоплата", "Юр.деп."):
@@ -3856,7 +3919,7 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertNotIn(">Номер из пула</option>", content)
         self.assertNotIn(">Другое</option>", content)
         self.assertIn("NewProject", content)
-        self.assertIn("Мониторинг", content)
+        self.assertIn("Мониторинг renamed", content)
         self.assertIn("Дата создания", content)
         self.assertIn("Дата отключения", content)
 
