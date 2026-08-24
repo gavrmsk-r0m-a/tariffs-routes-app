@@ -277,6 +277,48 @@ def _rebuild_calling_companies_if_needed(conn: sqlite3.Connection) -> None:
         conn.execute("PRAGMA foreign_keys = ON")
 
 
+def _rebuild_company_routing_settings_if_needed(conn: sqlite3.Connection) -> None:
+    """Make routing-setting GEO nullable while preserving legacy rows and IDs."""
+    columns = {row[1]: row for row in conn.execute("PRAGMA table_info(company_routing_settings)")}
+    if not columns or not columns["country_id"][3]:
+        return
+    conn.commit()
+    conn.execute("PRAGMA foreign_keys = OFF")
+    try:
+        conn.execute("""
+            CREATE TABLE company_routing_settings_new (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                calling_company_id INTEGER NOT NULL REFERENCES calling_companies(id) ON DELETE RESTRICT,
+                country_id INTEGER REFERENCES countries(id) ON DELETE RESTRICT,
+                server_id INTEGER NOT NULL REFERENCES servers(id) ON DELETE RESTRICT,
+                route_id INTEGER REFERENCES routes(id) ON DELETE RESTRICT,
+                routing_mode TEXT NOT NULL CHECK (routing_mode IN ('server_priority', 'campaign_route', 'autorotation', 'mixed')),
+                has_autorotation INTEGER NOT NULL DEFAULT 0 CHECK (has_autorotation IN (0, 1)),
+                is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
+                comment TEXT,
+                valid_from TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                valid_to TEXT,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                created_by INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_by INTEGER REFERENCES users(id) ON DELETE RESTRICT,
+                CHECK ((is_active = 1 AND valid_to IS NULL) OR is_active = 0)
+            )
+        """)
+        column_list = "id, calling_company_id, country_id, server_id, route_id, routing_mode, has_autorotation, is_active, comment, valid_from, valid_to, created_at, created_by, updated_at, updated_by"
+        conn.execute(f"INSERT INTO company_routing_settings_new({column_list}) SELECT {column_list} FROM company_routing_settings")
+        conn.execute("DROP TABLE company_routing_settings")
+        conn.execute("ALTER TABLE company_routing_settings_new RENAME TO company_routing_settings")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_company_routing_settings_company_id ON company_routing_settings(calling_company_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_company_routing_settings_country_id ON company_routing_settings(country_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_company_routing_settings_server_id ON company_routing_settings(server_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_company_routing_settings_route_id ON company_routing_settings(route_id)")
+        conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_company_routing_settings_one_active ON company_routing_settings(calling_company_id) WHERE is_active = 1 AND valid_to IS NULL")
+        conn.commit()
+    finally:
+        conn.execute("PRAGMA foreign_keys = ON")
+
+
 def _seed_default_users_if_empty(conn: sqlite3.Connection) -> None:
     if conn.execute("SELECT COUNT(*) FROM users").fetchone()[0] != 0:
         return
@@ -321,6 +363,7 @@ def _seed_default_users_if_empty(conn: sqlite3.Connection) -> None:
 def run_lightweight_migrations(conn: sqlite3.Connection) -> None:
     """Keep already-created MVP databases compatible with additive UI changes."""
     _rebuild_calling_companies_if_needed(conn)
+    _rebuild_company_routing_settings_if_needed(conn)
     conn.execute("""
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,

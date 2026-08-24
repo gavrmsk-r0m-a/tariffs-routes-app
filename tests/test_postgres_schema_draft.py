@@ -6,6 +6,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 POSTGRES_SCHEMA = REPO_ROOT / "docs" / "postgres" / "schema.postgres.sql"
 SQLITE_SCHEMA = REPO_ROOT / "app" / "schema.sql"
 OPTIONAL_CAMPAIGN_GEO_MIGRATION = REPO_ROOT / "docs/postgres/migrations/0069l_optional_campaign_geo.sql"
+NULLABLE_ROUTING_GEO_MIGRATION = REPO_ROOT / "docs/postgres/migrations/0069m_nullable_routing_setting_geo.sql"
 
 
 class PostgresSchemaDraftTests(unittest.TestCase):
@@ -56,10 +57,16 @@ class PostgresSchemaDraftTests(unittest.TestCase):
         self.assertIn("country_id BIGINT,", calling_company)
         self.assertNotIn("country_id BIGINT NOT NULL", calling_company)
         self.assertIn("FOREIGN KEY (country_id) REFERENCES countries(id)", calling_company)
-        self.assertIn("country_id BIGINT NOT NULL", routing_setting)
+        self.assertIn("country_id BIGINT,", routing_setting)
+        self.assertNotIn("country_id BIGINT NOT NULL", routing_setting)
         self.assertIn("ALTER TABLE calling_companies ALTER COLUMN country_id DROP NOT NULL", migration)
         self.assertNotIn("ALTER TABLE calling_companies ALTER COLUMN country_id DROP NOT NULL", schema)
         self.assertIn("CREATE UNIQUE INDEX IF NOT EXISTS ux_calling_companies_multi_geo_identity", migration)
+
+        routing_migration = NULLABLE_ROUTING_GEO_MIGRATION.read_text(encoding="utf-8")
+        self.assertIn("ALTER TABLE company_routing_settings", routing_migration)
+        self.assertIn("ALTER COLUMN country_id DROP NOT NULL", routing_migration)
+        self.assertNotIn("DROP CONSTRAINT", routing_migration)
 
 
 if __name__ == "__main__":

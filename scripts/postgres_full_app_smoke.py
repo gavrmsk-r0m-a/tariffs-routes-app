@@ -559,6 +559,50 @@ def run_smoke(database_url: str, auth_secret: str) -> dict[str, object]:
         if _dictionary_value(database_url, "servers", dictionaries["server_b_id"]) != dictionaries["server_renamed"]:
             raise SmokeFailure(update_path, "unique server update was not persisted", status)
 
+        verify = connect_postgres(database_url)
+        try:
+            country = verify.execute("SELECT id FROM countries ORDER BY id LIMIT 1").fetchone()
+        finally:
+            verify.close()
+        route_name = f"CI_PREFIX_ROUTE_{secrets.token_hex(6).upper()}"
+        route_data = {
+            "country_id": str(country["id"]), "provider_id": str(dictionaries["provider_a_id"]),
+            "provider_prefix_id": str(dictionaries["prefix_id"]), "name": route_name,
+            "project_label": "", "cli_source_type": "pool", "cli_source_label": "CI purchased pool",
+            "aon_pool": "Пул купленных номеров", "rnd_type": "", "rnd_pool_owner": "",
+            "comment": "CI prefix route", "is_actual": "1",
+        }
+        wrong_data = {**route_data, "provider_id": str(dictionaries["provider_b_id"])}
+        status, _, body = wsgi_request(app, "/routes/create", method="POST", data=wrong_data, cookie=cookie)
+        if status != "400 Bad Request" or "Префикс не принадлежит выбранному провайдеру" not in _normalized_body_text(body):
+            raise SmokeFailure("/routes/create", "wrong-provider prefix was not rejected cleanly", status)
+        status, headers, _ = wsgi_request(app, "/routes/create", method="POST", data=route_data, cookie=cookie)
+        if status != "303 See Other" or _header(headers, "Location") != "/routes":
+            raise SmokeFailure("/routes/create", "purchased-pool prefix route creation failed", status)
+        verify = connect_postgres(database_url)
+        try:
+            route = verify.execute("SELECT id, provider_prefix_id, aon_pool FROM routes WHERE name = %s", (route_name,)).fetchone()
+        finally:
+            verify.close()
+        if not route or int(route["provider_prefix_id"]) != dictionaries["prefix_id"] or route["aon_pool"] != "Пул купленных номеров":
+            raise SmokeFailure("/routes/create", "purchased-pool prefix route was not persisted", status)
+        route_id = int(route["id"])
+        status, _, body = wsgi_request(app, "/routes", cookie=cookie)
+        if status != "200 OK" or f'href="/routes/{route_id}/numbers">Показать номера</a>'.encode() not in body:
+            raise SmokeFailure("/routes", "purchased-pool route number-management link was not rendered", status)
+        for route_numbers_path in (f"/routes/{route_id}/numbers", f"/routes/{route_id}/numbers/manage"):
+            status, _, _ = wsgi_request(app, route_numbers_path, cookie=cookie)
+            if status != "200 OK":
+                raise SmokeFailure(route_numbers_path, "purchased-pool route numbers page failed", status)
+        cleanup = connect_postgres(database_url)
+        try:
+            cleanup.execute("DELETE FROM change_log WHERE entity_type = 'route' AND entity_id = %s", (route_id,))
+            cleanup.execute("DELETE FROM route_history WHERE route_id = %s", (route_id,))
+            cleanup.execute("DELETE FROM routes WHERE id = %s", (route_id,))
+            cleanup.commit()
+        finally:
+            cleanup.close()
+
         create_path = "/admin/dictionaries/projects/create"
         status, headers, _ = wsgi_request(
             app, create_path, method="POST",
@@ -574,6 +618,7 @@ def run_smoke(database_url: str, auth_secret: str) -> dict[str, object]:
         finally:
             verify.close()
     checked.extend([
+        "/routes/create + list + numbers/manage (purchased-pool prefix lifecycle)",
         "/admin/dictionaries/prefixes/{id}/update (ownership rejection and normal edit)",
         "/admin/dictionaries/servers/{id}/update (duplicate authenticated POST)",
         "/admin/dictionaries/servers/{id}/update (successful authenticated POST)",
@@ -617,25 +662,21 @@ def run_smoke(database_url: str, auth_secret: str) -> dict[str, object]:
             "line_count": "1", "dial_set_count": "1", "retry_interval_seconds": "30",
             "has_autorotation": "1", "is_active": "1", "comment": "CI_SMOKE multi-GEO campaign",
         }
-        status, _, body = wsgi_request(app, "/companies/create", method="POST", data=multi_data, cookie=cookie)
-        if status != "400 Bad Request" or "начальную авторотацию нельзя" not in _normalized_body_text(body):
-            raise SmokeFailure("/companies/create", "multi-GEO autorotation did not return friendly validation", status)
-        verify = connect_postgres(database_url)
-        try:
-            if verify.execute("SELECT 1 FROM calling_companies WHERE company_id_external = %s", (campaign["external_id"],)).fetchone():
-                raise SmokeFailure("/companies/create", "rejected multi-GEO campaign was partially created", status)
-        finally:
-            verify.close()
-
-        multi_data["has_autorotation"] = "0"
         status, headers, _ = wsgi_request(app, "/companies/create", method="POST", data=multi_data, cookie=cookie)
         if status != "303 See Other" or _header(headers, "Location") != "/companies":
-            raise SmokeFailure("/companies/create", "multi-GEO campaign creation failed", status)
+            raise SmokeFailure("/companies/create", "multi-GEO autorotation creation failed", status)
         verify = connect_postgres(database_url)
         try:
             company = verify.execute("SELECT id, country_id, updated_at FROM calling_companies WHERE company_id_external = %s", (campaign["external_id"],)).fetchone()
-            if not company or company["country_id"] is not None:
-                raise SmokeFailure("/companies/create", "multi-GEO campaign was not stored with NULL country_id", status)
+            setting = verify.execute(
+                "SELECT country_id, route_id, routing_mode, has_autorotation, is_active, valid_to "
+                "FROM company_routing_settings WHERE calling_company_id = %s AND is_active IS TRUE",
+                (company["id"],),
+            ).fetchone() if company else None
+            if not company or company["country_id"] is not None or not setting or setting["country_id"] is not None:
+                raise SmokeFailure("/companies/create", "multi-GEO autorotation nullable state was not persisted", status)
+            if setting["route_id"] is not None or setting["routing_mode"] != "autorotation" or not setting["has_autorotation"] or not setting["is_active"] or setting["valid_to"] is not None:
+                raise SmokeFailure("/companies/create", "multi-GEO autorotation setting has unexpected state", status)
             company_id = int(company["id"])
             token = str(company["updated_at"])
         finally:
