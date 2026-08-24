@@ -10,6 +10,7 @@ import logging
 import os
 import re
 import sqlite3
+import uuid
 from dataclasses import replace
 from datetime import date, datetime
 from http.cookies import SimpleCookie
@@ -7675,8 +7676,10 @@ def routes_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
     rows = []
     for route in records:
         prefix = route["prefix"] or "—"
-        numbers_label = "RND провайдера" if route["cli_source_type"] == "rnd" else f'{route["phone_count"]} номеров'
-        numbers = f'<div class="route-numbers-cell"><span class="route-numbers-label">{numbers_label}</span><a class="button route-numbers-action" href="/routes/{route["id"]}/numbers">Показать номера</a></div>'
+        purchased_pool = route_has_purchased_number_pool(route)
+        numbers_label = f'{route["phone_count"]} номеров' if purchased_pool else ("RND провайдера" if route["cli_source_type"] == "rnd" else esc(route["aon_pool"] or "—"))
+        action = f'<a class="button route-numbers-action" href="/routes/{route["id"]}/numbers">Показать номера</a>' if purchased_pool else ""
+        numbers = f'<div class="route-numbers-cell"><span class="route-numbers-label">{numbers_label}</span>{action}</div>'
         edit = f"<a class='button edit-action' href='/routes/{route['id']}/edit' data-remote-edit='1' title='Редактировать' aria-label='Редактировать' data-tooltip='Редактировать'>Редактировать</a>" if can_write("routes") else ""
         history = history_icon_link(f"/routes/{route['id']}/history")
         rows.append(f"<tr><td data-col='geo'>{esc(route['country_name'])}</td>{clamp_cell('route', esc(route['name']), route['name'], extra_attrs="data-copy-column='route-name'", classes='route-name-cell', selectable=True)}<td data-col='provider'>{esc(route['provider_name'])}</td><td data-col='prefix'>{esc(prefix)}</td><td data-col='actual'>{'Да' if route['is_actual'] else 'Нет'}</td>{clamp_cell('aon_pool', esc(route['aon_pool'] or '—'), route['aon_pool'] or '—')}{clamp_cell('comment', esc(route['comment']), route['comment'], classes='comment-cell')}<td data-col='numbers'>{numbers}</td><td data-col='history' class='history-cell'>{history}</td><td data-col='actions' class='actions'>{edit}</td></tr>")
@@ -7742,11 +7745,28 @@ def route_number_rows(repo: Repository, route_id: int, *, selectable: bool = Fal
     return numbers, all_numbers, table_html
 
 
+def route_has_purchased_number_pool(route: object) -> bool:
+    """Return whether a route semantically owns a purchased-number pool."""
+    base_pool_type = "Пул купленных номеров"
+    cli_source_type = route["cli_source_type"]
+    aon_pool = (route["aon_pool"] or "").strip()
+    return cli_source_type == "pool" and (aon_pool == base_pool_type or aon_pool.startswith(base_pool_type + ":"))
+
+
+def route_without_purchased_pool_page(route: object) -> bytes:
+    return page(
+        "Пул купленных номеров недоступен",
+        f"<h1>Пул купленных номеров недоступен</h1><p>У маршрута «{esc(route['name'])}» нет пула купленных номеров.</p><p><a href='/routes'>← Назад к маршрутам</a></p>",
+    )
+
+
 def route_numbers_page(repo: Repository, route_id: int, q: dict[str, str] | None = None) -> bytes:
     q = q or {}
-    route = repo.conn.execute("SELECT name FROM routes WHERE id = ?", (route_id,)).fetchone()
+    route = repo.get_route(route_id)
     if route is None:
         return page("Не найдено", "<h1>Маршрут не найден</h1>")
+    if not route_has_purchased_number_pool(route):
+        return route_without_purchased_pool_page(route)
     _, all_numbers, table_html = route_number_rows(repo, route_id, selectable=False)
     body = f"""
 <h1>Номера в маршруте: {esc(route['name'])}</h1><p><a href="/routes">← Назад</a></p>
@@ -7759,9 +7779,11 @@ def route_numbers_page(repo: Repository, route_id: int, q: dict[str, str] | None
 def route_numbers_manage_page(repo: Repository, route_id: int, q: dict[str, str] | None = None, *, form_error: str | None = None, form_data: dict | None = None) -> bytes:
     q = q or {}
     form_data = form_data or {}
-    route = repo.conn.execute("SELECT name FROM routes WHERE id = ?", (route_id,)).fetchone()
+    route = repo.get_route(route_id)
     if route is None:
         return page("Маршрут не найден", "<h1>Маршрут не найден</h1>")
+    if not route_has_purchased_number_pool(route):
+        return route_without_purchased_pool_page(route)
     selected_link_ids = {int(value) for value in form_data.get("link_ids", []) if str(value).isdigit()}
     _, all_numbers, table_html = route_number_rows(repo, route_id, selectable=True, selected_link_ids=selected_link_ids)
     add_tools = f"""
@@ -9464,7 +9486,7 @@ def dictionaries_page(repo: Repository, q: dict[str, str] | None = None, *, form
         if section == "projects":
             return f"<form class='form-grid' method='post' action='/admin/dictionaries/projects/create'><label>Проект <input name='name' value='{value('name')}' placeholder='Название проекта' required></label><label>Комментарий <input name='comment' value='{value('comment')}' placeholder='Комментарий'></label>{submit}</form>"
         if section == "phone-assignments":
-            return f"<form class='form-grid' method='post' action='/admin/dictionaries/phone-assignments/create'><label>Назначение <input name='name' value='{value('name')}' placeholder='Назначение номера' required></label><label>Код <input name='code' value='{value('code')}' placeholder='Код' required></label><label>Комментарий <input name='comment' value='{value('comment')}' placeholder='Комментарий'></label>{submit}</form>"
+            return f"<form class='form-grid' method='post' action='/admin/dictionaries/phone-assignments/create'><label>Назначение номера <span class='required'>*</span><input name='name' value='{value('name')}' placeholder='Назначение номера' required></label><label>Комментарий <input name='comment' value='{value('comment')}' placeholder='Комментарий'></label>{submit}</form>"
         return ""
 
     dictionary_counts = repo.dictionary_counts()
@@ -9524,7 +9546,7 @@ def dictionaries_page(repo: Repository, q: dict[str, str] | None = None, *, form
         headers = ["Назначение", "Активен", "Комментарий", "Действия"]
         source = repo.list_phone_assignment_types()
         for row in source:
-            rows.append(f"""<tr{row_class(row)}><td>{esc(row['name'])}</td><td><span class='status-badge'>{active_label(row['is_active'])}</span></td><td>{esc(row['comment'])}</td><td data-col='actions'><details class='edit-details'{' open' if is_editing(row) else ''}><summary title='Редактировать' aria-label='Редактировать'>Редактировать</summary><form method='post' action='/admin/dictionaries/phone-assignments/{row['id']}/update'>{edit_field('Назначение номера', f"<input name='name' value='{esc(submitted(row, 'name', row['name']))}'>")}{edit_field('Код / системное значение', f"<input name='code' value='{esc(submitted(row, 'code', row['code']))}' readonly>")}{edit_field('Комментарий', f"<input name='comment' value='{esc(submitted(row, 'comment', row['comment']))}' placeholder='Комментарий'>")}{edit_field('Статус', edit_active_select(row))}{rename_policy_block('phone-assignments', row['id'])}<button>Сохранить</button></form></details></td></tr>""")
+            rows.append(f"""<tr{row_class(row)}><td>{esc(row['name'])}</td><td><span class='status-badge'>{active_label(row['is_active'])}</span></td><td>{esc(row['comment'])}</td><td data-col='actions'><details class='edit-details'{' open' if is_editing(row) else ''}><summary title='Редактировать' aria-label='Редактировать'>Редактировать</summary><form method='post' action='/admin/dictionaries/phone-assignments/{row['id']}/update'>{edit_field('Назначение номера', f"<input name='name' value='{esc(submitted(row, 'name', row['name']))}'>")}{edit_field('Комментарий', f"<input name='comment' value='{esc(submitted(row, 'comment', row['comment']))}' placeholder='Комментарий'>")}{edit_field('Статус', edit_active_select(row))}{rename_policy_block('phone-assignments', row['id'])}<button>Сохранить</button></form></details></td></tr>""")
 
     header_html = "".join(f"<th>{esc(header)}</th>" for header in headers)
     table_html = f"<table><thead><tr>{header_html}</tr></thead><tbody>{''.join(rows)}</tbody></table>"
@@ -9648,10 +9670,11 @@ def route_edit_page(repo: Repository, route_id: int) -> bytes:
     form_html = route_edit_form(repo, route_id, route, modal=is_modal)
     if is_modal:
         return (f"<div data-modal-ready='1'>{form_html}</div>" + route_aon_script()).encode("utf-8")
+    numbers_card = f"<div class='card'><h2>Номера маршрута / АОНы</h2><p>Управление номерами из пула купленных номеров.</p><p><a class='button' href='/routes/{route_id}/numbers/manage'>Номера маршрута / АОНы</a></p></div>" if route_has_purchased_number_pool(route) else ""
     body = f"""<h1>Редактировать маршрут</h1><p><a href='/routes'>← Назад</a></p>
 {form_html}
 {route_aon_script()}
-<div class='card'><h2>Номера маршрута / АОНы</h2><p>Управление купленными номерами доступно для каждого маршрута, даже если номеров пока нет.</p><p><a class='button' href='/routes/{route_id}/numbers/manage'>Номера маршрута / АОНы</a></p></div>"""
+{numbers_card}"""
     return page("Редактировать маршрут", body)
 
 
@@ -9958,7 +9981,7 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
         if rate is None:
             raise BusinessRuleError("Для выбранной валюты нет курса к EUR. Добавьте курс в Администрирование → Курсы валют")
         repo.update_tariff(tariff_id, provider_currency_id=currency_id, price_in_provider_currency=data["price"], conversion_rate_to_eur=rate["rate_to_eur"], conversion_rate_date=rate["rate_date"], currency_rate_id=rate["id"], comment=data.get("comment"), updated_by=actor_id, is_current=data.get("is_current") == "1", expected_updated_at=data.get("expected_updated_at") or None)
-        return f"/tariffs/{tariff_id}/edit"
+        return "/tariffs"
     if path.startswith("/tariffs/") and (path.endswith("/deactivate") or path.endswith("/activate")):
         raise BusinessRuleError("Активность тарифа изменяется только через форму редактирования")
     if path == "/companies/create":
@@ -10164,9 +10187,8 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
             repo.conn.commit()
         elif kind == "phone-assignments":
             name = required_dictionary_text(data, "name", "Кажется, мы забыли название назначения номера. Давай его укажем.")
-            code = required_dictionary_text(data, "code", "Кажется, мы забыли код назначения номера. Давай его укажем.")
+            code = "custom_" + uuid.uuid4().hex
             ensure_dictionary_value_unique(repo, kind, name, column="name")
-            ensure_dictionary_value_unique(repo, kind, code, column="code")
             comment = (data.get("comment") or "").strip() or None
             repo.conn.execute(f"INSERT INTO phone_assignment_types(code, name, is_active, comment) VALUES ({p}, {p}, {p}, {p})", (code, name, to_db_bool(True, repo.backend), comment))
             repo.conn.commit()

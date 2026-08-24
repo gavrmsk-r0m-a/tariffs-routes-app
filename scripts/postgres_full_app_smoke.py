@@ -349,7 +349,7 @@ def _isolated_edit_paths(database_url: str):
         ).fetchone()
         route = conn.execute(
             "INSERT INTO routes(country_id,provider_id,name,cli_source_type,cli_source_label,aon_pool,comment,created_by) "
-            "VALUES (%s,%s,%s,'pool',%s,'pool',%s,%s) RETURNING id, updated_at",
+            "VALUES (%s,%s,%s,'pool',%s,'Пул купленных номеров',%s,%s) RETURNING id, updated_at",
             (country["id"], provider["id"], f"CI_EDIT_ROUTE_{suffix}", f"CI_EDIT_{suffix}", "route initial", user["id"]),
         ).fetchone()
         tariff = conn.execute(
@@ -365,12 +365,18 @@ def _isolated_edit_paths(database_url: str):
         ids = {"user": int(user["id"]), "country": int(country["id"]), "provider": int(provider["id"]),
                "currency": int(currency["id"]), "rate": int(currency["rate_id"]),
                "route": int(route["id"]), "tariff": int(tariff["id"]), "event": int(event["id"]),
-               "route_token": route["updated_at"], "tariff_token": tariff["updated_at"], "event_token": event["updated_at"]}
+               "route_token": route["updated_at"], "tariff_token": tariff["updated_at"], "event_token": event["updated_at"],
+               "assignment_name": f"CI_ASSIGNMENT_{suffix}"}
         conn.commit()
         yield ids
     finally:
         try:
             if ids:
+                if ids.get("phone"):
+                    conn.execute("DELETE FROM phone_number_history WHERE phone_number_id=%s", (ids["phone"],))
+                    conn.execute("DELETE FROM phone_numbers WHERE id=%s", (ids["phone"],))
+                if ids.get("assignment"):
+                    conn.execute("DELETE FROM phone_assignment_types WHERE id=%s", (ids["assignment"],))
                 conn.execute("DELETE FROM change_log WHERE (entity_type='route' AND entity_id=%s) OR (entity_type='tariff' AND entity_id=%s) OR (entity_type='routing_event' AND entity_id=%s)", (ids["route"], ids["tariff"], ids["event"]))
                 conn.execute("DELETE FROM tariff_change_history WHERE tariff_id=%s", (ids["tariff"],))
                 conn.execute("DELETE FROM route_history WHERE route_id=%s", (ids["route"],))
@@ -605,6 +611,55 @@ def run_smoke(database_url: str, auth_secret: str) -> dict[str, object]:
             verify.close()
     checked.append("/companies/create (authenticated POST)")
     with _isolated_edit_paths(database_url) as edit:
+        numbers_path = f"/routes/{edit['route']}/numbers"
+        status, _, body = wsgi_request(app, numbers_path, cookie=cookie)
+        if status != "200 OK" or b"CI_EDIT_ROUTE" not in body:
+            raise SmokeFailure(numbers_path, "purchased-pool route numbers did not render on PostgreSQL", status)
+
+        assignment_path = "/admin/dictionaries/phone-assignments/create"
+        status, headers, _ = wsgi_request(app, assignment_path, method="POST", cookie=cookie, data={
+            "name": edit["assignment_name"], "comment": "CI generated-code assignment",
+        })
+        if status != "303 See Other":
+            raise SmokeFailure(assignment_path, "assignment create without code failed", status)
+        verify = connect_postgres(database_url)
+        try:
+            assignment = verify.execute("SELECT id, code FROM phone_assignment_types WHERE name=%s", (edit["assignment_name"],)).fetchone()
+            if not assignment or not assignment["code"]:
+                raise SmokeFailure(assignment_path, "assignment backend did not generate a nonblank code", status)
+            edit["assignment"] = int(assignment["id"])
+            assignment_code = assignment["code"]
+        finally:
+            verify.close()
+
+        phone_number = "999" + str(edit["route"]).zfill(9)[-9:]
+        status, headers, _ = wsgi_request(app, "/phones/create", method="POST", cookie=cookie, data={
+            "number": phone_number, "country_id": str(edit["country"]), "provider_id": str(edit["provider"]),
+            "assignment_type": assignment_code, "status": "used", "is_active": "1", "comment": "phone initial",
+        })
+        verify = connect_postgres(database_url)
+        try:
+            phone = verify.execute("SELECT id FROM phone_numbers WHERE number=%s", (phone_number,)).fetchone()
+            if status != "303 See Other" or not phone:
+                raise SmokeFailure("/phones/create", "CI-only phone was not created", status)
+            edit["phone"] = int(phone["id"])
+        finally:
+            verify.close()
+        phone_edit_path = f"/phones/{edit['phone']}/edit"
+        status, _, body = wsgi_request(app, phone_edit_path, cookie=cookie)
+        if status != "200 OK" or b"phone initial" not in body:
+            raise SmokeFailure(phone_edit_path, "phone edit GET failed on PostgreSQL", status)
+        status, headers, _ = wsgi_request(app, f"/phones/{edit['phone']}/update", method="POST", cookie=cookie, data={
+            "number": phone_number, "country_id": str(edit["country"]), "provider_id": str(edit["provider"]),
+            "assignment_type": assignment_code, "status": "used", "is_active": "1", "comment": "phone updated",
+        })
+        verify = connect_postgres(database_url)
+        try:
+            phone = verify.execute("SELECT comment, assignment_type FROM phone_numbers WHERE id=%s", (edit["phone"],)).fetchone()
+            if status != "303 See Other" or phone["comment"] != "phone updated" or phone["assignment_type"] != assignment_code:
+                raise SmokeFailure(f"/phones/{edit['phone']}/update", "phone update was not persisted", status)
+        finally:
+            verify.close()
         scenarios = (
             (f"/provider-changes/{edit['event']}/edit", b"event initial", False),
             (f"/routes/{edit['route']}/edit", b"route initial", True),
@@ -640,7 +695,7 @@ def run_smoke(database_url: str, auth_secret: str) -> dict[str, object]:
             "currency_id": str(edit["currency"]), "price": "2.25", "comment": "tariff updated",
             "is_current": "0", "expected_updated_at": str(edit["tariff_token"]),
         })
-        if status != "303 See Other" or _header(headers, "Location") != f"/tariffs/{edit['tariff']}/edit":
+        if status != "303 See Other" or _header(headers, "Location") != "/tariffs":
             raise SmokeFailure(tariff_path, "normal tariff update reported a false concurrency conflict", status)
 
         verify = connect_postgres(database_url)
@@ -679,6 +734,8 @@ def run_smoke(database_url: str, auth_secret: str) -> dict[str, object]:
         finally:
             verify.close()
     checked.extend([
+        "/routes/{id}/numbers (purchased-pool PostgreSQL GET)",
+        "/admin/dictionaries/phone-assignments/create + /phones/{id}/edit + update (PostgreSQL lifecycle)",
         "/provider-changes/{id}/edit + update (PostgreSQL lifecycle)",
         "/routes/{id}/edit modal + update (PostgreSQL lifecycle)",
         "/tariffs/{id}/edit modal + normal/stale updates (PostgreSQL lifecycle)",
