@@ -6,11 +6,13 @@ from pathlib import Path
 
 from app.db import (
     DEFAULT_DB_PATH,
-    POSTGRES_NOT_IMPLEMENTED_MESSAGE,
+    POSTGRES_RUNTIME_DISABLED_MESSAGE,
     SQLITE_BUSY_TIMEOUT_MS,
     connect,
     connect_database,
+    init_db,
     load_db_config,
+    run_lightweight_migrations,
 )
 
 
@@ -40,7 +42,7 @@ class DbConfigTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Unsupported DB_BACKEND: oracle"):
             load_db_config({"DB_BACKEND": "oracle"})
 
-    def test_postgres_backend_not_implemented_yet(self):
+    def test_postgres_backend_requires_runtime_enablement(self):
         config = load_db_config({
             "DB_BACKEND": "postgres",
             "DATABASE_URL": "postgresql://user:password@host:5432/teleroute",
@@ -48,8 +50,52 @@ class DbConfigTest(unittest.TestCase):
 
         self.assertEqual(config.backend, "postgres")
         self.assertEqual(config.database_url, "postgresql://user:password@host:5432/teleroute")
-        with self.assertRaisesRegex(NotImplementedError, POSTGRES_NOT_IMPLEMENTED_MESSAGE):
+        with self.assertRaisesRegex(NotImplementedError, POSTGRES_RUNTIME_DISABLED_MESSAGE):
             connect_database(config)
+
+    def test_fresh_sqlite_calling_company_country_is_nullable(self):
+        conn = connect(":memory:")
+        try:
+            init_db(conn)
+            columns = {row[1]: row for row in conn.execute("PRAGMA table_info(calling_companies)")}
+            self.assertEqual(columns["country_id"][3], 0)
+            routing_columns = {row[1]: row for row in conn.execute("PRAGMA table_info(company_routing_settings)")}
+            self.assertEqual(routing_columns["country_id"][3], 1)
+        finally:
+            conn.close()
+
+    def test_existing_sqlite_calling_company_nullable_migration_is_idempotent(self):
+        conn = connect(":memory:")
+        try:
+            schema = (Path(__file__).parents[1] / "app/schema.sql").read_text(encoding="utf-8")
+            nullable = "    country_id INTEGER REFERENCES countries(id) ON DELETE RESTRICT,"
+            legacy = "    country_id INTEGER NOT NULL REFERENCES countries(id) ON DELETE RESTRICT,"
+            calling_start = schema.index("CREATE TABLE IF NOT EXISTS calling_companies")
+            country_offset = schema.index(nullable, calling_start)
+            schema = schema[:country_offset] + schema[country_offset:].replace(nullable, legacy, 1)
+            conn.executescript(schema)
+            conn.executescript("""
+                INSERT INTO users(id, username, display_name, role_key, is_active) VALUES (1, 'legacy', 'Legacy', 'admin', 1);
+                INSERT INTO servers(id, name) VALUES (2, 'Legacy server');
+                INSERT INTO countries(id, name) VALUES (3, 'Legacy GEO');
+                INSERT INTO calling_companies(id, server_id, country_id, company_name, company_id_external, created_by)
+                VALUES (4, 2, 3, 'Legacy', 'legacy-4', 1);
+            """)
+            run_lightweight_migrations(conn)
+            run_lightweight_migrations(conn)
+            row = conn.execute("SELECT * FROM calling_companies WHERE id = 4").fetchone()
+            self.assertEqual((row["country_id"], row["company_name"], row["company_id_external"]), (3, "Legacy", "legacy-4"))
+            columns = {item[1]: item for item in conn.execute("PRAGMA table_info(calling_companies)")}
+            self.assertEqual(columns["country_id"][3], 0)
+            self.assertEqual(len(columns), 15)
+            index_names = {item[1] for item in conn.execute("PRAGMA index_list(calling_companies)")}
+            self.assertIn("ux_calling_companies_multi_geo_identity", index_names)
+            foreign_tables = {item[2] for item in conn.execute("PRAGMA foreign_key_list(calling_companies)")}
+            self.assertEqual(foreign_tables, {"users", "countries", "servers"})
+            conn.execute("UPDATE calling_companies SET country_id = NULL WHERE id = 4")
+            conn.commit()
+        finally:
+            conn.close()
 
     def test_sqlite_connect_still_works(self):
         tmp = tempfile.NamedTemporaryFile(delete=False)
