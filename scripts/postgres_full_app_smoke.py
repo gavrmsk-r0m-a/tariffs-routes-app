@@ -625,6 +625,26 @@ def run_smoke(database_url: str, auth_secret: str) -> dict[str, object]:
         "/admin/dictionaries/projects/create (authenticated POST)",
     ])
     with _isolated_smoke_campaign(database_url) as campaign:
+        blank_status, _, blank_body = wsgi_request(
+            app,
+            "/companies/create",
+            method="POST",
+            data={
+                "server_id": str(campaign["server_id"]), "country_id": str(campaign["country_id"]),
+                "company_id_external": campaign["external_id"], "company_name": "   ",
+                "line_count": "0", "dial_set_count": "0", "retry_interval_seconds": "0",
+                "has_autorotation": "1", "is_active": "1", "comment": "CI_SMOKE blank campaign",
+            },
+            cookie=cookie,
+        )
+        if blank_status != "400 Bad Request" or "Укажи название кампании." not in _normalized_body_text(blank_body):
+            raise SmokeFailure("/companies/create", "whitespace-only campaign name was not returned as validation", blank_status)
+        verify = connect_postgres(database_url)
+        try:
+            if verify.execute("SELECT id FROM calling_companies WHERE company_id_external = %s", (campaign["external_id"],)).fetchone():
+                raise SmokeFailure("/companies/create", "whitespace-only campaign was persisted", blank_status)
+        finally:
+            verify.close()
         status, headers, _ = wsgi_request(
             app,
             "/companies/create",
