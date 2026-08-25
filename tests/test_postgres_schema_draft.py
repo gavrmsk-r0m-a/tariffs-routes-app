@@ -7,9 +7,19 @@ POSTGRES_SCHEMA = REPO_ROOT / "docs" / "postgres" / "schema.postgres.sql"
 SQLITE_SCHEMA = REPO_ROOT / "app" / "schema.sql"
 OPTIONAL_CAMPAIGN_GEO_MIGRATION = REPO_ROOT / "docs/postgres/migrations/0069l_optional_campaign_geo.sql"
 NULLABLE_ROUTING_GEO_MIGRATION = REPO_ROOT / "docs/postgres/migrations/0069m_nullable_routing_setting_geo.sql"
+CHANGE_REASON_SCOPES_MIGRATION = REPO_ROOT / "docs/postgres/migrations/0069p1_change_reason_scopes.sql"
 
 
 class PostgresSchemaDraftTests(unittest.TestCase):
+    def test_change_reason_scopes_schema_and_idempotent_migration_contract(self):
+        schema = POSTGRES_SCHEMA.read_text(encoding="utf-8")
+        migration = CHANGE_REASON_SCOPES_MIGRATION.read_text(encoding="utf-8")
+        self.assertIn("CREATE TABLE IF NOT EXISTS change_reason_scopes", schema)
+        self.assertIn("uq_change_reason_scopes_reason_scope UNIQUE (reason_id, apply_scope)", schema)
+        self.assertIn("to_regclass('change_reason_scopes')", migration)
+        self.assertIn("ON CONFLICT (reason_id, apply_scope) DO NOTHING", migration)
+        self.assertIn("lower(reason.name) = lower(legacy.name)", migration)
+
     def test_schema_draft_exists(self):
         self.assertTrue(POSTGRES_SCHEMA.exists())
 

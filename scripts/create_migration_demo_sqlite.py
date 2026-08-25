@@ -82,6 +82,10 @@ def create_demo_sqlite(output: str | Path) -> Path:
         prefix_id = q(conn, "INSERT INTO provider_prefixes(provider_id, prefix, name, comment, is_active, created_at, updated_at) VALUES (?, ?, ?, ?, 1, ?, ?)", (provider_id, "123", "Demo Prefix", "Synthetic prefix", NOW, NOW))
         server_id = q(conn, "INSERT INTO servers(name, comment, is_active, created_at, updated_at) VALUES (?, ?, 1, ?, ?)", ("demo-server-1", "Synthetic CI server", NOW, NOW))
         reason_id = q(conn, "INSERT INTO change_reasons(name, description, is_active, created_at, updated_at) VALUES (?, ?, 1, ?, ?)", ("CI smoke", "Synthetic migration smoke reason", NOW, NOW))
+        conn.executemany(
+            "INSERT INTO change_reason_scopes(reason_id, apply_scope) VALUES (?, ?)",
+            [(reason_id, scope) for scope in ("none", "server_priority", "campaign_setting")],
+        )
         phone_type_id = q(conn, "INSERT INTO phone_number_types(name, is_active, comment, created_at, updated_at) VALUES (?, 1, ?, ?, ?)", ("Mobile", "Synthetic type", NOW, NOW))
         assignment = conn.execute("SELECT code, name FROM phone_assignment_types WHERE code='gl'").fetchone()
         project = conn.execute("SELECT name FROM projects WHERE code='rep'").fetchone()

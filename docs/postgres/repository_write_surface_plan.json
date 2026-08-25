@@ -3,9 +3,9 @@
     "deferred_read_only_count": 0,
     "infrastructure_or_mixed_count": 1,
     "read_surface_coverage_percent": 100.0,
-    "repository_public_methods_count": 113,
-    "repository_smoke_checks_count": 611,
-    "smoke_covered_read_count": 61,
+    "repository_public_methods_count": 115,
+    "repository_smoke_checks_count": 613,
+    "smoke_covered_read_count": 63,
     "write_or_mutating_count": 51
   },
   "batches": {

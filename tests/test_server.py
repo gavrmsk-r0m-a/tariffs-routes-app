@@ -10,6 +10,7 @@ from unittest.mock import Mock, patch
 from urllib.parse import urlencode
 
 import app.server as server
+from app.repository import Repository
 
 
 def _strip_tags(fragment):
@@ -3354,6 +3355,57 @@ class ServerSmokeTest(unittest.TestCase):
         captured, content = self.request("/provider-changes")
         self.assertEqual(captured["status"], "200 OK")
         self.assertNotIn("Временно не использовать", content)
+
+    def test_legacy_change_reason_create_without_scope_fields_assigns_all_scopes(self):
+        self.request("/routes")
+        captured, _ = self.request(
+            "/admin/change-reasons/create",
+            method="POST",
+            body=urlencode({"name": "Legacy create form", "is_active": "1", "comment": "test"}),
+        )
+        self.assertEqual(captured["status"], "303 See Other")
+        self.assertEqual(dict(captured["headers"])["Location"], "/admin/change-reasons")
+        conn = server.connect(server.DB_PATH)
+        try:
+            reason_id = conn.execute(
+                "SELECT id FROM change_reasons WHERE name = ?", ("Legacy create form",),
+            ).fetchone()["id"]
+            scopes = {row["apply_scope"] for row in conn.execute(
+                "SELECT apply_scope FROM change_reason_scopes WHERE reason_id = ?", (reason_id,),
+            )}
+        finally:
+            conn.close()
+        self.assertEqual(scopes, {"none", "server_priority", "campaign_setting"})
+
+    def test_legacy_change_reason_update_without_scope_fields_preserves_existing_scopes(self):
+        self.request("/routes")
+        repo_conn = server.connect(server.DB_PATH)
+        try:
+            repo = Repository(repo_conn)
+            reason_id = repo.create_change_reason(
+                "Legacy update form", scopes=["none", "campaign_setting"],
+            )
+        finally:
+            repo_conn.close()
+        captured, _ = self.request(
+            f"/admin/change-reasons/{reason_id}/update",
+            method="POST",
+            body=urlencode({"name": "Legacy update form renamed", "is_active": "0", "comment": "updated"}),
+        )
+        self.assertEqual(captured["status"], "303 See Other")
+        self.assertEqual(dict(captured["headers"])["Location"], "/admin/change-reasons")
+        conn = server.connect(server.DB_PATH)
+        try:
+            reason = conn.execute(
+                "SELECT name, description, is_active FROM change_reasons WHERE id = ?", (reason_id,),
+            ).fetchone()
+            scopes = {row["apply_scope"] for row in conn.execute(
+                "SELECT apply_scope FROM change_reason_scopes WHERE reason_id = ?", (reason_id,),
+            )}
+        finally:
+            conn.close()
+        self.assertEqual(tuple(reason), ("Legacy update form renamed", "updated", 0))
+        self.assertEqual(scopes, {"none", "campaign_setting"})
 
     def test_duplicate_change_reason_update_is_friendly_and_preserves_open_form(self):
         self.request("/routes")

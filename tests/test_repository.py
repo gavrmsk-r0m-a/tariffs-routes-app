@@ -8,6 +8,23 @@ from app.repository import hash_password, verify_password, BusinessRuleError, Co
 
 
 class RepositoryBusinessRulesTest(unittest.TestCase):
+    def test_change_reason_scopes_crud_filters_and_atomic_rollback(self):
+        with self.assertRaisesRegex(BusinessRuleError, "минимум одну"):
+            self.repo.create_change_reason("No scope", scopes=[])
+        reason_id = self.repo.create_change_reason(" Scoped reason ", scopes=["none", "server_priority"], commit=False)
+        self.assertEqual(self.repo.get_change_reason(reason_id)["name"], "Scoped reason")
+        self.assertEqual(self.repo.get_change_reason_scopes(reason_id), ["none", "server_priority"])
+        self.conn.rollback()
+        self.assertIsNone(self.repo.get_change_reason(reason_id))
+        reason_id = self.repo.create_change_reason("Scoped reason", scopes=["none"])
+        with self.assertRaisesRegex(BusinessRuleError, "уже существует"):
+            self.repo.create_change_reason(" scoped REASON ", scopes=["server_priority"])
+        self.repo.update_change_reason(reason_id, "Scoped updated", scopes=["campaign_setting"], is_active=False)
+        self.assertEqual([row["id"] for row in self.repo.list_change_reasons(scope="campaign_setting", active=False)], [reason_id])
+        log = self.conn.execute("SELECT old_values, new_values FROM change_log WHERE entity_type='change_reason' AND entity_id=? ORDER BY id DESC", (reason_id,)).fetchone()
+        self.assertIn("Не меняли настройки в нашей системе", log["old_values"])
+        self.assertIn("Настройка кампании", log["new_values"])
+
     def setUp(self):
         self.conn = sqlite3.connect(":memory:")
         self.conn.row_factory = sqlite3.Row
