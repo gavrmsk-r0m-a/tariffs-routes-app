@@ -3561,6 +3561,43 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertEqual(tuple(reason), ("Legacy update form renamed", "updated", 0))
         self.assertEqual(scopes, {"none", "campaign_setting"})
 
+    def test_postgres_full_app_smoke_legacy_orphan_reason_update_assigns_all_scopes(self):
+        self.request("/routes")
+        conn = server.connect(server.DB_PATH)
+        try:
+            reason_id = conn.execute(
+                "INSERT INTO change_reasons(name, description, is_active) VALUES (?, ?, 1)",
+                ("CI_SMOKE_REASON_ORPHAN", "CI full-app smoke reason"),
+            ).lastrowid
+            conn.commit()
+        finally:
+            conn.close()
+
+        captured, _ = self.request(
+            f"/admin/change-reasons/{reason_id}/update",
+            method="POST",
+            body=urlencode({
+                "name": "CI_SMOKE_REASON_UPDATED_ORPHAN",
+                "comment": "вызовы уходят в занято",
+                "is_active": "0",
+            }),
+        )
+        self.assertEqual(captured["status"], "303 See Other")
+        self.assertEqual(dict(captured["headers"])["Location"], "/admin/change-reasons")
+
+        conn = server.connect(server.DB_PATH)
+        try:
+            reason = conn.execute(
+                "SELECT name, description, is_active FROM change_reasons WHERE id = ?", (reason_id,),
+            ).fetchone()
+            scopes = {row["apply_scope"] for row in conn.execute(
+                "SELECT apply_scope FROM change_reason_scopes WHERE reason_id = ?", (reason_id,),
+            )}
+        finally:
+            conn.close()
+        self.assertEqual(tuple(reason), ("CI_SMOKE_REASON_UPDATED_ORPHAN", "вызовы уходят в занято", 0))
+        self.assertEqual(scopes, {"none", "server_priority", "campaign_setting"})
+
     def test_duplicate_change_reason_update_is_friendly_and_preserves_open_form(self):
         self.request("/routes")
         self.request(

@@ -10247,7 +10247,11 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
     if path.startswith("/admin/change-reasons/") and path.endswith("/update"):
         reason_id = int(path.strip("/").split("/")[2])
         existing_scopes = repo.get_change_reason_scopes(reason_id)
-        scopes = parse_qs(data.get("_raw", ""), keep_blank_values=True).get("scopes", []) if "_scopes_present" in data else existing_scopes
+        scopes = (
+            parse_qs(data.get("_raw", ""), keep_blank_values=True).get("scopes", [])
+            if "_scopes_present" in data
+            else (existing_scopes or Repository.CHANGE_REASON_SCOPES)
+        )
         repo.update_change_reason(
             reason_id,
             data["name"],
