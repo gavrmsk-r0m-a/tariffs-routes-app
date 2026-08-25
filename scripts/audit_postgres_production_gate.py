@@ -41,14 +41,14 @@ from app.security import (  # noqa: E402
 )
 
 EXPECTED_COVERAGE = {
-    "repository_public_methods_count": 113,
-    "smoke_covered_read_count": 61,
+    "repository_public_methods_count": 115,
+    "smoke_covered_read_count": 63,
     "deferred_read_only_count": 0,
     "write_or_mutating_count": 51,
     "infrastructure_or_mixed_count": 1,
     "read_surface_coverage_percent": 100.0,
 }
-EXPECTED_REPOSITORY_SMOKE_CHECKS = 611
+EXPECTED_REPOSITORY_SMOKE_CHECKS = 613
 EXPECTED_WRITE_METHODS = 51
 EXPECTED_PROBES = (
     "rollback_probe", "aborted_transaction_probe", "savepoint_probe",

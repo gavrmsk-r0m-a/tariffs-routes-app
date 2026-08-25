@@ -17,6 +17,30 @@ from app.db import (
 
 
 class DbConfigTest(unittest.TestCase):
+    def test_change_reason_scope_migration_preserves_custom_reason_and_is_idempotent(self):
+        conn = connect(":memory:")
+        try:
+            schema = (Path(__file__).parents[1] / "app/schema.sql").read_text(encoding="utf-8")
+            start = schema.index("CREATE TABLE IF NOT EXISTS change_reason_scopes")
+            end = schema.index("CREATE TABLE IF NOT EXISTS provider_change_logs", start)
+            conn.executescript(schema[:start] + schema[end:])
+            custom_id = conn.execute("INSERT INTO change_reasons(name) VALUES ('Custom reason')").lastrowid
+            run_lightweight_migrations(conn); run_lightweight_migrations(conn)
+            scopes = {row[0] for row in conn.execute("SELECT apply_scope FROM change_reason_scopes WHERE reason_id = ?", (custom_id,))}
+            self.assertEqual(scopes, {"none", "server_priority", "campaign_setting"})
+            self.assertEqual(conn.execute("SELECT COUNT(*) FROM change_reasons WHERE lower(name) = lower('Другое')").fetchone()[0], 1)
+            other_id = conn.execute("SELECT id FROM change_reasons WHERE name = 'Другое'").fetchone()[0]
+            self.assertEqual(conn.execute("SELECT COUNT(*) FROM change_reason_scopes WHERE reason_id = ?", (other_id,)).fetchone()[0], 3)
+        finally: conn.close()
+
+    def test_fresh_sqlite_has_change_reason_scopes(self):
+        conn = connect(":memory:")
+        try:
+            init_db(conn)
+            sql = conn.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='change_reason_scopes'").fetchone()[0]
+            self.assertIn("UNIQUE(reason_id, apply_scope)", sql)
+        finally: conn.close()
+
     def test_db_config_defaults_to_sqlite(self):
         config = load_db_config({})
 

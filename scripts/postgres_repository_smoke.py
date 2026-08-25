@@ -22,7 +22,7 @@ SMOKE_METHODS = (
     "list_providers", "list_providers_with_currency", "list_projects", "list_servers",
     "list_phone_number_types", "list_phone_assignment_types", "list_provider_prefixes",
     "list_provider_prefixes_with_provider", "list_active_change_reasons",
-    "list_change_reasons", "dictionary_counts", "get_country_by_name",
+    "list_change_reasons", "get_change_reason", "get_change_reason_scopes", "dictionary_counts", "get_country_by_name",
     "get_provider_by_normalized_name", "get_currency_by_code", "get_project_by_name",
     "get_phone_number_type_by_name", "get_phone_assignment_type_by_code_or_name",
     "get_server_by_name", "route_exists_by_country_name_and_name",
@@ -938,6 +938,13 @@ def run_repository_checks(repo: Repository, postgres_url: str) -> dict:
     for method_name in collection_methods:
         collections[method_name] = check(method_name, getattr(repo, method_name))
         check(f"{method_name}_nonempty", lambda name=method_name: _check(bool(collections[name]), f"{name} must not be empty"))
+    change_reason = collections["list_change_reasons"][0] if collections["list_change_reasons"] else {}
+    check("get_change_reason", lambda: _check(
+        isinstance(repo.get_change_reason(change_reason["id"]), dict), "change reason lookup must return dict",
+    ))
+    check("get_change_reason_scopes", lambda: _check(
+        bool(repo.get_change_reason_scopes(change_reason["id"])), "change reason scopes must not be empty",
+    ))
 
     counts = check("dictionary_counts", repo.dictionary_counts)
     expected_keys = {"countries", "providers", "currencies", "prefixes", "servers", "phone-types", "projects", "phone-assignments"}

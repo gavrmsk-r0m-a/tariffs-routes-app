@@ -483,17 +483,23 @@ class RepositoryAdapterWriteMethodsTest(unittest.TestCase):
             def fetchone(self): return {"id": 901}
         class RecordingConnection:
             def __init__(self): self.calls=[]; self.commits=0; self.rollbacks=0
-            def execute(self, sql, params=()): self.calls.append((sql, params)); return Cursor()
+            def execute(self, sql, params=()):
+                self.calls.append((sql, params))
+                return Cursor() if "INSERT INTO change_reasons" in sql else CursorWithRow(None)
             def commit(self): self.commits += 1
             def rollback(self): self.rollbacks += 1
+        class CursorWithRow:
+            def __init__(self, row): self.row = row
+            def fetchone(self): return self.row
         connection = RecordingConnection(); repo = Repository(connection, backend="postgres")
         self.assertEqual(repo.create_change_reason(" Причина ", comment="комментарий"), 901)
-        self.assertIn("VALUES (%s, %s, %s) RETURNING id", connection.calls[0][0])
-        self.assertEqual(connection.calls[0][1], ("Причина", "комментарий", True))
-        self.assertIn("VALUES (%s, %s, %s, %s, %s, %s, %s, %s)", connection.calls[1][0])
-        self.assertNotIn("?", connection.calls[1][0])
-        self.assertEqual(connection.calls[1][1][-1], "ui")
-        self.assertIn('"name": "Причина"', connection.calls[1][1][5])
+        insert_reason = next(call for call in connection.calls if "INSERT INTO change_reasons" in call[0])
+        self.assertIn("VALUES (%s, %s, %s) RETURNING id", insert_reason[0])
+        self.assertEqual(insert_reason[1], ("Причина", "комментарий", True))
+        audit = next(call for call in connection.calls if "INSERT INTO change_log" in call[0])
+        self.assertNotIn("?", audit[0])
+        self.assertEqual(audit[1][-1], "ui")
+        self.assertIn('"name": "Причина"', audit[1][5])
         self.assertEqual(connection.commits, 1)
         repo.create_change_reason("No commit", commit=False)
         self.assertEqual(connection.commits, 1)
@@ -517,9 +523,16 @@ class RepositoryAdapterWriteMethodsTest(unittest.TestCase):
         class Cursor:
             def __init__(self, row=None): self.row = row
             def fetchone(self): return self.row
+            def fetchall(self): return self.row or []
         class RecordingConnection:
             def __init__(self): self.calls=[]; self.commits=0; self.rollbacks=0
-            def execute(self, sql, params=()): self.calls.append((sql, params)); return Cursor()
+            def execute(self, sql, params=()):
+                self.calls.append((sql, params))
+                if "SELECT * FROM change_reasons WHERE id" in sql:
+                    return Cursor({"id": 41, "name": "old", "is_active": True})
+                if "SELECT apply_scope" in sql:
+                    return Cursor([{"apply_scope": "none"}])
+                return Cursor()
             def commit(self): self.commits += 1
             def rollback(self): self.rollbacks += 1
         connection = RecordingConnection(); repo = Repository(connection, backend="postgres")
@@ -531,7 +544,9 @@ class RepositoryAdapterWriteMethodsTest(unittest.TestCase):
         self.assertEqual(update_params, ("вызовы уходят в занято", "ITM", False, 41))
         change_log.assert_called_once_with(
             "change_reason", 41, "change_reason.updated", 7,
-            new_values={"name": "вызовы уходят в занято", "is_active": False},
+            old_values={"scopes": ["Не меняли настройки в нашей системе"]},
+            new_values={"name": "вызовы уходят в занято", "is_active": False,
+                        "scopes": ["Не меняли настройки в нашей системе"]},
         )
         self.assertEqual(connection.commits, 1)
 

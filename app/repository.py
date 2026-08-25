@@ -2874,6 +2874,12 @@ class Repository:
         ),
     }
     ROUTING_EVENT_REASONS = ROUTING_EVENT_REASONS_BY_SCOPE["campaign_setting"]
+    CHANGE_REASON_SCOPES = ("none", "server_priority", "campaign_setting")
+    CHANGE_REASON_SCOPE_LABELS = {
+        "none": "Не меняли настройки в нашей системе",
+        "server_priority": "Серверный приоритет",
+        "campaign_setting": "Настройка кампании",
+    }
 
     def _require_text(self, value: str | None, message: str) -> str:
         if not value or not value.strip():
@@ -4415,17 +4421,43 @@ class Repository:
             )
         )
 
-    def list_change_reasons(self) -> list[dict]:
-        return rows_to_dicts(self.conn.execute("SELECT * FROM change_reasons ORDER BY is_active DESC, name"))
+    def get_change_reason(self, reason_id: int) -> dict | None:
+        p = placeholder(self.backend)
+        return row_to_dict(self.conn.execute(f"SELECT * FROM change_reasons WHERE id = {p}", (reason_id,)).fetchone())
+
+    def get_change_reason_scopes(self, reason_id: int) -> list[str]:
+        p = placeholder(self.backend)
+        rows = self.conn.execute(
+            f"SELECT apply_scope FROM change_reason_scopes WHERE reason_id = {p} ORDER BY id", (reason_id,),
+        ).fetchall()
+        return [row["apply_scope"] for row in rows]
+
+    def list_change_reasons(self, *, scope: str | None = None, active: bool | None = None) -> list[dict]:
+        p = placeholder(self.backend)
+        where, params = [], []
+        if scope is not None:
+            if scope not in self.CHANGE_REASON_SCOPES:
+                raise BusinessRuleError("Неизвестная область применения причины")
+            where.append(f"EXISTS (SELECT 1 FROM change_reason_scopes crs WHERE crs.reason_id = change_reasons.id AND crs.apply_scope = {p})")
+            params.append(scope)
+        if active is not None:
+            where.append(f"is_active = {p}")
+            params.append(to_db_bool(active, self.backend))
+        clause = f" WHERE {' AND '.join(where)}" if where else ""
+        return rows_to_dicts(self.conn.execute(
+            f"SELECT * FROM change_reasons{clause} ORDER BY is_active DESC, name", tuple(params),
+        ))
 
     def list_active_change_reasons(self) -> list[dict]:
-        p = placeholder(self.backend)
-        return rows_to_dicts(
-            self.conn.execute(
-                f"SELECT * FROM change_reasons WHERE is_active = {p} ORDER BY name",
-                (to_db_bool(True, self.backend),),
-            )
-        )
+        return self.list_change_reasons(active=True)
+
+    def _validate_change_reason_scopes(self, scopes) -> list[str]:
+        normalized = list(dict.fromkeys(scopes or ()))
+        if not normalized:
+            raise BusinessRuleError("Выберите минимум одну область применения причины")
+        if any(scope not in self.CHANGE_REASON_SCOPES for scope in normalized):
+            raise BusinessRuleError("Неизвестная область применения причины")
+        return normalized
 
     def create_change_reason(
         self,
@@ -4433,18 +4465,36 @@ class Repository:
         created_by: int | None = None,
         comment: str | None = None,
         is_active: bool = True,
+        scopes=None,
         *,
         commit: bool = True,
     ) -> int:
         p = placeholder(self.backend)
+        normalized_name = self._require_text(name, "Укажите название причины")
+        normalized_scopes = self._validate_change_reason_scopes(
+            self.CHANGE_REASON_SCOPES if scopes is None else scopes
+        )
         sql = prepare_insert_returning_id(
             f"INSERT INTO change_reasons(name, description, is_active) VALUES ({p}, {p}, {p})",
             self.backend,
         )
         try:
-            cur = self.conn.execute(sql, (name.strip(), comment, to_db_bool(is_active, self.backend)))
+            duplicate = self.conn.execute(
+                f"SELECT id FROM change_reasons WHERE lower(name) = lower({p})", (normalized_name,),
+            ).fetchone()
+            if duplicate:
+                raise BusinessRuleError("Причина смены провайдера с таким названием уже существует")
+            cur = self.conn.execute(sql, (normalized_name, comment, to_db_bool(is_active, self.backend)))
             reason_id = extract_inserted_id(cur, self.backend)
-            self._change_log("change_reason", reason_id, "change_reason.created", created_by, new_values={"name": name.strip()})
+            for scope in normalized_scopes:
+                self.conn.execute(
+                    f"INSERT INTO change_reason_scopes(reason_id, apply_scope) VALUES ({p}, {p})",
+                    (reason_id, scope),
+                )
+            self._change_log("change_reason", reason_id, "change_reason.created", created_by, new_values={
+                "name": normalized_name,
+                "scopes": [self.CHANGE_REASON_SCOPE_LABELS[scope] for scope in normalized_scopes],
+            })
             if commit:
                 self.conn.commit()
             return int(reason_id)
@@ -4460,14 +4510,20 @@ class Repository:
         *,
         comment: str | None = None,
         is_active: bool = True,
+        scopes=None,
         updated_by: int | None = None,
         commit: bool = True,
     ) -> None:
         p = placeholder(self.backend)
-        normalized_name = name.strip()
+        normalized_name = self._require_text(name, "Укажите название причины")
         try:
+            existing = self.get_change_reason(reason_id)
+            if not existing:
+                raise BusinessRuleError("Причина смены провайдера не найдена")
+            old_scopes = self.get_change_reason_scopes(reason_id)
+            normalized_scopes = self._validate_change_reason_scopes(old_scopes if scopes is None else scopes)
             duplicate = self.conn.execute(
-                f"SELECT id FROM change_reasons WHERE name = {p} AND id <> {p}",
+                f"SELECT id FROM change_reasons WHERE lower(name) = lower({p}) AND id <> {p}",
                 (normalized_name, reason_id),
             ).fetchone()
             if duplicate:
@@ -4477,12 +4533,23 @@ class Repository:
                 f"updated_at = CURRENT_TIMESTAMP WHERE id = {p}",
                 (normalized_name, comment, to_db_bool(is_active, self.backend), reason_id),
             )
+            self.conn.execute(f"DELETE FROM change_reason_scopes WHERE reason_id = {p}", (reason_id,))
+            for scope in normalized_scopes:
+                self.conn.execute(
+                    f"INSERT INTO change_reason_scopes(reason_id, apply_scope) VALUES ({p}, {p})",
+                    (reason_id, scope),
+                )
             self._change_log(
                 "change_reason",
                 reason_id,
                 "change_reason.updated",
                 updated_by,
-                new_values={"name": normalized_name, "is_active": is_active},
+                old_values={"scopes": [self.CHANGE_REASON_SCOPE_LABELS[scope] for scope in old_scopes]},
+                new_values={
+                    "name": normalized_name,
+                    "is_active": is_active,
+                    "scopes": [self.CHANGE_REASON_SCOPE_LABELS[scope] for scope in normalized_scopes],
+                },
             )
             if commit:
                 self.conn.commit()

@@ -4,7 +4,7 @@ import os
 import sqlite3
 import threading
 from dataclasses import dataclass
-from app.repository import hash_password, verify_password
+from app.repository import Repository, hash_password, verify_password
 from app.security import production_security_enabled, validate_bootstrap_password
 from pathlib import Path
 
@@ -362,6 +362,36 @@ def _seed_default_users_if_empty(conn: sqlite3.Connection) -> None:
 
 def run_lightweight_migrations(conn: sqlite3.Connection) -> None:
     """Keep already-created MVP databases compatible with additive UI changes."""
+    scopes_table_existed = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'change_reason_scopes'"
+    ).fetchone() is not None
+    existing_reason_ids = [row[0] for row in conn.execute("SELECT id FROM change_reasons")] if not scopes_table_existed else []
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS change_reason_scopes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            reason_id INTEGER NOT NULL REFERENCES change_reasons(id) ON DELETE CASCADE,
+            apply_scope TEXT NOT NULL CHECK (apply_scope IN ('none', 'server_priority', 'campaign_setting')),
+            UNIQUE(reason_id, apply_scope)
+        )
+    """)
+    for reason_id in existing_reason_ids:
+        for scope in Repository.CHANGE_REASON_SCOPES:
+            conn.execute(
+                "INSERT OR IGNORE INTO change_reason_scopes(reason_id, apply_scope) VALUES (?, ?)",
+                (reason_id, scope),
+            )
+    for scope, reasons in Repository.ROUTING_EVENT_REASONS_BY_SCOPE.items():
+        for name in reasons:
+            row = conn.execute("SELECT id FROM change_reasons WHERE lower(name) = lower(?)", (name,)).fetchone()
+            if row is None:
+                cursor = conn.execute("INSERT INTO change_reasons(name, description, is_active) VALUES (?, ?, 1)", (name, name))
+                reason_id = cursor.lastrowid
+            else:
+                reason_id = row[0]
+            conn.execute(
+                "INSERT OR IGNORE INTO change_reason_scopes(reason_id, apply_scope) VALUES (?, ?)",
+                (reason_id, scope),
+            )
     _rebuild_calling_companies_if_needed(conn)
     _rebuild_company_routing_settings_if_needed(conn)
     conn.execute("""

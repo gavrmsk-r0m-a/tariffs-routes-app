@@ -360,6 +360,13 @@ CREATE TABLE IF NOT EXISTS change_reasons (
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS change_reason_scopes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    reason_id INTEGER NOT NULL REFERENCES change_reasons(id) ON DELETE CASCADE,
+    apply_scope TEXT NOT NULL CHECK (apply_scope IN ('none', 'server_priority', 'campaign_setting')),
+    UNIQUE(reason_id, apply_scope)
+);
+
 CREATE TABLE IF NOT EXISTS provider_change_logs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     changed_at TEXT NOT NULL,
