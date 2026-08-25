@@ -10153,7 +10153,15 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
         repo.create_change_reason(data["name"], created_by=actor_id, comment=data.get("comment"), is_active=data.get("is_active") == "1", scopes=Repository.CHANGE_REASON_SCOPES); return "/admin/change-reasons"
     if path.startswith("/admin/change-reasons/") and path.endswith("/update"):
         reason_id = int(path.strip("/").split("/")[2])
-        repo.update_change_reason(reason_id, data["name"], comment=data.get("comment"), is_active=data.get("is_active") == "1", updated_by=actor_id, scopes=repo.get_change_reason_scopes(reason_id))
+        existing_scopes = repo.get_change_reason_scopes(reason_id)
+        repo.update_change_reason(
+            reason_id,
+            data["name"],
+            comment=data.get("comment"),
+            is_active=data.get("is_active") == "1",
+            updated_by=actor_id,
+            scopes=existing_scopes or Repository.CHANGE_REASON_SCOPES,
+        )
         return "/admin/change-reasons"
     if path == "/tariffs/countries/create":
         repo.create_country(data["name"].strip()); return "/tariffs"
