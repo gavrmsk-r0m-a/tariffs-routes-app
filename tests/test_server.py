@@ -3485,6 +3485,31 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertIn("value='server_priority' checked", create_form)
         self.assertNotIn("value='campaign_setting' checked", create_form)
 
+    def test_admin_change_reason_modals_have_one_cancel_and_three_scope_checkboxes(self):
+        self.request("/routes")
+        _, content = self.request("/admin/change-reasons")
+        create_start = content.index("<form class='reason-dialog reason-dialog-form' method='post' action='/admin/change-reasons/create'")
+        create_form = content[create_start:content.index("</form>", create_start)]
+        self.assertEqual(create_form.count("data-modal-close"), 1)
+        self.assertEqual(create_form.count("type='checkbox' name='scopes'"), 3)
+        self.assertNotIn("admin-edit-cancel", create_form)
+
+        edit_start = content.index("<form class='reason-dialog reason-dialog-form' method='post' action='/admin/change-reasons/")
+        edit_form = content[edit_start:content.index("</form>", edit_start)]
+        self.assertEqual(edit_form.count("data-modal-close"), 1)
+        self.assertEqual(edit_form.count("type='checkbox' name='scopes'"), 3)
+        self.assertNotIn("admin-edit-actions", edit_form)
+        self.assertNotIn("admin-edit-cancel", edit_form)
+
+    def test_admin_change_reason_filter_toolbar_preserves_scope_and_activity_params(self):
+        self.request("/routes")
+        _, content = self.request("/admin/change-reasons?scope=server_priority&activity=all")
+        self.assertIn("href='/admin/change-reasons?activity=all'", content)
+        self.assertIn("href='/admin/change-reasons?scope=none&amp;activity=all'", content)
+        self.assertIn("href='/admin/change-reasons?scope=server_priority&amp;activity=all'", content)
+        self.assertIn("href='/admin/change-reasons?scope=campaign_setting&amp;activity=all'", content)
+        self.assertIn("href='/admin/change-reasons?scope=server_priority'", content)
+
     def test_legacy_change_reason_create_without_scope_fields_assigns_all_scopes(self):
         self.request("/routes")
         captured, _ = self.request(

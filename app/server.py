@@ -3501,6 +3501,35 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .naming-dialog-footer .modal-save, .reason-dialog-footer .modal-save {{ order: 1; border-color: #2563eb; background: #2563eb; color: #fff; }}
     .naming-dialog-footer .modal-save:hover, .reason-dialog-footer .modal-save:hover {{ border-color: #1d4ed8; background: #1d4ed8; color: #fff; }}
     .naming-dialog-footer .modal-cancel, .reason-dialog-footer .modal-cancel {{ order: 2; }}
+    .admin-change-reasons-page .reason-filters {{ display: flex; flex-wrap: wrap; align-items: stretch; gap: 10px; margin: 0 0 14px; padding: 10px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-muted); }}
+    .admin-change-reasons-page .reason-filter-group {{ display: flex; flex: 0 1 auto; align-items: center; gap: 8px; min-width: 0; padding-right: 10px; border-right: 1px solid var(--border-strong); }}
+    .admin-change-reasons-page .reason-filter-group:last-child {{ padding-right: 0; border-right: 0; }}
+    .admin-change-reasons-page .reason-filter-label {{ flex: 0 0 auto; color: var(--muted); font-size: 12px; font-weight: 760; white-space: nowrap; }}
+    .admin-change-reasons-page .reason-filter-options {{ display: flex; flex-wrap: nowrap; gap: 6px; }}
+    .admin-change-reasons-page .reason-filter-options .button {{ display: inline-flex; align-items: center; min-height: 32px; height: 32px; padding: 5px 10px; white-space: nowrap; }}
+    .admin-change-reasons-page .reason-filter-options .button.active {{ border-color: var(--accent); background: var(--accent-soft); color: var(--accent-strong); }}
+    .admin-change-reasons-page .reason-scope-cell {{ width: 280px; min-width: 210px; max-width: 320px; overflow: visible; text-overflow: clip; white-space: normal; }}
+    .admin-change-reasons-page .reason-scope-badges {{ display: flex; flex-wrap: wrap; align-items: flex-start; gap: 4px 5px; max-width: 100%; white-space: normal; }}
+    .admin-change-reasons-page .reason-scope-badges .status-badge {{ flex: 0 0 auto; max-width: 100%; overflow: visible; text-overflow: clip; white-space: normal; line-height: 1.2; }}
+    .admin-change-reasons-page .reason-dialog.reason-dialog {{ width: min(620px, calc(100vw - 48px)); max-height: min(560px, calc(100vh - 48px)); }}
+    .admin-change-reasons-page .reason-dialog-body {{ padding-top: 12px; padding-bottom: 12px; }}
+    .admin-change-reasons-page .reason-scope-field {{ display: grid; gap: 7px; min-width: 0; margin: 1px 0 0; padding: 9px 11px 10px; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--surface); }}
+    .admin-change-reasons-page .reason-scope-field.has-validation-error {{ border-color: var(--danger); box-shadow: 0 0 0 1px var(--danger); }}
+    .admin-change-reasons-page .reason-scope-field legend {{ padding: 0 4px; color: var(--text); font-size: 12px; font-weight: 760; }}
+    .admin-change-reasons-page .reason-dialog .reason-scope-option,
+    .admin-change-reasons-page td[data-col="actions"] details.edit-details > form.reason-dialog .reason-scope-option {{ display: flex; align-items: center; gap: 8px; width: fit-content; max-width: 100%; min-height: 20px; margin: 0; color: var(--text); font-size: 12px; font-weight: 650; line-height: 1.25; cursor: pointer; }}
+    .admin-change-reasons-page td[data-col="actions"] details.edit-details > form.reason-dialog .reason-scope-option input[type="checkbox"],
+    .admin-change-reasons-page .reason-dialog .reason-scope-option input[type="checkbox"] {{ display: inline-block; flex: 0 0 17px; width: 17px; min-width: 17px; max-width: 17px; height: 17px; min-height: 17px; margin: 0; padding: 0; accent-color: var(--accent); box-shadow: none; }}
+    .admin-change-reasons-page .reason-dialog-footer {{ padding-top: 10px; padding-bottom: 10px; }}
+    @media (max-width: 820px) {{
+      .admin-change-reasons-page .reason-filter-group {{ flex: 1 0 100%; padding: 0 0 10px; border-right: 0; border-bottom: 1px solid var(--border-strong); }}
+      .admin-change-reasons-page .reason-filter-group:last-child {{ padding-bottom: 0; border-bottom: 0; }}
+    }}
+    @media (max-width: 560px) {{
+      .admin-change-reasons-page .reason-filter-group {{ align-items: flex-start; flex-direction: column; }}
+      .admin-change-reasons-page .reason-filter-options {{ width: 100%; padding-bottom: 2px; overflow-x: auto; }}
+      .admin-change-reasons-page .reason-dialog.reason-dialog {{ width: calc(100vw - 18px); max-height: calc(100vh - 18px); }}
+    }}
 
     .modal-form-card[open] > form.user-dialog, .user-dialog.user-dialog {{ position: fixed; left: 50%; top: 50%; z-index: 990; width: min(860px, calc(100vw - 48px)); max-width: calc(100vw - 48px); max-height: calc(100vh - 48px); margin: 0; padding: 0; transform: translate(-50%, -50%); display: grid; grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr) auto; gap: 0; overflow: hidden; border: 1px solid var(--border-strong); border-radius: 14px; background: #fff; color: var(--text); box-shadow: 0 22px 62px rgba(15, 23, 42, .22); box-sizing: border-box; }}
     .admin-users-page .user-dialog-header {{ grid-column: 1 / -1; width: 100%; box-sizing: border-box; margin: 0; padding: 14px 22px 12px; border-bottom: 1px solid var(--border-strong); background: linear-gradient(180deg, #fff 0%, #f8fafc 100%); }}
@@ -3580,17 +3609,8 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     html[data-theme="tele-route-pro"] .admin-naming-page .admin-naming-primary-summary:hover,
     html[data-theme="tele-route-pro"] .admin-change-reasons-page .admin-reason-primary-summary:hover,
     html[data-theme="tele-route-pro"] .admin-users-page .admin-user-primary-summary:hover {{ border-color: #1d4ed8 !important; background: #1d4ed8 !important; color: #fff !important; }}
-    html[data-theme="tele-route-pro"] .reason-filters {{ display: flex; flex-wrap: wrap; gap: 10px 18px; margin-bottom: 14px; }}
-    html[data-theme="tele-route-pro"] .reason-filters > div {{ display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }}
-    html[data-theme="tele-route-pro"] .reason-filters > div > span {{ margin-right: 3px; color: var(--muted); font-size: 12px; font-weight: 760; }}
-    html[data-theme="tele-route-pro"] .reason-filters .button {{ min-height: 30px; padding: 5px 10px; background: #fff; }}
-    html[data-theme="tele-route-pro"] .reason-filters .button.active {{ border-color: #2563eb; background: #eff6ff; color: #1d4ed8; }}
-    html[data-theme="tele-route-pro"] .reason-scope-badges {{ display: flex; flex-wrap: wrap; gap: 5px; }}
-    html[data-theme="tele-route-pro"] .reason-scope-field {{ display: flex; flex-wrap: wrap; gap: 7px 14px; margin: 2px 0 0; padding: 10px 12px; border: 1px solid var(--border-strong); border-radius: 8px; }}
-    html[data-theme="tele-route-pro"] .reason-scope-field.has-validation-error {{ border-color: var(--danger); box-shadow: 0 0 0 1px var(--danger); }}
-    html[data-theme="tele-route-pro"] .reason-scope-field legend {{ padding: 0 4px; color: var(--text); font-size: 12px; font-weight: 760; }}
-    html[data-theme="tele-route-pro"] .reason-dialog .reason-scope-option {{ display: inline-flex; align-items: center; gap: 7px; }}
-    html[data-theme="tele-route-pro"] .reason-dialog .reason-scope-option input {{ width: 16px; min-height: 16px; margin: 0; }}
+    html[data-theme="tele-route-pro"] .reason-filter-options .button {{ background: #fff; }}
+    html[data-theme="tele-route-pro"] .reason-filter-options .button.active {{ border-color: #2563eb; background: #eff6ff; color: #1d4ed8; }}
     html[data-theme="tele-route-pro"] .reason-dialog input.has-validation-error {{ border-color: var(--danger); box-shadow: 0 0 0 1px var(--danger); }}
     html[data-theme="tele-route-pro"] .admin-naming-page .admin-naming-primary-summary::after,
     html[data-theme="tele-route-pro"] .admin-naming-page details[open] > .admin-naming-primary-summary::after,
@@ -4059,7 +4079,10 @@ ${{script.textContent}}
     }}
     adminEditDetails.forEach((details) => {{
       const form = details.querySelector("form");
-      if (form && !form.querySelector(".admin-edit-cancel")) {{
+      const dedicatedCancel = form && form.querySelector("[data-modal-close]");
+      if (dedicatedCancel) {{
+        dedicatedCancel.addEventListener("click", () => {{ details.removeAttribute("open"); clearModalBlockingError(); }});
+      }} else if (form && !form.querySelector(".admin-edit-cancel")) {{
         const saveButton = form.querySelector('button[type="submit"], button:not([type]), input[type="submit"]');
         const actions = document.createElement("div");
         actions.className = "admin-edit-actions";
@@ -9457,7 +9480,10 @@ def change_reasons_page(repo: Repository, q: dict[str, str] | None = None, *, fo
         filter_link("Активные", target_activity="active"),
         filter_link("Все", target_activity="all"),
     ])
-    filters_html = f"<nav class='reason-filters' aria-label='Фильтры причин'><div><span>Область применения</span>{scope_tabs}</div><div><span>Активность</span>{activity_tabs}</div></nav>"
+    filters_html = f"""<nav class='reason-filters' aria-label='Фильтры причин'>
+<div class='reason-filter-group'><span class='reason-filter-label'>Область применения</span><div class='reason-filter-options'>{scope_tabs}</div></div>
+<div class='reason-filter-group'><span class='reason-filter-label'>Активность</span><div class='reason-filter-options'>{activity_tabs}</div></div>
+</nav>"""
     rows = []
     for reason in repo.list_change_reasons(scope=scope, active=active_filter):
         editing = editing_id == str(reason["id"])
@@ -9469,7 +9495,7 @@ def change_reasons_page(repo: Repository, q: dict[str, str] | None = None, *, fo
         error_html = modal_blocking_error(form_error) if editing else ""
         name_error = editing and form_error and ("назван" in form_error.lower())
         scope_error = editing and form_error and "область" in form_error.lower()
-        rows.append(f"""<tr><td>{esc(reason['name'])}</td><td><span class='reason-scope-badges'>{badges}</span></td><td>{'Да' if reason['is_active'] else 'Нет'}</td><td>{esc(reason['description']) or '—'}</td><td data-col='actions'><details class='edit-details'{' open' if editing else ''}><summary title='Редактировать' aria-label='Редактировать'>Редактировать</summary><form class='reason-dialog reason-dialog-form' method='post' action='/admin/change-reasons/{reason['id']}/update'><header class='reason-dialog-header'><h2>Редактировать причину</h2></header><div class='reason-dialog-body'>{error_html}<div class='reason-dialog-grid'><input type='hidden' name='_scopes_present' value='1'><input type='hidden' name='return_scope' value='{esc(scope or '')}'><input type='hidden' name='return_activity' value='{esc(activity)}'><label class='reason-dialog-full'>Название <span class='required'>*</span><input name='name' value='{esc(name)}'{' class=\"has-validation-error\" autofocus' if name_error else ''}></label><label>Активна <select name='is_active'><option value='1' {'selected' if active else ''}>Да</option><option value='0' {'selected' if not active else ''}>Нет</option></select></label><label>Комментарий <input name='comment' value='{esc(comment)}'></label>{scope_controls(current_scopes, error=bool(scope_error))}</div></div><footer class='reason-dialog-footer'><button class='modal-save'>Сохранить</button><button type='button' class='modal-cancel' data-modal-close>Отмена</button></footer></form></details></td></tr>""")
+        rows.append(f"""<tr><td>{esc(reason['name'])}</td><td class='reason-scope-cell'><span class='reason-scope-badges'>{badges}</span></td><td>{'Да' if reason['is_active'] else 'Нет'}</td><td>{esc(reason['description']) or '—'}</td><td data-col='actions'><details class='edit-details'{' open' if editing else ''}><summary title='Редактировать' aria-label='Редактировать'>Редактировать</summary><form class='reason-dialog reason-dialog-form' method='post' action='/admin/change-reasons/{reason['id']}/update'><header class='reason-dialog-header'><h2>Редактировать причину</h2></header><div class='reason-dialog-body'>{error_html}<div class='reason-dialog-grid'><input type='hidden' name='_scopes_present' value='1'><input type='hidden' name='return_scope' value='{esc(scope or '')}'><input type='hidden' name='return_activity' value='{esc(activity)}'><label class='reason-dialog-full'>Название <span class='required'>*</span><input name='name' value='{esc(name)}'{' class=\"has-validation-error\" autofocus' if name_error else ''}></label><label>Активна <select name='is_active'><option value='1' {'selected' if active else ''}>Да</option><option value='0' {'selected' if not active else ''}>Нет</option></select></label><label>Комментарий <input name='comment' value='{esc(comment)}'></label>{scope_controls(current_scopes, error=bool(scope_error))}</div></div><footer class='reason-dialog-footer'><button class='modal-save'>Сохранить</button><button type='button' class='modal-cancel' data-modal-close>Отмена</button></footer></form></details></td></tr>""")
     creating = bool(form_error) and not editing_id
     create_selected = submitted_scopes if creating else ({scope} if scope else set())
     create_name = form_data.get("name", "") if creating else ""
