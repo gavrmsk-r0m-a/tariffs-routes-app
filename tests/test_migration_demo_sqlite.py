@@ -35,7 +35,7 @@ class MigrationDemoSqliteTests(unittest.TestCase):
         with sqlite3.connect(db_path) as conn:
             tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")}
         self.assertEqual(set(migration.MIGRATION_ORDER), tables)
-        self.assertEqual(36, len(tables))
+        self.assertEqual(37, len(tables))
 
     def test_demo_sqlite_preflight_passes(self):
         db_path = self.make_demo_db()

@@ -27,7 +27,7 @@ EXIT_CONFIG = 2
 
 MIGRATION_ORDER = [
     "users", "login_attempts", "countries", "currencies", "providers", "projects", "servers",
-    "change_reasons", "phone_number_types", "phone_assignment_types",
+    "change_reasons", "change_reason_scopes", "phone_number_types", "phone_assignment_types",
     "provider_prefixes", "routes", "currency_rates", "phone_numbers", "tariffs",
     "calling_companies", "company_routing_settings", "route_phone_numbers",
     "route_naming_rules", "routing_events", "server_route_priorities",
