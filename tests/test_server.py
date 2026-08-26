@@ -993,6 +993,42 @@ class ServerSmokeTest(unittest.TestCase):
         captured, _ = self.request("/login", method="POST", body=body)
         self.assertEqual(captured["status"], "303 See Other")
 
+    def test_user_admin_lifecycle_writes_safe_change_log_events(self):
+        admin_cookie = self.user_cookie("admin")
+        create_body = urlencode({
+            "username": "audit-user", "display_name": "Audit User", "role_key": "operator",
+            "password": "create-secret", "password_confirm": "create-secret", "perm__routes__read": "1",
+        })
+        captured, _ = self.request("/admin/users/create", method="POST", body=create_body, cookie=admin_cookie, auto_login=False)
+        self.assertEqual(captured["status"], "303 See Other")
+        conn = server.connect(server.DB_PATH)
+        try:
+            user_id = conn.execute("SELECT id FROM users WHERE username='audit-user'").fetchone()["id"]
+        finally:
+            conn.close()
+
+        update = {
+            "username": "audit-user", "display_name": "Audit User", "role_key": "operator", "is_active": "1",
+            "perm__hlr__read": "1", "password": "reset-secret", "password_confirm": "reset-secret",
+        }
+        self.request(f"/admin/users/{user_id}/update", method="POST", body=urlencode(update), cookie=admin_cookie, auto_login=False)
+        update.pop("password"); update.pop("password_confirm"); update["is_active"] = "0"
+        self.request(f"/admin/users/{user_id}/update", method="POST", body=urlencode(update), cookie=admin_cookie, auto_login=False)
+        update["is_active"] = "1"
+        self.request(f"/admin/users/{user_id}/update", method="POST", body=urlencode(update), cookie=admin_cookie, auto_login=False)
+
+        conn = server.connect(server.DB_PATH)
+        try:
+            rows = conn.execute("SELECT change_type, changed_by, old_values, new_values, summary FROM change_log WHERE entity_type='user' AND entity_id=? ORDER BY id", (user_id,)).fetchall()
+        finally:
+            conn.close()
+        event_types = {row["change_type"] for row in rows}
+        self.assertTrue({"user.created", "user.permissions_updated", "user.password_reset", "user.deactivated", "user.activated"}.issubset(event_types))
+        self.assertTrue(all(row["changed_by"] and row["summary"] for row in rows))
+        audit_text = " ".join(str(value or "") for row in rows for value in row).lower()
+        for forbidden in ("create-secret", "reset-secret", "password_hash", "password_salt"):
+            self.assertNotIn(forbidden, audit_text)
+
 
     def test_admin_can_create_user_with_permissions(self):
         body = urlencode({
@@ -1218,6 +1254,15 @@ class ServerSmokeTest(unittest.TestCase):
         captured, _ = self.request("/routes", auto_login=False)
         self.assertEqual(captured["status"], "303 See Other")
         self.assertIn(("Location", "/login"), captured["headers"])
+
+    def test_operator_without_admin_permission_can_see_and_use_logout(self):
+        cookie = self.user_cookie("duty")
+        captured, content = self.request("/routes", cookie=cookie, auto_login=False)
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn('href="/logout"', content)
+        captured, _ = self.request("/logout", cookie=cookie, auto_login=False)
+        self.assertEqual(captured["status"], "303 See Other")
+        self.assertIn("Max-Age=0", dict(captured["headers"]).get("Set-Cookie", ""))
 
     def test_inactive_or_missing_selected_user_redirects_to_login(self):
         cookie = self.user_cookie("guest")

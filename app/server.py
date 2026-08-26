@@ -572,8 +572,6 @@ def role_label(role_key: str | None) -> str:
 
 
 def current_user_selector() -> str:
-    if production_security_enabled():
-        return ""
     repo = _REQUEST_CONTEXT.get("repo")
     current_user_id = _REQUEST_CONTEXT.get("current_user_id")
     if not isinstance(repo, Repository) or current_user_id is None:
@@ -9047,8 +9045,8 @@ def user_permissions_from_form(data: dict[str, str]) -> dict[str, dict[str, bool
     return permissions
 
 
-def save_user_permissions(repo: Repository, user_id: int, data: dict[str, str]) -> None:
-    repo.set_user_permissions(user_id, user_permissions_from_form(data))
+def save_user_permissions(repo: Repository, user_id: int, data: dict[str, str], *, changed_by: int | None = None) -> None:
+    repo.set_user_permissions(user_id, user_permissions_from_form(data), changed_by=changed_by)
 
 def users_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
     q = q or {}
@@ -9971,8 +9969,8 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
             raise BusinessRuleError("Пароль обязателен и должен быть не короче 6 символов")
         if password != password_confirm:
             raise BusinessRuleError("Пароли не совпадают")
-        new_user_id = repo.create_user(username, data.get("role_key") or "operator", display_name, password=password, email=data.get("email"), must_change_password=data.get("must_change_password") == "1")
-        save_user_permissions(repo, new_user_id, data)
+        new_user_id = repo.create_user(username, data.get("role_key") or "operator", display_name, password=password, email=data.get("email"), must_change_password=data.get("must_change_password") == "1", changed_by=actor_id)
+        save_user_permissions(repo, new_user_id, data, changed_by=actor_id)
         return "/admin/users"
     if path.startswith("/admin/users/") and path.endswith("/update"):
         user_id = int(path.strip("/").split("/")[2])
@@ -9986,6 +9984,7 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
             is_active=data.get("is_active") == "1",
             username=data.get("username"),
             email=data.get("email"),
+            changed_by=actor_id,
         )
         password = data.get("password", "")
         password_confirm = data.get("password_confirm", "")
@@ -9994,15 +9993,15 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
                 raise BusinessRuleError("Новый пароль должен быть не короче 6 символов")
             if password != password_confirm:
                 raise BusinessRuleError("Пароли не совпадают")
-            repo.update_user_password(user_id, password, must_change_password=True)
+            repo.update_user_password(user_id, password, must_change_password=True, changed_by=actor_id)
             target_user = repo.get_user(user_id)
             target_name = target_user["display_name"] or target_user["username"] if target_user is not None else display_name
             if user_id == actor_id:
                 return f"/login?notice={quote('Ваш пароль сброшен. Войдите с временным паролем и смените его.')}&notice_type=success"
             notice = f"Пароль пользователя {target_name} сброшен. При следующем входе пользователь должен сменить пароль."
-            save_user_permissions(repo, user_id, data)
+            save_user_permissions(repo, user_id, data, changed_by=actor_id)
             return f"/admin/users?notice={quote(notice)}"
-        save_user_permissions(repo, user_id, data)
+        save_user_permissions(repo, user_id, data, changed_by=actor_id)
         return "/admin/users"
     if path == "/routes/create":
         country_id = int(data["country_id"]); provider_id = int(data["provider_id"]); prefix_id = parse_int(data.get("provider_prefix_id"))

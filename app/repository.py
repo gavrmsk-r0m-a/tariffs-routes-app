@@ -425,7 +425,7 @@ class Repository:
                 self.conn.execute(f"UPDATE phone_numbers SET assignment_label = {p} WHERE assignment_type = {p}", (new_label, row["code"]))
         return counts
 
-    def create_user(self, username: str, role: str = "admin", display_name: str | None = None, password: str | None = None, email: str | None = None, must_change_password: bool = False, *, commit: bool = True) -> int:
+    def create_user(self, username: str, role: str = "admin", display_name: str | None = None, password: str | None = None, email: str | None = None, must_change_password: bool = False, *, changed_by: int | None = None, commit: bool = True) -> int:
         username = username.strip()
         p = placeholder(self.backend)
         existing = self.conn.execute(f"SELECT id FROM users WHERE username = {p}", (username,)).fetchone()
@@ -454,6 +454,12 @@ class Repository:
             f"INSERT INTO users({', '.join(insert_columns)}) VALUES ({', '.join(p for _ in insert_columns)})", self.backend)
         try:
             user_id = extract_inserted_id(self.conn.execute(sql, tuple(values)), self.backend)
+            if changed_by is not None:
+                self._change_log(
+                    "user", user_id, "user.created", changed_by,
+                    new_values={"username": username, "display_name": display_name or username, "role_key": role_key},
+                    summary=f"Создан пользователь {display_name or username} ({username})",
+                )
             if commit:
                 self.conn.commit()
             return user_id
@@ -691,9 +697,13 @@ class Repository:
             )
         }
 
-    def set_user_permissions(self, user_id: int, permissions: dict[str, dict[str, object]], *, commit: bool = True) -> None:
+    def set_user_permissions(self, user_id: int, permissions: dict[str, dict[str, object]], *, changed_by: int | None = None, commit: bool = True) -> None:
         p = placeholder(self.backend)
         try:
+            old_permissions = {
+                key: {name: bool(row[name]) for name in ("can_read", "can_write", "can_export")}
+                for key, row in self.get_user_permissions(user_id).items()
+            }
             for section_key, values in permissions.items():
                 self.conn.execute(
                     f"""
@@ -704,6 +714,18 @@ class Repository:
                     """,
                     (user_id, section_key, to_db_bool(bool(values.get("can_read")), self.backend), to_db_bool(bool(values.get("can_write")), self.backend), to_db_bool(bool(values.get("can_export")), self.backend)),
                 )
+            new_permissions = {
+                key: {name: bool(row[name]) for name in ("can_read", "can_write", "can_export")}
+                for key, row in self.get_user_permissions(user_id).items()
+            }
+            if changed_by is not None and old_permissions != new_permissions:
+                user = self.get_user(user_id)
+                label = user["display_name"] if user else f"#{user_id}"
+                self._change_log(
+                    "user", user_id, "user.permissions_updated", changed_by,
+                    old_values={"permissions": old_permissions}, new_values={"permissions": new_permissions},
+                    summary=f"Обновлены права пользователя {label}",
+                )
             if commit:
                 self.conn.commit()
         except Exception:
@@ -711,7 +733,7 @@ class Repository:
                 self.conn.rollback()
             raise
 
-    def update_user_password(self, user_id: int, password: str, *, must_change_password: bool = False, commit: bool = True) -> None:
+    def update_user_password(self, user_id: int, password: str, *, must_change_password: bool = False, changed_by: int | None = None, commit: bool = True) -> None:
         columns = self._user_columns()
         if not {"password_hash", "password_salt"}.issubset(columns):
             return
@@ -721,6 +743,10 @@ class Repository:
         params: tuple[object, ...] = (password_hash, password_salt, to_db_bool(must_change_password, self.backend), user_id) if must_clause else (password_hash, password_salt, user_id)
         try:
             self.conn.execute(f"UPDATE users SET password_hash = {p}, password_salt = {p}, updated_at = CURRENT_TIMESTAMP{must_clause} WHERE id = {p}", params)
+            if changed_by is not None:
+                user = self.get_user(user_id)
+                label = user["display_name"] if user else f"#{user_id}"
+                self._change_log("user", user_id, "user.password_reset", changed_by, summary=f"Администратор сбросил пароль пользователя {label}")
             if commit:
                 self.conn.commit()
         except Exception:
@@ -728,8 +754,9 @@ class Repository:
                 self.conn.rollback()
             raise
 
-    def update_user(self, user_id: int, *, display_name: str, role_key: str, is_active: bool, username: str | None = None, email: str | None = None, commit: bool = True) -> None:
+    def update_user(self, user_id: int, *, display_name: str, role_key: str, is_active: bool, username: str | None = None, email: str | None = None, changed_by: int | None = None, commit: bool = True) -> None:
         columns = self._user_columns(); p = placeholder(self.backend)
+        existing = self.get_user(user_id)
         assignments = [f"display_name = {p}", f"is_active = {p}", "updated_at = CURRENT_TIMESTAMP"]
         values: list[object] = [display_name.strip(), to_db_bool(is_active, self.backend)]
         if username is not None:
@@ -744,6 +771,18 @@ class Repository:
         values.append(user_id)
         try:
             self.conn.execute(f"UPDATE users SET {', '.join(assignments)} WHERE id = {p}", tuple(values))
+            updated = self.get_user(user_id)
+            if changed_by is not None and existing and updated:
+                safe_fields = ("username", "display_name", "role_key", "email", "is_active")
+                old_values = {key: existing[key] for key in safe_fields}
+                new_values = {key: updated[key] for key in safe_fields}
+                if old_values != new_values:
+                    if bool(existing["is_active"]) != bool(updated["is_active"]):
+                        change_type = "user.activated" if updated["is_active"] else "user.deactivated"
+                        action = "Активирован" if updated["is_active"] else "Деактивирован"
+                    else:
+                        change_type, action = "user.updated", "Обновлен"
+                    self._change_log("user", user_id, change_type, changed_by, old_values=old_values, new_values=new_values, summary=f"{action} пользователь {updated['display_name']}")
             if commit:
                 self.conn.commit()
         except Exception:

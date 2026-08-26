@@ -444,7 +444,7 @@ def _assert_login_denied(app, username: str, password: str) -> None:
         raise SmokeFailure("/login", "invalid/inactive account was not denied", status)
 
 
-def _run_users_postgres_lifecycle(app, database_url: str, admin_cookie: str) -> list[str]:
+def _run_users_postgres_lifecycle(app, database_url: str, admin_cookie: str, alternate_username: str = "admin", alternate_password: str = "admin") -> list[str]:
     """Exercise account administration exclusively through the WSGI runtime."""
     suffix = secrets.token_hex(6)
     username = f"stage69q2-{suffix}"
@@ -453,6 +453,22 @@ def _run_users_postgres_lifecycle(app, database_url: str, admin_cookie: str) -> 
     temporary_password = secrets.token_urlsafe(18)
     final_password = secrets.token_urlsafe(18)
     user_id = None
+    def assert_audit(change_type: str) -> None:
+        conn = connect_postgres(database_url)
+        try:
+            row = conn.execute(
+                "SELECT change_type, changed_by, old_values, new_values, summary FROM change_log "
+                "WHERE entity_type='user' AND entity_id=%s AND change_type=%s ORDER BY id DESC LIMIT 1",
+                (user_id, change_type),
+            ).fetchone()
+            if not row or not row["changed_by"] or not row["summary"]:
+                raise SmokeFailure("/admin/change-log", f"missing or incomplete {change_type} audit record")
+            payload = " ".join(str(row[key] or "") for key in ("old_values", "new_values", "summary")).lower()
+            forbidden = (initial_password.lower(), temporary_password.lower(), "password_hash", "password_salt")
+            if any(secret in payload for secret in forbidden):
+                raise SmokeFailure("/admin/change-log", f"{change_type} audit record exposed password material")
+        finally:
+            conn.close()
     try:
         status, _, body = wsgi_request(app, "/admin/users", cookie=admin_cookie)
         if status != "200 OK" or b"password_hash" in body or b"password_salt" in body:
@@ -482,6 +498,7 @@ def _run_users_postgres_lifecycle(app, database_url: str, admin_cookie: str) -> 
                 raise SmokeFailure("/admin/users/create", "password was not safely hashed")
         finally:
             conn.close()
+        assert_audit("user.created")
 
         operator_cookie = _login(app, username, initial_password)
         allowed, _, _ = wsgi_request(app, "/routes", cookie=operator_cookie)
@@ -503,6 +520,7 @@ def _run_users_postgres_lifecycle(app, database_url: str, admin_cookie: str) -> 
         denied, _, _ = wsgi_request(app, "/routes", cookie=operator_cookie)
         if allowed != "200 OK" or denied != "403 Forbidden":
             raise SmokeFailure("/admin/users", "updated permissions did not take effect")
+        assert_audit("user.permissions_updated")
 
         reset_data = {**update_data, "password": temporary_password, "password_confirm": temporary_password}
         status, _, _ = wsgi_request(
@@ -510,6 +528,7 @@ def _run_users_postgres_lifecycle(app, database_url: str, admin_cookie: str) -> 
         )
         if status != "303 See Other":
             raise SmokeFailure(f"/admin/users/{user_id}/update", "password reset failed", status)
+        assert_audit("user.password_reset")
         _assert_login_denied(app, username, initial_password)
         change_cookie = _login(app, username, temporary_password, "/change-password")
         status, headers, _ = wsgi_request(
@@ -519,7 +538,17 @@ def _run_users_postgres_lifecycle(app, database_url: str, admin_cookie: str) -> 
         if status != "303 See Other" or _header(headers, "Location") != "/routes":
             raise SmokeFailure("/change-password", "required password change failed", status)
         _assert_login_denied(app, username, temporary_password)
-        _login(app, username, final_password)
+        operator_cookie = _login(app, username, final_password)
+        status, headers, body = wsgi_request(app, "/routes", cookie=operator_cookie)
+        if status != "200 OK" or b'href="/logout"' not in body:
+            raise SmokeFailure("/routes", "authenticated operator has no logout control", status)
+        status, headers, _ = wsgi_request(app, "/logout", cookie=operator_cookie)
+        if status != "303 See Other" or _header(headers, "Location") != "/login" or "Max-Age=0" not in (_header(headers, "Set-Cookie") or ""):
+            raise SmokeFailure("/logout", "logout did not clear auth cookie and redirect", status)
+        status, _, _ = wsgi_request(app, "/routes")
+        if status != "303 See Other":
+            raise SmokeFailure("/logout", "protected route remained authenticated after logout", status)
+        _login(app, alternate_username, alternate_password)
 
         deactivate_data = {**update_data, "is_active": "0"}
         status, _, _ = wsgi_request(
@@ -527,6 +556,7 @@ def _run_users_postgres_lifecycle(app, database_url: str, admin_cookie: str) -> 
         )
         if status != "303 See Other":
             raise SmokeFailure(f"/admin/users/{user_id}/update", "deactivation failed", status)
+        assert_audit("user.deactivated")
         _assert_login_denied(app, username, final_password)
         conn = connect_postgres(database_url)
         try:
@@ -535,12 +565,13 @@ def _run_users_postgres_lifecycle(app, database_url: str, admin_cookie: str) -> 
                 raise SmokeFailure("/admin/users", "deactivation damaged the account row")
         finally:
             conn.close()
-        return ["USERS PostgreSQL lifecycle (create, permissions, password reset/change, deactivate)"]
+        return ["USERS PostgreSQL lifecycle (audit, create, permissions, password reset/change, logout, deactivate)"]
     finally:
         if user_id is not None:
             cleanup = connect_postgres(database_url)
             try:
                 cleanup.execute("DELETE FROM user_permissions WHERE user_id=%s", (user_id,))
+                cleanup.execute("DELETE FROM change_log WHERE entity_type='user' AND entity_id=%s", (user_id,))
                 cleanup.execute("DELETE FROM login_attempts WHERE username_normalized=%s", (username.lower(),))
                 cleanup.execute("DELETE FROM users WHERE id=%s", (user_id,))
                 cleanup.commit()
@@ -730,7 +761,7 @@ def run_smoke(database_url: str, auth_secret: str) -> dict[str, object]:
     cookie = _login(app, USERNAME, password)
 
     checked = []
-    checked.extend(_run_users_postgres_lifecycle(app, database_url, cookie))
+    checked.extend(_run_users_postgres_lifecycle(app, database_url, cookie, USERNAME, password))
     checked.extend(_run_hlr_postgres_lifecycle(app, database_url, cookie))
     checked.extend(_run_import_export_smoke(app, database_url, cookie))
     for path in PAGES:
