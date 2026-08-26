@@ -28,7 +28,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from app.db import connect_postgres  # noqa: E402
-from app.repository import hash_password  # noqa: E402
+from app.repository import Repository, hash_password  # noqa: E402
 from app.security import validate_auth_secret  # noqa: E402
 from scripts.postgres_backup import sanitize_database_url, sanitize_text  # noqa: E402
 
@@ -121,19 +121,17 @@ def _currency_rate_count(database_url: str, currency_id: int) -> int:
 def _isolated_smoke_change_reason(database_url: str):
     suffix = secrets.token_hex(6).upper()
     original_name = f"CI_SMOKE_REASON_{suffix}"
-    updated_name = f"CI_SMOKE_REASON_UPDATED_{suffix}"
     conn = connect_postgres(database_url)
     try:
-        row = conn.execute(
-            "INSERT INTO change_reasons(name, description, is_active) VALUES (%s, %s, true) RETURNING id",
-            (original_name, "CI full-app smoke reason"),
-        ).fetchone()
-        reason_id = int(row["id"])
-        conn.commit()
+        reason_id = Repository(conn, backend="postgres").create_change_reason(
+            original_name,
+            comment="CI full-app smoke reason",
+            scopes=["none"],
+        )
     finally:
         conn.close()
     try:
-        yield {"id": reason_id, "name": updated_name}
+        yield {"id": reason_id, "name": original_name}
     finally:
         cleanup = connect_postgres(database_url)
         try:
@@ -141,6 +139,7 @@ def _isolated_smoke_change_reason(database_url: str):
                 "DELETE FROM change_log WHERE entity_type = 'change_reason' AND entity_id = %s",
                 (reason_id,),
             )
+            cleanup.execute("DELETE FROM routing_events WHERE reason = %s", (original_name,))
             cleanup.execute("DELETE FROM change_reasons WHERE id = %s", (reason_id,))
             cleanup.commit()
         finally:
@@ -492,12 +491,40 @@ def run_smoke(database_url: str, auth_secret: str) -> dict[str, object]:
             )
     checked.append("/admin/currency-rates/upsert (authenticated POST)")
     with _isolated_smoke_change_reason(database_url) as reason:
+        probe = connect_postgres(database_url)
+        try:
+            provider_id = int(probe.execute("SELECT id FROM providers WHERE is_active IS TRUE ORDER BY id LIMIT 1").fetchone()["id"])
+        finally:
+            probe.close()
+        event_path = "/provider-changes/create"
+        status, headers, _ = wsgi_request(
+            app,
+            event_path,
+            method="POST",
+            data={
+                "apply_scope": "none", "event_at": "2026-08-26T12:00",
+                "provider_id": str(provider_id), "reason": reason["name"],
+            },
+            cookie=cookie,
+        )
+        if status != "303 See Other" or _header(headers, "Location") != "/provider-changes":
+            raise SmokeFailure(event_path, "DB-backed change reason was not accepted", status)
+        verify = connect_postgres(database_url)
+        try:
+            event = verify.execute(
+                "SELECT id, reason FROM routing_events WHERE reason = %s ORDER BY id DESC LIMIT 1", (reason["name"],)
+            ).fetchone()
+        finally:
+            verify.close()
+        if not event or event["reason"] != reason["name"]:
+            raise SmokeFailure(event_path, "routing event did not preserve the reason snapshot", status)
+
         update_path = f"/admin/change-reasons/{reason['id']}/update"
         status, headers, _ = wsgi_request(
             app,
             update_path,
             method="POST",
-            data={"name": reason["name"], "comment": "вызовы уходят в занято", "is_active": "0"},
+            data={"name": reason["name"], "comment": "вызовы уходят в занято", "is_active": "0", "scopes": "none", "_scopes_present": "1"},
             cookie=cookie,
         )
         if status != "303 See Other" or _header(headers, "Location") != "/admin/change-reasons":
@@ -507,7 +534,19 @@ def run_smoke(database_url: str, auth_secret: str) -> dict[str, object]:
             raise SmokeFailure(update_path, "change-reason update was not persisted", status)
         if update_logs != 1:
             raise SmokeFailure(update_path, "change-reason update did not create exactly one audit row", status)
-    checked.append("/admin/change-reasons/{id}/update (authenticated POST)")
+        status, _, body = wsgi_request(app, "/provider-changes", cookie=cookie)
+        rendered = body.decode("utf-8", errors="replace")
+        selectable_payload = rendered.split("const reasonsByScope = ", 1)[-1].split(";", 1)[0]
+        if status != "200 OK" or reason["name"] in selectable_payload:
+            raise SmokeFailure("/provider-changes", "inactive reason remained selectable", status)
+        verify = connect_postgres(database_url)
+        try:
+            snapshot = verify.execute("SELECT reason FROM routing_events WHERE id = %s", (event["id"],)).fetchone()
+        finally:
+            verify.close()
+        if not snapshot or snapshot["reason"] != reason["name"]:
+            raise SmokeFailure(event_path, "deactivation altered the historical snapshot", status)
+    checked.append("/provider-changes DB reason lifecycle (authenticated POST)")
     with _isolated_smoke_dictionaries(database_url) as dictionaries:
         prefix_path = f"/admin/dictionaries/prefixes/{dictionaries['prefix_id']}/update"
         prefix_before_attack = _prefix_value(database_url, dictionaries["prefix_id"])

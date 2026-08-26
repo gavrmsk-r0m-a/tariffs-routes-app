@@ -8003,10 +8003,9 @@ def companies_page(repo: Repository, q: dict[str, str] | None = None, *, form_er
 {table_footer(pagination_html, "<a class='button table-utility-button' href='/calling-companies/history'>Журнал событий</a>" + column_settings('companies', [('server', 'Сервер'), ('geo', 'ГЕО'), ('company_name', 'Название кампании'), ('company_id', 'ID кампании'), ('lines', 'Количество линий'), ('dial_sets', 'Количество наборов'), ('autorotation', 'Авторотация'), ('retry_interval', 'Интервал дозвона'), ('active', 'Активна'), ('comment', 'Комментарий'), ('actions', 'Действия')], hlr_style=True) + export_link('/companies', q, text=True))}"""
     return page("Кампании прозвона", table_page_container(body, extra_class="companies-page"))
 
-def routing_reason_options(selected: str | None = None, scope: str = "campaign_setting") -> str:
-    reasons = Repository.ROUTING_EVENT_REASONS_BY_SCOPE.get(scope, Repository.ROUTING_EVENT_REASONS)
-    if selected and selected not in reasons:
-        reasons = (*reasons, selected)
+def routing_reason_options(reasons: list[str], selected: str | None = None) -> str:
+    if not reasons:
+        return "<option value='' selected disabled>Нет доступных причин</option>"
     return "".join(
         f"<option value='{esc(reason)}' {'selected' if reason == selected else ''}>{esc(reason)}</option>"
         for reason in reasons
@@ -8130,6 +8129,10 @@ def campaign_metadata_json(repo: Repository) -> str:
 
 
 def routing_event_form(repo: Repository, event=None, error_message: str | None = None) -> str:
+    reasons_by_scope = {
+        scope: [row["name"] for row in repo.list_change_reasons(scope=scope, active=True)]
+        for scope in Repository.CHANGE_REASON_SCOPES
+    }
     p = placeholder(repo.backend)
     is_existing_event = bool(event) and "id" in event.keys()
     if is_existing_event:
@@ -8241,7 +8244,7 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
     <label>GEO <span class='required'>*</span><select name='country_id' id='event-country'>{active_options(repo, 'countries', selected=event['country_id'] if event else None, empty='—')}</select></label>
     <label>Провайдер <span class='required'>*</span><select name='provider_id' id='event-provider'>{active_options(repo, 'providers', selected=provider_selected, empty='—')}</select></label>
     <label>Маршрут/префикс <select name='affected_route_id' id='affected-route'>{route_opts}</select></label>
-    <label class='span-2'>Причина <span class='required'>*</span><select name='reason' id='routing-reason' required>{routing_reason_options(event['reason'] if event else None, 'none')}</select></label>
+    <label class='span-2'>Причина <span class='required'>*</span><select name='reason' id='routing-reason' required>{routing_reason_options(reasons_by_scope['none'], event['reason'] if event else None)}</select></label>
     <label class='wide'>Комментарий <span class='required comment-required' hidden>*</span><textarea name='comment' id='routing-comment' rows='3' cols='60'>{esc(event['comment'] if event else '')}</textarea></label>
   </div>
   <div class='provider-change-server-priority-create' data-scope-content='server_priority' data-scopes='server_priority' hidden>
@@ -8260,7 +8263,7 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
           <label>Провайдер перелива <span class='required'>*</span><select name='overflow_provider_id' id='server-overflow-provider' disabled>{active_options(repo, 'providers', selected=overflow_provider_selected, empty='—')}</select></label>
           <label>Маршрут перелива <span class='required'>*</span><select name='overflow_route_id' id='server-overflow-route' disabled>{overflow_opts}</select></label>
         </div>
-        <label>Причина <span class='required'>*</span><select name='reason' id='server-routing-reason' required disabled>{routing_reason_options(event['reason'] if event else None, 'server_priority')}</select><span class='field-helper' id='server-routing-reason-helper'></span></label>
+        <label>Причина <span class='required'>*</span><select name='reason' id='server-routing-reason' required disabled>{routing_reason_options(reasons_by_scope['server_priority'], event['reason'] if event else None)}</select><span class='field-helper' id='server-routing-reason-helper'></span></label>
       </div>
       <div class='server-priority-create-right'>
         <span class='server-priority-create-title'>Серверы</span>
@@ -8278,7 +8281,7 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
     </select></label>
     <div class='campaign-id-action-field'><span class='field-label'>ID кампании</span><input name='campaign_id_search' id='campaign-id-search' value='{esc(event['campaign_id_search'] if event and 'campaign_id_search' in event.keys() else '')}' disabled><span class='field-error' id='campaign-id-search-error' aria-live='polite'></span></div>
     <button type='button' id='campaign-id-search-button' class='small-button campaign-id-action-button' disabled>OK</button>
-    <label class='campaign-reason-field'>Причина <span class='required'>*</span><select name='reason' id='campaign-routing-reason' required disabled>{routing_reason_options(event['reason'] if event else None, 'campaign_setting')}</select></label>
+    <label class='campaign-reason-field'>Причина <span class='required'>*</span><select name='reason' id='campaign-routing-reason' required disabled>{routing_reason_options(reasons_by_scope['campaign_setting'], event['reason'] if event else None)}</select></label>
     <div class='campaign-company-field'>
       <span class='field-label'>Кампания <span class='required'>*</span></span>
       <details class='company-select-control' id='event-company' data-placeholder='—'>
@@ -8550,7 +8553,7 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
     <label id='overflow-route-field'>Маршрут перелива <span class='required'>*</span><select name='overflow_route_id' id='overflow-route'>{overflow_opts}</select></label>
   </div>
   <div class='provider-change-campaign-lower-grid'>
-    <label class='routing-reason-field'>Причина <span class='required'>*</span><select name='reason' id='routing-reason' required>{routing_reason_options(event['reason'] if event else None, scope)}</select><span class='field-helper' id='routing-reason-helper'></span></label>
+    <label class='routing-reason-field'>Причина <span class='required'>*</span><select name='reason' id='routing-reason' required>{routing_reason_options(reasons_by_scope[scope], event['reason'] if event else None)}</select><span class='field-helper' id='routing-reason-helper'></span></label>
     <div class='scope-field campaign-company-field' data-scopes='campaign_setting'>
       <span class='field-label'>Кампания <span class='required'>*</span></span>
       <details class='multi-select' id='event-company' data-placeholder='—'>
@@ -8580,7 +8583,7 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
   const routes = {route_metadata_json(repo)};
   const priorities = {current_priorities_json(repo)};
   const campaigns = {campaign_metadata_json(repo)};
-  const reasonsByScope = {json.dumps(Repository.ROUTING_EVENT_REASONS_BY_SCOPE, ensure_ascii=False)};
+  const reasonsByScope = {json.dumps(reasons_by_scope, ensure_ascii=False)};
   const currentReason = {json.dumps(event['reason'] if event else None, ensure_ascii=False)};
   const campaignCountries = Object.fromEntries(campaigns.map((company) => [String(company.id), company.country_id]));
   const routeNeeds = new Set(['set_campaign_route']);
@@ -8591,7 +8594,16 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
     if (!reason) return;
     const previous = reason.value || currentReason || '';
     reason.innerHTML = '';
-    (reasonsByScope[scope] || []).forEach((value) => {{
+    const availableReasons = reasonsByScope[scope] || [];
+    if (!availableReasons.length) {{
+      const opt = document.createElement('option');
+      opt.value = '';
+      opt.textContent = 'Нет доступных причин';
+      opt.disabled = true;
+      opt.selected = true;
+      reason.appendChild(opt);
+    }}
+    availableReasons.forEach((value) => {{
       const opt = document.createElement('option');
       opt.value = value;
       opt.textContent = value;

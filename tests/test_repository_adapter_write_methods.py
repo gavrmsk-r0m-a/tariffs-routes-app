@@ -464,6 +464,7 @@ class RepositoryAdapterWriteMethodsTest(unittest.TestCase):
                       company_change_type="set_campaign_route", new_company_route_id=4,
                       comment="stage65b", created_by=7)
         with patch.object(repo, "_company_old_state", return_value={"routing_mode": "server_priority", "route_id": None, "has_autorotation": False}), \
+             patch.object(repo, "list_change_reasons", return_value=[{"name": "Задача руководства"}]), \
              patch.object(repo, "_routing_event_snapshot", return_value={"comment": "stage65b"}), \
              patch.object(repo, "_routing_event_summary", return_value="stage65b"), \
              patch.object(repo, "_change_log") as change_log, \

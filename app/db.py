@@ -380,7 +380,18 @@ def run_lightweight_migrations(conn: sqlite3.Connection) -> None:
                 "INSERT OR IGNORE INTO change_reason_scopes(reason_id, apply_scope) VALUES (?, ?)",
                 (reason_id, scope),
             )
-    for scope, reasons in Repository.ROUTING_EVENT_REASONS_BY_SCOPE.items():
+    # Historical seed/backfill only. Runtime selection and validation read the
+    # change_reasons tables through Repository.list_change_reasons().
+    legacy_change_reasons_by_scope = {
+        "none": ("Обновление/смена АОНов", "Провайдер сменил маршрут", "Другое"),
+        "server_priority": ("Массовый отбои/занято", "Обратная смена провайдера", "Задача руководства", "Другое"),
+        "campaign_setting": (
+            "Задача руководства", "Массовые отбои / занято", "Плохой дозвон", "Провайдер не отвечает",
+            "Авария у провайдера", "Тест нового маршрута", "Плановое переключение", "Обновление пула / АОН",
+            "Проблема с префиксом", "Другое",
+        ),
+    }
+    for scope, reasons in legacy_change_reasons_by_scope.items():
         for name in reasons:
             row = conn.execute("SELECT id FROM change_reasons WHERE lower(name) = lower(?)", (name,)).fetchone()
             if row is None:
