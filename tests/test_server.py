@@ -4420,6 +4420,43 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertEqual(captured["status"], "200 OK")
         self.assertIn("Дата (UTC/server time)", content)
 
+    def test_change_log_summary_uses_shared_expandable_popover_without_mutating_audit_data(self):
+        self.request("/admin/change-log")
+        short_summary = "Короткое изменение"
+        long_summary = "Первая строка подробного изменения\n" + ("продолжение сводки " * 5)
+        conn = server.connect(server.DB_PATH)
+        try:
+            conn.executemany(
+                "INSERT INTO change_log (entity_type, entity_id, change_type, summary, source) VALUES (?, ?, ?, ?, ?)",
+                [
+                    ("test_summary", 901, "test.short", short_summary, "test"),
+                    ("test_summary", 902, "test.long", long_summary, "test"),
+                ],
+            )
+            conn.commit()
+            before = [tuple(row) for row in conn.execute("SELECT * FROM change_log ORDER BY id")]
+        finally:
+            conn.close()
+
+        captured, content = self.request("/admin/change-log")
+
+        self.assertEqual(captured["status"], "200 OK")
+        short_row = content.split("test.short", 1)[1].split("</tr>", 1)[0]
+        long_row = content.split("test.long", 1)[1].split("</tr>", 1)[0]
+        self.assertIn(f"<span class='cell-clamp'>{short_summary}</span>", short_row)
+        self.assertNotIn("data-full-text=", short_row)
+        self.assertIn("data-col='summary'", long_row)
+        self.assertIn(f"data-full-text='{long_summary}'", long_row)
+        self.assertIn("copyButton.textContent = \"Копировать\"", content)
+        self.assertIn('textBox.addEventListener("click", () => selectNodeText(textBox))', content)
+
+        conn = server.connect(server.DB_PATH)
+        try:
+            after = [tuple(row) for row in conn.execute("SELECT * FROM change_log ORDER BY id")]
+        finally:
+            conn.close()
+        self.assertEqual(before, after)
+
     def test_company_routing_settings_admin_link_and_screen_render(self):
         self.request("/routes")
         captured, content = self.request("/admin")
