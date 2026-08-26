@@ -424,6 +424,216 @@ def _header(headers, name: str) -> str | None:
     return next((value for key, value in headers if key.lower() == name.lower()), None)
 
 
+def _login(app, username: str, password: str, expected_location: str = "/routes") -> str:
+    status, headers, _ = wsgi_request(
+        app, "/login", method="POST", data={"username": username, "password": password}
+    )
+    if status != "303 See Other" or _header(headers, "Location") != expected_location:
+        raise SmokeFailure("/login", f"login did not redirect to {expected_location}", status)
+    set_cookie = _header(headers, "Set-Cookie")
+    if not set_cookie:
+        raise SmokeFailure("/login", "login did not return an auth cookie", status)
+    return set_cookie.split(";", 1)[0]
+
+
+def _assert_login_denied(app, username: str, password: str) -> None:
+    status, _, body = wsgi_request(
+        app, "/login", method="POST", data={"username": username, "password": password}
+    )
+    if status != "401 Unauthorized" or not body:
+        raise SmokeFailure("/login", "invalid/inactive account was not denied", status)
+
+
+def _run_users_postgres_lifecycle(app, database_url: str, admin_cookie: str) -> list[str]:
+    """Exercise account administration exclusively through the WSGI runtime."""
+    suffix = secrets.token_hex(6)
+    username = f"stage69q2-{suffix}"
+    display_name = f"Оператор 69Q2 {suffix}"
+    initial_password = secrets.token_urlsafe(18)
+    temporary_password = secrets.token_urlsafe(18)
+    final_password = secrets.token_urlsafe(18)
+    user_id = None
+    try:
+        status, _, body = wsgi_request(app, "/admin/users", cookie=admin_cookie)
+        if status != "200 OK" or b"password_hash" in body or b"password_salt" in body:
+            raise SmokeFailure("/admin/users", "users page failed or exposed password material", status)
+
+        create_data = {
+            "username": username, "display_name": display_name, "email": f"{suffix}@example.test",
+            "role_key": "operator", "password": initial_password,
+            "password_confirm": initial_password, "perm__routes__read": "1",
+        }
+        status, headers, _ = wsgi_request(
+            app, "/admin/users/create", method="POST", data=create_data, cookie=admin_cookie
+        )
+        if status != "303 See Other" or _header(headers, "Location") != "/admin/users":
+            raise SmokeFailure("/admin/users/create", "operator creation failed", status)
+
+        conn = connect_postgres(database_url)
+        try:
+            row = conn.execute(
+                "SELECT id, username, display_name, is_active, password_hash, password_salt "
+                "FROM users WHERE username=%s", (username,),
+            ).fetchone()
+            if not row or not row["is_active"] or row["password_hash"] in (None, initial_password):
+                raise SmokeFailure("/admin/users/create", "PostgreSQL user/hash state is invalid")
+            user_id = int(row["id"])
+            if initial_password in str(row["password_hash"]) or not row["password_salt"]:
+                raise SmokeFailure("/admin/users/create", "password was not safely hashed")
+        finally:
+            conn.close()
+
+        operator_cookie = _login(app, username, initial_password)
+        allowed, _, _ = wsgi_request(app, "/routes", cookie=operator_cookie)
+        denied, _, _ = wsgi_request(app, "/hlr", cookie=operator_cookie)
+        if allowed != "200 OK" or denied != "403 Forbidden":
+            raise SmokeFailure("/admin/users", "explicit read permissions were not enforced")
+
+        update_data = {
+            "username": username, "display_name": display_name, "email": f"{suffix}@example.test",
+            "role_key": "operator", "is_active": "1", "perm__hlr__read": "1",
+            "perm__hlr__write": "1", "perm__hlr__export": "1",
+        }
+        status, headers, _ = wsgi_request(
+            app, f"/admin/users/{user_id}/update", method="POST", data=update_data, cookie=admin_cookie
+        )
+        if status != "303 See Other":
+            raise SmokeFailure(f"/admin/users/{user_id}/update", "permission update failed", status)
+        allowed, _, _ = wsgi_request(app, "/hlr", cookie=operator_cookie)
+        denied, _, _ = wsgi_request(app, "/routes", cookie=operator_cookie)
+        if allowed != "200 OK" or denied != "403 Forbidden":
+            raise SmokeFailure("/admin/users", "updated permissions did not take effect")
+
+        reset_data = {**update_data, "password": temporary_password, "password_confirm": temporary_password}
+        status, _, _ = wsgi_request(
+            app, f"/admin/users/{user_id}/update", method="POST", data=reset_data, cookie=admin_cookie
+        )
+        if status != "303 See Other":
+            raise SmokeFailure(f"/admin/users/{user_id}/update", "password reset failed", status)
+        _assert_login_denied(app, username, initial_password)
+        change_cookie = _login(app, username, temporary_password, "/change-password")
+        status, headers, _ = wsgi_request(
+            app, "/change-password", method="POST", cookie=change_cookie,
+            data={"password": final_password, "password_confirm": final_password},
+        )
+        if status != "303 See Other" or _header(headers, "Location") != "/routes":
+            raise SmokeFailure("/change-password", "required password change failed", status)
+        _assert_login_denied(app, username, temporary_password)
+        _login(app, username, final_password)
+
+        deactivate_data = {**update_data, "is_active": "0"}
+        status, _, _ = wsgi_request(
+            app, f"/admin/users/{user_id}/update", method="POST", data=deactivate_data, cookie=admin_cookie
+        )
+        if status != "303 See Other":
+            raise SmokeFailure(f"/admin/users/{user_id}/update", "deactivation failed", status)
+        _assert_login_denied(app, username, final_password)
+        conn = connect_postgres(database_url)
+        try:
+            row = conn.execute("SELECT username, display_name, is_active FROM users WHERE id=%s", (user_id,)).fetchone()
+            if not row or row["is_active"] or row["username"] != username or row["display_name"] != display_name:
+                raise SmokeFailure("/admin/users", "deactivation damaged the account row")
+        finally:
+            conn.close()
+        return ["USERS PostgreSQL lifecycle (create, permissions, password reset/change, deactivate)"]
+    finally:
+        if user_id is not None:
+            cleanup = connect_postgres(database_url)
+            try:
+                cleanup.execute("DELETE FROM user_permissions WHERE user_id=%s", (user_id,))
+                cleanup.execute("DELETE FROM login_attempts WHERE username_normalized=%s", (username.lower(),))
+                cleanup.execute("DELETE FROM users WHERE id=%s", (user_id,))
+                cleanup.commit()
+            finally:
+                cleanup.close()
+
+
+def _run_hlr_postgres_lifecycle(app, database_url: str, admin_cookie: str) -> list[str]:
+    """Use demo results while proving settings and usage use PostgreSQL."""
+    status, _, body = wsgi_request(app, "/hlr", cookie=admin_cookie)
+    if status != "200 OK" or b"Demo mode" not in body:
+        raise SmokeFailure("/hlr", "demo HLR page was not ready", status)
+    conn = connect_postgres(database_url)
+    try:
+        old_setting = conn.execute("SELECT value FROM app_settings WHERE key=%s", ("hlr_daily_limit_override",)).fetchone()
+        usage_before = conn.execute("SELECT * FROM hlr_daily_usage WHERE usage_date=CURRENT_DATE").fetchone()
+        before_count = int(usage_before["checked_count"]) if usage_before else 0
+    finally:
+        conn.close()
+    try:
+        status, _, body = wsgi_request(
+            app, "/hlr/config/daily-limit", method="POST", cookie=admin_cookie,
+            data={"daily_limit_override": str(before_count + 20)},
+        )
+        if status != "200 OK" or str(before_count + 20).encode() not in body:
+            raise SmokeFailure("/hlr/config/daily-limit", "persisted limit was not rendered", status)
+
+        numbers = "+79990000011\n+79990000022\n+79990000077\nне номер\n+79990000011"
+        status, _, body = wsgi_request(
+            app, "/hlr/check", method="POST", cookie=admin_cookie, data={"numbers": numbers}
+        )
+        text_body = body.decode("utf-8")
+        if status != "200 OK" or any(value not in text_body for value in ("DEAD", "INCONCLUSIVE", "LIVE", "BAD_FORMAT")):
+            raise SmokeFailure("/hlr/check", "deterministic statuses were not returned", status)
+        match = re.search(r"name='results_json' value='([^']*)'", text_body)
+        if not match:
+            raise SmokeFailure("/hlr/check", "server-rendered export payload is missing", status)
+        results = json.loads(html.unescape(match.group(1)))
+        if len(results) != 4 or len({row["original_number"] for row in results}) != 4:
+            raise SmokeFailure("/hlr/check", "deduplication/result contract failed", status)
+
+        conn = connect_postgres(database_url)
+        try:
+            setting = conn.execute("SELECT value FROM app_settings WHERE key=%s", ("hlr_daily_limit_override",)).fetchone()
+            usage = conn.execute("SELECT checked_count, last_check_count, updated_at FROM hlr_daily_usage WHERE usage_date=CURRENT_DATE").fetchone()
+            if not setting or setting["value"] != str(before_count + 20) or not usage:
+                raise SmokeFailure("/hlr/check", "HLR PostgreSQL setting/usage persistence is missing")
+            if int(usage["checked_count"]) != before_count + 3 or int(usage["last_check_count"]) != 3 or not usage["updated_at"]:
+                raise SmokeFailure("/hlr/check", "HLR usage counters/timestamp are incorrect")
+        finally:
+            conn.close()
+
+        export_data = {
+            "results_json": json.dumps(results, ensure_ascii=False),
+            "selected_statuses_json": json.dumps(["DEAD"]), "show_all_statuses": "0",
+        }
+        status, headers, csv_body = wsgi_request(
+            app, "/hlr/export.csv", method="POST", cookie=admin_cookie, data=export_data
+        )
+        csv_text = csv_body.decode("utf-8-sig")
+        if status != "200 OK" or "79990000011" not in csv_text or "79990000022" in csv_text or "…" in csv_text:
+            raise SmokeFailure("/hlr/export.csv", "filtered full-value UTF-8 export failed", status)
+        if not _header(headers, "Content-Disposition"):
+            raise SmokeFailure("/hlr/export.csv", "CSV download header is missing", status)
+
+        status, _, _ = wsgi_request(
+            app, "/hlr/check", method="POST", cookie=admin_cookie,
+            data={"numbers": "\n".join(f"+799901{i:05d}" for i in range(18))},
+        )
+        if status != "400 Bad Request":
+            raise SmokeFailure("/hlr/check", "daily limit returned no controlled rejection", status)
+        return ["HLR PostgreSQL lifecycle (settings, demo statuses, usage, dedupe, limit, filtered CSV)"]
+    finally:
+        cleanup = connect_postgres(database_url)
+        try:
+            if old_setting:
+                cleanup.execute("UPDATE app_settings SET value=%s WHERE key=%s", (old_setting["value"], "hlr_daily_limit_override"))
+            else:
+                cleanup.execute("DELETE FROM app_settings WHERE key=%s", ("hlr_daily_limit_override",))
+            if usage_before:
+                cleanup.execute(
+                    "UPDATE hlr_daily_usage SET checked_count=%s, credits_spent=%s, last_check_count=%s, "
+                    "last_check_credits=%s, updated_at=%s WHERE usage_date=CURRENT_DATE",
+                    (usage_before["checked_count"], usage_before["credits_spent"], usage_before["last_check_count"],
+                     usage_before["last_check_credits"], usage_before["updated_at"]),
+                )
+            else:
+                cleanup.execute("DELETE FROM hlr_daily_usage WHERE usage_date=CURRENT_DATE")
+            cleanup.commit()
+        finally:
+            cleanup.close()
+
+
 def _run_import_export_smoke(app, database_url: str, cookie: str) -> list[str]:
     """Exercise the existing import forms and section CSV exports on PostgreSQL."""
     suffix = secrets.token_hex(5).upper()
@@ -517,17 +727,11 @@ def run_smoke(database_url: str, auth_secret: str) -> dict[str, object]:
     if status != "303 See Other" or _header(headers, "Location") != "/login":
         raise SmokeFailure("/routes", "unauthenticated request did not redirect to /login", status)
 
-    status, headers, _ = wsgi_request(
-        app, "/login", method="POST", data={"username": USERNAME, "password": password}
-    )
-    if status != "303 See Other" or _header(headers, "Location") != "/routes":
-        raise SmokeFailure("/login", "test-user login did not redirect to /routes", status)
-    set_cookie = _header(headers, "Set-Cookie")
-    if not set_cookie:
-        raise SmokeFailure("/login", "test-user login did not return an auth cookie", status)
-    cookie = set_cookie.split(";", 1)[0]
+    cookie = _login(app, USERNAME, password)
 
     checked = []
+    checked.extend(_run_users_postgres_lifecycle(app, database_url, cookie))
+    checked.extend(_run_hlr_postgres_lifecycle(app, database_url, cookie))
     checked.extend(_run_import_export_smoke(app, database_url, cookie))
     for path in PAGES:
         status, _, body = wsgi_request(app, path, cookie=cookie)

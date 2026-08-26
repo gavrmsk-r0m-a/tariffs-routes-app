@@ -149,6 +149,13 @@ class HlrDailyUsageTest(unittest.TestCase):
         self.assertEqual(usage["remaining_today"], 5)
         self.assertEqual(usage["last_check_count"], 0)
 
+    def test_hlr_database_failure_is_not_mapped_to_provider_result(self):
+        with patch.dict(os.environ, {"HLR_MODE": "demo", "HLR_DAILY_CHECK_LIMIT": "5"}, clear=False), patch(
+            "app.server.hlr_record_daily_usage", side_effect=RuntimeError("database write failed")
+        ):
+            with self.assertRaisesRegex(RuntimeError, "database write failed"):
+                server.hlr_run_check("+48123456789")
+
     def test_hlr_daily_limit_uses_env_when_no_override(self):
         with patch.dict(os.environ, {"HLR_DAILY_CHECK_LIMIT": "7"}, clear=False):
             state = server.hlr_daily_limit_state()
