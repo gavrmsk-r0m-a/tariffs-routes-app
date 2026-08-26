@@ -1,9 +1,30 @@
 import sqlite3
 import unittest
+from unittest.mock import Mock, patch
 
 from app.db import init_db
-from app.importer import apply_import, preview_import
+from app.importer import ImportPreview, apply_import, preview_import
 from app.repository import BusinessRuleError, Repository
+
+
+class ImportFailureVisibilityTests(unittest.TestCase):
+    def test_preview_does_not_disguise_unexpected_database_error_as_invalid_row(self):
+        conn = Mock()
+        with patch("app.importer.Repository.route_exists_by_country_name_and_name", side_effect=RuntimeError("database offline")):
+            with self.assertRaisesRegex(RuntimeError, "database offline"):
+                preview_import(conn, "routes", "country,name\nItaly,CI route\n", backend="postgres")
+
+    def test_apply_rolls_back_and_raises_unexpected_programming_error(self):
+        conn = Mock()
+        with (
+            patch("app.importer.preview_import", return_value=ImportPreview("dictionaries", total_rows=1, new_rows=1)),
+            patch("app.importer._exists", return_value=False),
+            patch("app.importer._apply_dictionary", side_effect=RuntimeError("bad postgres SQL")),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "bad postgres SQL"):
+                apply_import(conn, "dictionaries", "type,name\ncountry,Italy\n", user_id=1, backend="postgres")
+        conn.rollback.assert_called_once_with()
+        conn.commit.assert_not_called()
 
 
 class ImporterTest(unittest.TestCase):
