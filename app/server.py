@@ -269,13 +269,13 @@ def selectable_text(content_html: str, value: object, *, classes: str = "compoun
     )
 
 
-def clamp_cell(col: str, content_html: str, title: object, *, extra_attrs: str = "", classes: str = "", selectable: bool = False, select_value: object | None = None) -> str:
+def clamp_cell(col: str, content_html: str, title: object, *, extra_attrs: str = "", classes: str = "", selectable: bool = False, select_value: object | None = None, preserve_lines: bool = False) -> str:
     cell_classes = classes.split() if classes else []
     if selectable and "selectable-cell" not in cell_classes:
         cell_classes.append("selectable-cell")
     class_attr = f" class='{' '.join(cell_classes)}'" if cell_classes else ""
     attrs = f" {extra_attrs.strip()}" if extra_attrs.strip() else ""
-    title_text = plain_text(title)
+    title_text = str(title).replace("\r\n", "\n").replace("\r", "\n") if preserve_lines else plain_text(title)
     title_attr = f" title='{esc(title_text)}'" if len(title_text) > 60 else ""
     full_text_attr = f" data-full-text='{esc(title_text)}'" if len(title_text) > 60 else ""
     inner_html = selectable_text(content_html, title_text if select_value is None else select_value) if selectable else content_html
@@ -4254,6 +4254,8 @@ ${{script.textContent}}
         const textBox = document.createElement("div");
         textBox.className = "cell-popover-text";
         textBox.textContent = text;
+        textBox.title = "Нажмите, чтобы выделить весь текст";
+        textBox.addEventListener("click", () => selectNodeText(textBox));
         copyButton.addEventListener("click", () => copy(text, copyButton));
         closeButton.addEventListener("click", close);
         actions.append(copyButton, closeButton);
@@ -9705,7 +9707,8 @@ def telegram_page(repo: Repository) -> bytes:
 def change_log_page(repo: Repository) -> bytes:
     rows = []
     for log in repo.conn.execute("SELECT cl.*, u.username FROM change_log cl LEFT JOIN users u ON u.id = cl.changed_by ORDER BY cl.changed_at DESC, cl.id DESC LIMIT 100"):
-        rows.append(f"<tr><td>{esc(log['changed_at'])}</td><td>{esc(log['entity_type'])}</td><td>{esc(log['entity_id'])}</td><td>{esc(log['change_type'])}</td><td>{esc(log['username'])}</td><td>{esc(log['summary'])}</td></tr>")
+        summary = log["summary"] or ""
+        rows.append(f"<tr><td>{esc(log['changed_at'])}</td><td>{esc(log['entity_type'])}</td><td>{esc(log['entity_id'])}</td><td>{esc(log['change_type'])}</td><td>{esc(log['username'])}</td>{clamp_cell('summary', esc(summary), summary, preserve_lines=True)}</tr>")
     table_html = f"<table><thead><tr><th>Дата (UTC/server time)</th><th>Entity</th><th>ID</th><th>Change</th><th>Кто</th><th>Summary</th></tr></thead><tbody>{''.join(rows)}</tbody></table>"
     return page("Change log", f"<h1>Change log</h1>{table_card(table_html)}")
 
