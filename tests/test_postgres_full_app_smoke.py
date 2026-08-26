@@ -181,17 +181,19 @@ class FullAppSmokeHarnessTests(unittest.TestCase):
 
     def test_change_reason_smoke_fixture_always_cleans_reason_and_audit(self):
         create_conn = Mock()
-        create_conn.execute.return_value.fetchone.return_value = {"id": 902}
         cleanup_conn = Mock()
-        with patch("scripts.postgres_full_app_smoke.connect_postgres", side_effect=[create_conn, cleanup_conn]):
+        with patch("scripts.postgres_full_app_smoke.connect_postgres", side_effect=[create_conn, cleanup_conn]), patch(
+            "scripts.postgres_full_app_smoke.Repository.create_change_reason", return_value=902,
+        ) as create_reason:
             with _isolated_smoke_change_reason("postgresql://ci.invalid/demo") as reason:
                 self.assertEqual(reason["id"], 902)
-                self.assertTrue(reason["name"].startswith("CI_SMOKE_REASON_UPDATED_"))
-        self.assertIn("VALUES (%s, %s, true)", create_conn.execute.call_args.args[0])
+                self.assertTrue(reason["name"].startswith("CI_SMOKE_REASON_"))
+        self.assertEqual(create_reason.call_args.kwargs["scopes"], ["none"])
         cleanup_calls = [call.args for call in cleanup_conn.execute.call_args_list]
         self.assertIn("DELETE FROM change_log", cleanup_calls[0][0])
         self.assertEqual(cleanup_calls[0][1], (902,))
-        self.assertEqual(cleanup_calls[1], ("DELETE FROM change_reasons WHERE id = %s", (902,)))
+        self.assertEqual(cleanup_calls[1][0], "DELETE FROM routing_events WHERE reason = %s")
+        self.assertEqual(cleanup_calls[2], ("DELETE FROM change_reasons WHERE id = %s", (902,)))
         cleanup_conn.commit.assert_called_once_with()
 
     def test_pages_cover_dashboard_and_admin_routing_views(self):

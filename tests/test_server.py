@@ -436,6 +436,7 @@ class ServerSmokeTest(unittest.TestCase):
             return _PostgresFormCursor(one={"value": values[table]})
 
         repo = Mock(backend="postgres")
+        repo.list_change_reasons.return_value = []
         repo.conn.execute.side_effect = execute
         event = {
             "id": 69, "event_at": "2026-08-23 10:00:00", "apply_scope": "campaign_setting",
@@ -468,6 +469,7 @@ class ServerSmokeTest(unittest.TestCase):
 
     def test_routing_event_form_overflow_provider_lookup_uses_postgres_placeholder(self):
         repo = Mock(backend="postgres")
+        repo.list_change_reasons.return_value = []
         repo.conn.execute.side_effect = [
             _PostgresFormCursor(one={"provider_id": 44}),
             _PostgresFormCursor(many=[]),
@@ -2114,6 +2116,82 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertIn("Обратная смена провайдера", content)
         self.assertIn("id='routing-comment'", create_form)
 
+    def test_provider_change_reasons_come_from_active_scoped_dictionary(self):
+        self.request("/routes")
+        conn = server.connect(server.DB_PATH)
+        try:
+            repo = Repository(conn)
+            shared_id = repo.create_change_reason(
+                "Новая причина из БД", created_by=server.ADMIN_ID,
+                scopes=["none", "server_priority"],
+            )
+            inactive_id = repo.create_change_reason(
+                "Неактивная причина", created_by=server.ADMIN_ID,
+                scopes=["none"], is_active=False,
+            )
+            campaign_id = repo.create_change_reason(
+                "Причина кампании из БД", created_by=server.ADMIN_ID,
+                scopes=["campaign_setting"],
+            )
+            repo.update_change_reason(campaign_id, "Переименованная причина кампании", scopes=["campaign_setting"])
+        finally:
+            conn.close()
+
+        captured, content = self.request("/provider-changes")
+        self.assertEqual(captured["status"], "200 OK")
+        none_reasons = _select_fragment(content, "routing-reason")
+        server_reasons = _select_fragment(content, "server-routing-reason")
+        campaign_reasons = _select_fragment(content, "campaign-routing-reason")
+        self.assertIn("Новая причина из БД", none_reasons)
+        self.assertIn("Новая причина из БД", server_reasons)
+        self.assertNotIn("Новая причина из БД", campaign_reasons)
+        self.assertNotIn("Неактивная причина", content)
+        self.assertIn("Переименованная причина кампании", content)
+        self.assertNotIn("Причина кампании из БД\"", content)
+
+        valid = urlencode({"apply_scope": "none", "event_at": "2026-06-10T10:00", "provider_id": "1", "reason": "Новая причина из БД"})
+        captured, _ = self.request("/provider-changes/create", method="POST", body=valid)
+        self.assertEqual(captured["status"], "303 See Other")
+        conn = server.connect(server.DB_PATH)
+        try:
+            snapshot = conn.execute("SELECT reason FROM routing_events ORDER BY id DESC LIMIT 1").fetchone()["reason"]
+            Repository(conn).update_change_reason(shared_id, "Причина после переименования", scopes=["campaign_setting"])
+            self.assertEqual(conn.execute("SELECT reason FROM routing_events ORDER BY id DESC LIMIT 1").fetchone()["reason"], snapshot)
+        finally:
+            conn.close()
+
+    def test_provider_change_rejects_unknown_inactive_and_wrong_scope_reasons(self):
+        self.request("/routes")
+        conn = server.connect(server.DB_PATH)
+        try:
+            repo = Repository(conn)
+            repo.create_change_reason("Только сервер", created_by=server.ADMIN_ID, scopes=["server_priority"])
+            repo.create_change_reason("Отключена", created_by=server.ADMIN_ID, scopes=["none"], is_active=False)
+        finally:
+            conn.close()
+        for reason in ("Подделанная причина", "Только сервер", "Отключена", ""):
+            body = urlencode({"apply_scope": "none", "event_at": "2026-06-10T10:00", "provider_id": "1", "reason": reason})
+            captured, content = self.request("/provider-changes/create", method="POST", body=body)
+            self.assertEqual(captured["status"], "400 Bad Request")
+            self.assertTrue("Некорректная причина" in content or "Причина обязательна" in content)
+
+    def test_provider_change_empty_reason_scope_is_controlled(self):
+        self.request("/routes")
+        conn = server.connect(server.DB_PATH)
+        try:
+            repo = Repository(conn)
+            for reason in repo.list_change_reasons(scope="none", active=True):
+                repo.update_change_reason(reason["id"], reason["name"], is_active=False, scopes=repo.get_change_reason_scopes(reason["id"]))
+        finally:
+            conn.close()
+        captured, content = self.request("/provider-changes")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("Нет доступных причин", content)
+        body = urlencode({"apply_scope": "none", "event_at": "2026-06-10T10:00", "provider_id": "1", "reason": ""})
+        captured, content = self.request("/provider-changes/create", method="POST", body=body)
+        self.assertEqual(captured["status"], "400 Bad Request")
+        self.assertIn("Причина обязательна", content)
+
     def test_provider_change_none_other_requires_comment_but_named_reason_does_not(self):
         ok_body = urlencode({"apply_scope": "none", "event_at": "2026-06-10T10:00", "provider_id": "1", "reason": "Провайдер сменил маршрут", "comment": ""})
         captured, _ = self.request("/provider-changes/create", method="POST", body=ok_body)
@@ -3349,9 +3427,15 @@ class ServerSmokeTest(unittest.TestCase):
 
     def test_change_reason_can_be_deactivated_and_hidden_from_provider_change_form(self):
         self.request("/routes")
-        body = urlencode({"name": "Временно не использовать", "is_active": "1", "comment": "test"})
+        body = urlencode([("name", "Временно не использовать"), ("is_active", "1"), ("comment", "test"), ("_scopes_present", "1"), ("scopes", "none")])
         self.request("/admin/change-reasons/create", method="POST", body=body)
-        self.request("/admin/change-reasons/4/update", method="POST", body=urlencode({"name": "Временно не использовать", "is_active": "0", "comment": "test"}))
+        conn = server.connect(server.DB_PATH)
+        try:
+            reason_id = conn.execute("SELECT id FROM change_reasons WHERE name = ?", ("Временно не использовать",)).fetchone()["id"]
+        finally:
+            conn.close()
+        update = urlencode([("name", "Временно не использовать"), ("is_active", "0"), ("comment", "test"), ("_scopes_present", "1"), ("scopes", "none")])
+        self.request(f"/admin/change-reasons/{reason_id}/update", method="POST", body=update)
         captured, content = self.request("/provider-changes")
         self.assertEqual(captured["status"], "200 OK")
         self.assertNotIn("Временно не использовать", content)

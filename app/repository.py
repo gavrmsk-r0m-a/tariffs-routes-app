@@ -2848,32 +2848,6 @@ class Repository:
             raise
 
 
-    ROUTING_EVENT_REASONS_BY_SCOPE = {
-        "none": (
-            "Обновление/смена АОНов",
-            "Провайдер сменил маршрут",
-            "Другое",
-        ),
-        "server_priority": (
-            "Массовый отбои/занято",
-            "Обратная смена провайдера",
-            "Задача руководства",
-            "Другое",
-        ),
-        "campaign_setting": (
-            "Задача руководства",
-            "Массовые отбои / занято",
-            "Плохой дозвон",
-            "Провайдер не отвечает",
-            "Авария у провайдера",
-            "Тест нового маршрута",
-            "Плановое переключение",
-            "Обновление пула / АОН",
-            "Проблема с префиксом",
-            "Другое",
-        ),
-    }
-    ROUTING_EVENT_REASONS = ROUTING_EVENT_REASONS_BY_SCOPE["campaign_setting"]
     CHANGE_REASON_SCOPES = ("none", "server_priority", "campaign_setting")
     CHANGE_REASON_SCOPE_LABELS = {
         "none": "Не меняли настройки в нашей системе",
@@ -3220,9 +3194,13 @@ class Repository:
             created_by = kwargs.get("created_by")
             if not created_by:
                 raise BusinessRuleError("Пользователь обязателен")
-            allowed_reasons = self.ROUTING_EVENT_REASONS_BY_SCOPE[apply_scope]
-            if values["reason"] not in allowed_reasons:
+            allowed_reasons = self.list_change_reasons(scope=apply_scope, active=True)
+            selected_reason = next((row for row in allowed_reasons if row["name"] == values["reason"]), None)
+            if selected_reason is None:
                 raise BusinessRuleError("Некорректная причина")
+            # routing_events intentionally keeps the current display name as a
+            # historical snapshot rather than a foreign key to the dictionary.
+            values["reason"] = selected_reason["name"]
             if apply_scope == "none" and values["reason"] == "Другое" and not values["comment"]:
                 raise BusinessRuleError("Требуется понятный комментарий")
 
