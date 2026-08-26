@@ -3356,6 +3356,160 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertEqual(captured["status"], "200 OK")
         self.assertNotIn("Временно не использовать", content)
 
+    def _create_scoped_reason(self, name, scopes, *, active=True):
+        self.request("/routes")
+        values = [("name", name), ("comment", "scope test"), ("is_active", "1" if active else "0"), ("_scopes_present", "1")]
+        values.extend(("scopes", scope) for scope in scopes)
+        return self.request("/admin/change-reasons/create", method="POST", body=urlencode(values))
+
+    def test_admin_change_reasons_page_loads_with_scope_and_activity_filters(self):
+        self.request("/routes")
+        captured, content = self.request("/admin/change-reasons")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("Область применения", content)
+        self.assertIn("Активность", content)
+
+    def test_admin_change_reasons_default_filter_shows_only_active(self):
+        self._create_scoped_reason("Active filter reason", ["none"])
+        self._create_scoped_reason("Inactive filter reason", ["none"], active=False)
+        _, content = self.request("/admin/change-reasons")
+        self.assertIn("Active filter reason", content)
+        self.assertNotIn("Inactive filter reason", content)
+
+    def test_admin_change_reasons_scope_tab_filters_through_repository(self):
+        self._create_scoped_reason("Server only reason", ["server_priority"])
+        self._create_scoped_reason("Campaign only reason", ["campaign_setting"])
+        _, content = self.request("/admin/change-reasons?scope=server_priority")
+        self.assertIn("Server only reason", content)
+        self.assertNotIn("Campaign only reason", content)
+
+    def test_admin_change_reasons_all_scope_shows_every_scope(self):
+        self._create_scoped_reason("None scope reason", ["none"])
+        self._create_scoped_reason("Campaign scope reason", ["campaign_setting"])
+        _, content = self.request("/admin/change-reasons")
+        self.assertIn("None scope reason", content)
+        self.assertIn("Campaign scope reason", content)
+
+    def test_admin_change_reasons_activity_all_shows_inactive(self):
+        self._create_scoped_reason("Visible inactive reason", ["server_priority"], active=False)
+        _, content = self.request("/admin/change-reasons?activity=all")
+        self.assertIn("Visible inactive reason", content)
+
+    def test_admin_change_reason_create_with_one_scope(self):
+        captured, _ = self._create_scoped_reason("One scope reason", ["none"])
+        self.assertEqual(captured["status"], "303 See Other")
+        conn = server.connect(server.DB_PATH)
+        try:
+            reason_id = conn.execute("SELECT id FROM change_reasons WHERE name=?", ("One scope reason",)).fetchone()["id"]
+            self.assertEqual([r["apply_scope"] for r in conn.execute("SELECT apply_scope FROM change_reason_scopes WHERE reason_id=?", (reason_id,))], ["none"])
+        finally:
+            conn.close()
+
+    def test_admin_change_reason_create_with_multiple_scopes(self):
+        self._create_scoped_reason("Many scopes reason", ["none", "campaign_setting"])
+        _, content = self.request("/admin/change-reasons")
+        self.assertIn("Many scopes reason", content)
+        self.assertIn("Настройка кампании", content)
+
+    def test_admin_change_reason_create_without_scopes_preserves_modal_state(self):
+        self.request("/routes")
+        captured, content = self.request("/admin/change-reasons/create", method="POST", body=urlencode({"name": "No selected scope", "comment": "kept", "is_active": "1", "_scopes_present": "1"}))
+        self.assertEqual(captured["status"], "400 Bad Request")
+        self.assertIn("Выберите минимум одну область", content)
+        self.assertIn("value='No selected scope'", content)
+        self.assertIn("kept", content)
+        self.assertIn("reason-scope-field has-validation-error", content)
+
+    def test_admin_change_reason_duplicate_is_case_insensitive_and_preserves_modal(self):
+        self._create_scoped_reason("Unique Scoped Name", ["none"])
+        captured, content = self._create_scoped_reason("unique scoped name", ["server_priority"])
+        self.assertEqual(captured["status"], "400 Bad Request")
+        self.assertIn("уже существует", content)
+        self.assertIn("value='unique scoped name'", content)
+
+    def _update_scoped_reason(self, name, scopes, *, active=True):
+        conn = server.connect(server.DB_PATH)
+        try:
+            reason_id = conn.execute("SELECT id FROM change_reasons WHERE name=?", (name,)).fetchone()["id"]
+        finally:
+            conn.close()
+        values = [("name", name), ("comment", "updated"), ("is_active", "1" if active else "0"), ("_scopes_present", "1")]
+        values.extend(("scopes", scope) for scope in scopes)
+        return reason_id, self.request(f"/admin/change-reasons/{reason_id}/update", method="POST", body=urlencode(values))
+
+    def test_admin_change_reason_edit_scopes_one_to_two(self):
+        self._create_scoped_reason("Expand scopes", ["none"])
+        reason_id, (captured, _) = self._update_scoped_reason("Expand scopes", ["none", "server_priority"])
+        self.assertEqual(captured["status"], "303 See Other")
+        conn = server.connect(server.DB_PATH)
+        try: self.assertEqual({r["apply_scope"] for r in conn.execute("SELECT apply_scope FROM change_reason_scopes WHERE reason_id=?", (reason_id,))}, {"none", "server_priority"})
+        finally: conn.close()
+
+    def test_admin_change_reason_edit_scopes_two_to_one(self):
+        self._create_scoped_reason("Reduce scopes", ["none", "campaign_setting"])
+        reason_id, _ = self._update_scoped_reason("Reduce scopes", ["campaign_setting"])
+        conn = server.connect(server.DB_PATH)
+        try: self.assertEqual([r["apply_scope"] for r in conn.execute("SELECT apply_scope FROM change_reason_scopes WHERE reason_id=?", (reason_id,))], ["campaign_setting"])
+        finally: conn.close()
+
+    def test_admin_change_reason_edit_cannot_remove_all_scopes(self):
+        self._create_scoped_reason("Keep a scope", ["none"])
+        _, (captured, content) = self._update_scoped_reason("Keep a scope", [])
+        self.assertEqual(captured["status"], "400 Bad Request")
+        self.assertIn("Выберите минимум одну область", content)
+
+    def test_admin_change_reason_can_be_deactivated(self):
+        self._create_scoped_reason("Deactivate scoped", ["none"])
+        _, (captured, _) = self._update_scoped_reason("Deactivate scoped", ["none"], active=False)
+        self.assertEqual(captured["status"], "303 See Other")
+
+    def test_admin_inactive_change_reason_remains_visible_with_activity_all(self):
+        self._create_scoped_reason("Retained inactive", ["campaign_setting"], active=False)
+        _, content = self.request("/admin/change-reasons?activity=all")
+        self.assertIn("Retained inactive", content)
+        self.assertIn("Настройка кампании", content)
+
+    def test_admin_change_reason_edit_modal_preloads_exact_scopes(self):
+        self._create_scoped_reason("Exact preload", ["none", "campaign_setting"])
+        _, content = self.request("/admin/change-reasons")
+        row = content[content.index("Exact preload"):content.index("</tr>", content.index("Exact preload"))]
+        self.assertIn("value='none' checked", row)
+        self.assertNotIn("value='server_priority' checked", row)
+        self.assertIn("value='campaign_setting' checked", row)
+
+    def test_admin_change_reason_create_from_scope_tab_preselects_scope(self):
+        self.request("/routes")
+        _, content = self.request("/admin/change-reasons?scope=server_priority")
+        create_start = content.index("action='/admin/change-reasons/create'")
+        create_form = content[create_start:content.index("</form>", create_start)]
+        self.assertIn("value='server_priority' checked", create_form)
+        self.assertNotIn("value='campaign_setting' checked", create_form)
+
+    def test_admin_change_reason_modals_have_one_cancel_and_three_scope_checkboxes(self):
+        self.request("/routes")
+        _, content = self.request("/admin/change-reasons")
+        create_start = content.index("<form class='reason-dialog reason-dialog-form' method='post' action='/admin/change-reasons/create'")
+        create_form = content[create_start:content.index("</form>", create_start)]
+        self.assertEqual(create_form.count("data-modal-close"), 1)
+        self.assertEqual(create_form.count("type='checkbox' name='scopes'"), 3)
+        self.assertNotIn("admin-edit-cancel", create_form)
+
+        edit_start = content.index("<form class='reason-dialog reason-dialog-form' method='post' action='/admin/change-reasons/")
+        edit_form = content[edit_start:content.index("</form>", edit_start)]
+        self.assertEqual(edit_form.count("data-modal-close"), 1)
+        self.assertEqual(edit_form.count("type='checkbox' name='scopes'"), 3)
+        self.assertNotIn("admin-edit-actions", edit_form)
+        self.assertNotIn("admin-edit-cancel", edit_form)
+
+    def test_admin_change_reason_filter_toolbar_preserves_scope_and_activity_params(self):
+        self.request("/routes")
+        _, content = self.request("/admin/change-reasons?scope=server_priority&activity=all")
+        self.assertIn("href='/admin/change-reasons?activity=all'", content)
+        self.assertIn("href='/admin/change-reasons?scope=none&amp;activity=all'", content)
+        self.assertIn("href='/admin/change-reasons?scope=server_priority&amp;activity=all'", content)
+        self.assertIn("href='/admin/change-reasons?scope=campaign_setting&amp;activity=all'", content)
+        self.assertIn("href='/admin/change-reasons?scope=server_priority'", content)
+
     def test_legacy_change_reason_create_without_scope_fields_assigns_all_scopes(self):
         self.request("/routes")
         captured, _ = self.request(
@@ -3406,6 +3560,43 @@ class ServerSmokeTest(unittest.TestCase):
             conn.close()
         self.assertEqual(tuple(reason), ("Legacy update form renamed", "updated", 0))
         self.assertEqual(scopes, {"none", "campaign_setting"})
+
+    def test_postgres_full_app_smoke_legacy_orphan_reason_update_assigns_all_scopes(self):
+        self.request("/routes")
+        conn = server.connect(server.DB_PATH)
+        try:
+            reason_id = conn.execute(
+                "INSERT INTO change_reasons(name, description, is_active) VALUES (?, ?, 1)",
+                ("CI_SMOKE_REASON_ORPHAN", "CI full-app smoke reason"),
+            ).lastrowid
+            conn.commit()
+        finally:
+            conn.close()
+
+        captured, _ = self.request(
+            f"/admin/change-reasons/{reason_id}/update",
+            method="POST",
+            body=urlencode({
+                "name": "CI_SMOKE_REASON_UPDATED_ORPHAN",
+                "comment": "вызовы уходят в занято",
+                "is_active": "0",
+            }),
+        )
+        self.assertEqual(captured["status"], "303 See Other")
+        self.assertEqual(dict(captured["headers"])["Location"], "/admin/change-reasons")
+
+        conn = server.connect(server.DB_PATH)
+        try:
+            reason = conn.execute(
+                "SELECT name, description, is_active FROM change_reasons WHERE id = ?", (reason_id,),
+            ).fetchone()
+            scopes = {row["apply_scope"] for row in conn.execute(
+                "SELECT apply_scope FROM change_reason_scopes WHERE reason_id = ?", (reason_id,),
+            )}
+        finally:
+            conn.close()
+        self.assertEqual(tuple(reason), ("CI_SMOKE_REASON_UPDATED_ORPHAN", "вызовы уходят в занято", 0))
+        self.assertEqual(scopes, {"none", "server_priority", "campaign_setting"})
 
     def test_duplicate_change_reason_update_is_friendly_and_preserves_open_form(self):
         self.request("/routes")

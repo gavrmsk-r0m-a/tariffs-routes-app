@@ -3501,6 +3501,35 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .naming-dialog-footer .modal-save, .reason-dialog-footer .modal-save {{ order: 1; border-color: #2563eb; background: #2563eb; color: #fff; }}
     .naming-dialog-footer .modal-save:hover, .reason-dialog-footer .modal-save:hover {{ border-color: #1d4ed8; background: #1d4ed8; color: #fff; }}
     .naming-dialog-footer .modal-cancel, .reason-dialog-footer .modal-cancel {{ order: 2; }}
+    .admin-change-reasons-page .reason-filters {{ display: flex; flex-wrap: wrap; align-items: stretch; gap: 10px; margin: 0 0 14px; padding: 10px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-muted); }}
+    .admin-change-reasons-page .reason-filter-group {{ display: flex; flex: 0 1 auto; align-items: center; gap: 8px; min-width: 0; padding-right: 10px; border-right: 1px solid var(--border-strong); }}
+    .admin-change-reasons-page .reason-filter-group:last-child {{ padding-right: 0; border-right: 0; }}
+    .admin-change-reasons-page .reason-filter-label {{ flex: 0 0 auto; color: var(--muted); font-size: 12px; font-weight: 760; white-space: nowrap; }}
+    .admin-change-reasons-page .reason-filter-options {{ display: flex; flex-wrap: nowrap; gap: 6px; }}
+    .admin-change-reasons-page .reason-filter-options .button {{ display: inline-flex; align-items: center; min-height: 32px; height: 32px; padding: 5px 10px; white-space: nowrap; }}
+    .admin-change-reasons-page .reason-filter-options .button.active {{ border-color: var(--accent); background: var(--accent-soft); color: var(--accent-strong); }}
+    .admin-change-reasons-page .reason-scope-cell {{ width: 280px; min-width: 210px; max-width: 320px; overflow: visible; text-overflow: clip; white-space: normal; }}
+    .admin-change-reasons-page .reason-scope-badges {{ display: flex; flex-wrap: wrap; align-items: flex-start; gap: 4px 5px; max-width: 100%; white-space: normal; }}
+    .admin-change-reasons-page .reason-scope-badges .status-badge {{ flex: 0 0 auto; max-width: 100%; overflow: visible; text-overflow: clip; white-space: normal; line-height: 1.2; }}
+    .admin-change-reasons-page .reason-dialog.reason-dialog {{ width: min(620px, calc(100vw - 48px)); max-height: min(560px, calc(100vh - 48px)); }}
+    .admin-change-reasons-page .reason-dialog-body {{ padding-top: 12px; padding-bottom: 12px; }}
+    .admin-change-reasons-page .reason-scope-field {{ display: grid; gap: 7px; min-width: 0; margin: 1px 0 0; padding: 9px 11px 10px; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--surface); }}
+    .admin-change-reasons-page .reason-scope-field.has-validation-error {{ border-color: var(--danger); box-shadow: 0 0 0 1px var(--danger); }}
+    .admin-change-reasons-page .reason-scope-field legend {{ padding: 0 4px; color: var(--text); font-size: 12px; font-weight: 760; }}
+    .admin-change-reasons-page .reason-dialog .reason-scope-option,
+    .admin-change-reasons-page td[data-col="actions"] details.edit-details > form.reason-dialog .reason-scope-option {{ display: flex; align-items: center; gap: 8px; width: fit-content; max-width: 100%; min-height: 20px; margin: 0; color: var(--text); font-size: 12px; font-weight: 650; line-height: 1.25; cursor: pointer; }}
+    .admin-change-reasons-page td[data-col="actions"] details.edit-details > form.reason-dialog .reason-scope-option input[type="checkbox"],
+    .admin-change-reasons-page .reason-dialog .reason-scope-option input[type="checkbox"] {{ display: inline-block; flex: 0 0 17px; width: 17px; min-width: 17px; max-width: 17px; height: 17px; min-height: 17px; margin: 0; padding: 0; accent-color: var(--accent); box-shadow: none; }}
+    .admin-change-reasons-page .reason-dialog-footer {{ padding-top: 10px; padding-bottom: 10px; }}
+    @media (max-width: 820px) {{
+      .admin-change-reasons-page .reason-filter-group {{ flex: 1 0 100%; padding: 0 0 10px; border-right: 0; border-bottom: 1px solid var(--border-strong); }}
+      .admin-change-reasons-page .reason-filter-group:last-child {{ padding-bottom: 0; border-bottom: 0; }}
+    }}
+    @media (max-width: 560px) {{
+      .admin-change-reasons-page .reason-filter-group {{ align-items: flex-start; flex-direction: column; }}
+      .admin-change-reasons-page .reason-filter-options {{ width: 100%; padding-bottom: 2px; overflow-x: auto; }}
+      .admin-change-reasons-page .reason-dialog.reason-dialog {{ width: calc(100vw - 18px); max-height: calc(100vh - 18px); }}
+    }}
 
     .modal-form-card[open] > form.user-dialog, .user-dialog.user-dialog {{ position: fixed; left: 50%; top: 50%; z-index: 990; width: min(860px, calc(100vw - 48px)); max-width: calc(100vw - 48px); max-height: calc(100vh - 48px); margin: 0; padding: 0; transform: translate(-50%, -50%); display: grid; grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr) auto; gap: 0; overflow: hidden; border: 1px solid var(--border-strong); border-radius: 14px; background: #fff; color: var(--text); box-shadow: 0 22px 62px rgba(15, 23, 42, .22); box-sizing: border-box; }}
     .admin-users-page .user-dialog-header {{ grid-column: 1 / -1; width: 100%; box-sizing: border-box; margin: 0; padding: 14px 22px 12px; border-bottom: 1px solid var(--border-strong); background: linear-gradient(180deg, #fff 0%, #f8fafc 100%); }}
@@ -3580,6 +3609,9 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     html[data-theme="tele-route-pro"] .admin-naming-page .admin-naming-primary-summary:hover,
     html[data-theme="tele-route-pro"] .admin-change-reasons-page .admin-reason-primary-summary:hover,
     html[data-theme="tele-route-pro"] .admin-users-page .admin-user-primary-summary:hover {{ border-color: #1d4ed8 !important; background: #1d4ed8 !important; color: #fff !important; }}
+    html[data-theme="tele-route-pro"] .reason-filter-options .button {{ background: #fff; }}
+    html[data-theme="tele-route-pro"] .reason-filter-options .button.active {{ border-color: #2563eb; background: #eff6ff; color: #1d4ed8; }}
+    html[data-theme="tele-route-pro"] .reason-dialog input.has-validation-error {{ border-color: var(--danger); box-shadow: 0 0 0 1px var(--danger); }}
     html[data-theme="tele-route-pro"] .admin-naming-page .admin-naming-primary-summary::after,
     html[data-theme="tele-route-pro"] .admin-naming-page details[open] > .admin-naming-primary-summary::after,
     html[data-theme="tele-route-pro"] .admin-change-reasons-page .admin-reason-primary-summary::after,
@@ -4047,7 +4079,10 @@ ${{script.textContent}}
     }}
     adminEditDetails.forEach((details) => {{
       const form = details.querySelector("form");
-      if (form && !form.querySelector(".admin-edit-cancel")) {{
+      const dedicatedCancel = form && form.querySelector("[data-modal-close]");
+      if (dedicatedCancel) {{
+        dedicatedCancel.addEventListener("click", () => {{ details.removeAttribute("open"); clearModalBlockingError(); }});
+      }} else if (form && !form.querySelector(".admin-edit-cancel")) {{
         const saveButton = form.querySelector('button[type="submit"], button:not([type]), input[type="submit"]');
         const actions = document.createElement("div");
         actions.className = "admin-edit-actions";
@@ -9408,29 +9443,82 @@ def currency_rates_page(repo: Repository) -> bytes:
     return page("Курсы валют", table_page_container(body, extra_class="admin-currency-page"))
 
 
-def change_reasons_page(repo: Repository, *, form_error: str | None = None, form_data: dict | None = None) -> bytes:
+def change_reasons_page(repo: Repository, q: dict[str, str] | None = None, *, form_error: str | None = None, form_data: dict | None = None) -> bytes:
+    q = q or {}
     form_data = form_data or {}
-    validation_html = modal_blocking_error(form_error)
+    scope = q.get("scope") if q.get("scope") in Repository.CHANGE_REASON_SCOPES else None
+    activity = q.get("activity", "active")
+    active_filter = None if activity == "all" else True
+    scope_labels = Repository.CHANGE_REASON_SCOPE_LABELS
+    submitted_scopes = set(parse_qs(form_data.get("_raw", ""), keep_blank_values=True).get("scopes", []))
+    editing_id = str(form_data.get("_entity_id", ""))
+
+    def filter_link(label: str, *, target_scope=scope, target_activity=activity) -> str:
+        params = {}
+        if target_scope:
+            params["scope"] = target_scope
+        if target_activity == "all":
+            params["activity"] = "all"
+        href = "/admin/change-reasons" + (f"?{urlencode(params)}" if params else "")
+        selected = target_scope == scope and target_activity == activity
+        return f"<a class='button{' active' if selected else ''}' href='{esc(href)}'{' aria-current=\"page\"' if selected else ''}>{esc(label)}</a>"
+
+    def scope_controls(selected: set[str], *, error: bool = False) -> str:
+        boxes = "".join(
+            f"<label class='reason-scope-option'><input type='checkbox' name='scopes' value='{esc(key)}'{' checked' if key in selected else ''}> <span>{esc(scope_labels[key])}</span></label>"
+            for key in Repository.CHANGE_REASON_SCOPES
+        )
+        return f"<fieldset class='reason-dialog-full reason-scope-field{' has-validation-error' if error else ''}'><legend>Область применения <span class='required'>*</span></legend>{boxes}</fieldset>"
+
+    scope_tabs = "".join([
+        filter_link("Все", target_scope=None),
+        filter_link("Не меняли настройки", target_scope="none"),
+        filter_link("Серверный приоритет", target_scope="server_priority"),
+        filter_link("Настройка кампании", target_scope="campaign_setting"),
+    ])
+    activity_tabs = "".join([
+        filter_link("Активные", target_activity="active"),
+        filter_link("Все", target_activity="all"),
+    ])
+    filters_html = f"""<nav class='reason-filters' aria-label='Фильтры причин'>
+<div class='reason-filter-group'><span class='reason-filter-label'>Область применения</span><div class='reason-filter-options'>{scope_tabs}</div></div>
+<div class='reason-filter-group'><span class='reason-filter-label'>Активность</span><div class='reason-filter-options'>{activity_tabs}</div></div>
+</nav>"""
     rows = []
-    for reason in repo.list_change_reasons():
-        editing = str(form_data.get("_entity_id", "")) == str(reason["id"])
+    for reason in repo.list_change_reasons(scope=scope, active=active_filter):
+        editing = editing_id == str(reason["id"])
         name = form_data.get("name", reason["name"]) if editing else reason["name"]
         comment = form_data.get("comment", reason["description"] or "") if editing else reason["description"]
         active = form_data.get("is_active") == "1" if editing else bool(reason["is_active"])
-        rows.append(f"""<tr><td>{esc(reason['name'])}</td><td>{'Да' if reason['is_active'] else 'Нет'}</td><td>{esc(reason['description'])}</td><td data-col='actions'><details class='edit-details'{' open' if editing else ''}><summary title='Редактировать' aria-label='Редактировать'>Редактировать</summary><form method='post' action='/admin/change-reasons/{reason['id']}/update'><label>Название <input name='name' value='{esc(name)}'></label><label>Активна <select name='is_active'><option value='1' {'selected' if active else ''}>Да</option><option value='0' {'selected' if not active else ''}>Нет</option></select></label><label>Комментарий <input name='comment' value='{esc(comment)}'></label><button>Сохранить</button></form></details></td></tr>""")
-    create_html = """<form class='reason-dialog reason-dialog-form' method='post' action='/admin/change-reasons/create'>
+        current_scopes = submitted_scopes if editing else set(repo.get_change_reason_scopes(reason["id"]))
+        badges = " ".join(f"<span class='status-badge'>{esc(scope_labels[value])}</span>" for value in repo.get_change_reason_scopes(reason["id"]))
+        error_html = modal_blocking_error(form_error) if editing else ""
+        name_error = editing and form_error and ("назван" in form_error.lower())
+        scope_error = editing and form_error and "область" in form_error.lower()
+        rows.append(f"""<tr><td>{esc(reason['name'])}</td><td class='reason-scope-cell'><span class='reason-scope-badges'>{badges}</span></td><td>{'Да' if reason['is_active'] else 'Нет'}</td><td>{esc(reason['description']) or '—'}</td><td data-col='actions'><details class='edit-details'{' open' if editing else ''}><summary title='Редактировать' aria-label='Редактировать'>Редактировать</summary><form class='reason-dialog reason-dialog-form' method='post' action='/admin/change-reasons/{reason['id']}/update'><header class='reason-dialog-header'><h2>Редактировать причину</h2></header><div class='reason-dialog-body'>{error_html}<div class='reason-dialog-grid'><input type='hidden' name='_scopes_present' value='1'><input type='hidden' name='return_scope' value='{esc(scope or '')}'><input type='hidden' name='return_activity' value='{esc(activity)}'><label class='reason-dialog-full'>Название <span class='required'>*</span><input name='name' value='{esc(name)}'{' class=\"has-validation-error\" autofocus' if name_error else ''}></label><label>Активна <select name='is_active'><option value='1' {'selected' if active else ''}>Да</option><option value='0' {'selected' if not active else ''}>Нет</option></select></label><label>Комментарий <input name='comment' value='{esc(comment)}'></label>{scope_controls(current_scopes, error=bool(scope_error))}</div></div><footer class='reason-dialog-footer'><button class='modal-save'>Сохранить</button><button type='button' class='modal-cancel' data-modal-close>Отмена</button></footer></form></details></td></tr>""")
+    creating = bool(form_error) and not editing_id
+    create_selected = submitted_scopes if creating else ({scope} if scope else set())
+    create_name = form_data.get("name", "") if creating else ""
+    create_comment = form_data.get("comment", "") if creating else ""
+    create_active = form_data.get("is_active", "1") == "1" if creating else True
+    create_name_error = creating and form_error and "назван" in form_error.lower()
+    create_scope_error = creating and form_error and "область" in form_error.lower()
+    create_html = f"""<form class='reason-dialog reason-dialog-form' method='post' action='/admin/change-reasons/create'>
   <header class='reason-dialog-header'><h2>Добавить причину</h2></header>
   <div class='reason-dialog-body'>
+    {modal_blocking_error(form_error) if creating else ''}
     <div class='reason-dialog-grid'>
-      <label>Название причины <span class='required'>*</span><input name='name'></label>
-      <label>Активна <select name='is_active'><option value='1'>Да</option><option value='0'>Нет</option></select></label>
-      <label class='reason-dialog-full'>Комментарий <textarea name='comment' rows='3'></textarea></label>
+      <input type='hidden' name='_scopes_present' value='1'><input type='hidden' name='return_scope' value='{esc(scope or '')}'><input type='hidden' name='return_activity' value='{esc(activity)}'>
+      <label>Название причины <span class='required'>*</span><input name='name' value='{esc(create_name)}'{' class=\"has-validation-error\" autofocus' if create_name_error else ''}></label>
+      <label>Активна <select name='is_active'><option value='1' {'selected' if create_active else ''}>Да</option><option value='0' {'selected' if not create_active else ''}>Нет</option></select></label>
+      <label class='reason-dialog-full'>Комментарий <textarea name='comment' rows='3'>{esc(create_comment)}</textarea></label>
+      {scope_controls(create_selected, error=bool(create_scope_error))}
     </div>
   </div>
   <footer class='reason-dialog-footer'><button type='submit' class='modal-save'>Сохранить</button><button type='button' class='modal-cancel' data-modal-close>Отмена</button></footer>
 </form>"""
-    table_html = f"<table><thead><tr><th>Название причины</th><th>Активна</th><th>Комментарий</th><th data-col='actions'>Действия</th></tr></thead><tbody>{''.join(rows)}</tbody></table>"
-    return page("Причины смены провайдера", table_page_container(f"<h1>Администрирование → Причины смены провайдера</h1>{validation_html}{form_card('Добавить причину', create_html, summary_class='admin-reason-primary-summary')}{table_card(table_html)}", extra_class="admin-change-reasons-page"))
+    table_html = f"<table><thead><tr><th>Причина</th><th>Область применения</th><th>Активна</th><th>Комментарий</th><th data-col='actions'>Действия</th></tr></thead><tbody>{''.join(rows)}</tbody></table>"
+    return page("Причины смены провайдера", table_page_container(f"<h1>Администрирование → Причины смены провайдера</h1>{filters_html}{form_card('Добавить причину', create_html, open_by_default=creating, summary_class='admin-reason-primary-summary')}{table_card(table_html)}", extra_class="admin-change-reasons-page"))
 
 
 DICTIONARY_CONFIRMATION_ERROR = "Кажется, осталось подтвердить это действие. Отметь чекбокс ниже, если уверен."
@@ -10150,19 +10238,32 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
             )
         return "/admin/currency-rates"
     if path == "/admin/change-reasons/create":
-        repo.create_change_reason(data["name"], created_by=actor_id, comment=data.get("comment"), is_active=data.get("is_active") == "1", scopes=Repository.CHANGE_REASON_SCOPES); return "/admin/change-reasons"
+        scopes = parse_qs(data.get("_raw", ""), keep_blank_values=True).get("scopes", []) if "_scopes_present" in data else Repository.CHANGE_REASON_SCOPES
+        repo.create_change_reason(data["name"], created_by=actor_id, comment=data.get("comment"), is_active=data.get("is_active") == "1", scopes=scopes)
+        return_scope = data.get("return_scope", "")
+        return_activity = data.get("return_activity", "active")
+        return_query = urlencode({key: value for key, value in {"scope": return_scope, "activity": "all" if return_activity == "all" else ""}.items() if value})
+        return "/admin/change-reasons" + (f"?{return_query}" if return_query else "")
     if path.startswith("/admin/change-reasons/") and path.endswith("/update"):
         reason_id = int(path.strip("/").split("/")[2])
         existing_scopes = repo.get_change_reason_scopes(reason_id)
+        scopes = (
+            parse_qs(data.get("_raw", ""), keep_blank_values=True).get("scopes", [])
+            if "_scopes_present" in data
+            else (existing_scopes or Repository.CHANGE_REASON_SCOPES)
+        )
         repo.update_change_reason(
             reason_id,
             data["name"],
             comment=data.get("comment"),
             is_active=data.get("is_active") == "1",
             updated_by=actor_id,
-            scopes=existing_scopes or Repository.CHANGE_REASON_SCOPES,
+            scopes=scopes,
         )
-        return "/admin/change-reasons"
+        return_scope = data.get("return_scope", "")
+        return_activity = data.get("return_activity", "active")
+        return_query = urlencode({key: value for key, value in {"scope": return_scope, "activity": "all" if return_activity == "all" else ""}.items() if value})
+        return "/admin/change-reasons" + (f"?{return_query}" if return_query else "")
     if path == "/tariffs/countries/create":
         repo.create_country(data["name"].strip()); return "/tariffs"
     if path == "/tariffs/providers/create":
@@ -10618,7 +10719,7 @@ def app(environ, start_response):
         elif path == "/admin/naming-rules": response = naming_rules_page(repo)
         elif path == "/admin/import": response = import_page(repo)
         elif path == "/admin/currency-rates": response = currency_rates_page(repo)
-        elif path == "/admin/change-reasons": response = change_reasons_page(repo)
+        elif path == "/admin/change-reasons": response = change_reasons_page(repo, q)
         elif path == "/admin/users": response = users_page(repo, q)
         elif path == "/admin/dictionaries": response = dictionaries_page(repo, q)
         elif path == "/admin/telegram": response = telegram_page(repo)
@@ -10676,7 +10777,9 @@ def app(environ, start_response):
         if path.startswith("/admin/change-reasons/") and path.endswith("/update"):
             preserved = dict(parsed)
             preserved["_entity_id"] = path.strip("/").split("/")[2]
-            return [change_reasons_page(repo, form_error=user_error(exc), form_data=preserved)]
+            return [change_reasons_page(repo, {"scope": parsed.get("return_scope", ""), "activity": parsed.get("return_activity", "active")}, form_error=user_error(exc), form_data=preserved)]
+        if path == "/admin/change-reasons/create":
+            return [change_reasons_page(repo, {"scope": parsed.get("return_scope", ""), "activity": parsed.get("return_activity", "active")}, form_error=user_error(exc), form_data=dict(parsed))]
         if path == "/companies/create":
             return [companies_page(repo, form_error=user_error(exc), form_data=dict(parsed))]
         if path.startswith("/companies/") and path.endswith("/update"):
