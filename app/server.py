@@ -10672,7 +10672,7 @@ def app(environ, start_response):
             if path == "/admin/import/preview":
                 if parsed.get("mode") == "replace_section":
                     raise BusinessRuleError("Режим замены раздела временно отключён. Используйте Дополнить / обновить.")
-                preview = preview_import(conn, parsed["entity_type"], parsed.get("csv_data", ""))
+                preview = preview_import(conn, parsed["entity_type"], parsed.get("csv_data", ""), backend=repo.backend)
                 if parsed["entity_type"] == "phone_numbers":
                     rows = "".join(f"<tr><td>{r['line']}</td><td>{esc(r.get('number', ''))}</td><td>{esc(r['action'])}</td><td>{esc(r.get('working_status', ''))}</td><td>{esc(r.get('active_provider', ''))}</td><td>{esc(r.get('review_required', ''))}</td><td>{esc(r.get('review_reasons', ''))}</td><td>{esc(r.get('errors', ''))}</td><td>{esc(r.get('info', ''))}</td><td>{esc(r['message'])}</td></tr>" for r in preview.rows)
                     info_blocks = ""
@@ -10692,7 +10692,7 @@ def app(environ, start_response):
                 start_response("200 OK", html_headers())
                 return [import_page(repo, html_preview, selected_entity=parsed["entity_type"], selected_mode=parsed.get("mode", "append_update"), csv_data=parsed.get("csv_data", ""))]
             if path == "/admin/import/apply":
-                result = apply_import(conn, parsed["entity_type"], parsed.get("csv_data", ""), user_id=current_actor_id(), mode=parsed.get("mode", "append_update"))
+                result = apply_import(conn, parsed["entity_type"], parsed.get("csv_data", ""), user_id=current_actor_id(), mode=parsed.get("mode", "append_update"), backend=repo.backend)
                 extra = ""
                 if parsed["entity_type"] == "phone_numbers":
                     extra = f"<li>требуют проверки {result.review_required_rows}</li><li>исторических справочных значений {result.legacy_info_rows}</li>"

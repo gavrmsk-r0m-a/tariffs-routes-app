@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import csv
 import io
-import sqlite3
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Iterable
 
+from app.db_adapter import placeholder
 from app.repository import BusinessRuleError, Repository, normalize_phone_status, normalize_provider_name, validate_phone_number
 
 
@@ -74,7 +74,7 @@ def _map_final_status(value: str) -> tuple[str, bool, bool]:
         return "unknown", True, True
     raise BusinessRuleError(f"Неизвестный Итоговый статус: {value}")
 
-def preview_import(conn: sqlite3.Connection, entity_type: str, csv_text: str) -> ImportPreview:
+def preview_import(conn, entity_type: str, csv_text: str, *, backend: str = "sqlite") -> ImportPreview:
     rows = parse_csv(csv_text)
     preview = ImportPreview(entity_type=entity_type, total_rows=len(rows))
     seen_keys: dict[tuple, int] = {}
@@ -82,8 +82,8 @@ def preview_import(conn: sqlite3.Connection, entity_type: str, csv_text: str) ->
         try:
             key = _business_key(conn, entity_type, row)
             if entity_type == "phone_numbers":
-                phone_values = _phone_import_values(conn, row)
-                phone_values.update(_phone_reference_ids(conn, row))
+                phone_values = _phone_import_values(conn, row, backend=backend)
+                phone_values.update(_phone_reference_ids(conn, row, backend=backend))
             else:
                 phone_values = {}
             if key in seen_keys:
@@ -100,7 +100,7 @@ def preview_import(conn: sqlite3.Connection, entity_type: str, csv_text: str) ->
                     preview.review_required_rows += 1
                 if phone_values.get("reference_legacy"):
                     preview.legacy_info_rows += 1
-            exists = _exists(conn, entity_type, key)
+            exists = _exists(conn, entity_type, key, backend=backend)
             if exists:
                 preview.duplicate_rows += 1
                 if entity_type == "phone_numbers":
@@ -113,7 +113,7 @@ def preview_import(conn: sqlite3.Connection, entity_type: str, csv_text: str) ->
                     preview.rows.append(_phone_preview_row(idx, "create", "create", "Строка создаст новый номер.", phone_values, key))
                 else:
                     preview.rows.append({"line": idx, "status": "new", "action": "create", "message": str(key)})
-        except Exception as exc:  # preview should collect row errors
+        except BusinessRuleError as exc:  # expected per-row validation failure
             preview.error_rows += 1
             if entity_type == "phone_numbers":
                 preview.rows.append({"line": idx, "status": "error", "action": "error", "number": _first(row, "number", "номер"), "working_status": "", "active_provider": "", "review_required": "Нет", "review_reasons": "", "errors": str(exc), "info": "", "message": str(exc)})
@@ -123,22 +123,23 @@ def preview_import(conn: sqlite3.Connection, entity_type: str, csv_text: str) ->
 
 
 def apply_import(
-    conn: sqlite3.Connection,
+    conn,
     entity_type: str,
     csv_text: str,
     *,
     user_id: int,
     duplicate_action: str = "update",
     mode: str = "append_update",
+    backend: str = "sqlite",
 ) -> ImportPreview:
     if mode == "replace_section":
         raise BusinessRuleError("Режим замены раздела временно отключён. Используйте Дополнить / обновить.")
-    preview = preview_import(conn, entity_type, csv_text)
+    preview = preview_import(conn, entity_type, csv_text, backend=backend)
     if entity_type == "phone_numbers" and preview.error_rows:
         raise BusinessRuleError("Импорт невозможен: в предпросмотре есть ошибки. Исправьте файл и повторите предпросмотр.")
     if mode == "replace_section":
         _clear_section(conn, entity_type)
-    repo = Repository(conn)
+    repo = Repository(conn, backend=backend)
     rows = parse_csv(csv_text)
     seen_keys: set[tuple] = set()
     for row in rows:
@@ -148,7 +149,7 @@ def apply_import(
                 preview.skipped_rows += 1
                 continue
             seen_keys.add(key)
-            exists = _exists(conn, entity_type, key)
+            exists = _exists(conn, entity_type, key, backend=backend)
             if mode != "replace_section" and exists and duplicate_action == "skip":
                 preview.skipped_rows += 1
                 continue
@@ -165,8 +166,8 @@ def apply_import(
             else:
                 raise BusinessRuleError(f"Unsupported import type: {entity_type}")
             if entity_type == "phone_numbers":
-                imported_for_count = _phone_import_values(conn, row)
-                refs_for_count = _phone_reference_ids(conn, row)
+                imported_for_count = _phone_import_values(conn, row, backend=backend)
+                refs_for_count = _phone_reference_ids(conn, row, backend=backend)
                 if bool(refs_for_count["empty_provider"]) or bool(imported_for_count["empty_project"]) or bool(imported_for_count["empty_assignment"]) or bool(imported_for_count["status_review_required"]):
                     preview.review_required_rows += 1
                 if bool(refs_for_count["reference_legacy"]):
@@ -175,17 +176,22 @@ def apply_import(
                 preview.updated_rows += 1
             else:
                 preview.created_rows += 1
-        except Exception as exc:
+        except BusinessRuleError as exc:
             preview.skipped_rows += 1
             if entity_type == "phone_numbers":
                 preview.error_rows += 1
                 preview.rows.append({"line": 0, "status": "error", "action": "error", "message": str(exc), "errors": str(exc)})
             continue
+        except Exception:
+            # A database/programming failure is not an invalid CSV row.  Abort
+            # the whole transaction rather than reporting a partial success.
+            conn.rollback()
+            raise
     conn.commit()
     return preview
 
 
-def _business_key(conn: sqlite3.Connection, entity_type: str, row: dict[str, str]) -> tuple:
+def _business_key(conn, entity_type: str, row: dict[str, str]) -> tuple:
     if entity_type == "routes":
         country = _first(row, "country", "страна", "гео")
         name = _first(row, "name", "route", "название маршрута", "маршрут")
@@ -228,11 +234,11 @@ def _parse_bool(value: str, *, default: bool = True) -> bool:
     return value.strip().lower() not in {"0", "no", "false", "нет", "неактивна", "inactive"}
 
 
-def _resolve_reference(conn: sqlite3.Connection, table: str, value: str, label: str, *, code_column: str = "name", normalized_provider: bool = False) -> tuple[int | str, bool]:
+def _resolve_reference(conn, table: str, value: str, label: str, *, code_column: str = "name", normalized_provider: bool = False, backend: str = "sqlite") -> tuple[int | str, bool]:
     text = value.strip()
     if not text:
         raise BusinessRuleError(f"{label} обязателен")
-    repo = Repository(conn)
+    repo = Repository(conn, backend=backend)
     if normalized_provider:
         row = repo.get_provider_by_normalized_name(normalize_provider_name(text))
     elif table == "countries" and code_column == "name":
@@ -250,26 +256,26 @@ def _resolve_reference(conn: sqlite3.Connection, table: str, value: str, label: 
     return row["id"], not bool(row["is_active"])
 
 
-def _resolve_assignment_code(conn: sqlite3.Connection, value: str) -> tuple[str | None, bool]:
+def _resolve_assignment_code(conn, value: str, *, backend: str = "sqlite") -> tuple[str | None, bool]:
     value = value.strip()
     if not value:
         return None, False
-    row = Repository(conn).get_phone_assignment_type_by_code_or_name(value)
+    row = Repository(conn, backend=backend).get_phone_assignment_type_by_code_or_name(value)
     if row is None:
         raise BusinessRuleError(f"Значение ‘{value}’ не найдено в справочнике Назначение. Исправьте файл или добавьте значение в справочник вручную.")
     return str(row["code"]), not bool(row["is_active"])
 
 
-def _phone_import_values(conn: sqlite3.Connection, row: dict[str, str]) -> dict[str, str | None | bool]:
+def _phone_import_values(conn, row: dict[str, str], *, backend: str = "sqlite") -> dict[str, str | None | bool]:
     project = _first(row, "project", "project_label", "проект") or None
     project_legacy = False
     if project:
-        _, project_legacy = _resolve_reference(conn, "projects", project, "Проект")
+        _, project_legacy = _resolve_reference(conn, "projects", project, "Проект", backend=backend)
     phone_type = _first(row, "phone_type", "тип номера") or None
     phone_type_legacy = False
     if phone_type:
-        _, phone_type_legacy = _resolve_reference(conn, "phone_number_types", phone_type, "Тип номера")
-    assignment, assignment_legacy = _resolve_assignment_code(conn, _first(row, "assignment_type", "назначение"))
+        _, phone_type_legacy = _resolve_reference(conn, "phone_number_types", phone_type, "Тип номера", backend=backend)
+    assignment, assignment_legacy = _resolve_assignment_code(conn, _first(row, "assignment_type", "назначение"), backend=backend)
     has_final_status = _has_any(row, "Итоговый статус", "final_status")
     if has_final_status:
         status, is_active, status_review_required = _map_final_status(_first(row, "Итоговый статус", "final_status"))
@@ -359,17 +365,17 @@ def _phone_preview_message(values: dict, key: tuple) -> str:
     return f"{key}" + ("; " + "; ".join(notes) if notes else "")
 
 
-def _phone_reference_ids(conn: sqlite3.Connection, row: dict[str, str]) -> dict[str, int | None]:
+def _phone_reference_ids(conn, row: dict[str, str], *, backend: str = "sqlite") -> dict[str, int | None]:
     country_name = _first(row, "country", "страна", "гео", "GEO")
-    country_id, country_legacy = _resolve_reference(conn, "countries", country_name, "ГЕО")
+    country_id, country_legacy = _resolve_reference(conn, "countries", country_name, "ГЕО", backend=backend)
     provider_name = _first(row, "provider", "провайдер")
     provider_id = None
     provider_legacy = False
     if provider_name:
-        provider_id, provider_legacy = _resolve_reference(conn, "providers", provider_name, "Провайдер", normalized_provider=True)
+        provider_id, provider_legacy = _resolve_reference(conn, "providers", provider_name, "Провайдер", normalized_provider=True, backend=backend)
     currency_code = _first(row, "currency", "валюта") or "EUR"
-    currency_id, currency_legacy = _resolve_reference(conn, "currencies", currency_code, "Валюта", code_column="code")
-    values = _phone_import_values(conn, row)
+    currency_id, currency_legacy = _resolve_reference(conn, "currencies", currency_code, "Валюта", code_column="code", backend=backend)
+    values = _phone_import_values(conn, row, backend=backend)
     return {
         "country_id": int(country_id),
         "provider_id": int(provider_id) if provider_id is not None else None,
@@ -378,8 +384,8 @@ def _phone_reference_ids(conn: sqlite3.Connection, row: dict[str, str]) -> dict[
         "empty_provider": not bool(provider_name),
     }
 
-def _exists(conn: sqlite3.Connection, entity_type: str, key: tuple) -> bool:
-    repo = Repository(conn)
+def _exists(conn, entity_type: str, key: tuple, *, backend: str = "sqlite") -> bool:
+    repo = Repository(conn, backend=backend)
     if entity_type == "routes":
         country, name = key
         return repo.route_exists_by_country_name_and_name(country, name)
@@ -430,10 +436,10 @@ def _apply_phone(repo: Repository, row: dict[str, str], user_id: int, *, exists:
     country_name = _first(row, "country", "страна", "гео", "GEO")
     if not country_name:
         raise BusinessRuleError("ГЕО обязателен для импорта номеров")
-    refs = _phone_reference_ids(repo.conn, row)
+    refs = _phone_reference_ids(repo.conn, row, backend=repo.backend)
     country_id = int(refs["country_id"])
     provider_id = refs["provider_id"]
-    imported = _phone_import_values(repo.conn, row)
+    imported = _phone_import_values(repo.conn, row, backend=repo.backend)
     review_required = bool(refs["empty_provider"]) or bool(imported["empty_project"]) or bool(imported["empty_assignment"]) or bool(imported["status_review_required"])
     currency_id = int(refs["currency_id"])
     is_active = bool(imported["is_active"])
@@ -527,8 +533,8 @@ def _apply_tariff(repo: Repository, row: dict[str, str], user_id: int, *, exists
     rate_date = _first(row, "rate_date", "дата курса") or "1970-01-01"
     if exists:
         repo.conn.execute(
-            "UPDATE tariffs SET is_current = 0, updated_by = ?, updated_at = CURRENT_TIMESTAMP WHERE country_id = ? AND provider_id = ? AND COALESCE(provider_prefix_id, 0) = COALESCE(?, 0) AND is_current = 1",
-            (user_id, country_id, provider_id, prefix_id),
+            f"UPDATE tariffs SET is_current = {placeholder(repo.backend)}, updated_by = {placeholder(repo.backend)}, updated_at = CURRENT_TIMESTAMP WHERE country_id = {placeholder(repo.backend)} AND provider_id = {placeholder(repo.backend)} AND COALESCE(provider_prefix_id, 0) = COALESCE({placeholder(repo.backend)}, 0) AND is_current = {placeholder(repo.backend)}",
+            (False, user_id, country_id, provider_id, prefix_id, True),
         )
     repo.create_tariff(country_id=country_id, provider_id=provider_id, provider_prefix_id=prefix_id, provider_currency_id=currency_id, price_in_provider_currency=price, conversion_rate_to_eur=rate, conversion_rate_date=rate_date, created_by=user_id, comment=_first(row, "comment", "комментарий") or None)
 
@@ -556,7 +562,7 @@ def _apply_dictionary(repo: Repository, row: dict[str, str]) -> None:
         raise BusinessRuleError(f"Unsupported dictionary type: {kind}")
 
 
-def _clear_section(conn: sqlite3.Connection, entity_type: str) -> None:
+def _clear_section(conn, entity_type: str) -> None:
     # Replacement is scoped to the selected section only, per MVP requirements.
     # Business logs/change_log are intentionally not cleared here.
     if entity_type == "routes":

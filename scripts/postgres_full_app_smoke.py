@@ -391,11 +391,13 @@ def _isolated_edit_paths(database_url: str):
 
 def wsgi_request(application, path: str, *, method: str = "GET", data=None, cookie: str | None = None, headers=None):
     body = urlencode(data or {}).encode("utf-8")
+    path_info, _, query_string = path.partition("?")
     environ: dict[str, object] = {}
     setup_testing_defaults(environ)
     environ.update({
         "REQUEST_METHOD": method,
-        "PATH_INFO": path,
+        "PATH_INFO": path_info,
+        "QUERY_STRING": query_string,
         "CONTENT_LENGTH": str(len(body)),
         "CONTENT_TYPE": "application/x-www-form-urlencoded",
         "wsgi.input": io.BytesIO(body),
@@ -420,6 +422,70 @@ def wsgi_request(application, path: str, *, method: str = "GET", data=None, cook
 
 def _header(headers, name: str) -> str | None:
     return next((value for key, value in headers if key.lower() == name.lower()), None)
+
+
+def _run_import_export_smoke(app, database_url: str, cookie: str) -> list[str]:
+    """Exercise the existing import forms and section CSV exports on PostgreSQL."""
+    suffix = secrets.token_hex(5).upper()
+    country = f"CI_IMPORT_{suffix}"
+    route = f"Маршрут_{suffix}"
+    company = f"Кампания_{suffix}"
+    external_id = f"CI-{suffix}"
+    number = f"7999{int(suffix, 16) % 10**7:07d}"
+    comment = f"Полный комментарий кириллицей; {suffix}; без UI-сокращения"
+    conn = connect_postgres(database_url)
+    try:
+        provider = conn.execute("SELECT name FROM providers WHERE is_active IS TRUE ORDER BY id LIMIT 1").fetchone()
+        currency = conn.execute("SELECT code FROM currencies WHERE is_active IS TRUE ORDER BY id LIMIT 1").fetchone()
+        server = conn.execute("SELECT name FROM servers WHERE is_active IS TRUE ORDER BY id LIMIT 1").fetchone()
+        if not provider or not currency or not server:
+            raise SmokeFailure("/admin/import", "active provider, currency and server reference rows are required")
+        fixtures = (
+            ("dictionaries", f"type,name\ncountry,{country}\n", "countries", "name", country),
+            ("routes", f"country,name,provider,comment\n{country},{route},{provider['name']},{comment}\n", "routes", "name", route),
+            ("tariffs", f"country,provider,currency,price,rate,rate_date,comment\n{country},{provider['name']},{currency['code']},1.25,1,2026-01-01,{comment}\n", "tariffs", None, None),
+            ("calling_companies", f"server,country,company_id_external,company_name,comment\n{server['name']},{country},{external_id},{company},{comment}\n", "calling_companies", "company_id_external", external_id),
+            ("phone_numbers", f"country,provider,currency,number,final_status,comment\n{country},{provider['name']},{currency['code']},{number},Используется,{comment}\n", "phone_numbers", "normalized_number", number),
+        )
+        for entity, csv_data, table, key_column, key_value in fixtures:
+            if key_column:
+                before = int(conn.execute(f"SELECT COUNT(*) AS value FROM {table} WHERE {key_column} = %s", (key_value,)).fetchone()["value"])
+            else:
+                before = int(conn.execute("SELECT COUNT(*) AS value FROM tariffs t JOIN countries c ON c.id=t.country_id WHERE c.name=%s", (country,)).fetchone()["value"])
+            status, _, body = wsgi_request(app, "/admin/import/preview", method="POST", cookie=cookie, data={"entity_type": entity, "mode": "append_update", "csv_data": csv_data})
+            if status != "200 OK" or "ошибок: 0" not in _normalized_body_text(body):
+                raise SmokeFailure("/admin/import/preview", f"{entity} preview failed", status)
+            after_preview = int(conn.execute(f"SELECT COUNT(*) AS value FROM {table} WHERE {key_column} = %s", (key_value,)).fetchone()["value"]) if key_column else int(conn.execute("SELECT COUNT(*) AS value FROM tariffs t JOIN countries c ON c.id=t.country_id WHERE c.name=%s", (country,)).fetchone()["value"])
+            if after_preview != before:
+                raise SmokeFailure("/admin/import/preview", f"{entity} preview mutated PostgreSQL")
+            status, _, body = wsgi_request(app, "/admin/import/apply", method="POST", cookie=cookie, data={"entity_type": entity, "mode": "append_update", "csv_data": csv_data})
+            if status != "200 OK" or "создано 1" not in _normalized_body_text(body):
+                raise SmokeFailure("/admin/import/apply", f"{entity} apply did not create exactly one row", status)
+        conn.commit()
+        for path, needles in (("/routes?export=csv", (route, comment)), ("/tariffs?export=csv", (country, comment)), ("/phones?export=csv", (number, comment)), ("/companies?export=csv", (external_id, comment))):
+            status, headers, body = wsgi_request(app, path, cookie=cookie)
+            decoded = body.decode("utf-8-sig")
+            if status != "200 OK" or not _header(headers, "Content-Disposition") or any(value not in decoded for value in needles):
+                raise SmokeFailure(path, "PostgreSQL CSV export omitted full imported UTF-8/reference data", status)
+        return ["/admin/import/preview + apply (all five supported types)", "/routes, /tariffs, /phones, /companies CSV exports"]
+    finally:
+        try:
+            conn.rollback()
+            country_row = conn.execute("SELECT id FROM countries WHERE name=%s", (country,)).fetchone()
+            if country_row:
+                country_id = int(country_row["id"])
+                conn.execute("DELETE FROM phone_number_history WHERE phone_number_id IN (SELECT id FROM phone_numbers WHERE country_id=%s)", (country_id,))
+                conn.execute("DELETE FROM phone_numbers WHERE country_id=%s", (country_id,))
+                conn.execute("DELETE FROM change_log WHERE (entity_type='route' AND entity_id IN (SELECT id FROM routes WHERE country_id=%s)) OR (entity_type='tariff' AND entity_id IN (SELECT id FROM tariffs WHERE country_id=%s)) OR (entity_type='calling_company' AND entity_id IN (SELECT id FROM calling_companies WHERE country_id=%s))", (country_id, country_id, country_id))
+                conn.execute("DELETE FROM tariff_change_history WHERE tariff_id IN (SELECT id FROM tariffs WHERE country_id=%s)", (country_id,))
+                conn.execute("DELETE FROM tariffs WHERE country_id=%s", (country_id,))
+                conn.execute("DELETE FROM route_history WHERE route_id IN (SELECT id FROM routes WHERE country_id=%s)", (country_id,))
+                conn.execute("DELETE FROM routes WHERE country_id=%s", (country_id,))
+                conn.execute("DELETE FROM calling_companies WHERE country_id=%s", (country_id,))
+                conn.execute("DELETE FROM countries WHERE id=%s", (country_id,))
+                conn.commit()
+        finally:
+            conn.close()
 
 
 def run_smoke(database_url: str, auth_secret: str) -> dict[str, object]:
@@ -462,6 +528,7 @@ def run_smoke(database_url: str, auth_secret: str) -> dict[str, object]:
     cookie = set_cookie.split(";", 1)[0]
 
     checked = []
+    checked.extend(_run_import_export_smoke(app, database_url, cookie))
     for path in PAGES:
         status, _, body = wsgi_request(app, path, cookie=cookie)
         if not status.startswith("200 ") or not body:
