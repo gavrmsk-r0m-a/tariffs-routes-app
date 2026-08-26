@@ -273,9 +273,11 @@ def clamp_cell(col: str, content_html: str, title: object, *, extra_attrs: str =
     cell_classes = classes.split() if classes else []
     if selectable and "selectable-cell" not in cell_classes:
         cell_classes.append("selectable-cell")
-    class_attr = f" class='{' '.join(cell_classes)}'" if cell_classes else ""
     attrs = f" {extra_attrs.strip()}" if extra_attrs.strip() else ""
     title_text = str(title).replace("\r\n", "\n").replace("\r", "\n") if preserve_lines else plain_text(title)
+    if len(title_text) > 60:
+        cell_classes.append("expandable-cell")
+    class_attr = f" class='{' '.join(cell_classes)}'" if cell_classes else ""
     title_attr = f" title='{esc(title_text)}'" if len(title_text) > 60 else ""
     full_text_attr = f" data-full-text='{esc(title_text)}'" if len(title_text) > 60 else ""
     inner_html = selectable_text(content_html, title_text if select_value is None else select_value) if selectable else content_html
@@ -907,8 +909,8 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
       min-width: 180px; max-width: 360px; white-space: normal; overflow: hidden; overflow-wrap: anywhere; word-break: normal;
     }}
     .cell-clamp {{ display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }}
-    td[data-full-text] {{ cursor: pointer; }}
-    td[data-full-text]:hover .cell-clamp {{ color: var(--accent-strong); }}
+    td.expandable-cell[data-full-text] {{ cursor: pointer; }}
+    td.expandable-cell[data-full-text]:hover .cell-clamp {{ color: var(--accent-strong); }}
     .cell-popover {{ position: fixed; z-index: 1000; width: min(640px, calc(100vw - 24px)); max-height: 340px; display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 8px; padding: 10px; border: 1px solid var(--border-strong); border-radius: var(--radius-control); background: var(--surface); box-shadow: 0 18px 45px rgba(15, 23, 42, .16), 0 4px 12px rgba(15, 23, 42, .10); color: var(--text); }}
     .cell-popover-header {{ display: flex; align-items: center; justify-content: space-between; gap: 8px; }}
     .cell-popover-actions {{ display: inline-flex; align-items: center; gap: 6px; margin-left: auto; }}
@@ -4266,7 +4268,7 @@ ${{script.textContent}}
         copyButton.focus();
       }}
       document.addEventListener("click", (event) => {{
-        const cell = event.target.closest("td[data-full-text]");
+        const cell = event.target.closest("td.expandable-cell[data-full-text]");
         if (cell) {{
           if (popover && activeCell === cell && popover.contains(event.target)) return;
           open(cell);

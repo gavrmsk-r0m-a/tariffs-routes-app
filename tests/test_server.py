@@ -4444,11 +4444,22 @@ class ServerSmokeTest(unittest.TestCase):
         short_row = content.split("test.short", 1)[1].split("</tr>", 1)[0]
         long_row = content.split("test.long", 1)[1].split("</tr>", 1)[0]
         self.assertIn(f"<span class='cell-clamp'>{short_summary}</span>", short_row)
+        self.assertNotIn("expandable-cell", short_row)
         self.assertNotIn("data-full-text=", short_row)
         self.assertIn("data-col='summary'", long_row)
+        self.assertIn("class='expandable-cell'", long_row)
         self.assertIn(f"data-full-text='{long_summary}'", long_row)
+        self.assertIn(f"<span class='cell-clamp'>{long_summary}</span>", long_row)
+        self.assertIn('event.target.closest("td.expandable-cell[data-full-text]")', content)
         self.assertIn("copyButton.textContent = \"Копировать\"", content)
+        self.assertIn("copyButton.addEventListener(\"click\", () => copy(text, copyButton))", content)
         self.assertIn('textBox.addEventListener("click", () => selectNodeText(textBox))', content)
+        self.assertIn('if (event.key === "Escape") close()', content)
+        self.assertIn("if (popover && !popover.contains(event.target)) close()", content)
+
+        provider_comment_cell = server.clamp_cell("comment", long_summary, long_summary)
+        self.assertIn("class='expandable-cell'", provider_comment_cell)
+        self.assertIn(f"data-full-text='{server.plain_text(long_summary)}'", provider_comment_cell)
 
         conn = server.connect(server.DB_PATH)
         try:
