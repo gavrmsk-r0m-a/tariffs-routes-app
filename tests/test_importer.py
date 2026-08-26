@@ -260,6 +260,41 @@ class ImporterTest(unittest.TestCase):
         apply_import(self.conn, "phone_numbers", csv_text, user_id=self.admin_id)
         self.assertEqual(self.conn.execute("SELECT review_required FROM phone_numbers WHERE number = '393331239022'").fetchone()[0], 1)
 
+    def test_phone_review_required_summary_counts_each_create_and_update_once(self):
+        numbers = [f"39333124{index:04d}" for index in range(15)]
+        csv_text = "country,provider,project,number,assignment_type,Итоговый статус\n" + "".join(
+            f"Италия,,,{number},,???\n" for number in numbers
+        )
+
+        create_preview = preview_import(self.conn, "phone_numbers", csv_text)
+        create_result = apply_import(self.conn, "phone_numbers", csv_text, user_id=self.admin_id)
+        count_after_create = self.conn.execute(
+            "SELECT COUNT(*) FROM phone_numbers WHERE normalized_number IN ({})".format(
+                ",".join("?" for _ in numbers)
+            ),
+            numbers,
+        ).fetchone()[0]
+
+        self.assertEqual(create_preview.review_required_rows, 15)
+        self.assertEqual((create_result.created_rows, create_result.updated_rows, create_result.review_required_rows), (15, 0, 15))
+        self.assertEqual(count_after_create, 15)
+
+        update_preview = preview_import(self.conn, "phone_numbers", csv_text)
+        update_result = apply_import(self.conn, "phone_numbers", csv_text, user_id=self.admin_id)
+        stored = self.conn.execute(
+            "SELECT normalized_number, COUNT(*) AS copies FROM phone_numbers WHERE normalized_number IN ({}) GROUP BY normalized_number".format(
+                ",".join("?" for _ in numbers)
+            ),
+            numbers,
+        ).fetchall()
+
+        self.assertEqual((update_preview.total_rows, update_preview.new_rows, update_preview.review_required_rows), (15, 0, 15))
+        self.assertTrue(all(row["action"] == "update" for row in update_preview.rows))
+        self.assertEqual((update_result.created_rows, update_result.updated_rows, update_result.error_rows), (0, 15, 0))
+        self.assertEqual(update_result.review_required_rows, 15)
+        self.assertFalse(any(row["action"] == "duplicate_in_file" for row in update_result.rows))
+        self.assertEqual([(row["normalized_number"], row["copies"]) for row in stored], [(number, 1) for number in numbers])
+
     def test_existing_phone_import_active_to_inactive_sets_deactivated_at(self):
         active = "country,provider,project,number,assignment_type,Итоговый статус\nИталия,Miatel,Alpha,393331239023,gl,Используется\n"
         inactive = active.replace("Используется", "Отключен")

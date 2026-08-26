@@ -166,10 +166,7 @@ def apply_import(
             else:
                 raise BusinessRuleError(f"Unsupported import type: {entity_type}")
             if entity_type == "phone_numbers":
-                imported_for_count = _phone_import_values(conn, row, backend=backend)
                 refs_for_count = _phone_reference_ids(conn, row, backend=backend)
-                if bool(refs_for_count["empty_provider"]) or bool(imported_for_count["empty_project"]) or bool(imported_for_count["empty_assignment"]) or bool(imported_for_count["status_review_required"]):
-                    preview.review_required_rows += 1
                 if bool(refs_for_count["reference_legacy"]):
                     preview.legacy_info_rows += 1
             if exists:
