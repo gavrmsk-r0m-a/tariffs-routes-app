@@ -922,6 +922,40 @@ class ServerSmokeTest(unittest.TestCase):
         summary = content.split('<summary aria-label="Меню пользователя">', 1)[1].split("</summary>", 1)[0]
         self.assertNotIn("Текущий пользователь", summary)
 
+    def test_production_routes_layout_shows_logout_for_routes_only_operator_and_admin(self):
+        self.request("/login")
+        conn = server.connect(server.DB_PATH)
+        try:
+            repo = server.Repository(conn)
+            operator_id = repo.create_user("routesonly", "operator", "Routes Only", password="routes-only-password")
+            conn.execute(
+                """
+                INSERT INTO user_permissions(user_id, section_key, can_read, can_write, can_export)
+                VALUES (?, 'routes', 1, 0, 0)
+                """,
+                (operator_id,),
+            )
+            admin_id = conn.execute("SELECT id FROM users WHERE username = 'admin'").fetchone()["id"]
+            conn.commit()
+        finally:
+            conn.close()
+
+        production_env = {
+            "MVP_PRODUCTION_SECURITY": "1",
+            "MVP_AUTH_SECRET": "production-layout-test-secret-at-least-32-characters",
+        }
+        with patch.dict(os.environ, production_env, clear=False):
+            for user_id, display_name in ((operator_id, "Routes Only"), (admin_id, "Admin")):
+                with self.subTest(display_name=display_name):
+                    cookie = f"{server.CURRENT_USER_COOKIE}={server.sign_user_id(user_id)}"
+                    captured, content = self.request("/routes", cookie=cookie, auto_login=False)
+                    self.assertEqual(captured["status"], "200 OK")
+                    self.assertIn('class="current-user-selector"', content)
+                    self.assertIn(display_name, content)
+                    self.assertIn('href="/logout"', content)
+                    self.assertNotRegex(content, r"<form[^>]+(?:switch|current.?user)")
+                    self.assertNotRegex(content, r"<select[^>]+(?:user|account)")
+
     def test_app_pages_are_not_cached_and_include_connection_recovery_ui(self):
         captured, content = self.request("/routes")
         self.assertEqual(captured["status"], "200 OK")
