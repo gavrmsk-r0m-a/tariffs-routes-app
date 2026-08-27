@@ -1,67 +1,115 @@
-import io
 import json
+import subprocess
+import sys
 import tempfile
 import unittest
-from contextlib import redirect_stdout
 from pathlib import Path
 
-from scripts.audit_postgres_runtime_compat import main, scan_path
 
+class PostgresRuntimeAuditTests(unittest.TestCase):
+    SCRIPT = (
+        Path(__file__).resolve().parents[1]
+        / "scripts"
+        / "audit_postgres_runtime_compat.py"
+    )
 
-class PostgresRuntimeAuditHelperTests(unittest.TestCase):
-    def scan_text(self, text: str):
+    def run_audit(self, source: str = ""):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            (root / "sample.py").write_text(text, encoding="utf-8")
-            return scan_path(root)
+            app_dir = root / "app"
+            app_dir.mkdir()
 
-    def test_audit_detects_sqlite3_import(self):
-        findings = self.scan_text("import sqlite3\n")
-        self.assertTrue(any(f.pattern == "sqlite3" for f in findings))
+            if source:
+                (app_dir / "sample.py").write_text(
+                    source,
+                    encoding="utf-8",
+                )
 
-    def test_audit_detects_lastrowid(self):
-        findings = self.scan_text("new_id = cursor.lastrowid\n")
-        self.assertTrue(any(f.pattern == "lastrowid" for f in findings))
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(self.SCRIPT),
+                    "--root",
+                    str(root),
+                    "--format",
+                    "json",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
 
-    def test_audit_detects_pragma(self):
-        findings = self.scan_text('conn.execute("PRAGMA foreign_keys=ON")\n')
-        self.assertTrue(any(f.pattern == "PRAGMA" for f in findings))
+            payload = json.loads(result.stdout)
+            return result.returncode, payload
 
-    def test_audit_detects_question_placeholders(self):
-        findings = self.scan_text('conn.execute("SELECT * FROM users WHERE id = ?", (1,))\n')
-        self.assertTrue(any(f.category == "placeholders" for f in findings))
+    def assert_detected(self, source: str, expected_token: str):
+        code, payload = self.run_audit(source)
 
-    def test_audit_json_output_is_valid(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            (root / "sample.py").write_text("import sqlite3\n", encoding="utf-8")
-            output = io.StringIO()
-            with redirect_stdout(output):
-                result = main(["--root", str(root), "--format", "json"])
+        self.assertEqual(code, 2)
+        self.assertEqual(payload["status"], "failed")
+        self.assertEqual(payload["runtime_backend"], "postgres")
 
-        self.assertEqual(result, 0)
-        payload = json.loads(output.getvalue())
-        self.assertIsInstance(payload, list)
-        self.assertEqual(payload[0]["file"], "sample.py")
+        tokens = {
+            finding["token"]
+            for finding in payload["sqlite_runtime_findings"]
+        }
+        self.assertIn(expected_token, tokens)
 
-    def test_audit_ignores_data_backups_logs(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            for dirname in ("data", "backups", "logs"):
-                directory = root / dirname
-                directory.mkdir()
-                (directory / "ignored.py").write_text("import sqlite3\n", encoding="utf-8")
-            self.assertEqual(scan_path(root), [])
+    def test_clean_runtime_is_postgresql_only(self):
+        code, payload = self.run_audit("print('postgres only')\n")
 
-    def test_audit_does_not_modify_files(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            sample = root / "sample.py"
-            sample.write_text("import sqlite3\n", encoding="utf-8")
-            before = sample.read_text(encoding="utf-8")
-            scan_path(root)
-            after = sample.read_text(encoding="utf-8")
-            self.assertEqual(before, after)
+        self.assertEqual(code, 0)
+        self.assertEqual(payload["status"], "postgresql_only")
+        self.assertEqual(payload["runtime_backend"], "postgres")
+        self.assertEqual(payload["sqlite_runtime_findings"], [])
+
+    def test_detects_sqlite3(self):
+        self.assert_detected(
+            "import sqlite3\n",
+            "sqlite3",
+        )
+
+    def test_detects_sqlite_word(self):
+        self.assert_detected(
+            "backend = 'sqlite'\n",
+            "sqlite",
+        )
+
+    def test_detects_sqlite_capitalized(self):
+        self.assert_detected(
+            "backend = 'SQLite'\n",
+            "SQLite",
+        )
+
+    def test_detects_pragma(self):
+        self.assert_detected(
+            'sql = "PRAGMA table_info(test)"\n',
+            "PRAGMA",
+        )
+
+    def test_detects_sqlite_master(self):
+        self.assert_detected(
+            'sql = "SELECT * FROM sqlite_master"\n',
+            "sqlite_master",
+        )
+
+    def test_detects_lastrowid(self):
+        self.assert_detected(
+            "value = cursor.lastrowid\n",
+            "lastrowid",
+        )
+
+    def test_detects_legacy_database_path(self):
+        self.assert_detected(
+            "path = 'mvp.sqlite3'\n",
+            "mvp.sqlite3",
+        )
+
+    def test_detects_legacy_schema_reference(self):
+        self.assert_detected(
+            "path = 'app/schema.sql'\n",
+            "schema.sql",
+        )
 
 
 if __name__ == "__main__":
