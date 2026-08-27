@@ -3,10 +3,34 @@ from decimal import Decimal
 from unittest.mock import ANY, Mock, patch
 
 from app.db import DbConfig
-from scripts.postgres_full_app_smoke import PAGES, SmokeFailure, _body_excerpt, _isolated_smoke_change_reason, _isolated_smoke_currency, _normalized_body_text, _smoke_prefix_values, _tariff_edit_state_is_expected, _tariff_state_diagnostic, wsgi_request
+from app.repository import hash_password
+from scripts.postgres_full_app_smoke import PAGES, SmokeFailure, _assert_stored_password, _body_excerpt, _isolated_smoke_change_reason, _isolated_smoke_currency, _normalized_body_text, _smoke_prefix_values, _tariff_edit_state_is_expected, _tariff_state_diagnostic, wsgi_request
 
 
 class FullAppSmokeHarnessTests(unittest.TestCase):
+    def test_password_assertion_accepts_canonical_embedded_salt_format(self):
+        password_hash, password_salt = hash_password("correct-password")
+
+        _assert_stored_password(
+            {"password_hash": password_hash, "password_salt": password_salt},
+            "correct-password",
+            "/admin/users/create",
+        )
+
+        self.assertEqual(password_salt, "")
+
+    def test_password_assertion_rejects_plaintext_without_logging_it(self):
+        secret = "must-not-appear"
+
+        with self.assertRaises(SmokeFailure) as caught:
+            _assert_stored_password(
+                {"password_hash": secret, "password_salt": ""}, secret, "/admin/users/create"
+            )
+
+        self.assertNotIn(secret, str(caught.exception))
+        self.assertIn("canonical_verify=False", str(caught.exception))
+        self.assertIn("hash_equals_plaintext=True", str(caught.exception))
+
     def test_tariff_edit_state_compares_postgres_numeric_semantically(self):
         original_token = "2026-08-23 10:00:00+00:00"
         tariff = {
