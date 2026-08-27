@@ -5,11 +5,13 @@ from __future__ import annotations
 import argparse
 import ast
 import hashlib
+import io
 import json
 import re
-import sys
 import sqlite3
+import sys
 import tempfile
+from contextlib import redirect_stdout
 from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
@@ -228,12 +230,16 @@ def _security_gate_is_complete() -> bool:
         if facts["passwordless_user_switching_allowed"] or not facts["default_credentials_forbidden_in_production"]:
             return False
         conn = sqlite3.connect(":memory:")
-        conn.row_factory = sqlite3.Row
-        conn.execute("CREATE TABLE login_attempts(id INTEGER PRIMARY KEY, username_normalized TEXT NOT NULL, client_key TEXT NOT NULL, failed_at TEXT NOT NULL, reason TEXT)")
-        now = datetime(2026, 1, 1, tzinfo=timezone.utc)
-        for _ in range(5):
-            record_login_failure(conn, "audit-user", "audit-client", now=now)
-        if not login_is_locked(conn, "audit-user", "audit-client", now=now):
+        try:
+            conn.row_factory = sqlite3.Row
+            conn.execute("CREATE TABLE login_attempts(id INTEGER PRIMARY KEY, username_normalized TEXT NOT NULL, client_key TEXT NOT NULL, failed_at TEXT NOT NULL, reason TEXT)")
+            now = datetime(2026, 1, 1, tzinfo=timezone.utc)
+            for _ in range(5):
+                record_login_failure(conn, "audit-user", "audit-client", now=now)
+            locked = login_is_locked(conn, "audit-user", "audit-client", now=now)
+        finally:
+            conn.close()
+        if not locked:
             return False
     except (RuntimeError, TypeError, ValueError, sqlite3.Error):
         return False
@@ -243,10 +249,92 @@ def _security_gate_is_complete() -> bool:
     return (
         "login_is_locked(conn, username, request_client_key)" in server_source
         and server_source.index("login_is_locked(conn, username, request_client_key)") < server_source.index("repo.authenticate_user(username")
-        and "production_security_enabled()" in server_source
+        and _authenticated_logout_contract_is_complete(production_env)
         and "Known default credentials are forbidden" in db_source
         and "python -m unittest tests.test_postgres_security_gate" in workflow
     )
+
+
+def _authenticated_logout_contract_is_complete(production_env: dict[str, str]) -> bool:
+    """Exercise the rendered production layout and logout endpoint, not helper placement."""
+    with redirect_stdout(io.StringIO()):
+        import app.server as server
+
+    def request(path: str, cookie: str = "") -> tuple[str, dict[str, str], str]:
+        captured: dict[str, object] = {}
+
+        def start_response(status: str, headers: list[tuple[str, str]]) -> None:
+            captured["status"] = status
+            captured["headers"] = headers
+
+        environ = {
+            "REQUEST_METHOD": "GET",
+            "PATH_INFO": path,
+            "QUERY_STRING": "",
+            "CONTENT_LENGTH": "0",
+            "wsgi.input": io.BytesIO(),
+        }
+        if cookie:
+            environ["HTTP_COOKIE"] = cookie
+        body = b"".join(server.app(environ, start_response)).decode("utf-8")
+        return str(captured["status"]), dict(captured["headers"]), body
+
+    previous_db_path = server.DB_PATH
+    try:
+        with tempfile.NamedTemporaryFile() as database:
+            server.DB_PATH = database.name
+            conn = server.connect(server.DB_PATH)
+            try:
+                server.init_db(conn)
+                repo = server.Repository(conn)
+                server.ensure_seed(repo)
+                for seeded_user in conn.execute("SELECT id FROM users").fetchall():
+                    repo.update_user_password(
+                        int(seeded_user["id"]),
+                        f"production-audit-user-{seeded_user['id']}-password",
+                        must_change_password=False,
+                    )
+                operator_id = repo.create_user(
+                    "production-routes-audit", "operator", "Production Routes Audit",
+                    password="production-routes-audit-password",
+                )
+                conn.execute(
+                    """
+                    INSERT INTO user_permissions(user_id, section_key, can_read, can_write, can_export)
+                    VALUES (?, 'routes', 1, 0, 0)
+                    """,
+                    (operator_id,),
+                )
+                admin_id = conn.execute("SELECT id FROM users WHERE username = 'admin'").fetchone()["id"]
+                conn.commit()
+            finally:
+                conn.close()
+
+            with patch.dict("os.environ", production_env, clear=False):
+                for user_id, display_name in ((operator_id, "Production Routes Audit"), (admin_id, "Admin")):
+                    cookie = f"{server.CURRENT_USER_COOKIE}={server.sign_user_id(user_id)}"
+                    status, _, html = request("/routes", cookie)
+                    if status != "200 OK":
+                        return False
+                    if not all(value in html for value in (
+                        'class="current-user-selector"', 'href="/logout"', display_name,
+                    )):
+                        return False
+                    if re.search(r"<form\b[^>]*(?:switch|current.?user)", html, re.IGNORECASE):
+                        return False
+                    if re.search(r"<select\b[^>]*(?:current.?user|user.?switch|account.?switch)", html, re.IGNORECASE):
+                        return False
+
+                logout_status, logout_headers, _ = request("/logout", cookie)
+                if logout_status != "303 See Other" or logout_headers.get("Location") != "/login":
+                    return False
+                if logout_headers.get("Set-Cookie") != server.clear_current_user_cookie()[1]:
+                    return False
+        return True
+    except (KeyError, OSError, RuntimeError, TypeError, ValueError, sqlite3.Error):
+        return False
+    finally:
+        server.DB_PATH = previous_db_path
 
 
 def _backup_restore_gate_is_complete() -> bool:
