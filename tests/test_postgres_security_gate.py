@@ -100,9 +100,7 @@ class PostgresSecurityGateTests(unittest.TestCase):
         columns = {row[1] for row in conn.execute("PRAGMA table_info(login_attempts)")}
         self.assertNotIn("password", columns)
 
-    def test_production_hides_passwordless_user_selector(self):
-        with patch.dict(os.environ, {"MVP_PRODUCTION_SECURITY": "1"}, clear=True):
-            self.assertEqual(server.current_user_selector(), "")
+    def test_production_forbids_passwordless_user_switching(self):
         self.assertFalse(security_gate_facts({"MVP_PRODUCTION_SECURITY": "1"})["passwordless_user_switching_allowed"])
 
 

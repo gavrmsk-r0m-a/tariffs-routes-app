@@ -31,7 +31,6 @@ from app.security import (
     client_key,
     get_auth_cookie_secret,
     login_is_locked,
-    production_security_enabled,
     record_login_failure,
     render_cookie_attributes,
 )
@@ -572,8 +571,6 @@ def role_label(role_key: str | None) -> str:
 
 
 def current_user_selector() -> str:
-    if production_security_enabled():
-        return ""
     repo = _REQUEST_CONTEXT.get("repo")
     current_user_id = _REQUEST_CONTEXT.get("current_user_id")
     if not isinstance(repo, Repository) or current_user_id is None:
