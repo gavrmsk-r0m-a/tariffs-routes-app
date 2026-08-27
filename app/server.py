@@ -399,8 +399,13 @@ def require_export(section_key: str):
     return lambda: require_permission("export", section_key)
 
 
-def forbidden_page() -> bytes:
-    return page("Нет доступа", "<section class='message-card error'><h1>Нет доступа</h1><p>У текущего пользователя нет прав для этого раздела или действия.</p></section>")
+def forbidden_page(back_target: str) -> bytes:
+    body = (
+        "<section class='message-card error'><h1>Нет доступа</h1>"
+        "<p>У текущего пользователя нет прав для этого раздела или действия.</p>"
+        f"<p><a class='button' href='{esc(back_target)}'>← Назад</a></p></section>"
+    )
+    return page("Нет доступа", body)
 
 
 class ForbiddenError(Exception):
@@ -4539,6 +4544,40 @@ def safe_redirect_target(value: str | None) -> str:
     if not value or not value.startswith("/") or value.startswith("//"):
         return "/"
     return value
+
+
+def first_accessible_page() -> str:
+    """Return the first navigation destination the current user may read."""
+    candidates = [*NAV_ITEMS, *ADMIN_NAV_ITEMS]
+    for section, href, _label, _titles in candidates:
+        if can_read(section):
+            return href
+    if can_read("admin"):
+        return "/admin"
+    # Authenticated users normally have at least one readable section. Keep the
+    # exceptional no-permissions case on a safe application endpoint.
+    return "/logout"
+
+
+def forbidden_back_target(environ) -> str:
+    """Use a readable same-origin Referer, otherwise a permission-aware fallback."""
+    referer = environ.get("HTTP_REFERER", "")
+    if referer:
+        parsed = urlsplit(referer)
+        request_host = environ.get("HTTP_HOST", "")
+        is_relative = not parsed.scheme and not parsed.netloc
+        is_same_origin = (
+            parsed.scheme == environ.get("wsgi.url_scheme", "http")
+            and bool(request_host)
+            and not parsed.username
+            and not parsed.password
+            and parsed.netloc.lower() == request_host.lower()
+        )
+        if (is_relative or is_same_origin) and parsed.path.startswith("/") and not parsed.path.startswith("//"):
+            section = section_for_get_path(parsed.path)
+            if section and can_read(section):
+                return parsed.path + (f"?{parsed.query}" if parsed.query else "")
+    return first_accessible_page()
 
 
 def current_actor_id() -> int:
@@ -10764,7 +10803,7 @@ def app(environ, start_response):
         return [response]
     except ForbiddenError:
         start_response("403 Forbidden", html_headers())
-        return [forbidden_page()]
+        return [forbidden_page(forbidden_back_target(environ))]
     except Exception as exc:
         # Business/validation errors are expected. Database errors are expected
         # only when the backend-neutral mapper recognizes their category.

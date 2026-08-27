@@ -5612,6 +5612,44 @@ class RolePermissionTest(ServerSmokeTest):
         self.assertEqual(captured["status"], "200 OK")
         self.assertIn("Смена провайдеров", content)
 
+    def test_forbidden_route_edit_has_safe_permission_aware_back_link(self):
+        cookie = self.user_cookie("duty")
+
+        captured, content = self.request(
+            "/routes/1/edit",
+            cookie=cookie,
+            headers={"HTTP_REFERER": "/routes/1/numbers"},
+        )
+        self.assertEqual(captured["status"], "403 Forbidden")
+        self.assertIn("Нет доступа", content)
+        self.assertIn("href='/routes/1/numbers'>← Назад</a>", content)
+
+        captured, content = self.request(
+            "/routes/1/edit",
+            cookie=cookie,
+            headers={
+                "HTTP_HOST": "teleroute.internal",
+                "HTTP_REFERER": "https://attacker.example/phishing",
+            },
+        )
+        self.assertEqual(captured["status"], "403 Forbidden")
+        self.assertNotIn("attacker.example", content)
+        self.assertIn("href='/dashboard'>← Назад</a>", content)
+
+        captured, content = self.request("/routes/1/edit", cookie=cookie)
+        self.assertEqual(captured["status"], "403 Forbidden")
+        self.assertIn("href='/dashboard'>← Назад</a>", content)
+
+        # The navigation aid must not change the operator's write permission.
+        captured, _content = self.request(
+            "/routes/1/update",
+            method="POST",
+            body=urlencode({"name": "Still forbidden"}),
+            cookie=cookie,
+            headers={"HTTP_REFERER": "/routes"},
+        )
+        self.assertEqual(captured["status"], "403 Forbidden")
+
     def test_guest_cannot_open_provider_changes(self):
         captured, content = self.request("/provider-changes", cookie=self.user_cookie("guest"))
         self.assertEqual(captured["status"], "403 Forbidden")
