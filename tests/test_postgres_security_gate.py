@@ -100,9 +100,25 @@ class PostgresSecurityGateTests(unittest.TestCase):
         columns = {row[1] for row in conn.execute("PRAGMA table_info(login_attempts)")}
         self.assertNotIn("password", columns)
 
-    def test_production_hides_passwordless_user_selector(self):
-        with patch.dict(os.environ, {"MVP_PRODUCTION_SECURITY": "1"}, clear=True):
-            self.assertEqual(server.current_user_selector(), "")
+    def test_production_user_menu_only_exposes_authenticated_logout(self):
+        conn = sqlite3.connect(":memory:")
+        conn.row_factory = sqlite3.Row
+        with patch.dict(os.environ, {}, clear=True):
+            init_db(conn)
+        repo = server.Repository(conn)
+        user = repo.get_user_by_username("admin")
+        previous_context = dict(server._REQUEST_CONTEXT)
+        server._REQUEST_CONTEXT.update({"repo": repo, "current_user_id": user["id"]})
+        try:
+            with patch.dict(os.environ, {"MVP_PRODUCTION_SECURITY": "1"}, clear=True):
+                menu = server.current_user_selector()
+        finally:
+            server._REQUEST_CONTEXT.clear()
+            server._REQUEST_CONTEXT.update(previous_context)
+            conn.close()
+        self.assertIn('href="/logout"', menu)
+        self.assertNotIn("<select", menu)
+        self.assertNotIn("<form", menu)
         self.assertFalse(security_gate_facts({"MVP_PRODUCTION_SECURITY": "1"})["passwordless_user_switching_allowed"])
 
 

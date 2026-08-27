@@ -240,10 +240,26 @@ def _security_gate_is_complete() -> bool:
     server_source = (ROOT / "app/server.py").read_text(encoding="utf-8")
     db_source = (ROOT / "app/db.py").read_text(encoding="utf-8")
     workflow = (ROOT / ".github/workflows/postgres-migration-smoke.yml").read_text(encoding="utf-8")
+    try:
+        server_tree = ast.parse(server_source, filename=str(ROOT / "app/server.py"))
+        user_menu = next(
+            node for node in server_tree.body
+            if isinstance(node, ast.FunctionDef) and node.name == "current_user_selector"
+        )
+        user_menu_source = ast.get_source_segment(server_source, user_menu) or ""
+    except (SyntaxError, StopIteration):
+        return False
+    safe_authenticated_menu = (
+        'href="/logout"' in user_menu_source
+        and "<select" not in user_menu_source
+        and "<form" not in user_menu_source
+        and 'if path == "/logout":' in server_source
+        and "clear_current_user_cookie()" in server_source
+    )
     return (
         "login_is_locked(conn, username, request_client_key)" in server_source
         and server_source.index("login_is_locked(conn, username, request_client_key)") < server_source.index("repo.authenticate_user(username")
-        and "production_security_enabled()" in server_source
+        and safe_authenticated_menu
         and "Known default credentials are forbidden" in db_source
         and "python -m unittest tests.test_postgres_security_gate" in workflow
     )
