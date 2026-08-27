@@ -18,6 +18,8 @@ from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
 from wsgiref.simple_server import make_server
 
+from psycopg import IntegrityError
+
 from app.db import connect_database, load_db_config
 from app.db_adapter import placeholder, to_db_bool
 from app.db_errors import UNKNOWN_DATABASE_ERROR, UNIQUE_VIOLATION, map_database_error
@@ -9682,7 +9684,7 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
             try:
                 repo.add_phone_to_route_by_number(route_id=route_id, number=number, usage_type="pool_member", added_by=actor_id)
                 added += 1
-            except Exception as exc:
+            except (BusinessRuleError, IntegrityError) as exc:
                 errors.append(f"{number}: {exc}")
         report = "Массовое добавление завершено. Добавлено %s из %s. Не добавлены: %s" % (added, added + len(errors), "; ".join(errors) or "—")
         notice_type = "error" if errors else "success"
