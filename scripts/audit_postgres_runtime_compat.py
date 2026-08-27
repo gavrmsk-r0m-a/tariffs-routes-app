@@ -14,8 +14,6 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Iterable
 
-__all__ = ["Finding", "format_json", "format_text", "iter_scan_files", "scan_path"]
-
 DEFAULT_EXCLUDES = {".git", "__pycache__", ".venv", "venv", "backups", "data", "logs"}
 SCAN_SUFFIXES = {".py", ".sql"}
 

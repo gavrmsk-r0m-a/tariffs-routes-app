@@ -1,9 +1,11 @@
+import io
 import json
 import tempfile
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
 
-from scripts.audit_postgres_runtime_compat import format_json, scan_path
+from scripts.audit_postgres_runtime_compat import main, scan_path
 
 
 class PostgresRuntimeAuditHelperTests(unittest.TestCase):
@@ -30,8 +32,15 @@ class PostgresRuntimeAuditHelperTests(unittest.TestCase):
         self.assertTrue(any(f.category == "placeholders" for f in findings))
 
     def test_audit_json_output_is_valid(self):
-        findings = self.scan_text("import sqlite3\n")
-        payload = json.loads(format_json(findings))
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "sample.py").write_text("import sqlite3\n", encoding="utf-8")
+            output = io.StringIO()
+            with redirect_stdout(output):
+                result = main(["--root", str(root), "--format", "json"])
+
+        self.assertEqual(result, 0)
+        payload = json.loads(output.getvalue())
         self.assertIsInstance(payload, list)
         self.assertEqual(payload[0]["file"], "sample.py")
 
