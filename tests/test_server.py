@@ -10,7 +10,7 @@ from unittest.mock import Mock, patch
 from urllib.parse import urlencode
 
 import app.server as server
-from app.repository import Repository
+from app.repository import Repository, verify_password
 
 
 def _strip_tags(fragment):
@@ -1113,11 +1113,15 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertIn(("Location", "/admin/users?notice=%D0%9F%D0%B0%D1%80%D0%BE%D0%BB%D1%8C%20%D0%BF%D0%BE%D0%BB%D1%8C%D0%B7%D0%BE%D0%B2%D0%B0%D1%82%D0%B5%D0%BB%D1%8F%20%D0%9E%D0%BF%D0%B5%D1%80%D0%B0%D1%82%D0%BE%D1%80%20%D1%81%D0%B1%D1%80%D0%BE%D1%88%D0%B5%D0%BD.%20%D0%9F%D1%80%D0%B8%20%D1%81%D0%BB%D0%B5%D0%B4%D1%83%D1%8E%D1%89%D0%B5%D0%BC%20%D0%B2%D1%85%D0%BE%D0%B4%D0%B5%20%D0%BF%D0%BE%D0%BB%D1%8C%D0%B7%D0%BE%D0%B2%D0%B0%D1%82%D0%B5%D0%BB%D1%8C%20%D0%B4%D0%BE%D0%BB%D0%B6%D0%B5%D0%BD%20%D1%81%D0%BC%D0%B5%D0%BD%D0%B8%D1%82%D1%8C%20%D0%BF%D0%B0%D1%80%D0%BE%D0%BB%D1%8C."), captured["headers"])
         conn = server.connect(server.DB_PATH)
         try:
-            row = conn.execute("SELECT must_change_password FROM users WHERE id = ?", (user_id,)).fetchone()
+            row = conn.execute("SELECT must_change_password, password_hash, password_salt FROM users WHERE id = ?", (user_id,)).fetchone()
             admin_row = conn.execute("SELECT must_change_password FROM users WHERE username = 'admin'").fetchone()
         finally:
             conn.close()
         self.assertEqual(row["must_change_password"], 1)
+        self.assertNotEqual(row["password_hash"], "new123")
+        self.assertNotEqual(row["password_salt"], "new123")
+        self.assertTrue(verify_password("new123", row["password_hash"], row["password_salt"]))
+        self.assertFalse(verify_password("old123", row["password_hash"], row["password_salt"]))
         self.assertEqual(admin_row["must_change_password"], 0)
         captured, content = self.request("/admin/users", cookie=admin_cookie, auto_login=False)
         self.assertEqual(captured["status"], "200 OK")
@@ -1187,10 +1191,14 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertEqual(captured["status"], "303 See Other")
         conn = server.connect(server.DB_PATH)
         try:
-            row = conn.execute("SELECT must_change_password FROM users WHERE id = ?", (user_id,)).fetchone()
+            row = conn.execute("SELECT must_change_password, password_hash, password_salt FROM users WHERE id = ?", (user_id,)).fetchone()
         finally:
             conn.close()
         self.assertEqual(row["must_change_password"], 0)
+        self.assertNotEqual(row["password_hash"], "newtemp123")
+        self.assertNotEqual(row["password_salt"], "newtemp123")
+        self.assertTrue(verify_password("newtemp123", row["password_hash"], row["password_salt"]))
+        self.assertFalse(verify_password("temp123", row["password_hash"], row["password_salt"]))
         captured, _ = self.request("/login", method="POST", body=urlencode({"username": "tempuser", "password": "newtemp123"}))
         self.assertEqual(captured["status"], "303 See Other")
         self.assertIn(("Location", "/routes"), captured["headers"])

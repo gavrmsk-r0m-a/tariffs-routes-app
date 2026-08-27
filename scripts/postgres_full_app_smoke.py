@@ -28,7 +28,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from app.db import connect_postgres  # noqa: E402
-from app.repository import Repository, hash_password  # noqa: E402
+from app.repository import Repository, hash_password, verify_password  # noqa: E402
 from app.security import validate_auth_secret  # noqa: E402
 from scripts.postgres_backup import sanitize_database_url, sanitize_text  # noqa: E402
 
@@ -444,6 +444,41 @@ def _assert_login_denied(app, username: str, password: str) -> None:
         raise SmokeFailure("/login", "invalid/inactive account was not denied", status)
 
 
+def _assert_stored_password(row, password: str, path: str) -> None:
+    """Validate stored credentials with the same contract used by login.
+
+    Diagnostics deliberately report only representation metadata and verifier
+    results.  In the current format the PBKDF2 salt is embedded in
+    ``password_hash`` and ``password_salt`` is a present, empty compatibility
+    value; legacy rows may contain a separate hexadecimal salt.
+    """
+    password_hash = row["password_hash"] if row else None
+    password_salt = row["password_salt"] if row else None
+    hash_present = password_hash is not None
+    salt_present = password_salt is not None
+    hash_equals_plaintext = password_hash == password
+    salt_equals_plaintext = password_salt == password
+    canonical_verify = verify_password(password, password_hash, password_salt)
+    wrong_password_rejected = not verify_password(f"wrong-{password}", password_hash, password_salt)
+    valid_types = isinstance(password_hash, str) and isinstance(password_salt, str)
+    if not all((hash_present, salt_present, valid_types, canonical_verify, wrong_password_rejected)) \
+            or hash_equals_plaintext or salt_equals_plaintext:
+        diagnostic = (
+            f"hash_present={hash_present} hash_type={type(password_hash).__name__} "
+            f"hash_length={len(password_hash) if isinstance(password_hash, str) else 0} "
+            f"salt_present={salt_present} salt_type={type(password_salt).__name__} "
+            f"salt_length={len(password_salt) if isinstance(password_salt, str) else 0} "
+            f"canonical_verify={canonical_verify} wrong_password_rejected={wrong_password_rejected} "
+            f"hash_equals_plaintext={hash_equals_plaintext} salt_equals_plaintext={salt_equals_plaintext}"
+        )
+        raise SmokeFailure(path, f"stored password failed canonical security contract: {diagnostic}")
+
+
+def _assert_password_not_exposed(body: bytes, passwords: tuple[str, ...], path: str) -> None:
+    if any(password.encode("utf-8") in body for password in passwords):
+        raise SmokeFailure(path, "response exposed password material")
+
+
 def _run_users_postgres_lifecycle(app, database_url: str, admin_cookie: str) -> list[str]:
     """Exercise account administration exclusively through the WSGI runtime."""
     suffix = secrets.token_hex(6)
@@ -463,7 +498,7 @@ def _run_users_postgres_lifecycle(app, database_url: str, admin_cookie: str) -> 
             "role_key": "operator", "password": initial_password,
             "password_confirm": initial_password, "perm__routes__read": "1",
         }
-        status, headers, _ = wsgi_request(
+        status, headers, body = wsgi_request(
             app, "/admin/users/create", method="POST", data=create_data, cookie=admin_cookie
         )
         if status != "303 See Other" or _header(headers, "Location") != "/admin/users":
@@ -478,10 +513,10 @@ def _run_users_postgres_lifecycle(app, database_url: str, admin_cookie: str) -> 
             if not row or not row["is_active"] or row["password_hash"] in (None, initial_password):
                 raise SmokeFailure("/admin/users/create", "PostgreSQL user/hash state is invalid")
             user_id = int(row["id"])
-            if initial_password in str(row["password_hash"]) or not row["password_salt"]:
-                raise SmokeFailure("/admin/users/create", "password was not safely hashed")
+            _assert_stored_password(row, initial_password, "/admin/users/create")
         finally:
             conn.close()
+        _assert_password_not_exposed(body, (initial_password,), "/admin/users/create")
 
         operator_cookie = _login(app, username, initial_password)
         allowed, _, _ = wsgi_request(app, "/routes", cookie=operator_cookie)
@@ -505,21 +540,46 @@ def _run_users_postgres_lifecycle(app, database_url: str, admin_cookie: str) -> 
             raise SmokeFailure("/admin/users", "updated permissions did not take effect")
 
         reset_data = {**update_data, "password": temporary_password, "password_confirm": temporary_password}
-        status, _, _ = wsgi_request(
+        status, _, body = wsgi_request(
             app, f"/admin/users/{user_id}/update", method="POST", data=reset_data, cookie=admin_cookie
         )
         if status != "303 See Other":
             raise SmokeFailure(f"/admin/users/{user_id}/update", "password reset failed", status)
+        conn = connect_postgres(database_url)
+        try:
+            row = conn.execute(
+                "SELECT password_hash, password_salt FROM users WHERE id=%s", (user_id,)
+            ).fetchone()
+            _assert_stored_password(row, temporary_password, f"/admin/users/{user_id}/update")
+        finally:
+            conn.close()
+        _assert_password_not_exposed(body, (initial_password, temporary_password), f"/admin/users/{user_id}/update")
         _assert_login_denied(app, username, initial_password)
         change_cookie = _login(app, username, temporary_password, "/change-password")
-        status, headers, _ = wsgi_request(
+        status, headers, body = wsgi_request(
             app, "/change-password", method="POST", cookie=change_cookie,
             data={"password": final_password, "password_confirm": final_password},
         )
         if status != "303 See Other" or _header(headers, "Location") != "/routes":
             raise SmokeFailure("/change-password", "required password change failed", status)
+        _assert_password_not_exposed(body, (initial_password, temporary_password, final_password), "/change-password")
+        conn = connect_postgres(database_url)
+        try:
+            row = conn.execute(
+                "SELECT password_hash, password_salt FROM users WHERE id=%s", (user_id,)
+            ).fetchone()
+            _assert_stored_password(row, final_password, "/change-password")
+        finally:
+            conn.close()
         _assert_login_denied(app, username, temporary_password)
         _login(app, username, final_password)
+
+        status, _, body = wsgi_request(app, "/admin/change-log", cookie=admin_cookie)
+        if status != "200 OK":
+            raise SmokeFailure("/admin/change-log", "change log page failed", status)
+        _assert_password_not_exposed(
+            body, (initial_password, temporary_password, final_password), "/admin/change-log"
+        )
 
         deactivate_data = {**update_data, "is_active": "0"}
         status, _, _ = wsgi_request(
