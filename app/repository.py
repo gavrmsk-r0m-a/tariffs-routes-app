@@ -4,7 +4,6 @@ import hashlib
 import hmac
 import os
 import re
-import sqlite3
 import json
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -85,7 +84,7 @@ def normalize_search_text(value: object) -> str | None:
 
 
 def search_text_matches(value: object, search: object) -> int:
-    """SQLite helper for Unicode-aware, case-insensitive partial text search."""
+    """Normalize text for PostgreSQL case-insensitive matching."""
     needle = normalize_search_text(search)
     if needle is None:
         return 1
@@ -266,7 +265,7 @@ def query_filters(
     filters: dict | None,
     mapping: dict[str, str],
     *,
-    backend: str = "sqlite",
+    backend: str = "postgres",
 ) -> tuple[str, list]:
     if not filters:
         return "", []
@@ -280,16 +279,12 @@ def query_filters(
             search = str(value).strip()
             if not search:
                 continue
-            if normalize_backend_name(backend) == "postgres":
-                p = placeholder(backend)
-                clauses.append(
-                    f"POSITION(LOWER(CAST({p} AS TEXT)) "
-                    f"IN LOWER(COALESCE(CAST({column} AS TEXT), ''))) > 0"
-                )
-                params.append(search)
-            else:
-                clauses.append(f"search_text_matches({column}, ?) = 1")
-                params.append(normalize_search_text(search))
+            p = placeholder(backend)
+            clauses.append(
+                f"POSITION(LOWER(CAST({p} AS TEXT)) "
+                f"IN LOWER(COALESCE(CAST({column} AS TEXT), ''))) > 0"
+            )
+            params.append(search)
         else:
             clauses.append(f"{column} = {placeholder(backend)}")
             params.append(value)
@@ -297,11 +292,9 @@ def query_filters(
 
 
 class Repository:
-    def __init__(self, conn: sqlite3.Connection, backend: str = "sqlite"):
+    def __init__(self, conn, backend: str = "postgres"):
         self.conn = conn
         self.backend = normalize_backend_name(backend)
-        if self.backend == "sqlite":
-            self.conn.create_function("search_text_matches", 2, search_text_matches)
 
     @staticmethod
     def _normalize_concurrency_timestamp(value: object) -> datetime | object:
@@ -337,8 +330,6 @@ class Repository:
             self.conn.commit()
 
     def _user_columns(self) -> set[str]:
-        if self.backend == "sqlite":
-            return {row["name"] for row in self.conn.execute("PRAGMA table_info(users)")}
         p = placeholder(self.backend)
         rows = self.conn.execute(
             f"""
@@ -462,16 +453,12 @@ class Repository:
                 self.conn.rollback()
             raise
 
-    def list_users(self, active_only: bool = False) -> list[sqlite3.Row]:
+    def list_users(self, active_only: bool = False) -> list[dict]:
         p = placeholder(self.backend)
         where = f"WHERE is_active = {p}" if active_only else ""
         params = (to_db_bool(True, self.backend),) if active_only else ()
         role_expr = "role_key" if "role_key" in self._user_columns() else "LOWER(role)"
-        ordering = (
-            "is_active DESC, display_name COLLATE NOCASE, username COLLATE NOCASE"
-            if self.backend == "sqlite"
-            else "is_active DESC, LOWER(COALESCE(NULLIF(display_name, ''), username)), LOWER(username), id"
-        )
+        ordering = "is_active DESC, LOWER(COALESCE(NULLIF(display_name, ''), username)), LOWER(username), id"
         return list(self.conn.execute(
             f"""
             SELECT id, username, COALESCE(NULLIF(display_name, ''), username) AS display_name,
@@ -483,7 +470,7 @@ class Repository:
             params,
         ))
 
-    def get_user(self, user_id: int) -> sqlite3.Row | None:
+    def get_user(self, user_id: int) -> dict | None:
         p = placeholder(self.backend)
         role_expr = "role_key" if "role_key" in self._user_columns() else "LOWER(role)"
         return self.conn.execute(
@@ -496,7 +483,7 @@ class Repository:
             (user_id,),
         ).fetchone()
 
-    def get_user_by_username(self, username: str) -> sqlite3.Row | None:
+    def get_user_by_username(self, username: str) -> dict | None:
         p = placeholder(self.backend)
         columns = self._user_columns()
         role_expr = "role_key" if "role_key" in columns else "LOWER(role)"
@@ -511,7 +498,7 @@ class Repository:
             (username.strip(),),
         ).fetchone()
 
-    def authenticate_user(self, username: str, password: str) -> sqlite3.Row | None:
+    def authenticate_user(self, username: str, password: str) -> dict | None:
         user = self.get_user_by_username(username)
         if not user or not user["is_active"]:
             return None
@@ -633,13 +620,6 @@ class Repository:
         rollback-only PostgreSQL harness.  Existing application callers retain
         their historical commit-by-default behavior.
         """
-        if self.backend == "sqlite":
-            if value in (None, ""):
-                self.delete_app_setting_value("hlr_daily_limit_override", commit=commit)
-                return
-            self.set_app_setting_value("hlr_daily_limit_override", str(value), updated_by, commit=commit)
-            return
-
         p = placeholder(self.backend)
         try:
             if value in (None, ""):
@@ -666,7 +646,7 @@ class Repository:
                 self.conn.rollback()
             raise
 
-    def get_user_section_permission(self, user_id: int, section_key: str) -> sqlite3.Row | None:
+    def get_user_section_permission(self, user_id: int, section_key: str) -> dict | None:
         p = placeholder(self.backend)
         return self.conn.execute(
             """
@@ -677,7 +657,7 @@ class Repository:
             (user_id, section_key),
         ).fetchone()
 
-    def get_user_permissions(self, user_id: int) -> dict[str, sqlite3.Row]:
+    def get_user_permissions(self, user_id: int) -> dict[str, dict]:
         p = placeholder(self.backend)
         return {
             row["section_key"]: row
@@ -1154,10 +1134,10 @@ class Repository:
                 self.conn.rollback()
             raise
 
-    def get_calling_company(self, company_id: int) -> sqlite3.Row | None:
+    def get_calling_company(self, company_id: int) -> dict | None:
         p = placeholder(self.backend)
-        active_literal = "TRUE" if self.backend == "postgres" else "1"
-        false_literal = "FALSE" if self.backend == "postgres" else "0"
+        active_literal = "TRUE"
+        false_literal = "FALSE"
         return self.conn.execute(
             """
             SELECT cc.*, s.name AS server_name, c.name AS country_name,
@@ -1221,7 +1201,7 @@ class Repository:
             if expected_updated_at is not None:
                 token_clause = f" AND updated_at = {p}"
                 update_params.append(expected_updated_at)
-            updated_at_sql = "CURRENT_TIMESTAMP" if self.backend == "postgres" else "STRFTIME('%Y-%m-%d %H:%M:%f', 'now')"
+            updated_at_sql = "CURRENT_TIMESTAMP"
             cur = self.conn.execute(
                 f"""
                 UPDATE calling_companies
@@ -1277,7 +1257,7 @@ class Repository:
             raise
 
 
-    def get_phone_number(self, phone_id: int) -> sqlite3.Row | None:
+    def get_phone_number(self, phone_id: int) -> dict | None:
         p = placeholder(self.backend)
         return self.conn.execute(
             """
@@ -1290,7 +1270,7 @@ class Repository:
             (phone_id,),
         ).fetchone()
 
-    def get_route(self, route_id: int) -> sqlite3.Row | None:
+    def get_route(self, route_id: int) -> dict | None:
         p = placeholder(self.backend)
         return self.conn.execute(
             """
@@ -1303,7 +1283,7 @@ class Repository:
             (route_id,),
         ).fetchone()
 
-    def list_phone_history(self, phone_id: int) -> list[sqlite3.Row]:
+    def list_phone_history(self, phone_id: int) -> list[dict]:
         p = placeholder(self.backend)
         return list(self.conn.execute(
             """
@@ -1328,7 +1308,7 @@ class Repository:
             (phone_id, phone_id, phone_id, phone_id),
         ))
 
-    def list_route_history(self, route_id: int) -> list[sqlite3.Row]:
+    def list_route_history(self, route_id: int) -> list[dict]:
         p = placeholder(self.backend)
         return list(self.conn.execute(
             """
@@ -1353,7 +1333,7 @@ class Repository:
             (route_id, route_id),
         ))
 
-    def list_routes(self, filters: dict | None = None) -> list[sqlite3.Row]:
+    def list_routes(self, filters: dict | None = None) -> list[dict]:
         route_filters = dict(filters or {})
         prefix_id = route_filters.pop("prefix_id", None)
         is_actual = route_filters.get("is_actual")
@@ -1399,7 +1379,7 @@ class Repository:
             )
         )
 
-    def list_phone_numbers(self, filters: dict | None = None) -> list[sqlite3.Row]:
+    def list_phone_numbers(self, filters: dict | None = None) -> list[dict]:
         phone_filters = dict(filters or {})
         supported, normalized_review = self._normalize_optional_bool_filter(phone_filters.get("review_required"))
         if not supported:
@@ -1424,27 +1404,13 @@ class Repository:
             backend=self.backend,
         )
         p = placeholder(self.backend)
-        route_names_expr = (
-            f"""
+        route_names_expr = f"""
                     COALESCE((
                         SELECT STRING_AGG(r.name, ', ' ORDER BY r.name)
                         FROM route_phone_numbers rpn
                         JOIN routes r ON r.id = rpn.route_id
                         WHERE rpn.phone_number_id = pn.id AND rpn.is_active = {p}
                     ), '') AS route_names"""
-            if self.backend == "postgres"
-            else f"""
-                    COALESCE((
-                        SELECT GROUP_CONCAT(ordered_routes.name, ', ')
-                        FROM (
-                            SELECT r.name
-                            FROM route_phone_numbers rpn
-                            JOIN routes r ON r.id = rpn.route_id
-                            WHERE rpn.phone_number_id = pn.id AND rpn.is_active = {p}
-                            ORDER BY r.name
-                        ) AS ordered_routes
-                    ), '') AS route_names"""
-        )
         params = [to_db_bool(True, self.backend), *filter_params]
         return list(
             self.conn.execute(
@@ -1464,7 +1430,7 @@ class Repository:
             )
         )
 
-    def route_numbers(self, route_id: int) -> list[sqlite3.Row]:
+    def route_numbers(self, route_id: int) -> list[dict]:
         p = placeholder(self.backend)
         return list(
             self.conn.execute(
@@ -1793,7 +1759,7 @@ class Repository:
             if expected_updated_at is not None:
                 token_clause = f" AND updated_at = {p}"
                 update_params.append(existing["updated_at"])
-            updated_at_sql = ("CURRENT_TIMESTAMP" if self.backend == "postgres" else "STRFTIME('%Y-%m-%d %H:%M:%f', MAX(julianday('now'), julianday(updated_at) + (1.0 / 86400000.0)))")
+            updated_at_sql = "CURRENT_TIMESTAMP"
             cur = self.conn.execute(
                 f"""
                 UPDATE routes
@@ -1823,7 +1789,7 @@ class Repository:
                 self.conn.rollback()
             raise
 
-    def find_tariff_by_identity(self, country_id: int, provider_id: int, provider_prefix_id: int | None) -> sqlite3.Row | None:
+    def find_tariff_by_identity(self, country_id: int, provider_id: int, provider_prefix_id: int | None) -> dict | None:
         p = placeholder(self.backend)
         return self.conn.execute(
             """
@@ -1839,7 +1805,7 @@ class Repository:
             (country_id, provider_id, provider_prefix_id),
         ).fetchone()
 
-    def _duplicate_tariff_message(self, tariff: sqlite3.Row) -> str:
+    def _duplicate_tariff_message(self, tariff: dict) -> str:
         if tariff["is_current"]:
             return "Такой тариф уже существует"
         prefix = tariff["prefix"] or "без префикса"
@@ -1941,7 +1907,7 @@ class Repository:
                 self.conn.rollback()
             raise
 
-    def get_tariff(self, tariff_id: int) -> sqlite3.Row | None:
+    def get_tariff(self, tariff_id: int) -> dict | None:
         p = placeholder(self.backend)
         return self.conn.execute(
             """
@@ -1956,7 +1922,7 @@ class Repository:
             (tariff_id,),
         ).fetchone()
 
-    def _insert_tariff_history(self, tariff: sqlite3.Row, changed_by: int, reason: str, details: str | None = None, *, old_currency_id: int | None = None, old_price: object | None = None, old_rate: object | None = None, old_rate_date: str | None = None, old_eur_price: object | None = None) -> None:
+    def _insert_tariff_history(self, tariff: dict, changed_by: int, reason: str, details: str | None = None, *, old_currency_id: int | None = None, old_price: object | None = None, old_rate: object | None = None, old_rate_date: str | None = None, old_eur_price: object | None = None) -> None:
         p = placeholder(self.backend)
         self.conn.execute(
             f"""
@@ -2012,7 +1978,7 @@ class Repository:
             SET provider_currency_id = {p}, price_in_provider_currency = {p}, conversion_rate_to_eur = {p},
                 conversion_rate_date = {p}, currency_rate_id = {p}, eur_price = {p}, comment = {p},
                 is_current = {p}, updated_by = {p},
-                updated_at = {"CURRENT_TIMESTAMP" if self.backend == "postgres" else "STRFTIME('%Y-%m-%d %H:%M:%f', MAX(julianday('now'), julianday(updated_at) + (1.0 / 86400000.0)))"}
+                updated_at = CURRENT_TIMESTAMP
             WHERE id = {p}{token_clause}
             """,
             tuple(update_params),
@@ -2058,7 +2024,7 @@ class Repository:
                 self.conn.rollback()
             raise
 
-    def list_tariff_history(self, tariff_id: int) -> list[sqlite3.Row]:
+    def list_tariff_history(self, tariff_id: int) -> list[dict]:
         p = placeholder(self.backend)
         return list(self.conn.execute(
             """
@@ -2082,7 +2048,7 @@ class Repository:
         comment: str | None = None,
         *,
         commit: bool = True,
-    ) -> sqlite3.Row | int:
+    ) -> dict | int:
         p = placeholder(self.backend)
         try:
             rate_value = validate_currency_rate(rate_to_eur)
@@ -2100,7 +2066,7 @@ class Repository:
                 self.conn.rollback()
             raise
 
-    def get_currency_rate(self, currency_rate_id: int) -> sqlite3.Row | None:
+    def get_currency_rate(self, currency_rate_id: int) -> dict | None:
         p = placeholder(self.backend)
         return self.conn.execute(
             f"""
@@ -2112,7 +2078,7 @@ class Repository:
             (currency_rate_id,),
         ).fetchone()
 
-    def _currency_rate_log_values(self, rate: sqlite3.Row, currency_code: str) -> dict:
+    def _currency_rate_log_values(self, rate: dict, currency_code: str) -> dict:
         return {
             "currency_id": int(rate["currency_id"]),
             "currency_code": currency_code,
@@ -2211,8 +2177,8 @@ class Repository:
         currency_rate_id: int,
         currency_id: int,
         currency_code: str,
-        old_rate: sqlite3.Row | None,
-        new_rate: sqlite3.Row,
+        old_rate: dict | None,
+        new_rate: dict,
         changed_by: int | None,
         source: str = "ui",
         recalculated_active_tariffs_count: int | None = None,
@@ -2243,7 +2209,7 @@ class Repository:
             source=source,
         )
 
-    def latest_currency_rate(self, currency_id: int) -> sqlite3.Row | None:
+    def latest_currency_rate(self, currency_id: int) -> dict | None:
         p = placeholder(self.backend)
         return self.conn.execute(
             f"""
@@ -2255,7 +2221,7 @@ class Repository:
             (currency_id,),
         ).fetchone()
 
-    def list_tariffs(self, filters: dict | None = None) -> list[sqlite3.Row]:
+    def list_tariffs(self, filters: dict | None = None) -> list[dict]:
         filters = dict(filters or {})
         status = filters.pop("status", "active")
         where, params = query_filters(
@@ -2303,7 +2269,7 @@ class Repository:
             return True, to_db_bool(False, self.backend)
         return False, None
 
-    def list_calling_companies(self, filters: dict | None = None) -> list[sqlite3.Row]:
+    def list_calling_companies(self, filters: dict | None = None) -> list[dict]:
         company_filters = dict(filters or {})
         for key in ("has_autorotation", "is_active"):
             supported, normalized = self._normalize_optional_bool_filter(company_filters.get(key))
@@ -2314,11 +2280,7 @@ class Repository:
             else:
                 company_filters[key] = normalized
 
-        current_autorotation_filter = (
-            "COALESCE(active_crs.has_autorotation, FALSE)"
-            if self.backend == "postgres"
-            else "COALESCE(active_crs.has_autorotation, 0)"
-        )
+        current_autorotation_filter = "COALESCE(active_crs.has_autorotation, FALSE)"
         where, params = query_filters(
             company_filters,
             {
@@ -2355,13 +2317,9 @@ class Repository:
             )
         )
 
-    def list_calling_company_history(self, company_id: int) -> list[sqlite3.Row]:
+    def list_calling_company_history(self, company_id: int) -> list[dict]:
         p = placeholder(self.backend)
-        routing_company_id_expr = (
-            "NULLIF(cl.new_values ->> 'calling_company_id', '')::BIGINT"
-            if self.backend == "postgres"
-            else "json_extract(cl.new_values, '$.calling_company_id')"
-        )
+        routing_company_id_expr = "NULLIF(cl.new_values ->> 'calling_company_id', '')::BIGINT"
         return list(self.conn.execute(
             f"""
             SELECT cl.changed_at, u.display_name AS user_name, cl.change_type AS action,
@@ -2383,11 +2341,7 @@ class Repository:
     def _calling_company_event_query_parts(self, search: str | None) -> tuple[str, str, list[object]]:
         """Build the shared, read-only calling-company event JOIN and predicate."""
         p = placeholder(self.backend)
-        routing_company_id = (
-            "NULLIF(cl.new_values ->> 'calling_company_id', '')::BIGINT"
-            if self.backend == "postgres"
-            else "CAST(NULLIF(json_extract(cl.new_values, '$.calling_company_id'), '') AS INTEGER)"
-        )
+        routing_company_id = "NULLIF(cl.new_values ->> 'calling_company_id', '')::BIGINT"
         company_join = f"CASE WHEN cl.entity_type = 'calling_company' THEN cl.entity_id ELSE {routing_company_id} END"
         where = f"WHERE (cl.entity_type = 'calling_company' OR (cl.entity_type = 'routing_event' AND {routing_company_id} IS NOT NULL))"
         normalized_search = normalize_search_text(search)
@@ -2397,15 +2351,12 @@ class Repository:
                 f"COALESCE(cc.id, {routing_company_id}, cl.entity_id)",
                 "cc.company_id_external", "cc.company_name", "cl.summary", "cl.old_values", "cl.new_values",
             )
-            if self.backend == "postgres":
-                predicates = [f"POSITION(LOWER(CAST({p} AS TEXT)) IN LOWER(COALESCE(CAST({field} AS TEXT), ''))) > 0" for field in fields]
-            else:
-                predicates = [f"search_text_matches(CAST({field} AS TEXT), {p}) = 1" for field in fields]
+            predicates = [f"POSITION(LOWER(CAST({p} AS TEXT)) IN LOWER(COALESCE(CAST({field} AS TEXT), ''))) > 0" for field in fields]
             where += " AND (" + " OR ".join(predicates) + ")"
             params = [normalized_search] * 6
         return company_join, where, params
 
-    def list_calling_company_events(self, *, search: str | None = None, limit: int = 50, offset: int = 0) -> list[sqlite3.Row]:
+    def list_calling_company_events(self, *, search: str | None = None, limit: int = 50, offset: int = 0) -> list[dict]:
         p = placeholder(self.backend)
         company_join, where, params = self._calling_company_event_query_parts(search)
         params.extend([limit, offset])
@@ -2509,7 +2460,7 @@ class Repository:
                 parts.append(f"valid_from новой версии: {new_values['valid_from']}")
         return "; ".join(parts)
 
-    def list_company_routing_settings(self, filters: dict | None = None) -> list[sqlite3.Row]:
+    def list_company_routing_settings(self, filters: dict | None = None) -> list[dict]:
         routing_filters = dict(filters or {})
         include_history_value = routing_filters.pop("include_history", None)
         show_history_value = routing_filters.pop("show_history", None)
@@ -2576,7 +2527,7 @@ class Repository:
         )
 
 
-    def get_company_routing_setting(self, setting_id: int) -> sqlite3.Row | None:
+    def get_company_routing_setting(self, setting_id: int) -> dict | None:
         p = placeholder(self.backend)
         return self.conn.execute(
             f"""
@@ -2594,7 +2545,7 @@ class Repository:
             (setting_id,),
         ).fetchone()
 
-    def list_company_routing_setting_history(self, setting_id: int) -> list[sqlite3.Row]:
+    def list_company_routing_setting_history(self, setting_id: int) -> list[dict]:
         setting = self.get_company_routing_setting(setting_id)
         if not setting:
             return []
@@ -2879,7 +2830,7 @@ class Repository:
         ).fetchone()
         return f"{row['provider_name']} / {row['name']}" if row else str(route_id)
 
-    def _active_company_routing_setting(self, calling_company_id: int) -> sqlite3.Row | None:
+    def _active_company_routing_setting(self, calling_company_id: int) -> dict | None:
         p = placeholder(self.backend)
         return self.conn.execute(
             f"""
@@ -3389,7 +3340,7 @@ class Repository:
                 self.conn.rollback()
             raise
 
-    def list_routing_events(self, filters: dict | None = None) -> list[sqlite3.Row]:
+    def list_routing_events(self, filters: dict | None = None) -> list[dict]:
         routing_filters = dict(filters or {})
         include_inactive = routing_filters.pop("include_inactive", None)
         date_from = routing_filters.pop("date_from", None)
@@ -3536,7 +3487,7 @@ class Repository:
             ORDER BY re.event_at DESC, re.id DESC
         """, params))
 
-    def get_routing_event(self, event_id: int) -> sqlite3.Row | None:
+    def get_routing_event(self, event_id: int) -> dict | None:
         rows = self.list_routing_events({"include_inactive": True})
         for row in rows:
             if int(row["id"]) == int(event_id):
@@ -3560,7 +3511,7 @@ class Repository:
 
     def update_routing_event(self, event_id: int, *, updated_by: int, commit: bool = True, **kwargs) -> None:
         p = placeholder(self.backend)
-        updated_at_sql = "CURRENT_TIMESTAMP" if self.backend == "postgres" else "STRFTIME('%Y-%m-%d %H:%M:%f', 'now')"
+        updated_at_sql = "CURRENT_TIMESTAMP"
         try:
             existing = self.conn.execute(f"SELECT * FROM routing_events WHERE id = {p}", (event_id,)).fetchone()
             if not existing:
@@ -3601,7 +3552,7 @@ class Repository:
                 self.conn.rollback()
             raise
 
-    def _sync_company_routing_comment_from_event(self, event: sqlite3.Row, *, comment: str, updated_by: int) -> None:
+    def _sync_company_routing_comment_from_event(self, event: dict, *, comment: str, updated_by: int) -> None:
         if event["apply_scope"] != "campaign_setting" or event["calling_company_id"] is None:
             return
         active = self._active_company_routing_setting(event["calling_company_id"])
@@ -3643,12 +3594,8 @@ class Repository:
             existing = self.conn.execute(f"SELECT * FROM routing_events WHERE id = {p}", (event_id,)).fetchone()
             if not existing:
                 raise BusinessRuleError("Событие маршрутизации не найдено")
-            # psycopg returns TIMESTAMPTZ columns as datetime objects, whereas
-            # SQLite exposes their TEXT values.  Keep the audit payload's
-            # existing-row shape while making it JSON-serializable for the
-            # backend-aware _change_log helper.
-            if self.backend == "postgres":
-                existing = json.loads(json.dumps(dict(existing), default=str))
+            # Make PostgreSQL temporal values JSON-serializable for the audit payload.
+            existing = json.loads(json.dumps(dict(existing), default=str))
             if not existing["is_active"]:
                 raise BusinessRuleError("Событие уже деактивировано")
             reason = self._require_text(reason, "Причина деактивации обязательна")
@@ -3669,7 +3616,7 @@ class Repository:
                 self.conn.rollback()
             raise
 
-    def list_provider_changes(self, filters: dict | None = None) -> list[sqlite3.Row]:
+    def list_provider_changes(self, filters: dict | None = None) -> list[dict]:
         filters = filters or {}
 
         def search_clause(column, value):
@@ -3708,25 +3655,12 @@ class Repository:
             clauses.append(f"pcl.created_by = {p}")
             params.append(filters["user_id"])
         where = " WHERE " + " AND ".join(clauses) if clauses else ""
-        if self.backend == "postgres":
-            server_names_sql = """
+        server_names_sql = """
                        (
                            SELECT STRING_AGG(s.name, ', ' ORDER BY s.name)
                            FROM provider_change_log_servers p2
                            JOIN servers s ON s.id = p2.server_id
                            WHERE p2.provider_change_log_id = pcl.id
-                       ) AS server_names"""
-        else:
-            server_names_sql = """
-                       (
-                           SELECT GROUP_CONCAT(s2.name, ', ')
-                           FROM (
-                               SELECT s.name
-                               FROM provider_change_log_servers p2
-                               JOIN servers s ON s.id = p2.server_id
-                               WHERE p2.provider_change_log_id = pcl.id
-                               ORDER BY s.name
-                           ) s2
                        ) AS server_names"""
         return list(
             self.conn.execute(
@@ -3757,7 +3691,7 @@ class Repository:
         row = self.conn.execute(f"SELECT provider_prefix_id FROM routes WHERE id = {p}", (route_id,)).fetchone()
         return int(row["provider_prefix_id"]) if row and row["provider_prefix_id"] is not None else None
 
-    def _current_tariff(self, country_id: int, provider_id: int, provider_prefix_id: int | None) -> sqlite3.Row | None:
+    def _current_tariff(self, country_id: int, provider_id: int, provider_prefix_id: int | None) -> dict | None:
         p = placeholder(self.backend)
         return self.conn.execute(
             f"""

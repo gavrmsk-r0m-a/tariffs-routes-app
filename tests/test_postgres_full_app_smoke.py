@@ -349,21 +349,17 @@ class FullAppSmokeHarnessTests(unittest.TestCase):
 
         conn = Mock()
         repo = Mock()
-        postgres_config = DbConfig("postgres", server.DB_PATH, "postgresql://ci.invalid/test")
+        postgres_config = DbConfig("postgres", "postgresql://ci.invalid/test")
         with (
             patch.object(server, "DB_CONFIG", postgres_config),
             patch.object(server, "connect_database", return_value=conn),
             patch.object(server, "Repository", return_value=repo) as repository,
-            patch.object(server, "ensure_db_initialized") as initialize,
-            patch.object(server, "ensure_seed") as seed,
         ):
             status, _, body = wsgi_request(server.app, "/login")
 
         self.assertEqual(status, "200 OK")
         self.assertIn(b"TeleRoute", body)
-        repository.assert_called_once_with(conn, backend="postgres")
-        initialize.assert_not_called()
-        seed.assert_not_called()
+        repository.assert_called_once_with(conn)
         conn.close.assert_called_once_with()
 
     def test_currency_rate_upsert_uses_postgres_placeholder_and_completes_flow(self):

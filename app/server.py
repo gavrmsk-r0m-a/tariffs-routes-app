@@ -9,9 +9,7 @@ import json
 import logging
 import os
 import re
-import sqlite3
 import uuid
-from dataclasses import replace
 from datetime import date, datetime
 from http.cookies import SimpleCookie
 from pathlib import Path
@@ -20,7 +18,7 @@ from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
 from wsgiref.simple_server import make_server
 
-from app.db import DEFAULT_PHONE_ASSIGNMENTS, DEFAULT_PROJECTS, connect, connect_database, ensure_db_initialized, init_db, load_db_config
+from app.db import connect_database, load_db_config
 from app.db_adapter import placeholder, to_db_bool
 from app.db_errors import UNKNOWN_DATABASE_ERROR, UNIQUE_VIOLATION, map_database_error
 from app.importer import apply_import, preview_import
@@ -96,7 +94,6 @@ def load_dotenv_if_present(path: str | Path | None = None) -> None:
 load_dotenv_if_present()
 
 DB_CONFIG = load_db_config()
-DB_PATH = DB_CONFIG.sqlite_path
 ADMIN_ID = 1
 CURRENT_USER_COOKIE = "mvp_auth"
 FILTER_STATE_COOKIE = "mvp_filter_state"
@@ -239,7 +236,11 @@ def html_to_csv_text(value: object) -> str:
     text = re.sub(r"\s*;\s*", "; ", text)
     return text.strip(" ;")
 
-ASSIGNMENT_LABELS = {code: name for code, name, _sort_order in DEFAULT_PHONE_ASSIGNMENTS}
+ASSIGNMENT_LABELS = {
+    "gl": "ГЛ", "aon": "АОН", "scratchcards": "Scratchcards",
+    "competitors": "Competitors", "sms": "SMS",
+    "corporate_telephony": "Корп.телефония", "dozhim": "Дожим", "ivr": "IVR",
+}
 
 
 def esc(value: object) -> str:
@@ -357,7 +358,7 @@ def role_allows(role_key: str | None, action: str, section: str) -> bool:
     return "*" in allowed or section in allowed
 
 
-def explicit_user_permissions(user_id: int, section: str) -> sqlite3.Row | None:
+def explicit_user_permissions(user_id: int, section: str) -> dict | None:
     repo = _REQUEST_CONTEXT.get("repo")
     if not user_id or not isinstance(repo, Repository):
         return None
@@ -4986,413 +4987,6 @@ def active_server_priority_checkboxes(repo: Repository, selected: set[str] | Non
     )
 
 
-DEMO_DATA_VERSION = "mvp_mexico_demo_v2"
-DEMO_SERVER_NAMES = tuple(f"EU{i}" for i in range(1, 10))
-DEMO_ROUTE_NAMES = (
-    "Мексика/Miatel/Demo_A@",
-    "Мексика/Miatel/Demo_B@",
-    "Мексика/Sancom/Demo_0827@",
-    "Мексика/Sancom/Demo_0828@",
-    "Мексика/DemoTel/Demo_A@",
-    "Мексика/DemoTel/Demo_B@",
-)
-DEMO_PHONE_NUMBERS = tuple(f"5255500000{i:02d}" for i in range(1, 11))
-DEMO_COMPANY_EXTERNAL_IDS = tuple(str(1000 + i) for i in range(1, 6))
-
-
-def ensure_seed(repo: Repository) -> None:
-    def ensure_demo_state_table() -> None:
-        repo.conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS demo_data_state (
-                key TEXT PRIMARY KEY,
-                value TEXT NOT NULL,
-                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-            )
-            """
-        )
-
-    def demo_version_applied() -> bool:
-        row = repo.conn.execute("SELECT value FROM demo_data_state WHERE key = 'demo_data_version'").fetchone()
-        return bool(row and row["value"] == DEMO_DATA_VERSION)
-
-    def mark_demo_version_applied() -> None:
-        repo.conn.execute(
-            """
-            INSERT INTO demo_data_state(key, value, updated_at)
-            VALUES ('demo_data_version', ?, CURRENT_TIMESTAMP)
-            ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP
-            """,
-            (DEMO_DATA_VERSION,),
-        )
-
-    def ensure_reference_defaults(*, activate_demo_servers: bool = True) -> None:
-        for server_name in DEMO_SERVER_NAMES:
-            if activate_demo_servers:
-                repo.conn.execute(
-                    """
-                    INSERT INTO servers(name, is_active, comment)
-                    VALUES (?, 1, ?)
-                    ON CONFLICT(name) DO UPDATE SET is_active = 1, comment = excluded.comment, updated_at = CURRENT_TIMESTAMP
-                    """,
-                    (server_name, "Demo server for MVP testing"),
-                )
-            else:
-                repo.conn.execute(
-                    "INSERT OR IGNORE INTO servers(name, is_active, comment) VALUES (?, 1, ?)",
-                    (server_name, "Demo server for MVP testing"),
-                )
-        for type_name in ("Mobile", "Fixed Line", "Toll-Free", "VoIP", "Unknown"):
-            repo.conn.execute("INSERT OR IGNORE INTO phone_number_types(name, is_active) VALUES (?, 1)", (type_name,))
-        repo.conn.execute("UPDATE projects SET is_active = 0 WHERE name IN ('Междепы', 'Competitors', 'ITM', 'Monitoring', 'Test')")
-        for code, name, sort_order, include_in_route_name in DEFAULT_PROJECTS:
-            repo.conn.execute(
-                """
-                INSERT INTO projects(code, name, is_active, sort_order, include_in_route_name)
-                VALUES (?, ?, 1, ?, ?)
-                ON CONFLICT(name) DO UPDATE SET code = excluded.code, is_active = 1,
-                    sort_order = excluded.sort_order, include_in_route_name = excluded.include_in_route_name,
-                    updated_at = CURRENT_TIMESTAMP
-                """,
-                (code, name, sort_order, include_in_route_name),
-            )
-        repo.conn.execute(
-            "DELETE FROM phone_assignment_types WHERE code IN ('outgoing_cli', 'inbound_line', 'office_phone', 'sim_card', 'pool_number', 'other')"
-        )
-        for code, name, sort_order in DEFAULT_PHONE_ASSIGNMENTS:
-            repo.conn.execute(
-                """
-                INSERT INTO phone_assignment_types(code, name, is_active, sort_order)
-                VALUES (?, ?, 1, ?)
-                ON CONFLICT(code) DO UPDATE SET name = excluded.name, is_active = 1,
-                    sort_order = excluded.sort_order, updated_at = CURRENT_TIMESTAMP
-                """,
-                (code, name, sort_order),
-            )
-        repo.conn.commit()
-
-    def scalar_id(sql: str, params: tuple = ()) -> int | None:
-        row = repo.conn.execute(sql, params).fetchone()
-        return int(row["id"]) if row else None
-
-    def ensure_admin_user() -> int:
-        admin_id = scalar_id("SELECT id FROM users WHERE username = 'admin' ORDER BY id LIMIT 1")
-        if admin_id is not None:
-            return admin_id
-        return repo.create_user("admin", "Admin", "Admin")
-
-    def ensure_country(name: str, code: str) -> int:
-        country_id = scalar_id("SELECT id FROM countries WHERE name = ?", (name,))
-        if country_id is None:
-            return repo.create_country(name, code)
-        repo.conn.execute("UPDATE countries SET code = ?, is_active = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (code, country_id))
-        return country_id
-
-    def ensure_currency(code: str, name: str, symbol: str) -> int:
-        currency_id = scalar_id("SELECT id FROM currencies WHERE code = ?", (code,))
-        if currency_id is None:
-            return repo.create_currency(code, name, symbol)
-        repo.conn.execute("UPDATE currencies SET name = ?, symbol = ?, is_active = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (name, symbol, currency_id))
-        return currency_id
-
-    def ensure_provider(name: str, provider_type: str, default_currency_id: int) -> int:
-        normalized = normalize_provider_name(name)
-        provider_id = scalar_id("SELECT id FROM providers WHERE normalized_name = ?", (normalized,))
-        if provider_id is None:
-            return repo.create_provider(name, provider_type, default_currency_id, comment="Demo provider for MVP testing")
-        repo.conn.execute(
-            """
-            UPDATE providers
-            SET name = ?, provider_type = ?, default_currency_id = ?, is_active = 1,
-                comment = ?, updated_at = CURRENT_TIMESTAMP
-            WHERE id = ?
-            """,
-            (name, provider_type, default_currency_id, "Demo provider for MVP testing", provider_id),
-        )
-        return provider_id
-
-    def ensure_prefix(provider_id: int, prefix: str | None, name: str) -> int | None:
-        if prefix is None:
-            return None
-        prefix_id = scalar_id(
-            "SELECT id FROM provider_prefixes WHERE provider_id = ? AND COALESCE(prefix, '') = COALESCE(?, '')",
-            (provider_id, prefix),
-        )
-        if prefix_id is None:
-            return repo.create_prefix(provider_id, prefix, name)
-        repo.conn.execute(
-            "UPDATE provider_prefixes SET name = ?, is_active = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-            (name, prefix_id),
-        )
-        return prefix_id
-
-    def ensure_route(
-        *,
-        country_id: int,
-        provider_id: int,
-        provider_prefix_id: int | None,
-        name: str,
-        cli_source_type: str,
-        cli_source_label: str,
-        priority_status: str,
-        admin_id: int,
-    ) -> int:
-        route_id = scalar_id("SELECT id FROM routes WHERE country_id = ? AND name = ?", (country_id, name))
-        if route_id is None:
-            return repo.create_route(
-                country_id=country_id,
-                provider_id=provider_id,
-                provider_prefix_id=provider_prefix_id,
-                name=name,
-                cli_source_type=cli_source_type,
-                cli_source_label=cli_source_label,
-                created_by=admin_id,
-                comment="Demo route for MVP testing",
-                priority_status=priority_status,
-            )
-        repo.conn.execute(
-            """
-            UPDATE routes
-            SET provider_id = ?, provider_prefix_id = ?, cli_source_type = ?, cli_source_label = ?,
-                comment = ?, is_actual = 1, priority_status = ?, updated_by = ?, updated_at = CURRENT_TIMESTAMP
-            WHERE id = ?
-            """,
-            (provider_id, provider_prefix_id, cli_source_type, cli_source_label, "Demo route for MVP testing", priority_status, admin_id, route_id),
-        )
-        return route_id
-
-    def ensure_tariff(
-        *,
-        country_id: int,
-        provider_id: int,
-        provider_prefix_id: int | None,
-        provider_currency_id: int,
-        price: str,
-        rate: str,
-        admin_id: int,
-        priority_status: str,
-    ) -> None:
-        tariff_id = scalar_id(
-            """
-            SELECT id FROM tariffs
-            WHERE country_id = ? AND provider_id = ? AND COALESCE(provider_prefix_id, 0) = COALESCE(?, 0) AND is_current = 1
-            """,
-            (country_id, provider_id, provider_prefix_id),
-        )
-        if tariff_id is None:
-            repo.create_tariff(
-                country_id=country_id,
-                provider_id=provider_id,
-                provider_prefix_id=provider_prefix_id,
-                provider_currency_id=provider_currency_id,
-                price_in_provider_currency=price,
-                conversion_rate_to_eur=rate,
-                conversion_rate_date="2026-06-07",
-                created_by=admin_id,
-                priority_status=priority_status,
-                comment="Demo tariff for MVP testing",
-            )
-
-    def ensure_phone_number(
-        *,
-        country_id: int,
-        provider_id: int,
-        number: str,
-        currency_id: int,
-        route_id: int,
-        admin_id: int,
-    ) -> int:
-        phone_id = scalar_id("SELECT id FROM phone_numbers WHERE number = ? OR normalized_number = ?", (number, number))
-        if phone_id is None:
-            phone_id = repo.create_phone_number(
-                country_id=country_id,
-                provider_id=provider_id,
-                number=number,
-                assignment_type="gl",
-                status="used",
-                created_by=admin_id,
-                currency_id=currency_id,
-                monthly_fee="1.00",
-                comment="Demo number for testing",
-            )
-        else:
-            repo.conn.execute(
-                """
-                UPDATE phone_numbers
-                SET country_id = ?, provider_id = ?, assignment_type = 'gl', status = 'used',
-                    currency_id = ?, comment = ?, is_active = 1, updated_by = ?, updated_at = CURRENT_TIMESTAMP,
-                    deactivated_at = NULL
-                WHERE id = ?
-                """,
-                (country_id, provider_id, currency_id, "Demo number for testing", admin_id, phone_id),
-            )
-        active_link = repo.conn.execute(
-            "SELECT id FROM route_phone_numbers WHERE route_id = ? AND phone_number_id = ? AND is_active = 1",
-            (route_id, phone_id),
-        ).fetchone()
-        if active_link is None:
-            repo.add_phone_to_route(route_id=route_id, phone_number_id=phone_id, usage_type="pool_member", added_by=admin_id, comment="Demo route number link")
-        return phone_id
-
-    def ensure_calling_company(
-        *,
-        server_id: int,
-        country_id: int,
-        company_id_external: str,
-        company_name: str,
-        admin_id: int,
-    ) -> int:
-        company_id = scalar_id(
-            """
-            SELECT id FROM calling_companies
-            WHERE company_id_external = ?
-            ORDER BY CASE WHEN server_id = ? AND country_id = ? THEN 0 ELSE 1 END, id
-            LIMIT 1
-            """,
-            (company_id_external, server_id, country_id),
-        )
-        if company_id is None:
-            company_id = repo.create_calling_company(
-                server_id=server_id,
-                country_id=country_id,
-                company_name=company_name,
-                company_id_external=company_id_external,
-                has_autorotation=False,
-                created_by=admin_id,
-                is_active=True,
-                line_count=10,
-                dial_set_count=2,
-                retry_interval_seconds=60,
-                comment="Demo calling campaign for MVP testing",
-            )
-        else:
-            repo.conn.execute(
-                """
-                UPDATE calling_companies
-                SET server_id = ?, country_id = ?, company_name = ?, has_autorotation = 0, line_count = 10, dial_set_count = 2,
-                    retry_interval_seconds = 60, comment = ?, is_active = 1, updated_by = ?, updated_at = CURRENT_TIMESTAMP
-                WHERE id = ?
-                """,
-                (server_id, country_id, company_name, "Demo calling campaign for MVP testing", admin_id, company_id),
-            )
-        repo.conn.execute(
-            """
-            UPDATE calling_companies
-            SET is_active = 0, updated_by = ?, updated_at = CURRENT_TIMESTAMP
-            WHERE company_id_external = ? AND id <> ?
-            """,
-            (admin_id, company_id_external, company_id),
-        )
-        return company_id
-
-    def upsert_server_priority(country_id: int, server_id: int, current_route_id: int, admin_id: int) -> None:
-        priority_id = scalar_id("SELECT id FROM server_route_priorities WHERE country_id = ? AND server_id = ?", (country_id, server_id))
-        if priority_id is None:
-            repo.conn.execute(
-                """
-                INSERT INTO server_route_priorities(country_id, server_id, current_route_id, previous_route_id, changed_by, created_by, comment)
-                VALUES (?, ?, ?, NULL, ?, ?, ?)
-                """,
-                (country_id, server_id, current_route_id, admin_id, admin_id, "Demo initial priority"),
-            )
-        else:
-            repo.conn.execute(
-                """
-                UPDATE server_route_priorities
-                SET current_route_id = ?, previous_route_id = NULL, changed_by = ?, comment = ?, is_active = 1,
-                    updated_by = ?, updated_at = CURRENT_TIMESTAMP
-                WHERE id = ?
-                """,
-                (current_route_id, admin_id, "Demo initial priority", admin_id, priority_id),
-            )
-
-    def normalize_demo_dataset() -> None:
-        ensure_reference_defaults(activate_demo_servers=True)
-        admin_id = ensure_admin_user()
-        country_id = ensure_country("Мексика", "MEX")
-        eur_id = ensure_currency("EUR", "Euro", "€")
-        usdt_id = ensure_currency("USDT", "Tether", "₮")
-        sancom_id = ensure_provider("Sancom", "voip", eur_id)
-        miatel_id = ensure_provider("Miatel", "voip", usdt_id)
-        demotel_id = ensure_provider("DemoTel", "voip", eur_id)
-        sancom_0827_prefix = ensure_prefix(sancom_id, "0827", "Demo 0827")
-        sancom_0828_prefix = ensure_prefix(sancom_id, "0828", "Demo 0828")
-        miatel_prefix = None
-        demotel_prefix = None
-        repo.conn.execute("INSERT INTO currency_rates(currency_id, rate_to_eur, rate_date, updated_by, comment) SELECT ?, 1, '2026-06-07', ?, 'Demo EUR' WHERE NOT EXISTS (SELECT 1 FROM currency_rates WHERE currency_id = ? AND rate_date = '2026-06-07' AND comment = 'Demo EUR')", (eur_id, admin_id, eur_id))
-        repo.conn.execute("INSERT INTO currency_rates(currency_id, rate_to_eur, rate_date, updated_by, comment) SELECT ?, 0.93, '2026-06-07', ?, 'Demo USDT' WHERE NOT EXISTS (SELECT 1 FROM currency_rates WHERE currency_id = ? AND rate_date = '2026-06-07' AND comment = 'Demo USDT')", (usdt_id, admin_id, usdt_id))
-        for reason in ("Плохие показатели", "Провайдер починил", "Обновлен пул номеров"):
-            repo.conn.execute("INSERT OR IGNORE INTO change_reasons(name, description, is_active) VALUES (?, ?, 1)", (reason, reason))
-
-        server_ids = {row["name"]: row["id"] for row in repo.conn.execute("SELECT id, name FROM servers WHERE name IN (%s)" % ",".join("?" for _ in DEMO_SERVER_NAMES), DEMO_SERVER_NAMES)}
-        repo.conn.execute(
-            "UPDATE servers SET is_active = 0, updated_at = CURRENT_TIMESTAMP WHERE name NOT IN (%s)" % ",".join("?" for _ in DEMO_SERVER_NAMES),
-            DEMO_SERVER_NAMES,
-        )
-
-        route_ids = {
-            "sancom_0827": ensure_route(country_id=country_id, provider_id=sancom_id, provider_prefix_id=sancom_0827_prefix, name="Мексика/Sancom/Demo_0827@", cli_source_type="rnd", cli_source_label="Demo_0827", priority_status="priority", admin_id=admin_id),
-            "miatel_a": ensure_route(country_id=country_id, provider_id=miatel_id, provider_prefix_id=miatel_prefix, name="Мексика/Miatel/Demo_A@", cli_source_type="pool", cli_source_label="Demo_A", priority_status="priority", admin_id=admin_id),
-            "miatel_b": ensure_route(country_id=country_id, provider_id=miatel_id, provider_prefix_id=miatel_prefix, name="Мексика/Miatel/Demo_B@", cli_source_type="pool", cli_source_label="Demo_B", priority_status="normal", admin_id=admin_id),
-            "sancom_0828": ensure_route(country_id=country_id, provider_id=sancom_id, provider_prefix_id=sancom_0828_prefix, name="Мексика/Sancom/Demo_0828@", cli_source_type="rnd", cli_source_label="Demo_0828", priority_status="normal", admin_id=admin_id),
-            "demotel_a": ensure_route(country_id=country_id, provider_id=demotel_id, provider_prefix_id=demotel_prefix, name="Мексика/DemoTel/Demo_A@", cli_source_type="pool", cli_source_label="Demo_A", priority_status="normal", admin_id=admin_id),
-            "demotel_b": ensure_route(country_id=country_id, provider_id=demotel_id, provider_prefix_id=demotel_prefix, name="Мексика/DemoTel/Demo_B@", cli_source_type="pool", cli_source_label="Demo_B", priority_status="normal", admin_id=admin_id),
-        }
-        repo.conn.execute(
-            "UPDATE routes SET is_actual = 0, updated_by = ?, updated_at = CURRENT_TIMESTAMP WHERE country_id = ? AND name NOT IN (%s)" % ",".join("?" for _ in DEMO_ROUTE_NAMES),
-            (admin_id, country_id, *DEMO_ROUTE_NAMES),
-        )
-
-        ensure_tariff(country_id=country_id, provider_id=sancom_id, provider_prefix_id=sancom_0827_prefix, provider_currency_id=eur_id, price="2.00", rate="1", admin_id=admin_id, priority_status="priority")
-        ensure_tariff(country_id=country_id, provider_id=miatel_id, provider_prefix_id=miatel_prefix, provider_currency_id=usdt_id, price="3.00", rate="0.93", admin_id=admin_id, priority_status="priority")
-        ensure_tariff(country_id=country_id, provider_id=demotel_id, provider_prefix_id=demotel_prefix, provider_currency_id=eur_id, price="2.50", rate="1", admin_id=admin_id, priority_status="normal")
-
-        phone_specs = (
-            (miatel_id, "525550000001", route_ids["miatel_a"]),
-            (miatel_id, "525550000002", route_ids["miatel_a"]),
-            (miatel_id, "525550000003", route_ids["miatel_a"]),
-            (sancom_id, "525550000004", route_ids["sancom_0827"]),
-            (sancom_id, "525550000005", route_ids["sancom_0827"]),
-            (sancom_id, "525550000006", route_ids["sancom_0827"]),
-            (demotel_id, "525550000007", route_ids["demotel_a"]),
-            (demotel_id, "525550000008", route_ids["demotel_a"]),
-            (demotel_id, "525550000009", route_ids["demotel_a"]),
-            (demotel_id, "525550000010", route_ids["demotel_a"]),
-        )
-        for provider_id, number, route_id in phone_specs:
-            ensure_phone_number(country_id=country_id, provider_id=provider_id, number=number, currency_id=eur_id, route_id=route_id, admin_id=admin_id)
-        repo.conn.execute(
-            "UPDATE phone_numbers SET is_active = 0, deactivated_at = COALESCE(deactivated_at, CURRENT_TIMESTAMP), updated_by = ?, updated_at = CURRENT_TIMESTAMP WHERE country_id = ? AND number NOT IN (%s)" % ",".join("?" for _ in DEMO_PHONE_NUMBERS),
-            (admin_id, country_id, *DEMO_PHONE_NUMBERS),
-        )
-
-        for index, external_id in enumerate(DEMO_COMPANY_EXTERNAL_IDS, start=1):
-            ensure_calling_company(server_id=server_ids[f"EU{index}"], country_id=country_id, company_id_external=external_id, company_name=f"CC Mexico Demo {index}", admin_id=admin_id)
-        repo.conn.execute(
-            "UPDATE calling_companies SET is_active = 0, updated_by = ?, updated_at = CURRENT_TIMESTAMP WHERE country_id = ? AND company_id_external NOT IN (%s)" % ",".join("?" for _ in DEMO_COMPANY_EXTERNAL_IDS),
-            (admin_id, country_id, *DEMO_COMPANY_EXTERNAL_IDS),
-        )
-
-        repo.conn.execute(
-            "DELETE FROM server_route_priorities WHERE server_id IN (SELECT id FROM servers WHERE name IN ('EU3', 'EU4', 'EU5', 'EU6', 'EU7', 'EU8', 'EU9')) OR (country_id = ? AND server_id NOT IN (?, ?))",
-            (country_id, server_ids["EU1"], server_ids["EU2"]),
-        )
-        upsert_server_priority(country_id, server_ids["EU1"], route_ids["miatel_a"], admin_id)
-        upsert_server_priority(country_id, server_ids["EU2"], route_ids["sancom_0827"], admin_id)
-        mark_demo_version_applied()
-        repo.conn.commit()
-
-    ensure_demo_state_table()
-    if demo_version_applied():
-        ensure_reference_defaults(activate_demo_servers=False)
-        return
-    normalize_demo_dataset()
-
-
-AON_SOURCE_LABELS = {"pool": "Pool", "rnd": "RND", "sim": "SIM", "single_number": "Single", "other": "Other"}
-POOL_TYPE_LABELS = {"purchased": "Пул купленных номеров", "local": "Локальный пул", "nonlocal": "Нелокальный пул", "sim_gateway": "SIM / GSM-шлюз"}
-RND_TYPE_LABELS = {"local": "Локальный пул", "nonlocal": "Нелокальный пул"}
-
 def normalize_route_aon_fields(data: dict[str, str]) -> tuple[str, str, str, str | None, str | None]:
     cli_source_type = (data.get("cli_source_type") or "").strip()
     if not cli_source_type:
@@ -7598,14 +7192,14 @@ def readable_bool(value: object) -> str:
     return "Да" if str(value) in {"1", "true", "True", "yes", "Да"} else "Нет"
 
 
-def readable_company_history_event(row: sqlite3.Row) -> tuple[str, str, str]:
+def readable_company_history_event(row: dict) -> tuple[str, str, str]:
     new_values = _json_dict(row["new_value"])
     event = str(new_values.get("event") or row["comment"] or "Компания изменена")
     description = str(new_values.get("description") or event)
     details = str(new_values.get("details") or "—")
     return event, description, details
 
-def readable_history_event(row: sqlite3.Row, *, subject: str) -> tuple[str, str, str]:
+def readable_history_event(row: dict, *, subject: str) -> tuple[str, str, str]:
     source = row["source"]
     action = row["action"]
     reason = row["reason"] or ""
@@ -7651,7 +7245,7 @@ def readable_history_event(row: sqlite3.Row, *, subject: str) -> tuple[str, str,
     return "Маршрут изменён", "Маршрут изменён", details
 
 
-def history_table(rows: list[sqlite3.Row], *, subject: str) -> str:
+def history_table(rows: list[dict], *, subject: str) -> str:
     if not rows:
         return "<div class='empty-state'>История пока пустая</div>"
     html_rows = []
@@ -7664,7 +7258,7 @@ def history_table(rows: list[sqlite3.Row], *, subject: str) -> str:
     return "<section class='journal-card'><div class='table-scroll'><table><thead><tr><th>Дата</th><th>Пользователь</th><th>Событие</th><th>Описание</th><th>Детали</th></tr></thead><tbody>" + "".join(html_rows) + "</tbody></table></div></section>"
 
 
-def readable_tariff_history_event(row: sqlite3.Row) -> tuple[str, str, str]:
+def readable_tariff_history_event(row: dict) -> tuple[str, str, str]:
     reason = row["reason"] or ""
     details = row["comment"] or "—"
     if reason == "tariff.activated":
@@ -7675,7 +7269,7 @@ def readable_tariff_history_event(row: sqlite3.Row) -> tuple[str, str, str]:
         return "Тариф изменён", details, details
     return "Тариф создан", "Тариф создан", row["comment"] or "—"
 
-def tariff_history_table(rows: list[sqlite3.Row]) -> str:
+def tariff_history_table(rows: list[dict]) -> str:
     if not rows:
         return "<div class='empty-state'>История пока пустая</div>"
     html_rows = []
@@ -7717,7 +7311,7 @@ def company_history_page(repo: Repository, company_id: int) -> bytes:
 """
     return page("История компании прозвона", body)
 
-def company_history_table(rows: list[sqlite3.Row]) -> str:
+def company_history_table(rows: list[dict]) -> str:
     if not rows:
         return "<div class='empty-state'>История пока пустая</div>"
     html_rows = []
@@ -7827,7 +7421,7 @@ def review_required_icon() -> str:
         "</span>"
     )
 
-def route_number_rows(repo: Repository, route_id: int, *, selectable: bool = False, selected_link_ids: set[int] | None = None) -> tuple[list[sqlite3.Row], str, str]:
+def route_number_rows(repo: Repository, route_id: int, *, selectable: bool = False, selected_link_ids: set[int] | None = None) -> tuple[list[dict], str, str]:
     numbers = repo.route_numbers(route_id)
     selected_link_ids = selected_link_ids or set()
     rows = []
@@ -9197,7 +8791,7 @@ def server_priorities_page(repo: Repository, q: dict[str, str] | None = None) ->
     if q.get("export") == "csv":
         return csv_response("server_priorities_export.csv", ["GEO", "Сервер", "Провайдер/маршрут", "Приоритет", "Активен", "Комментарий"], [[row["country_name"], row["server_name"], f"{row['current_provider_name'] or '—'} / {row['current_route_name'] or '—'}", row["current_route_name"] or "—", "Да" if row["is_active"] else "Нет", row["comment"]] for row in priority_records])
 
-    def previous_overflow_route_id(row: sqlite3.Row) -> int | None:
+    def previous_overflow_route_id(row: dict) -> int | None:
         if not row["previous_route_id"]:
             return None
         event = repo.conn.execute(
@@ -9292,7 +8886,7 @@ COMPANY_ROUTING_SETTINGS_COLUMN_LABELS = [
 COMPANY_ROUTING_SETTINGS_COLUMNS = [key for key, _label in COMPANY_ROUTING_SETTINGS_COLUMN_LABELS]
 
 
-def campaign_routing_event_details(ev: sqlite3.Row) -> tuple[str, str, str]:
+def campaign_routing_event_details(ev: dict) -> tuple[str, str, str]:
     event = COMPANY_CHANGE_LABELS.get(ev["company_change_type"], ev["company_change_type"] or "Режим маршрутизации изменён")
     description = ev["reason"] or "—"
 
@@ -9607,13 +9201,13 @@ def dictionaries_page(repo: Repository, q: dict[str, str] | None = None, *, form
     def active_select(value: object) -> str:
         return f"""<select name='is_active'><option value='1' {'selected' if value else ''}>Активен</option><option value='0' {'selected' if not value else ''}>Неактивен</option></select>"""
 
-    def is_editing(row: sqlite3.Row) -> bool:
+    def is_editing(row: dict) -> bool:
         return str(form_data.get("_entity_id", "")) == str(row["id"])
 
-    def submitted(row: sqlite3.Row, field: str, default: object) -> object:
+    def submitted(row: dict, field: str, default: object) -> object:
         return form_data.get(field, default) if is_editing(row) else default
 
-    def edit_active_select(row: sqlite3.Row) -> str:
+    def edit_active_select(row: dict) -> str:
         value = submitted(row, "is_active", "1" if row["is_active"] else "0")
         return active_select(str(value) == "1")
 
@@ -9622,7 +9216,7 @@ def dictionaries_page(repo: Repository, q: dict[str, str] | None = None, *, form
             control_html = mark_problem_control(control_html, field, editing=True)
         return f"<label>{label} {control_html}</label>"
 
-    def row_class(row: sqlite3.Row) -> str:
+    def row_class(row: dict) -> str:
         return " class='inactive-row'" if not row["is_active"] else ""
 
     def rename_policy_block(section: str, entity_id: int) -> str:
@@ -9755,7 +9349,7 @@ def yes_no(value: object) -> str:
     return "1" if str(value) in {"1", "True", "true"} else "0"
 
 
-def tariff_edit_form(repo: Repository, tariff_id: int, tariff: sqlite3.Row, *, modal: bool = False) -> str:
+def tariff_edit_form(repo: Repository, tariff_id: int, tariff: dict, *, modal: bool = False) -> str:
     prefix = tariff["prefix"] or "—"
     cancel = "<button type='button' class='modal-cancel' data-modal-close>Отмена</button>" if modal else "<a class='button modal-cancel' href='/tariffs'>Отмена</a>"
     return f"""<form class='tariff-dialog tariff-dialog-form{' tariff-dialog-page-form' if not modal else ''}' method='post' action='/tariffs/{tariff_id}/update'>
@@ -9804,7 +9398,7 @@ def tariff_edit_page(repo: Repository, tariff_id: int) -> bytes:
 {tariff_currency_script()}"""
     return page("Редактировать тариф", table_page_container(body, extra_class="tariffs-page"))
 
-def route_edit_form(repo: Repository, route_id: int, route: sqlite3.Row, *, modal: bool = False) -> str:
+def route_edit_form(repo: Repository, route_id: int, route: dict, *, modal: bool = False) -> str:
     cancel = "<button type='button' class='modal-cancel' data-modal-close>Отмена</button>" if modal else "<a class='button modal-cancel' href='/routes'>Отмена</a>"
     return f"""<form class='route-dialog route-dialog-form{' route-dialog-page-form' if not modal else ''}' method='post' action='/routes/{route_id}/update' data-country-name='{esc(route['country_name']) if 'country_name' in route.keys() else ''}'>
 <input type='hidden' name='expected_updated_at' value='{esc(route['updated_at'])}'>
@@ -10088,7 +9682,7 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
             try:
                 repo.add_phone_to_route_by_number(route_id=route_id, number=number, usage_type="pool_member", added_by=actor_id)
                 added += 1
-            except (BusinessRuleError, sqlite3.IntegrityError) as exc:
+            except Exception as exc:
                 errors.append(f"{number}: {exc}")
         report = "Массовое добавление завершено. Добавлено %s из %s. Не добавлены: %s" % (added, added + len(errors), "; ".join(errors) or "—")
         notice_type = "error" if errors else "success"
@@ -10572,20 +10166,12 @@ def user_error(exc: Exception) -> str:
             if table == dictionary_table or dictionary_table in metadata:
                 return message
         return "Нарушено ограничение уникальности или обязательности данных"
-    if db_error.kind != UNKNOWN_DATABASE_ERROR and isinstance(exc, sqlite3.IntegrityError):
-        return "Нарушено ограничение уникальности или обязательности данных"
     return text
 
 
 def app(environ, start_response):
-    conn = connect_database(replace(DB_CONFIG, sqlite_path=DB_PATH))
-    repo = Repository(conn, backend=DB_CONFIG.backend)
-    if DB_CONFIG.backend == "sqlite":
-        # SQLite owns its local schema lifecycle.  PostgreSQL is deliberately
-        # different: its schema and data must already have been prepared by the
-        # migration/cutover process before the WSGI application starts.
-        ensure_db_initialized(conn, DB_PATH)
-        ensure_seed(repo)
+    conn = connect_database(DB_CONFIG)
+    repo = Repository(conn)
     method = environ["REQUEST_METHOD"]
     path = environ.get("PATH_INFO", "/")
     q = request_query(environ)
