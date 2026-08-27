@@ -109,7 +109,10 @@ class WritePlanTests(unittest.TestCase):
  def test_duplicate_side_effects_fail(self): p=copy.deepcopy(self.plan); p['methods'][self.name()]['side_effects']*=2; self.bad(p)
  def test_commit_and_rollback_acknowledgement_fail(self):
   p=copy.deepcopy(self.plan); p['methods']['set_app_setting_value']['current_commit_behavior']='never commits'; self.bad(p)
- def test_transitive_call_without_dependency_fails(self): p=copy.deepcopy(self.plan); p['methods']['set_hlr_limit_override']['dependencies']=[]; self.bad(p)
+ def test_transitive_call_without_dependency_fails(self):
+  self.assertEqual([], self.plan['methods']['set_hlr_limit_override']['dependencies'])
+  self.assertEqual(['add_phone_to_route'], self.plan['methods']['add_phone_to_route_by_number']['dependencies'])
+  p=copy.deepcopy(self.plan); p['methods']['add_phone_to_route_by_number']['dependencies']=[]; self.bad(p)
  def test_dependency_cycle_fails(self):
   p=copy.deepcopy(self.plan); a='app_settings_and_admin_low_risk'; b='dictionary_and_snapshot_writes'; p['batches'][a]['prerequisites'].append(b); p['batches'][b]['prerequisites'].append(a); self.bad(p)
  def test_dynamic_sql_is_surfaced(self): self.assertTrue(self.execute_plan(self.plan)['dynamic_sql_methods'])
