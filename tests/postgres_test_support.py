@@ -10,7 +10,7 @@ from urllib.parse import urlsplit, urlunsplit
 import psycopg
 from psycopg import sql
 
-from app.repository import Repository
+from app.repository import Repository, normalize_provider_name
 
 
 class HybridRow(dict):
