@@ -22,7 +22,8 @@ class HybridRow(dict):
 
 
 def hybrid_row(cursor):
-    names = [column.name for column in cursor.description]
+    description = cursor.description or ()
+    names = [column.name for column in description]
     return lambda values: HybridRow(zip(names, values))
 
 ROOT = Path(__file__).resolve().parents[1]
