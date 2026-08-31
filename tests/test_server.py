@@ -2549,6 +2549,7 @@ class ServerSmokeTest(unittest.TestCase):
 
 
     def test_demo_normalization_updates_existing_partial_demo_db_and_is_idempotent(self):
+        _TEST_DB.reset(seed=False)
         conn = _TEST_DB.connect()
         try:
             repo = server.Repository(conn)

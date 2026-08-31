@@ -243,11 +243,61 @@ def seed_postgres(conn) -> None:
         row = repo.conn.execute(sql, params).fetchone()
         return int(row["id"]) if row else None
 
+    def ensure_default_user(
+        username: str,
+        role_key: str,
+        display_name: str,
+        *,
+        password: str | None = None,
+    ) -> int:
+        user_id = scalar_id(
+            "SELECT id FROM users WHERE username = %s ORDER BY id LIMIT 1",
+            (username,),
+        )
+
+        if user_id is None:
+            return repo.create_user(
+                username,
+                role_key,
+                display_name,
+                password=password,
+            )
+
+        repo.conn.execute(
+            """
+            UPDATE users
+            SET role_key = %s,
+                display_name = %s,
+                is_active = TRUE,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = %s
+            """,
+            (role_key, display_name, user_id),
+        )
+        return user_id
+
     def ensure_admin_user() -> int:
-        admin_id = scalar_id("SELECT id FROM users WHERE username = 'admin' ORDER BY id LIMIT 1")
-        if admin_id is not None:
-            return admin_id
-        return repo.create_user("admin", "Admin", "Admin")
+        admin_id = ensure_default_user(
+            "admin",
+            "admin",
+            "Admin",
+            password="admin",
+        )
+
+        ensure_default_user(
+            "duty",
+            "operator",
+            "Дежурный",
+            password="duty123",
+        )
+
+        ensure_default_user(
+            "guest",
+            "guest",
+            "Гость",
+        )
+
+        return admin_id
 
     def ensure_country(name: str, code: str) -> int:
         country_id = scalar_id("SELECT id FROM countries WHERE name = %s", (name,))
