@@ -457,8 +457,16 @@ def seed_postgres(conn) -> None:
             "demotel_a": ensure_route(country_id=country_id, provider_id=demotel_id, provider_prefix_id=demotel_prefix, name="Мексика/DemoTel/Demo_A@", cli_source_type="pool", cli_source_label="Demo_A", priority_status="normal", admin_id=admin_id),
             "demotel_b": ensure_route(country_id=country_id, provider_id=demotel_id, provider_prefix_id=demotel_prefix, name="Мексика/DemoTel/Demo_B@", cli_source_type="pool", cli_source_label="Demo_B", priority_status="normal", admin_id=admin_id),
         }
+        route_placeholders = ",".join("%s" for _ in DEMO_ROUTE_NAMES)
         repo.conn.execute(
-            "UPDATE routes SET is_actual = FALSE, updated_by = %s, updated_at = CURRENT_TIMESTAMP WHERE country_id = %s AND name NOT IN (%s)" % ",".join("%s" for _ in DEMO_ROUTE_NAMES),
+            f"""
+            UPDATE routes
+            SET is_actual = FALSE,
+                updated_by = %s,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE country_id = %s
+              AND name NOT IN ({route_placeholders})
+            """,
             (admin_id, country_id, *DEMO_ROUTE_NAMES),
         )
 
@@ -480,15 +488,32 @@ def seed_postgres(conn) -> None:
         )
         for provider_id, number, route_id in phone_specs:
             ensure_phone_number(country_id=country_id, provider_id=provider_id, number=number, currency_id=eur_id, route_id=route_id, admin_id=admin_id)
+        phone_placeholders = ",".join("%s" for _ in DEMO_PHONE_NUMBERS)
         repo.conn.execute(
-            "UPDATE phone_numbers SET is_active = FALSE, deactivated_at = COALESCE(deactivated_at, CURRENT_TIMESTAMP), updated_by = %s, updated_at = CURRENT_TIMESTAMP WHERE country_id = %s AND number NOT IN (%s)" % ",".join("%s" for _ in DEMO_PHONE_NUMBERS),
+            f"""
+            UPDATE phone_numbers
+            SET is_active = FALSE,
+                deactivated_at = COALESCE(deactivated_at, CURRENT_TIMESTAMP),
+                updated_by = %s,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE country_id = %s
+              AND number NOT IN ({phone_placeholders})
+            """,
             (admin_id, country_id, *DEMO_PHONE_NUMBERS),
         )
 
         for index, external_id in enumerate(DEMO_COMPANY_EXTERNAL_IDS, start=1):
             ensure_calling_company(server_id=server_ids[f"EU{index}"], country_id=country_id, company_id_external=external_id, company_name=f"CC Mexico Demo {index}", admin_id=admin_id)
+        company_placeholders = ",".join("%s" for _ in DEMO_COMPANY_EXTERNAL_IDS)
         repo.conn.execute(
-            "UPDATE calling_companies SET is_active = FALSE, updated_by = %s, updated_at = CURRENT_TIMESTAMP WHERE country_id = %s AND company_id_external NOT IN (%s)" % ",".join("%s" for _ in DEMO_COMPANY_EXTERNAL_IDS),
+            f"""
+            UPDATE calling_companies
+            SET is_active = FALSE,
+                updated_by = %s,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE country_id = %s
+              AND company_id_external NOT IN ({company_placeholders})
+            """,
             (admin_id, country_id, *DEMO_COMPANY_EXTERNAL_IDS),
         )
 
