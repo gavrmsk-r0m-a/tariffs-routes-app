@@ -1662,7 +1662,8 @@ def run_currency_rate_lifecycle_probe(repo: Repository, conn) -> None:
         ).fetchone()
         new_values = rate_log["new_values"] if isinstance(rate_log["new_values"], dict) else json.loads(rate_log["new_values"])
         old_values = rate_log["old_values"] if isinstance(rate_log["old_values"], dict) else json.loads(rate_log["old_values"])
-        if old_values["rate_to_eur"] != str(old_rate["rate_to_eur"]) or new_values["rate_to_eur"] != str(new_rate["rate_to_eur"]):
+        if (Decimal(str(old_values["rate_to_eur"])) != Decimal(str(old_rate["rate_to_eur"]))
+                or Decimal(str(new_values["rate_to_eur"])) != Decimal(str(new_rate["rate_to_eur"]))):
             raise AssertionError("Stage 66E logged rate values do not match")
         if new_values["recalculated_active_tariffs_count"] != 1 or "Активных тарифов пересчитано: 1." not in rate_log["summary"] or rate_log["source"] != "ui":
             raise AssertionError("Stage 66E currency-rate summary does not match")

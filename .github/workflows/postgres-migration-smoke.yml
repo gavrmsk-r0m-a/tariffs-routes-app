@@ -63,6 +63,11 @@ on:
       - tests/test_migration_demo_sqlite.py
       - tests/test_postgres_repository_smoke.py
       - tests/test_postgres_repository_write_harness.py
+      - tests/postgres_test_support.py
+      - tests/test_server.py
+      - tests/test_repository.py
+      - tests/test_importer.py
+      - app/importer.py
       - .github/workflows/postgres-migration-smoke.yml
 
 jobs:
@@ -79,10 +84,15 @@ jobs:
         ports:
           - 5432:5432
         options: >-
-          --health-cmd pg_isready
+          --health-cmd "pg_isready -U postgres -d teleroute_migration_test"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
+
+    env:
+      DB_BACKEND: postgres
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/teleroute_migration_test
+      POSTGRES_TEST_ADMIN_URL: postgresql://postgres:postgres@localhost:5432/postgres
 
     steps:
       - name: Checkout repository
@@ -122,6 +132,19 @@ jobs:
           python -m unittest tests.test_local_postgres_runtime
           python scripts/audit_postgres_production_gate.py --format json
           python scripts/audit_postgres_production_gate.py --strict
+
+      - name: Run PostgreSQL application integration suites
+        run: |
+          python -m unittest tests.test_server
+          python -m unittest tests.test_repository
+          python -m unittest tests.test_db
+          python -m unittest tests.test_db_errors
+          python -m unittest tests.test_db_adapter
+          python -m unittest tests.test_importer
+          python -m unittest tests.test_postgres_security_gate -v
+          python -m unittest tests.test_postgres_production_gate -v
+          python -m unittest tests.test_postgres_full_app_smoke
+          python -m unittest tests.test_postgres_final_enablement_gate -v
 
       - name: Create demo SQLite database
         run: python scripts/create_migration_demo_sqlite.py --output "$RUNNER_TEMP/migration_demo.sqlite3"

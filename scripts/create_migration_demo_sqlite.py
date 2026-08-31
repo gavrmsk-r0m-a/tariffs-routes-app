@@ -13,10 +13,10 @@ import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+LEGACY_SCHEMA = REPO_ROOT / "scripts/legacy/schema.sqlite.sql"
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from app.db import init_db
 
 NOW = "2026-07-12 10:00:00"
 TODAY = "2026-07-12"
@@ -58,6 +58,7 @@ def create_demo_sqlite(output: str | Path) -> Path:
     conn = sqlite3.connect(output)
     conn.row_factory = sqlite3.Row
     try:
+        from scripts.legacy.sqlite_source_db import init_db
         init_db(conn)
         conn.execute("PRAGMA foreign_keys=ON")
         conn.execute("""

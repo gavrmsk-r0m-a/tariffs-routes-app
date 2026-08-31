@@ -74,7 +74,7 @@ def _map_final_status(value: str) -> tuple[str, bool, bool]:
         return "unknown", True, True
     raise BusinessRuleError(f"Неизвестный Итоговый статус: {value}")
 
-def preview_import(conn, entity_type: str, csv_text: str, *, backend: str = "sqlite") -> ImportPreview:
+def preview_import(conn, entity_type: str, csv_text: str, *, backend: str = "postgres") -> ImportPreview:
     rows = parse_csv(csv_text)
     preview = ImportPreview(entity_type=entity_type, total_rows=len(rows))
     seen_keys: dict[tuple, int] = {}
@@ -130,7 +130,7 @@ def apply_import(
     user_id: int,
     duplicate_action: str = "update",
     mode: str = "append_update",
-    backend: str = "sqlite",
+    backend: str = "postgres",
 ) -> ImportPreview:
     if mode == "replace_section":
         raise BusinessRuleError("Режим замены раздела временно отключён. Используйте Дополнить / обновить.")
@@ -231,7 +231,7 @@ def _parse_bool(value: str, *, default: bool = True) -> bool:
     return value.strip().lower() not in {"0", "no", "false", "нет", "неактивна", "inactive"}
 
 
-def _resolve_reference(conn, table: str, value: str, label: str, *, code_column: str = "name", normalized_provider: bool = False, backend: str = "sqlite") -> tuple[int | str, bool]:
+def _resolve_reference(conn, table: str, value: str, label: str, *, code_column: str = "name", normalized_provider: bool = False, backend: str = "postgres") -> tuple[int | str, bool]:
     text = value.strip()
     if not text:
         raise BusinessRuleError(f"{label} обязателен")
@@ -253,7 +253,7 @@ def _resolve_reference(conn, table: str, value: str, label: str, *, code_column:
     return row["id"], not bool(row["is_active"])
 
 
-def _resolve_assignment_code(conn, value: str, *, backend: str = "sqlite") -> tuple[str | None, bool]:
+def _resolve_assignment_code(conn, value: str, *, backend: str = "postgres") -> tuple[str | None, bool]:
     value = value.strip()
     if not value:
         return None, False
@@ -263,7 +263,7 @@ def _resolve_assignment_code(conn, value: str, *, backend: str = "sqlite") -> tu
     return str(row["code"]), not bool(row["is_active"])
 
 
-def _phone_import_values(conn, row: dict[str, str], *, backend: str = "sqlite") -> dict[str, str | None | bool]:
+def _phone_import_values(conn, row: dict[str, str], *, backend: str = "postgres") -> dict[str, str | None | bool]:
     project = _first(row, "project", "project_label", "проект") or None
     project_legacy = False
     if project:
@@ -362,7 +362,7 @@ def _phone_preview_message(values: dict, key: tuple) -> str:
     return f"{key}" + ("; " + "; ".join(notes) if notes else "")
 
 
-def _phone_reference_ids(conn, row: dict[str, str], *, backend: str = "sqlite") -> dict[str, int | None]:
+def _phone_reference_ids(conn, row: dict[str, str], *, backend: str = "postgres") -> dict[str, int | None]:
     country_name = _first(row, "country", "страна", "гео", "GEO")
     country_id, country_legacy = _resolve_reference(conn, "countries", country_name, "ГЕО", backend=backend)
     provider_name = _first(row, "provider", "провайдер")
@@ -381,7 +381,7 @@ def _phone_reference_ids(conn, row: dict[str, str], *, backend: str = "sqlite") 
         "empty_provider": not bool(provider_name),
     }
 
-def _exists(conn, entity_type: str, key: tuple, *, backend: str = "sqlite") -> bool:
+def _exists(conn, entity_type: str, key: tuple, *, backend: str = "postgres") -> bool:
     repo = Repository(conn, backend=backend)
     if entity_type == "routes":
         country, name = key

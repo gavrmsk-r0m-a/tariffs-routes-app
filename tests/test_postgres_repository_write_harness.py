@@ -155,6 +155,8 @@ class WriteHarnessTest(unittest.TestCase):
         self.assertIn("commit=False", source)
         self.assertIn("SAVEPOINT stage66e_", source)
         self.assertIn("ROLLBACK TO SAVEPOINT stage66e_", source)
+        self.assertIn('Decimal(str(old_values["rate_to_eur"]))', source)
+        self.assertIn('Decimal(str(new_values["rate_to_eur"]))', source)
         self.assertIn("currency_rate_lifecycle_probe", harness.empty_summary("postgresql://u:p@h/db")["probes"])
         self.assertEqual(25, len(harness.empty_summary("postgresql://u:p@h/db")["probes"]))
         self.assertNotIn("conn.commit()", source)

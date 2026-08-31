@@ -1,0 +1,680 @@
+from __future__ import annotations
+
+import os
+import sqlite3
+import threading
+from dataclasses import dataclass
+from app.repository import Repository, hash_password, verify_password
+from app.security import production_security_enabled, validate_bootstrap_password
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+SCHEMA_PATH = Path(__file__).resolve().parent / "schema.sqlite.sql"
+DEFAULT_DB_PATH = ROOT / "mvp.sqlite3"
+SQLITE_TIMEOUT_SECONDS = 5
+SQLITE_BUSY_TIMEOUT_MS = 5000
+SUPPORTED_DB_BACKENDS = {"sqlite", "postgres", "postgresql"}
+POSTGRES_NOT_IMPLEMENTED_MESSAGE = "PostgreSQL backend is not implemented yet"
+POSTGRES_RUNTIME_GUARD_ENV = "POSTGRES_RUNTIME_ENABLED"
+POSTGRES_RUNTIME_DISABLED_MESSAGE = "PostgreSQL runtime is disabled; set POSTGRES_RUNTIME_ENABLED=1 only after production gates are complete"
+POSTGRES_DATABASE_URL_REQUIRED_MESSAGE = "DATABASE_URL is required for PostgreSQL backend"
+
+
+@dataclass(frozen=True)
+class DbConfig:
+    backend: str
+    sqlite_path: Path
+    database_url: str | None = None
+
+
+def load_db_config(environ: dict[str, str] | None = None) -> DbConfig:
+    env = os.environ if environ is None else environ
+    backend = (env.get("DB_BACKEND") or "sqlite").strip().lower()
+    if backend not in SUPPORTED_DB_BACKENDS:
+        raise ValueError(f"Unsupported DB_BACKEND: {backend}")
+    sqlite_path_value = env.get("SQLITE_DB_PATH") or env.get("MVP_DB_PATH")
+    if sqlite_path_value:
+        sqlite_path = Path(sqlite_path_value)
+    elif env.get("APP_DATA_DIR"):
+        sqlite_path = Path(env["APP_DATA_DIR"]) / "mvp.sqlite3"
+    else:
+        sqlite_path = DEFAULT_DB_PATH
+    database_url = env.get("DATABASE_URL") or None
+    return DbConfig(backend=backend, sqlite_path=sqlite_path, database_url=database_url)
+
+
+def postgres_runtime_enabled(environ: dict[str, str] | None = None) -> bool:
+    env = os.environ if environ is None else environ
+    return (env.get(POSTGRES_RUNTIME_GUARD_ENV) or "").strip() == "1"
+
+
+def connect_postgres(database_url: str):
+    if not database_url:
+        raise ValueError(POSTGRES_DATABASE_URL_REQUIRED_MESSAGE)
+    try:
+        import psycopg
+        from psycopg.rows import dict_row
+    except ImportError as exc:
+        raise RuntimeError(
+            "psycopg is required for PostgreSQL backend; install psycopg[binary]"
+        ) from exc
+    return psycopg.connect(database_url, row_factory=dict_row)
+
+
+def connect_database(config: DbConfig, environ: dict[str, str] | None = None):
+    if config.backend == "sqlite":
+        return connect(config.sqlite_path)
+    if config.backend in {"postgres", "postgresql"}:
+        if not postgres_runtime_enabled(environ):
+            raise NotImplementedError(POSTGRES_RUNTIME_DISABLED_MESSAGE)
+        return connect_postgres(config.database_url or "")
+    raise ValueError(f"Unsupported DB_BACKEND: {config.backend}")
+
+
+_INIT_LOCK = threading.Lock()
+_INITIALIZED_DB_KEYS: set[str] = set()
+
+
+DEFAULT_USERS = (
+    ("admin", "Admin", "admin", "admin"),
+    ("roman", "Roman", "admin", "roman"),
+    ("duty", "Дежурный", "operator", "duty123"),
+    ("guest", "Гость", "guest", "guest123"),
+)
+
+DEFAULT_PROJECTS = (
+    ("mezhdep", "Меж.деп.", 1, 0),
+    ("rep", "REP", 2, 1),
+    ("itm", "ИТМ", 3, 1),
+    ("prepayment", "Предоплата", 4, 1),
+    ("legal", "Юр.деп.", 5, 1),
+)
+
+DEFAULT_PHONE_ASSIGNMENTS = (
+    ("gl", "ГЛ", 1),
+    ("aon", "АОН", 2),
+    ("scratchcards", "Scratchcards", 3),
+    ("competitors", "Competitors", 4),
+    ("sms", "SMS", 5),
+    ("corporate_telephony", "Корп.телефония", 6),
+    ("dozhim", "Дожим", 7),
+    ("ivr", "IVR", 8),
+)
+
+PHONE_STATUS_SQL = "status TEXT NOT NULL DEFAULT 'unknown' CHECK (status IN ('used', 'unused', 'free', 'problem', 'unknown'))"
+
+
+def _phone_status_expr(column: str = "status") -> str:
+    return (
+        f"CASE "
+        f"WHEN {column} = 'used' THEN 'used' "
+        f"WHEN {column} = 'unused' THEN 'unused' "
+        f"WHEN {column} IN ('free', 'reserved') THEN 'free' "
+        f"WHEN {column} IN ('blocked', 'disabled') THEN 'problem' "
+        f"WHEN {column} = 'unknown' THEN 'unknown' "
+        f"ELSE 'unknown' END"
+    )
+
+
+def apply_connection_pragmas(conn: sqlite3.Connection) -> None:
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute(f"PRAGMA busy_timeout={SQLITE_BUSY_TIMEOUT_MS}")
+    conn.execute("PRAGMA foreign_keys=ON")
+
+
+def connect(path: str | Path = DEFAULT_DB_PATH) -> sqlite3.Connection:
+    conn = sqlite3.connect(path, timeout=SQLITE_TIMEOUT_SECONDS)
+    conn.row_factory = sqlite3.Row
+    apply_connection_pragmas(conn)
+    return conn
+
+
+def _db_key(path: str | Path) -> str:
+    if str(path) == ":memory:":
+        return ":memory:"
+    return str(Path(path).resolve())
+
+
+def _has_schema(conn: sqlite3.Connection) -> bool:
+    return conn.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'users'").fetchone() is not None
+
+
+def ensure_db_initialized(conn: sqlite3.Connection, path: str | Path = DEFAULT_DB_PATH) -> None:
+    """Run SQLite initialization once per process for request-time connections."""
+    key = _db_key(path)
+    if key in _INITIALIZED_DB_KEYS:
+        return
+    with _INIT_LOCK:
+        if key in _INITIALIZED_DB_KEYS:
+            return
+        init_db(conn)
+        _INITIALIZED_DB_KEYS.add(key)
+
+
+def _column_names(conn: sqlite3.Connection, table: str) -> set[str]:
+    return {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
+
+
+def _add_column_if_missing(conn: sqlite3.Connection, table: str, column: str, definition: str) -> None:
+    if column not in _column_names(conn, table):
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+
+
+def _rebuild_phone_numbers_if_needed(conn: sqlite3.Connection) -> None:
+    row = conn.execute("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'phone_numbers'").fetchone()
+    table_sql = row[0] or "" if row else ""
+    if not row:
+        return
+    needs_assignment_rebuild = "assignment_type TEXT NOT NULL CHECK" in table_sql
+    needs_status_rebuild = (
+        "'disabled'" in table_sql
+        or "'reserved'" in table_sql
+        or "'blocked'" in table_sql
+        or "'problem'" not in table_sql
+        or "'unused'" not in table_sql
+    )
+    invalid_status = conn.execute(
+        "SELECT 1 FROM phone_numbers WHERE COALESCE(status, '') NOT IN ('used', 'unused', 'free', 'problem', 'unknown') LIMIT 1"
+    ).fetchone()
+    if not (needs_assignment_rebuild or needs_status_rebuild or invalid_status):
+        return
+    conn.commit()
+    conn.execute("PRAGMA foreign_keys = OFF")
+    conn.execute(f"""
+        CREATE TABLE phone_numbers_new (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            country_id INTEGER NOT NULL REFERENCES countries(id) ON DELETE RESTRICT,
+            provider_id INTEGER REFERENCES providers(id) ON DELETE RESTRICT,
+            country_label TEXT,
+            provider_label TEXT,
+            number TEXT NOT NULL,
+            normalized_number TEXT NOT NULL UNIQUE,
+            project_label TEXT,
+            assignment_type TEXT,
+            assignment_label TEXT,
+            phone_type TEXT,
+            tariff_label TEXT,
+            {PHONE_STATUS_SQL},
+            connection_cost NUMERIC CHECK (connection_cost IS NULL OR connection_cost >= 0),
+            monthly_fee NUMERIC CHECK (monthly_fee IS NULL OR monthly_fee >= 0),
+            outgoing_rate NUMERIC CHECK (outgoing_rate IS NULL OR outgoing_rate >= 0),
+            incoming_rate NUMERIC CHECK (incoming_rate IS NULL OR incoming_rate >= 0),
+            currency_id INTEGER REFERENCES currencies(id) ON DELETE RESTRICT,
+            currency_label TEXT,
+            comment TEXT,
+            is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
+            review_required INTEGER NOT NULL DEFAULT 0 CHECK (review_required IN (0, 1)),
+            imported_created_by TEXT,
+            created_by INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_by INTEGER REFERENCES users(id) ON DELETE RESTRICT,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            deactivated_at TEXT,
+            CHECK (number GLOB '[1-9]*' AND number NOT GLOB '*[^0-9]*' AND length(number) BETWEEN 7 AND 21),
+            CHECK (normalized_number = number)
+        )
+    """)
+    conn.execute(f"""
+        INSERT INTO phone_numbers_new(
+            id, country_id, provider_id, country_label, provider_label, number, normalized_number, project_label,
+            assignment_type, assignment_label, phone_type, tariff_label, status, connection_cost, monthly_fee,
+            outgoing_rate, incoming_rate, currency_id, currency_label, comment, is_active, review_required, imported_created_by, created_by,
+            created_at, updated_by, updated_at, deactivated_at
+        )
+        SELECT pn.id, pn.country_id, pn.provider_id, c.name, p.name, pn.number, pn.normalized_number, pn.project_label,
+            pn.assignment_type, pat.name, pn.phone_type, pn.tariff_label, {_phone_status_expr("pn.status")}, pn.connection_cost, pn.monthly_fee,
+            pn.outgoing_rate, pn.incoming_rate, pn.currency_id, cur.code, pn.comment, pn.is_active, pn.review_required, pn.imported_created_by, pn.created_by,
+            pn.created_at, pn.updated_by, pn.updated_at, pn.deactivated_at
+        FROM phone_numbers pn
+        JOIN countries c ON c.id = pn.country_id
+        LEFT JOIN providers p ON p.id = pn.provider_id
+        LEFT JOIN currencies cur ON cur.id = pn.currency_id
+        LEFT JOIN phone_assignment_types pat ON pat.code = pn.assignment_type
+    """)
+    conn.execute("DROP TABLE phone_numbers")
+    conn.execute("ALTER TABLE phone_numbers_new RENAME TO phone_numbers")
+    conn.execute("PRAGMA foreign_keys = ON")
+
+
+def _rebuild_calling_companies_if_needed(conn: sqlite3.Connection) -> None:
+    """Make the campaign GEO nullable in legacy SQLite databases without changing rows."""
+    columns = {row[1]: row for row in conn.execute("PRAGMA table_info(calling_companies)")}
+    if not columns or not columns["country_id"][3]:
+        return
+    conn.commit()
+    conn.execute("PRAGMA foreign_keys = OFF")
+    try:
+        conn.execute("""
+            CREATE TABLE calling_companies_new (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                server_id INTEGER NOT NULL REFERENCES servers(id) ON DELETE RESTRICT,
+                country_id INTEGER REFERENCES countries(id) ON DELETE RESTRICT,
+                company_name TEXT NOT NULL,
+                company_id_external TEXT NOT NULL CHECK (length(trim(company_id_external)) > 0),
+                has_autorotation INTEGER NOT NULL DEFAULT 0 CHECK (has_autorotation IN (0, 1)),
+                line_count INTEGER NOT NULL DEFAULT 0 CHECK (line_count >= 0),
+                dial_set_count INTEGER NOT NULL DEFAULT 0 CHECK (dial_set_count >= 0),
+                retry_interval_seconds INTEGER NOT NULL DEFAULT 0 CHECK (retry_interval_seconds >= 0),
+                comment TEXT,
+                is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
+                created_by INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_by INTEGER REFERENCES users(id) ON DELETE RESTRICT,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(server_id, country_id, company_id_external)
+            )
+        """)
+        column_list = "id, server_id, country_id, company_name, company_id_external, has_autorotation, line_count, dial_set_count, retry_interval_seconds, comment, is_active, created_by, created_at, updated_by, updated_at"
+        conn.execute(f"INSERT INTO calling_companies_new({column_list}) SELECT {column_list} FROM calling_companies")
+        conn.execute("DROP TABLE calling_companies")
+        conn.execute("ALTER TABLE calling_companies_new RENAME TO calling_companies")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_calling_companies_server_id ON calling_companies(server_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_calling_companies_country_id ON calling_companies(country_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_calling_companies_external_id ON calling_companies(company_id_external)")
+        conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_calling_companies_multi_geo_identity ON calling_companies(server_id, company_id_external) WHERE country_id IS NULL")
+        conn.commit()
+    finally:
+        conn.execute("PRAGMA foreign_keys = ON")
+
+
+def _rebuild_company_routing_settings_if_needed(conn: sqlite3.Connection) -> None:
+    """Make routing-setting GEO nullable while preserving legacy rows and IDs."""
+    columns = {row[1]: row for row in conn.execute("PRAGMA table_info(company_routing_settings)")}
+    if not columns or not columns["country_id"][3]:
+        return
+    conn.commit()
+    conn.execute("PRAGMA foreign_keys = OFF")
+    try:
+        conn.execute("""
+            CREATE TABLE company_routing_settings_new (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                calling_company_id INTEGER NOT NULL REFERENCES calling_companies(id) ON DELETE RESTRICT,
+                country_id INTEGER REFERENCES countries(id) ON DELETE RESTRICT,
+                server_id INTEGER NOT NULL REFERENCES servers(id) ON DELETE RESTRICT,
+                route_id INTEGER REFERENCES routes(id) ON DELETE RESTRICT,
+                routing_mode TEXT NOT NULL CHECK (routing_mode IN ('server_priority', 'campaign_route', 'autorotation', 'mixed')),
+                has_autorotation INTEGER NOT NULL DEFAULT 0 CHECK (has_autorotation IN (0, 1)),
+                is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
+                comment TEXT,
+                valid_from TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                valid_to TEXT,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                created_by INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_by INTEGER REFERENCES users(id) ON DELETE RESTRICT,
+                CHECK ((is_active = 1 AND valid_to IS NULL) OR is_active = 0)
+            )
+        """)
+        column_list = "id, calling_company_id, country_id, server_id, route_id, routing_mode, has_autorotation, is_active, comment, valid_from, valid_to, created_at, created_by, updated_at, updated_by"
+        conn.execute(f"INSERT INTO company_routing_settings_new({column_list}) SELECT {column_list} FROM company_routing_settings")
+        conn.execute("DROP TABLE company_routing_settings")
+        conn.execute("ALTER TABLE company_routing_settings_new RENAME TO company_routing_settings")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_company_routing_settings_company_id ON company_routing_settings(calling_company_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_company_routing_settings_country_id ON company_routing_settings(country_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_company_routing_settings_server_id ON company_routing_settings(server_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_company_routing_settings_route_id ON company_routing_settings(route_id)")
+        conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_company_routing_settings_one_active ON company_routing_settings(calling_company_id) WHERE is_active = 1 AND valid_to IS NULL")
+        conn.commit()
+    finally:
+        conn.execute("PRAGMA foreign_keys = ON")
+
+
+def _seed_default_users_if_empty(conn: sqlite3.Connection) -> None:
+    if conn.execute("SELECT COUNT(*) FROM users").fetchone()[0] != 0:
+        return
+    columns = _column_names(conn, "users")
+    users = DEFAULT_USERS
+    if production_security_enabled():
+        username = (os.environ.get("MVP_BOOTSTRAP_ADMIN_USERNAME") or "").strip()
+        password = os.environ.get("MVP_BOOTSTRAP_ADMIN_PASSWORD") or ""
+        if not username or not password:
+            raise RuntimeError("Production security mode requires bootstrap admin credentials for an empty users table")
+        errors = validate_bootstrap_password(username, password)
+        if errors:
+            raise RuntimeError("Invalid production bootstrap admin configuration: " + "; ".join(errors))
+        display_name = (os.environ.get("MVP_BOOTSTRAP_ADMIN_DISPLAY_NAME") or username).strip()
+        users = ((username, display_name, "admin", password),)
+    for username, display_name, role_key, password in users:
+        insert_columns = ["username", "display_name", "is_active"]
+        values: list[object] = [username, display_name, 1]
+        if "role_key" in columns:
+            insert_columns.append("role_key")
+            values.append(role_key)
+        if "role" in columns:
+            insert_columns.append("role")
+            values.append(role_key)
+        if "must_change_password" in columns:
+            insert_columns.append("must_change_password")
+            values.append(0)
+        if "password_hash" in columns and "password_salt" in columns:
+            password_hash, password_salt = hash_password(password)
+            insert_columns.extend(["password_hash", "password_salt"])
+            values.extend([password_hash, password_salt])
+        if "auth_provider" in columns:
+            insert_columns.append("auth_provider")
+            values.append("local")
+        placeholders = ", ".join("?" for _ in insert_columns)
+        conn.execute(
+            f"INSERT INTO users({', '.join(insert_columns)}) VALUES ({placeholders})",
+            tuple(values),
+        )
+
+
+def run_lightweight_migrations(conn: sqlite3.Connection) -> None:
+    """Keep already-created MVP databases compatible with additive UI changes."""
+    scopes_table_existed = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'change_reason_scopes'"
+    ).fetchone() is not None
+    existing_reason_ids = [row[0] for row in conn.execute("SELECT id FROM change_reasons")] if not scopes_table_existed else []
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS change_reason_scopes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            reason_id INTEGER NOT NULL REFERENCES change_reasons(id) ON DELETE CASCADE,
+            apply_scope TEXT NOT NULL CHECK (apply_scope IN ('none', 'server_priority', 'campaign_setting')),
+            UNIQUE(reason_id, apply_scope)
+        )
+    """)
+    for reason_id in existing_reason_ids:
+        for scope in Repository.CHANGE_REASON_SCOPES:
+            conn.execute(
+                "INSERT OR IGNORE INTO change_reason_scopes(reason_id, apply_scope) VALUES (?, ?)",
+                (reason_id, scope),
+            )
+    # Historical seed/backfill only. Runtime selection and validation read the
+    # change_reasons tables through Repository.list_change_reasons().
+    legacy_change_reasons_by_scope = {
+        "none": ("Обновление/смена АОНов", "Провайдер сменил маршрут", "Другое"),
+        "server_priority": ("Массовый отбои/занято", "Обратная смена провайдера", "Задача руководства", "Другое"),
+        "campaign_setting": (
+            "Задача руководства", "Массовые отбои / занято", "Плохой дозвон", "Провайдер не отвечает",
+            "Авария у провайдера", "Тест нового маршрута", "Плановое переключение", "Обновление пула / АОН",
+            "Проблема с префиксом", "Другое",
+        ),
+    }
+    for scope, reasons in legacy_change_reasons_by_scope.items():
+        for name in reasons:
+            row = conn.execute("SELECT id FROM change_reasons WHERE lower(name) = lower(?)", (name,)).fetchone()
+            if row is None:
+                cursor = conn.execute("INSERT INTO change_reasons(name, description, is_active) VALUES (?, ?, 1)", (name, name))
+                reason_id = cursor.lastrowid
+            else:
+                reason_id = row[0]
+            conn.execute(
+                "INSERT OR IGNORE INTO change_reason_scopes(reason_id, apply_scope) VALUES (?, ?)",
+                (reason_id, scope),
+            )
+    _rebuild_calling_companies_if_needed(conn)
+    _rebuild_company_routing_settings_if_needed(conn)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT NOT NULL UNIQUE,
+            email TEXT,
+            display_name TEXT NOT NULL,
+            role_key TEXT NOT NULL DEFAULT 'operator',
+            role TEXT,
+            must_change_password INTEGER NOT NULL DEFAULT 0 CHECK (must_change_password IN (0, 1)),
+            is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            password_hash TEXT,
+            password_salt TEXT
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS login_attempts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username_normalized TEXT NOT NULL,
+            client_key TEXT NOT NULL,
+            failed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            reason TEXT
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_login_attempts_identity_time ON login_attempts(username_normalized, client_key, failed_at)")
+    _add_column_if_missing(conn, "users", "role_key", "TEXT NOT NULL DEFAULT 'operator'")
+    _add_column_if_missing(conn, "users", "email", "TEXT")
+    _add_column_if_missing(conn, "users", "role", "TEXT")
+    _add_column_if_missing(conn, "users", "must_change_password", "INTEGER NOT NULL DEFAULT 0 CHECK (must_change_password IN (0, 1))")
+    _add_column_if_missing(conn, "users", "display_name", "TEXT")
+    _add_column_if_missing(conn, "users", "is_active", "INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1))")
+    _add_column_if_missing(conn, "users", "created_at", "TEXT")
+    _add_column_if_missing(conn, "users", "updated_at", "TEXT")
+    _add_column_if_missing(conn, "users", "password_hash", "TEXT")
+    _add_column_if_missing(conn, "users", "password_salt", "TEXT")
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS hlr_daily_usage (
+            usage_date TEXT PRIMARY KEY,
+            checked_count INTEGER NOT NULL DEFAULT 0 CHECK (checked_count >= 0),
+            credits_spent NUMERIC,
+            last_check_count INTEGER NOT NULL DEFAULT 0 CHECK (last_check_count >= 0),
+            last_check_credits NUMERIC,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS app_settings (
+            key TEXT PRIMARY KEY,
+            value TEXT,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS user_permissions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            section_key TEXT NOT NULL,
+            can_read INTEGER NOT NULL DEFAULT 0 CHECK (can_read IN (0, 1)),
+            can_write INTEGER NOT NULL DEFAULT 0 CHECK (can_write IN (0, 1)),
+            can_export INTEGER NOT NULL DEFAULT 0 CHECK (can_export IN (0, 1)),
+            UNIQUE(user_id, section_key)
+        )
+    """)
+    if conn.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'routing_events'").fetchone() is not None:
+        _add_column_if_missing(conn, "routing_events", "updated_at", "TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP")
+    if conn.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'server_route_priorities'").fetchone() is not None:
+        _add_column_if_missing(conn, "server_route_priorities", "has_overflow", "INTEGER NOT NULL DEFAULT 0 CHECK (has_overflow IN (0, 1))")
+        _add_column_if_missing(conn, "server_route_priorities", "overflow_route_id", "INTEGER REFERENCES routes(id) ON DELETE RESTRICT")
+    conn.execute("UPDATE users SET display_name = username WHERE display_name IS NULL OR TRIM(display_name) = ''")
+    conn.execute("UPDATE users SET role = role_key WHERE role IS NULL OR TRIM(role) = ''")
+    if "role" in _column_names(conn, "users"):
+        conn.execute("UPDATE users SET role_key = CASE WHEN LOWER(role) = 'admin' THEN 'admin' WHEN LOWER(role) IN ('operator','duty','boss','guest') THEN LOWER(role) ELSE 'operator' END WHERE role_key IS NULL OR role_key = ''")
+    _seed_default_users_if_empty(conn)
+    if production_security_enabled():
+        for username, _display_name, _role_key, password in DEFAULT_USERS:
+            row = conn.execute("SELECT password_hash, password_salt FROM users WHERE username = ?", (username,)).fetchone()
+            if row and verify_password(password, row["password_hash"], row["password_salt"]):
+                raise RuntimeError("Known default credentials are forbidden in production security mode")
+    for username, _display_name, _role_key, password in DEFAULT_USERS:
+        row = conn.execute("SELECT id, password_hash, password_salt FROM users WHERE username = ?", (username,)).fetchone()
+        if row and (not row["password_hash"] or (not row["password_salt"] and not str(row["password_hash"]).startswith("pbkdf2:"))):
+            password_hash, password_salt = hash_password(password)
+            conn.execute("UPDATE users SET password_hash = ?, password_salt = ? WHERE id = ?", (password_hash, password_salt, row["id"]))
+    _add_column_if_missing(conn, "calling_companies", "line_count", "INTEGER NOT NULL DEFAULT 0 CHECK (line_count >= 0)")
+    _add_column_if_missing(conn, "calling_companies", "dial_set_count", "INTEGER NOT NULL DEFAULT 0 CHECK (dial_set_count >= 0)")
+    _add_column_if_missing(conn, "calling_companies", "retry_interval_seconds", "INTEGER NOT NULL DEFAULT 0 CHECK (retry_interval_seconds >= 0)")
+    _add_column_if_missing(conn, "phone_numbers", "country_label", "TEXT")
+    _add_column_if_missing(conn, "phone_numbers", "provider_label", "TEXT")
+    _add_column_if_missing(conn, "phone_numbers", "assignment_label", "TEXT")
+    _add_column_if_missing(conn, "phone_numbers", "currency_label", "TEXT")
+    _add_column_if_missing(conn, "phone_numbers", "phone_type", "TEXT")
+    _add_column_if_missing(conn, "phone_numbers", "tariff_label", "TEXT")
+    _add_column_if_missing(conn, "phone_numbers", "deactivated_at", "TEXT")
+    _add_column_if_missing(conn, "phone_numbers", "review_required", "INTEGER NOT NULL DEFAULT 0 CHECK (review_required IN (0, 1))")
+    _add_column_if_missing(conn, "phone_numbers", "imported_created_by", "TEXT")
+    _add_column_if_missing(conn, "routes", "aon_pool", "TEXT")
+    _add_column_if_missing(conn, "routes", "rnd_type", "TEXT CHECK (rnd_type IN ('local', 'nonlocal') OR rnd_type IS NULL)")
+    _add_column_if_missing(conn, "routes", "rnd_pool_owner", "TEXT")
+    _rebuild_phone_numbers_if_needed(conn)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS phone_number_types (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL UNIQUE,
+            is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
+            comment TEXT,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS projects (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            code TEXT UNIQUE,
+            name TEXT NOT NULL UNIQUE,
+            is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            include_in_route_name INTEGER NOT NULL DEFAULT 1 CHECK (include_in_route_name IN (0, 1)),
+            comment TEXT,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS phone_assignment_types (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            code TEXT NOT NULL UNIQUE,
+            name TEXT NOT NULL UNIQUE,
+            is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            comment TEXT,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    _add_column_if_missing(conn, "projects", "code", "TEXT")
+    _add_column_if_missing(conn, "projects", "sort_order", "INTEGER NOT NULL DEFAULT 0")
+    _add_column_if_missing(conn, "projects", "include_in_route_name", "INTEGER NOT NULL DEFAULT 1 CHECK (include_in_route_name IN (0, 1))")
+    _add_column_if_missing(conn, "phone_assignment_types", "sort_order", "INTEGER NOT NULL DEFAULT 0")
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS company_routing_settings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            calling_company_id INTEGER NOT NULL REFERENCES calling_companies(id) ON DELETE RESTRICT,
+            country_id INTEGER NOT NULL REFERENCES countries(id) ON DELETE RESTRICT,
+            server_id INTEGER NOT NULL REFERENCES servers(id) ON DELETE RESTRICT,
+            route_id INTEGER REFERENCES routes(id) ON DELETE RESTRICT,
+            routing_mode TEXT NOT NULL CHECK (routing_mode IN ('server_priority', 'campaign_route', 'autorotation', 'mixed')),
+            has_autorotation INTEGER NOT NULL DEFAULT 0 CHECK (has_autorotation IN (0, 1)),
+            is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
+            comment TEXT,
+            valid_from TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            valid_to TEXT,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            created_by INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_by INTEGER REFERENCES users(id) ON DELETE RESTRICT,
+            CHECK ((is_active = 1 AND valid_to IS NULL) OR is_active = 0)
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_company_routing_settings_company_id ON company_routing_settings(calling_company_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_company_routing_settings_country_id ON company_routing_settings(country_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_company_routing_settings_server_id ON company_routing_settings(server_id)")
+    conn.execute("""
+        UPDATE phone_numbers
+        SET country_label = COALESCE(country_label, (SELECT name FROM countries WHERE countries.id = phone_numbers.country_id)),
+            provider_label = COALESCE(provider_label, (SELECT name FROM providers WHERE providers.id = phone_numbers.provider_id)),
+            assignment_label = COALESCE(assignment_label, (SELECT name FROM phone_assignment_types WHERE phone_assignment_types.code = phone_numbers.assignment_type)),
+            currency_label = COALESCE(currency_label, (SELECT code FROM currencies WHERE currencies.id = phone_numbers.currency_id))
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_company_routing_settings_route_id ON company_routing_settings(route_id)")
+    conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_company_routing_settings_one_active ON company_routing_settings(calling_company_id) WHERE is_active = 1 AND valid_to IS NULL")
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS routing_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_at TEXT NOT NULL,
+            apply_scope TEXT NOT NULL CHECK (apply_scope IN ('none', 'server_priority', 'campaign_setting')),
+            reason TEXT NOT NULL,
+            country_id INTEGER REFERENCES countries(id) ON DELETE RESTRICT,
+            server_id INTEGER REFERENCES servers(id) ON DELETE RESTRICT,
+            provider_id INTEGER REFERENCES providers(id) ON DELETE RESTRICT,
+            affected_route_id INTEGER REFERENCES routes(id) ON DELETE RESTRICT,
+            old_route_id INTEGER REFERENCES routes(id) ON DELETE RESTRICT,
+            new_route_id INTEGER REFERENCES routes(id) ON DELETE RESTRICT,
+            calling_company_id INTEGER REFERENCES calling_companies(id) ON DELETE RESTRICT,
+            company_change_type TEXT CHECK (company_change_type IN ('enable_autorotation', 'disable_autorotation', 'set_campaign_route', 'remove_campaign_route') OR company_change_type IS NULL),
+            old_company_routing_mode TEXT,
+            new_company_routing_mode TEXT,
+            old_company_route_id INTEGER REFERENCES routes(id) ON DELETE RESTRICT,
+            new_company_route_id INTEGER REFERENCES routes(id) ON DELETE RESTRICT,
+            old_company_has_autorotation INTEGER CHECK (old_company_has_autorotation IN (0, 1) OR old_company_has_autorotation IS NULL),
+            new_company_has_autorotation INTEGER CHECK (new_company_has_autorotation IN (0, 1) OR new_company_has_autorotation IS NULL),
+            has_overflow INTEGER NOT NULL DEFAULT 0 CHECK (has_overflow IN (0, 1)),
+            overflow_route_id INTEGER REFERENCES routes(id) ON DELETE RESTRICT,
+            comment TEXT NOT NULL,
+            snapshot_json TEXT,
+            is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
+            deactivation_reason TEXT,
+            deactivated_at TEXT,
+            deactivated_by INTEGER REFERENCES users(id) ON DELETE RESTRICT,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            created_by INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_by INTEGER REFERENCES users(id) ON DELETE RESTRICT
+        )
+    """)
+    _add_column_if_missing(conn, "routing_events", "has_overflow", "INTEGER NOT NULL DEFAULT 0 CHECK (has_overflow IN (0, 1))")
+    _add_column_if_missing(conn, "routing_events", "overflow_route_id", "INTEGER REFERENCES routes(id) ON DELETE RESTRICT")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_routing_events_event_at ON routing_events(event_at DESC, id DESC)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_routing_events_scope ON routing_events(apply_scope)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_routing_events_active ON routing_events(is_active)")
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS routing_event_servers (
+            id INTEGER PRIMARY KEY,
+            routing_event_id INTEGER NOT NULL REFERENCES routing_events(id) ON DELETE RESTRICT,
+            server_id INTEGER NOT NULL REFERENCES servers(id) ON DELETE RESTRICT,
+            old_route_id INTEGER REFERENCES routes(id) ON DELETE RESTRICT,
+            new_route_id INTEGER NOT NULL REFERENCES routes(id) ON DELETE RESTRICT,
+            server_route_priority_id INTEGER REFERENCES server_route_priorities(id) ON DELETE RESTRICT,
+            status TEXT NOT NULL DEFAULT 'applied' CHECK (status IN ('applied', 'skipped_noop')),
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_routing_event_servers_event ON routing_event_servers(routing_event_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_routing_event_servers_server ON routing_event_servers(server_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_routing_event_servers_new_route ON routing_event_servers(new_route_id)")
+    legacy_no_prefix_filter = """
+        SELECT id FROM provider_prefixes
+        WHERE prefix IS NULL
+           OR TRIM(prefix) = ''
+           OR TRIM(prefix) IN ('Без префикса', 'без префикса', 'no prefix')
+           OR TRIM(prefix) IN ('—', '-')
+    """
+    conn.execute(f"UPDATE routes SET provider_prefix_id = NULL WHERE provider_prefix_id IN ({legacy_no_prefix_filter})")
+    conn.execute(f"UPDATE tariffs SET provider_prefix_id = NULL WHERE provider_prefix_id IN ({legacy_no_prefix_filter})")
+    conn.execute(f"""
+        UPDATE provider_prefixes
+        SET is_active = 0, updated_at = CURRENT_TIMESTAMP
+        WHERE id IN ({legacy_no_prefix_filter})
+    """)
+    conn.execute("UPDATE projects SET is_active = 0 WHERE name IN ('Междепы', 'Competitors', 'ITM', 'Monitoring', 'Test')")
+    for code, name, sort_order, include_in_route_name in DEFAULT_PROJECTS:
+        conn.execute(
+            """
+            INSERT INTO projects(code, name, is_active, sort_order, include_in_route_name)
+            VALUES (?, ?, 1, ?, ?)
+            ON CONFLICT(name) DO UPDATE SET code = excluded.code, is_active = 1,
+                sort_order = excluded.sort_order, include_in_route_name = excluded.include_in_route_name,
+                updated_at = CURRENT_TIMESTAMP
+            """,
+            (code, name, sort_order, include_in_route_name),
+        )
+    conn.execute(
+        "DELETE FROM phone_assignment_types WHERE code IN ('outgoing_cli', 'inbound_line', 'office_phone', 'sim_card', 'pool_number', 'other')"
+    )
+    for code, name, sort_order in DEFAULT_PHONE_ASSIGNMENTS:
+        conn.execute(
+            """
+            INSERT INTO phone_assignment_types(code, name, is_active, sort_order)
+            VALUES (?, ?, 1, ?)
+            ON CONFLICT(code) DO UPDATE SET name = excluded.name, is_active = 1,
+                sort_order = excluded.sort_order, updated_at = CURRENT_TIMESTAMP
+            """,
+            (code, name, sort_order),
+        )
+
+
+def init_db(conn: sqlite3.Connection) -> None:
+    apply_connection_pragmas(conn)
+    if not _has_schema(conn):
+        conn.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
+    run_lightweight_migrations(conn)
+    conn.commit()

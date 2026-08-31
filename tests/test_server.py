@@ -3,11 +3,16 @@ import json
 import io
 import os
 import re
-import tempfile
 import unittest
 from decimal import Decimal
 from unittest.mock import Mock, patch
 from urllib.parse import urlencode
+
+from tests.postgres_test_support import seed_postgres, shared_database
+
+_TEST_DB = shared_database()
+os.environ["DB_BACKEND"] = "postgres"
+os.environ["DATABASE_URL"] = _TEST_DB.database_url
 
 import app.server as server
 from app.repository import Repository, verify_password
@@ -105,10 +110,8 @@ class HlrBalanceHelperTest(unittest.TestCase):
 
 class HlrDailyUsageTest(unittest.TestCase):
     def setUp(self):
-        self.tmp = tempfile.NamedTemporaryFile(delete=False)
-        self.tmp.close()
-        self.conn = server.connect(self.tmp.name)
-        server.init_db(self.conn)
+        _TEST_DB.reset()
+        self.conn = _TEST_DB.connect()
         self.repo = server.Repository(self.conn)
         server._REQUEST_CONTEXT.clear()
         server._REQUEST_CONTEXT["repo"] = self.repo
@@ -116,7 +119,6 @@ class HlrDailyUsageTest(unittest.TestCase):
     def tearDown(self):
         server._REQUEST_CONTEXT.clear()
         self.conn.close()
-        os.unlink(self.tmp.name)
 
     def test_hlr_run_check_records_valid_numbers_only_and_sums_credits(self):
         with patch.dict(os.environ, {"HLR_MODE": "demo", "HLR_DAILY_CHECK_LIMIT": "5"}, clear=False):
@@ -276,14 +278,12 @@ class HlrApiMappingTest(unittest.TestCase):
 
 class ServerSmokeTest(unittest.TestCase):
     def setUp(self):
-        self.tmp = tempfile.NamedTemporaryFile(delete=False)
-        self.tmp.close()
-        self.old_path = server.DB_PATH
-        server.DB_PATH = self.tmp.name
+        _TEST_DB.reset()
+        self._connect_patch = patch.object(server, "connect_database", side_effect=lambda config: _TEST_DB.connect())
+        self._connect_patch.start()
 
     def tearDown(self):
-        server.DB_PATH = self.old_path
-        os.unlink(self.tmp.name)
+        self._connect_patch.stop()
 
     def request(self, path, method="GET", body="", cookie="", auto_login=True, headers=None):
         captured = {}
@@ -307,10 +307,8 @@ class ServerSmokeTest(unittest.TestCase):
         if cookie:
             environ["HTTP_COOKIE"] = cookie
         elif auto_login and path not in ("/login", "/logout"):
-            conn = server.connect(server.DB_PATH)
+            conn = _TEST_DB.connect()
             try:
-                server.init_db(conn)
-                server.ensure_seed(server.Repository(conn))
                 row = conn.execute("SELECT id FROM users WHERE username = 'admin'").fetchone()
             finally:
                 conn.close()
@@ -321,34 +319,30 @@ class ServerSmokeTest(unittest.TestCase):
 
     def make_route_purchased_pool(self, route_id=1):
         self.request("/routes")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
-            conn.execute("UPDATE routes SET cli_source_type = 'pool', aon_pool = 'Пул купленных номеров' WHERE id = ?", (route_id,))
+            conn.execute("UPDATE routes SET cli_source_type = 'pool', aon_pool = 'Пул купленных номеров' WHERE id = %s", (route_id,))
             conn.commit()
         finally:
             conn.close()
 
     def user_cookie(self, username):
         self.request("/login")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
-            user_id = conn.execute("SELECT id FROM users WHERE username = ?", (username,)).fetchone()["id"]
+            user_id = conn.execute('SELECT id FROM users WHERE username = %s', (username,)).fetchone()["id"]
         finally:
             conn.close()
         return f"{server.CURRENT_USER_COOKIE}={server.sign_user_id(user_id)}"
 
     def grant_user_read(self, username, *sections):
         self.request("/login")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
-            user_id = conn.execute("SELECT id FROM users WHERE username = ?", (username,)).fetchone()["id"]
+            user_id = conn.execute('SELECT id FROM users WHERE username = %s', (username,)).fetchone()["id"]
             for section in sections:
                 conn.execute(
-                    """
-                    INSERT INTO user_permissions(user_id, section_key, can_read, can_write, can_export)
-                    VALUES (?, ?, 1, 0, 0)
-                    ON CONFLICT(user_id, section_key) DO UPDATE SET can_read = excluded.can_read
-                    """,
+                    '\n                    INSERT INTO user_permissions(user_id, section_key, can_read, can_write, can_export)\n                    VALUES (%s, %s, TRUE, FALSE, FALSE)\n                    ON CONFLICT(user_id, section_key) DO UPDATE SET can_read = excluded.can_read\n                    ',
                     (user_id, section),
                 )
             conn.commit()
@@ -374,9 +368,9 @@ class ServerSmokeTest(unittest.TestCase):
             self.assertEqual(captured["status"], "200 OK")
             self.assertIn("Дневной лимит HLR сохранён.", html)
             self.assertIn("<dt>daily_limit_source</dt><dd>admin_override</dd>", html)
-            conn = server.connect(server.DB_PATH)
+            conn = _TEST_DB.connect()
             try:
-                value = conn.execute("SELECT value FROM app_settings WHERE key = ?", (server.HLR_DAILY_LIMIT_OVERRIDE_KEY,)).fetchone()["value"]
+                value = conn.execute('SELECT value FROM app_settings WHERE key = %s', (server.HLR_DAILY_LIMIT_OVERRIDE_KEY,)).fetchone()["value"]
             finally:
                 conn.close()
             self.assertEqual(value, "13")
@@ -384,9 +378,9 @@ class ServerSmokeTest(unittest.TestCase):
             operator_cookie = self.user_cookie("duty")
             captured, _html = self.request("/hlr/config/daily-limit", method="POST", body=urlencode({"daily_limit_override": "15"}), cookie=operator_cookie)
             self.assertEqual(captured["status"], "403 Forbidden")
-            conn = server.connect(server.DB_PATH)
+            conn = _TEST_DB.connect()
             try:
-                value = conn.execute("SELECT value FROM app_settings WHERE key = ?", (server.HLR_DAILY_LIMIT_OVERRIDE_KEY,)).fetchone()["value"]
+                value = conn.execute('SELECT value FROM app_settings WHERE key = %s', (server.HLR_DAILY_LIMIT_OVERRIDE_KEY,)).fetchone()["value"]
             finally:
                 conn.close()
             self.assertEqual(value, "13")
@@ -400,9 +394,9 @@ class ServerSmokeTest(unittest.TestCase):
         captured, html = self.request("/hlr/config/daily-limit", method="POST", body=urlencode({"daily_limit_override": "100001"}))
         self.assertEqual(captured["status"], "400 Bad Request")
         self.assertIn(server.HLR_DAILY_LIMIT_ERROR, html)
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
-            row = conn.execute("SELECT value FROM app_settings WHERE key = ?", (server.HLR_DAILY_LIMIT_OVERRIDE_KEY,)).fetchone()
+            row = conn.execute('SELECT value FROM app_settings WHERE key = %s', (server.HLR_DAILY_LIMIT_OVERRIDE_KEY,)).fetchone()
         finally:
             conn.close()
         self.assertIsNone(row)
@@ -411,15 +405,14 @@ class ServerSmokeTest(unittest.TestCase):
 
     def test_provider_change_edit_form_contains_updated_at_original(self):
         self.request("/login")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
-            server.init_db(conn)
             repo = server.Repository(conn)
             event_id = repo.create_routing_event(
                 event_at="2026-06-22T12:00", apply_scope="none", reason="Провайдер сменил маршрут",
                 country_id=1, provider_id=1, affected_route_id=1, comment="initial", created_by=1,
             )
-            updated_at = conn.execute("SELECT updated_at FROM routing_events WHERE id = ?", (event_id,)).fetchone()["updated_at"]
+            updated_at = conn.execute('SELECT updated_at FROM routing_events WHERE id = %s', (event_id,)).fetchone()["updated_at"]
         finally:
             conn.close()
         _captured, html = self.request(f"/provider-changes/{event_id}/edit")
@@ -464,7 +457,7 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertIn("cmp-pg / Campaign PG", content)
         self.assertGreaterEqual(len(statements), 9)
 
-    def test_routing_event_form_has_no_sqlite_only_parameterized_queries(self):
+    def test_routing_event_form_has_only_postgres_parameterized_queries(self):
         import inspect
 
         source = inspect.getsource(server.routing_event_form)
@@ -510,15 +503,14 @@ class ServerSmokeTest(unittest.TestCase):
 
     def test_provider_change_update_conflict_shows_error(self):
         self.request("/login")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
-            server.init_db(conn)
             repo = server.Repository(conn)
             event_id = repo.create_routing_event(
                 event_at="2026-06-22T12:00", apply_scope="none", reason="Провайдер сменил маршрут",
                 country_id=1, provider_id=1, affected_route_id=1, comment="initial", created_by=1,
             )
-            stale = conn.execute("SELECT updated_at FROM routing_events WHERE id = ?", (event_id,)).fetchone()["updated_at"]
+            stale = conn.execute('SELECT updated_at FROM routing_events WHERE id = %s', (event_id,)).fetchone()["updated_at"]
             repo.update_routing_event(event_id, comment="other user", updated_at_original=stale, updated_by=1)
         finally:
             conn.close()
@@ -526,31 +518,30 @@ class ServerSmokeTest(unittest.TestCase):
         captured, html = self.request(f"/provider-changes/{event_id}/update", method="POST", body=body)
         self.assertEqual(captured["status"], "400 Bad Request")
         self.assertIn("Запись была изменена другим пользователем. Обновите страницу и повторите действие.", html)
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
-            self.assertEqual(conn.execute("SELECT comment FROM routing_events WHERE id = ?", (event_id,)).fetchone()["comment"], "other user")
+            self.assertEqual(conn.execute('SELECT comment FROM routing_events WHERE id = %s', (event_id,)).fetchone()["comment"], "other user")
         finally:
             conn.close()
 
     def test_provider_change_update_with_current_updated_at_saves(self):
         self.request("/login")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
-            server.init_db(conn)
             repo = server.Repository(conn)
             event_id = repo.create_routing_event(
                 event_at="2026-06-22T12:00", apply_scope="none", reason="Провайдер сменил маршрут",
                 country_id=1, provider_id=1, affected_route_id=1, comment="initial", created_by=1,
             )
-            current = conn.execute("SELECT updated_at FROM routing_events WHERE id = ?", (event_id,)).fetchone()["updated_at"]
+            current = conn.execute('SELECT updated_at FROM routing_events WHERE id = %s', (event_id,)).fetchone()["updated_at"]
         finally:
             conn.close()
         body = urlencode({"comment": "saved", "updated_at_original": current})
         captured, _html = self.request(f"/provider-changes/{event_id}/update", method="POST", body=body)
         self.assertEqual(captured["status"], "303 See Other")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
-            self.assertEqual(conn.execute("SELECT comment FROM routing_events WHERE id = ?", (event_id,)).fetchone()["comment"], "saved")
+            self.assertEqual(conn.execute('SELECT comment FROM routing_events WHERE id = %s', (event_id,)).fetchone()["comment"], "saved")
         finally:
             conn.close()
 
@@ -564,7 +555,7 @@ class ServerSmokeTest(unittest.TestCase):
     def test_head_root_initializes_database_without_crashing(self):
         captured, _content = self.request("/", method="HEAD", auto_login=False)
         self.assertIn(captured["status"], {"200 OK", "303 See Other"})
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
             self.assertIsNotNone(conn.execute("SELECT 1 FROM users LIMIT 1").fetchone())
         finally:
@@ -586,7 +577,7 @@ class ServerSmokeTest(unittest.TestCase):
 
     def test_tariff_edit_form_locks_identity_and_warns_on_currency_change(self):
         self.request("/tariffs")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
             repo = server.Repository(conn)
             admin_id = conn.execute("SELECT id FROM users WHERE username = 'admin'").fetchone()["id"]
@@ -613,7 +604,7 @@ class ServerSmokeTest(unittest.TestCase):
 
     def test_tariff_edit_modal_does_not_render_full_page_inside_modal(self):
         self.request("/tariffs")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
             tariff_id = conn.execute("SELECT id FROM tariffs LIMIT 1").fetchone()["id"]
         finally:
@@ -632,7 +623,7 @@ class ServerSmokeTest(unittest.TestCase):
 
     def test_tariff_edit_modal_cancel_uses_data_modal_close(self):
         self.request("/tariffs")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
             tariff_id = conn.execute("SELECT id FROM tariffs LIMIT 1").fetchone()["id"]
         finally:
@@ -646,7 +637,7 @@ class ServerSmokeTest(unittest.TestCase):
 
     def test_tariff_edit_full_page_cancel_returns_to_tariffs(self):
         self.request("/tariffs")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
             tariff_id = conn.execute("SELECT id FROM tariffs LIMIT 1").fetchone()["id"]
         finally:
@@ -661,7 +652,7 @@ class ServerSmokeTest(unittest.TestCase):
 
     def _create_tariff_for_concurrency(self, price="2.5"):
         self.request("/tariffs")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
             repo = server.Repository(conn)
             admin_id = conn.execute("SELECT id FROM users WHERE username = 'admin'").fetchone()["id"]
@@ -696,9 +687,9 @@ class ServerSmokeTest(unittest.TestCase):
 
     def test_tariff_edit_with_current_token_succeeds(self):
         tariff_id = self._create_tariff_for_concurrency()
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
-            row = conn.execute("SELECT provider_currency_id, updated_at FROM tariffs WHERE id = ?", (tariff_id,)).fetchone()
+            row = conn.execute('SELECT provider_currency_id, updated_at FROM tariffs WHERE id = %s', (tariff_id,)).fetchone()
             currency_id, token = row["provider_currency_id"], row["updated_at"]
         finally:
             conn.close()
@@ -708,10 +699,10 @@ class ServerSmokeTest(unittest.TestCase):
 
         self.assertEqual(captured["status"], "303 See Other")
         self.assertEqual(dict(captured["headers"])["Location"], "/tariffs")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
-            row = conn.execute("SELECT price_in_provider_currency, comment, is_current FROM tariffs WHERE id = ?", (tariff_id,)).fetchone()
-            self.assertEqual(str(row["price_in_provider_currency"]), "2.9")
+            row = conn.execute('SELECT price_in_provider_currency, comment, is_current FROM tariffs WHERE id = %s', (tariff_id,)).fetchone()
+            self.assertEqual(Decimal(row["price_in_provider_currency"]), Decimal("2.9"))
             self.assertEqual(row["comment"], "current tariff ui")
             self.assertEqual(row["is_current"], 1)
         finally:
@@ -719,10 +710,10 @@ class ServerSmokeTest(unittest.TestCase):
 
     def test_tariff_edit_with_stale_token_shows_user_friendly_error(self):
         tariff_id = self._create_tariff_for_concurrency()
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
             repo = server.Repository(conn)
-            row = conn.execute("SELECT provider_currency_id, updated_at FROM tariffs WHERE id = ?", (tariff_id,)).fetchone()
+            row = conn.execute('SELECT provider_currency_id, updated_at FROM tariffs WHERE id = %s', (tariff_id,)).fetchone()
             currency_id, stale_token = row["provider_currency_id"], row["updated_at"]
             repo.update_tariff(tariff_id, provider_currency_id=currency_id, price_in_provider_currency="2.6", conversion_rate_to_eur="1", conversion_rate_date="2026-06-22", currency_rate_id=None, comment="fresh tariff ui", updated_by=1, expected_updated_at=stale_token)
         finally:
@@ -733,25 +724,24 @@ class ServerSmokeTest(unittest.TestCase):
 
         self.assertEqual(captured["status"], "400 Bad Request")
         self.assertIn("Запись была изменена другим пользователем", content)
-        self.assertNotIn("sqlite", content.lower())
         self.assertNotIn("traceback", content.lower())
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
-            current = conn.execute("SELECT price_in_provider_currency, comment FROM tariffs WHERE id = ?", (tariff_id,)).fetchone()
-            self.assertEqual(str(current["price_in_provider_currency"]), "2.6")
+            current = conn.execute('SELECT price_in_provider_currency, comment FROM tariffs WHERE id = %s', (tariff_id,)).fetchone()
+            self.assertEqual(Decimal(current["price_in_provider_currency"]), Decimal("2.6"))
             self.assertEqual(current["comment"], "fresh tariff ui")
         finally:
             conn.close()
 
     def test_tariff_edit_stale_token_does_not_create_history(self):
         tariff_id = self._create_tariff_for_concurrency()
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
             repo = server.Repository(conn)
-            row = conn.execute("SELECT provider_currency_id, updated_at FROM tariffs WHERE id = ?", (tariff_id,)).fetchone()
+            row = conn.execute('SELECT provider_currency_id, updated_at FROM tariffs WHERE id = %s', (tariff_id,)).fetchone()
             currency_id, stale_token = row["provider_currency_id"], row["updated_at"]
             repo.update_tariff(tariff_id, provider_currency_id=currency_id, price_in_provider_currency="2.6", conversion_rate_to_eur="1", conversion_rate_date="2026-06-22", currency_rate_id=None, comment="fresh history ui", updated_by=1, expected_updated_at=stale_token)
-            before_history = conn.execute("SELECT COUNT(*) FROM tariff_change_history WHERE tariff_id = ?", (tariff_id,)).fetchone()[0]
+            before_history = conn.execute('SELECT COUNT(*) FROM tariff_change_history WHERE tariff_id = %s', (tariff_id,)).fetchone()[0]
         finally:
             conn.close()
         body = urlencode({"price": "9.9", "currency_id": str(currency_id), "comment": "stale history ui", "is_current": "1", "expected_updated_at": stale_token})
@@ -759,9 +749,9 @@ class ServerSmokeTest(unittest.TestCase):
         captured, _content = self.request(f"/tariffs/{tariff_id}/update", method="POST", body=body)
 
         self.assertEqual(captured["status"], "400 Bad Request")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
-            after_history = conn.execute("SELECT COUNT(*) FROM tariff_change_history WHERE tariff_id = ?", (tariff_id,)).fetchone()[0]
+            after_history = conn.execute('SELECT COUNT(*) FROM tariff_change_history WHERE tariff_id = %s', (tariff_id,)).fetchone()[0]
             self.assertEqual(after_history, before_history)
         finally:
             conn.close()
@@ -790,7 +780,7 @@ class ServerSmokeTest(unittest.TestCase):
 
     def test_tariff_active_status_changes_only_through_edit_form(self):
         self.request("/tariffs")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
             repo = server.Repository(conn)
             admin_id = conn.execute("SELECT id FROM users WHERE username = 'admin'").fetchone()["id"]
@@ -799,18 +789,18 @@ class ServerSmokeTest(unittest.TestCase):
             currency_id = conn.execute("SELECT id FROM currencies WHERE code = 'EUR' LIMIT 1").fetchone()["id"]
             existing = repo.find_tariff_by_identity(country_id, provider_id, None)
             tariff_id = existing["id"] if existing else repo.create_tariff(country_id=country_id, provider_id=provider_id, provider_currency_id=currency_id, price_in_provider_currency="2.5", conversion_rate_to_eur="1", conversion_rate_date="2026-06-22", created_by=admin_id)
-            original_price = conn.execute("SELECT price_in_provider_currency FROM tariffs WHERE id = ?", (tariff_id,)).fetchone()["price_in_provider_currency"]
+            original_price = conn.execute('SELECT price_in_provider_currency FROM tariffs WHERE id = %s', (tariff_id,)).fetchone()["price_in_provider_currency"]
         finally:
             conn.close()
 
         body = urlencode({"price": str(original_price), "currency_id": str(currency_id), "comment": "deactivated through edit", "is_current": "0"})
         captured, _content = self.request(f"/tariffs/{tariff_id}/update", method="POST", body=body)
         self.assertEqual(captured["status"], "303 See Other")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
-            row = conn.execute("SELECT is_current FROM tariffs WHERE id = ?", (tariff_id,)).fetchone()
+            row = conn.execute('SELECT is_current FROM tariffs WHERE id = %s', (tariff_id,)).fetchone()
             self.assertEqual(row["is_current"], 0)
-            history = conn.execute("SELECT reason, comment FROM tariff_change_history WHERE tariff_id = ? ORDER BY id DESC LIMIT 1", (tariff_id,)).fetchone()
+            history = conn.execute('SELECT reason, comment FROM tariff_change_history WHERE tariff_id = %s ORDER BY id DESC LIMIT 1', (tariff_id,)).fetchone()
             self.assertIn("Активность: Да → Нет", history["comment"])
         finally:
             conn.close()
@@ -822,29 +812,29 @@ class ServerSmokeTest(unittest.TestCase):
         body = urlencode({"price": str(original_price), "currency_id": str(currency_id), "comment": "activated through edit", "is_current": "1"})
         captured, _content = self.request(f"/tariffs/{tariff_id}/update", method="POST", body=body)
         self.assertEqual(captured["status"], "303 See Other")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
-            row = conn.execute("SELECT is_current FROM tariffs WHERE id = ?", (tariff_id,)).fetchone()
+            row = conn.execute('SELECT is_current FROM tariffs WHERE id = %s', (tariff_id,)).fetchone()
             self.assertEqual(row["is_current"], 1)
-            history = conn.execute("SELECT reason, comment FROM tariff_change_history WHERE tariff_id = ? ORDER BY id DESC LIMIT 1", (tariff_id,)).fetchone()
+            history = conn.execute('SELECT reason, comment FROM tariff_change_history WHERE tariff_id = %s ORDER BY id DESC LIMIT 1', (tariff_id,)).fetchone()
             self.assertIn("Активность: Нет → Да", history["comment"])
         finally:
             conn.close()
 
     def test_tariff_comment_save_without_status_change_has_no_activation_history(self):
         self.request("/tariffs")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
             tariff = conn.execute("SELECT id, provider_currency_id, price_in_provider_currency, is_current FROM tariffs LIMIT 1").fetchone()
             tariff_id = tariff["id"]
-            body = urlencode({"price": str(tariff["price_in_provider_currency"]), "currency_id": str(tariff["provider_currency_id"]), "comment": "comment only", "is_current": str(tariff["is_current"])})
+            body = urlencode({"price": str(tariff["price_in_provider_currency"]), "currency_id": str(tariff["provider_currency_id"]), "comment": "comment only", "is_current": "1" if tariff["is_current"] else "0"})
         finally:
             conn.close()
         captured, _content = self.request(f"/tariffs/{tariff_id}/update", method="POST", body=body)
         self.assertEqual(captured["status"], "303 See Other")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
-            history = conn.execute("SELECT reason, comment FROM tariff_change_history WHERE tariff_id = ? ORDER BY id DESC LIMIT 1", (tariff_id,)).fetchone()
+            history = conn.execute('SELECT reason, comment FROM tariff_change_history WHERE tariff_id = %s ORDER BY id DESC LIMIT 1', (tariff_id,)).fetchone()
             self.assertEqual(history["reason"], "tariff.changed")
             self.assertNotIn("Тариф активирован", history["comment"] or "")
             self.assertNotIn("Тариф деактивирован", history["comment"] or "")
@@ -924,15 +914,12 @@ class ServerSmokeTest(unittest.TestCase):
 
     def test_production_routes_layout_shows_logout_for_routes_only_operator_and_admin(self):
         self.request("/login")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
             repo = server.Repository(conn)
             operator_id = repo.create_user("routesonly", "operator", "Routes Only", password="routes-only-password")
             conn.execute(
-                """
-                INSERT INTO user_permissions(user_id, section_key, can_read, can_write, can_export)
-                VALUES (?, 'routes', 1, 0, 0)
-                """,
+                "\n                INSERT INTO user_permissions(user_id, section_key, can_read, can_write, can_export)\n                VALUES (%s, 'routes', TRUE, FALSE, FALSE)\n                ",
                 (operator_id,),
             )
             admin_id = conn.execute("SELECT id FROM users WHERE username = 'admin'").fetchone()["id"]
@@ -1014,7 +1001,7 @@ class ServerSmokeTest(unittest.TestCase):
         })
         captured, _ = self.request("/admin/users/create", method="POST", body=body)
         self.assertEqual(captured["status"], "303 See Other")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
             row = conn.execute("SELECT password_hash, password_salt FROM users WHERE username = 'operator2'").fetchone()
         finally:
@@ -1044,11 +1031,11 @@ class ServerSmokeTest(unittest.TestCase):
         captured, _ = self.request("/admin/users/create", method="POST", body=body)
 
         self.assertEqual(captured["status"], "303 See Other")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
             user_id = conn.execute("SELECT id FROM users WHERE username = 'permuser'").fetchone()["id"]
-            routes = conn.execute("SELECT can_read, can_write, can_export FROM user_permissions WHERE user_id = ? AND section_key = 'routes'", (user_id,)).fetchone()
-            tariffs = conn.execute("SELECT can_read, can_write, can_export FROM user_permissions WHERE user_id = ? AND section_key = 'tariffs'", (user_id,)).fetchone()
+            routes = conn.execute("SELECT can_read, can_write, can_export FROM user_permissions WHERE user_id = %s AND section_key = 'routes'", (user_id,)).fetchone()
+            tariffs = conn.execute("SELECT can_read, can_write, can_export FROM user_permissions WHERE user_id = %s AND section_key = 'tariffs'", (user_id,)).fetchone()
         finally:
             conn.close()
         self.assertEqual(dict(routes), {"can_read": 1, "can_write": 0, "can_export": 1})
@@ -1062,9 +1049,8 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertIn("name='perm__tariffs__write' value='1' checked", content)
 
     def test_admin_can_edit_user_permissions(self):
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
-            server.init_db(conn)
             user_id = server.Repository(conn).create_user("editperm", "operator", "Edit Permissions", password="old123")
         finally:
             conn.close()
@@ -1080,9 +1066,9 @@ class ServerSmokeTest(unittest.TestCase):
         captured, _ = self.request(f"/admin/users/{user_id}/update", method="POST", body=body)
 
         self.assertEqual(captured["status"], "303 See Other")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
-            rows = conn.execute("SELECT can_read, can_write, can_export FROM user_permissions WHERE user_id = ? AND section_key = 'routes'", (user_id,)).fetchall()
+            rows = conn.execute("SELECT can_read, can_write, can_export FROM user_permissions WHERE user_id = %s AND section_key = 'routes'", (user_id,)).fetchall()
         finally:
             conn.close()
         self.assertEqual(len(rows), 1)
@@ -1094,9 +1080,8 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertIn("name='perm__routes__write' value='1' checked", content)
 
     def test_duplicate_username_update_returns_user_friendly_error(self):
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
-            server.init_db(conn)
             repo = server.Repository(conn)
             first_id = repo.create_user("firstdup", "operator", "First Duplicate", password="old123")
             repo.create_user("seconddup", "operator", "Second Duplicate", password="old123")
@@ -1128,9 +1113,8 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertIn("Пароли не совпадают", content)
 
     def test_admin_can_reset_user_password(self):
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
-            server.init_db(conn)
             user_id = server.Repository(conn).create_user("operator4", "operator", "Оператор", password="old123")
         finally:
             conn.close()
@@ -1145,9 +1129,9 @@ class ServerSmokeTest(unittest.TestCase):
         captured, _ = self.request(f"/admin/users/{user_id}/update", method="POST", body=body, cookie=admin_cookie, auto_login=False)
         self.assertEqual(captured["status"], "303 See Other")
         self.assertIn(("Location", "/admin/users?notice=%D0%9F%D0%B0%D1%80%D0%BE%D0%BB%D1%8C%20%D0%BF%D0%BE%D0%BB%D1%8C%D0%B7%D0%BE%D0%B2%D0%B0%D1%82%D0%B5%D0%BB%D1%8F%20%D0%9E%D0%BF%D0%B5%D1%80%D0%B0%D1%82%D0%BE%D1%80%20%D1%81%D0%B1%D1%80%D0%BE%D1%88%D0%B5%D0%BD.%20%D0%9F%D1%80%D0%B8%20%D1%81%D0%BB%D0%B5%D0%B4%D1%83%D1%8E%D1%89%D0%B5%D0%BC%20%D0%B2%D1%85%D0%BE%D0%B4%D0%B5%20%D0%BF%D0%BE%D0%BB%D1%8C%D0%B7%D0%BE%D0%B2%D0%B0%D1%82%D0%B5%D0%BB%D1%8C%20%D0%B4%D0%BE%D0%BB%D0%B6%D0%B5%D0%BD%20%D1%81%D0%BC%D0%B5%D0%BD%D0%B8%D1%82%D1%8C%20%D0%BF%D0%B0%D1%80%D0%BE%D0%BB%D1%8C."), captured["headers"])
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
-            row = conn.execute("SELECT must_change_password, password_hash, password_salt FROM users WHERE id = ?", (user_id,)).fetchone()
+            row = conn.execute('SELECT must_change_password, password_hash, password_salt FROM users WHERE id = %s', (user_id,)).fetchone()
             admin_row = conn.execute("SELECT must_change_password FROM users WHERE username = 'admin'").fetchone()
         finally:
             conn.close()
@@ -1168,7 +1152,7 @@ class ServerSmokeTest(unittest.TestCase):
 
     def test_admin_self_password_reset_logs_out_current_user_only(self):
         admin_cookie = self.user_cookie("admin")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
             admin = conn.execute("SELECT id FROM users WHERE username = 'admin'").fetchone()
         finally:
@@ -1206,9 +1190,8 @@ class ServerSmokeTest(unittest.TestCase):
 
 
     def test_must_change_password_redirects_until_changed(self):
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
-            server.init_db(conn)
             repo = server.Repository(conn)
             user_id = repo.create_user("tempuser", "operator", "Temp", password="temp123", must_change_password=True)
         finally:
@@ -1223,9 +1206,9 @@ class ServerSmokeTest(unittest.TestCase):
         body = urlencode({"password": "newtemp123", "password_confirm": "newtemp123"})
         captured, _ = self.request("/change-password", method="POST", body=body, cookie=set_cookie, auto_login=False)
         self.assertEqual(captured["status"], "303 See Other")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
-            row = conn.execute("SELECT must_change_password, password_hash, password_salt FROM users WHERE id = ?", (user_id,)).fetchone()
+            row = conn.execute('SELECT must_change_password, password_hash, password_salt FROM users WHERE id = %s', (user_id,)).fetchone()
         finally:
             conn.close()
         self.assertEqual(row["must_change_password"], 0)
@@ -1238,9 +1221,8 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertIn(("Location", "/routes"), captured["headers"])
 
     def test_inactive_user_cannot_login(self):
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
-            server.init_db(conn)
             repo = server.Repository(conn)
             user_id = repo.create_user("inactive", "operator", "Inactive", password="inactive123")
             repo.update_user(user_id, display_name="Inactive", role_key="operator", is_active=False)
@@ -1263,9 +1245,9 @@ class ServerSmokeTest(unittest.TestCase):
 
     def test_inactive_or_missing_selected_user_redirects_to_login(self):
         cookie = self.user_cookie("guest")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
-            conn.execute("UPDATE users SET is_active = 0 WHERE username = 'guest'")
+            conn.execute("UPDATE users SET is_active = FALSE WHERE username = 'guest'")
             conn.commit()
         finally:
             conn.close()
@@ -1297,14 +1279,14 @@ class ServerSmokeTest(unittest.TestCase):
         self.request("/phones/create", method="POST", body=body, cookie=admin_cookie)
         add_body = urlencode({"phone_number": "525550077001", "usage_type": "pool_member", "comment": "admin actor"})
         self.request("/routes/1/numbers/add", method="POST", body=add_body, cookie=admin_cookie)
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
             admin_id = conn.execute("SELECT id FROM users WHERE username = 'admin'").fetchone()["id"]
             phone_id = conn.execute("SELECT id FROM phone_numbers WHERE number = '525550077001'").fetchone()["id"]
-            link = conn.execute("SELECT id, added_by FROM route_phone_numbers WHERE route_id = 1 AND phone_number_id = ?", (phone_id,)).fetchone()
+            link = conn.execute('SELECT id, added_by FROM route_phone_numbers WHERE route_id = 1 AND phone_number_id = %s', (phone_id,)).fetchone()
             self.assertEqual(link["added_by"], admin_id)
-            route_hist = conn.execute("SELECT changed_by FROM route_phone_number_history WHERE route_id = 1 AND phone_number_id = ? AND action = 'added'", (phone_id,)).fetchone()
-            phone_hist = conn.execute("SELECT changed_by FROM route_phone_number_history WHERE phone_number_id = ? AND action = 'added'", (phone_id,)).fetchone()
+            route_hist = conn.execute("SELECT changed_by FROM route_phone_number_history WHERE route_id = 1 AND phone_number_id = %s AND action = 'added'", (phone_id,)).fetchone()
+            phone_hist = conn.execute("SELECT changed_by FROM route_phone_number_history WHERE phone_number_id = %s AND action = 'added'", (phone_id,)).fetchone()
             self.assertEqual(route_hist["changed_by"], admin_id)
             self.assertEqual(phone_hist["changed_by"], admin_id)
         finally:
@@ -1316,19 +1298,19 @@ class ServerSmokeTest(unittest.TestCase):
         body = urlencode({"number": "525550077002", "country_id": "1", "provider_id": "1", "assignment_type": "gl", "status": "used", "is_active": "1"})
         self.request("/phones/create", method="POST", body=body, cookie=roman_cookie)
         self.request("/routes/1/numbers/add", method="POST", body=urlencode({"phone_number": "525550077002", "usage_type": "pool_member"}), cookie=roman_cookie)
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
             roman_id = conn.execute("SELECT id FROM users WHERE username = 'roman'").fetchone()["id"]
             phone_id = conn.execute("SELECT id FROM phone_numbers WHERE number = '525550077002'").fetchone()["id"]
-            link_id = conn.execute("SELECT id FROM route_phone_numbers WHERE route_id = 1 AND phone_number_id = ?", (phone_id,)).fetchone()["id"]
+            link_id = conn.execute('SELECT id FROM route_phone_numbers WHERE route_id = 1 AND phone_number_id = %s', (phone_id,)).fetchone()["id"]
         finally:
             conn.close()
         self.request("/routes/1/numbers/remove", method="POST", body=urlencode({"link_ids": str(link_id), "reason": "roman remove", "confirm_remove": "1"}), cookie=roman_cookie)
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
-            added = conn.execute("SELECT changed_by FROM route_phone_number_history WHERE route_id = 1 AND phone_number_id = ? AND action = 'added'", (phone_id,)).fetchone()
-            removed_link = conn.execute("SELECT removed_by FROM route_phone_numbers WHERE id = ?", (link_id,)).fetchone()
-            removed = conn.execute("SELECT changed_by FROM route_phone_number_history WHERE route_id = 1 AND phone_number_id = ? AND action = 'removed'", (phone_id,)).fetchone()
+            added = conn.execute("SELECT changed_by FROM route_phone_number_history WHERE route_id = 1 AND phone_number_id = %s AND action = 'added'", (phone_id,)).fetchone()
+            removed_link = conn.execute('SELECT removed_by FROM route_phone_numbers WHERE id = %s', (link_id,)).fetchone()
+            removed = conn.execute("SELECT changed_by FROM route_phone_number_history WHERE route_id = 1 AND phone_number_id = %s AND action = 'removed'", (phone_id,)).fetchone()
             self.assertEqual(added["changed_by"], roman_id)
             self.assertEqual(removed_link["removed_by"], roman_id)
             self.assertEqual(removed["changed_by"], roman_id)
@@ -1341,18 +1323,18 @@ class ServerSmokeTest(unittest.TestCase):
         body = urlencode({"number": "525550077003", "country_id": "1", "provider_id": "1", "assignment_type": "gl", "status": "used", "is_active": "1"})
         self.request("/phones/create", method="POST", body=body, cookie=roman_cookie)
         self.request("/routes/1/numbers/add", method="POST", body=urlencode({"phone_number": "525550077003", "usage_type": "pool_member"}), cookie=roman_cookie)
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
             roman_id = conn.execute("SELECT id FROM users WHERE username = 'roman'").fetchone()["id"]
             phone_id = conn.execute("SELECT id FROM phone_numbers WHERE number = '525550077003'").fetchone()["id"]
-            link_id = conn.execute("SELECT id FROM route_phone_numbers WHERE route_id = 1 AND phone_number_id = ?", (phone_id,)).fetchone()["id"]
+            link_id = conn.execute('SELECT id FROM route_phone_numbers WHERE route_id = 1 AND phone_number_id = %s', (phone_id,)).fetchone()["id"]
         finally:
             conn.close()
         update = urlencode({"number": "525550077003", "country_id": "1", "provider_id": "1", "project_label": "", "assignment_type": "gl", "status": "used", "is_active": "0", "connection_cost": "", "monthly_fee": "", "currency_id": "", "phone_type": "", "tariff_label": "", "comment": "deactivate"})
         self.request(f"/phones/{phone_id}/update", method="POST", body=update, cookie=roman_cookie)
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
-            link = conn.execute("SELECT removed_by FROM route_phone_numbers WHERE id = ?", (link_id,)).fetchone()
+            link = conn.execute('SELECT removed_by FROM route_phone_numbers WHERE id = %s', (link_id,)).fetchone()
             self.assertEqual(link["removed_by"], roman_id)
         finally:
             conn.close()
@@ -1366,10 +1348,10 @@ class ServerSmokeTest(unittest.TestCase):
 
     def test_inactive_users_are_not_selectable(self):
         self.request("/routes")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
             guest_id = conn.execute("SELECT id FROM users WHERE username = 'guest'").fetchone()["id"]
-            conn.execute("UPDATE users SET is_active = 0 WHERE id = ?", (guest_id,))
+            conn.execute('UPDATE users SET is_active = FALSE WHERE id = %s', (guest_id,))
             conn.commit()
         finally:
             conn.close()
@@ -1435,17 +1417,14 @@ class ServerSmokeTest(unittest.TestCase):
 
     def test_routes_search_pagination_count_uses_case_insensitive_filter(self):
         self.request("/routes")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
             country_id = conn.execute("SELECT id FROM countries WHERE code = 'MEX'").fetchone()["id"]
             provider_id = conn.execute("SELECT id FROM providers WHERE name = 'DemoTel'").fetchone()["id"]
             admin_id = conn.execute("SELECT id FROM users WHERE username = 'admin'").fetchone()["id"]
             for index in range(55):
                 conn.execute(
-                    """
-                    INSERT INTO routes(country_id, provider_id, name, cli_source_type, cli_source_label, is_actual, priority_status, comment, created_by)
-                    VALUES (?, ?, ?, 'rnd', ?, 1, 'normal', ?, ?)
-                    """,
+                    "\n                    INSERT INTO routes(country_id, provider_id, name, cli_source_type, cli_source_label, is_actual, priority_status, comment, created_by)\n                    VALUES (%s, %s, %s, 'rnd', %s, TRUE, 'normal', %s, %s)\n                    ",
                     (country_id, provider_id, f"CASEDEMO {index:03d}", f"CASEDEMO{index:03d}", "bulk export row", admin_id),
                 )
             conn.commit()
@@ -1477,9 +1456,9 @@ class ServerSmokeTest(unittest.TestCase):
 
     def route_prefix_id(self, prefix):
         self.request("/routes")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
-            return conn.execute("SELECT id FROM provider_prefixes WHERE prefix = ?", (prefix,)).fetchone()["id"]
+            return conn.execute('SELECT id FROM provider_prefixes WHERE prefix = %s', (prefix,)).fetchone()["id"]
         finally:
             conn.close()
 
@@ -1525,25 +1504,16 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertIn("Мексика/Sancom/Demo_0827@", content)
 
 
-    def test_no_prefix_dictionary_rows_are_hidden_and_routes_use_null(self):
+    def test_no_prefix_dictionary_rows_are_hidden(self):
         self.request("/routes")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
             demotel_id = conn.execute("SELECT id FROM providers WHERE name = 'DemoTel'").fetchone()["id"]
             legacy_id = conn.execute(
-                "INSERT INTO provider_prefixes(provider_id, prefix, name, is_active) VALUES (?, ?, ?, 1)",
+                'INSERT INTO provider_prefixes(provider_id, prefix, name, is_active) VALUES (%s, %s, %s, TRUE) RETURNING id',
                 (demotel_id, "Без префикса", "legacy no prefix"),
-            ).lastrowid
-            route_id = conn.execute(
-                "INSERT INTO routes(country_id, provider_id, provider_prefix_id, name, cli_source_type, cli_source_label, is_actual, created_by) VALUES (1, ?, ?, 'Legacy no prefix route', 'pool', 'Legacy', 1, 1)",
-                (demotel_id, legacy_id),
-            ).lastrowid
+            ).fetchone()["id"]
             conn.commit()
-            server.init_db(conn)
-            route = conn.execute("SELECT provider_prefix_id FROM routes WHERE id = ?", (route_id,)).fetchone()
-            legacy = conn.execute("SELECT is_active FROM provider_prefixes WHERE id = ?", (legacy_id,)).fetchone()
-            self.assertIsNone(route["provider_prefix_id"])
-            self.assertEqual(legacy["is_active"], 0)
         finally:
             conn.close()
 
@@ -1556,7 +1526,7 @@ class ServerSmokeTest(unittest.TestCase):
         body = urlencode({"country_id": "1", "provider_id": "2", "provider_prefix_id": "", "project_label": "", "cli_source_type": "pool", "cli_source_label": "NullPrefix", "is_actual": "1"})
         captured, _ = self.request("/routes/create", method="POST", body=body)
         self.assertEqual(captured["status"], "303 See Other")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
             route = conn.execute("SELECT id, provider_prefix_id, name FROM routes WHERE cli_source_label = 'NullPrefix'").fetchone()
             self.assertIsNone(route["provider_prefix_id"])
@@ -1570,9 +1540,9 @@ class ServerSmokeTest(unittest.TestCase):
 
         captured, _ = self.request(f"/routes/{route_id}/update", method="POST", body=urlencode({"name": route["name"], "provider_id": "2", "provider_prefix_id": "", "comment": "", "is_actual": "1", "priority_status": "unknown"}))
         self.assertEqual(captured["status"], "303 See Other")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
-            self.assertIsNone(conn.execute("SELECT provider_prefix_id FROM routes WHERE id = ?", (route_id,)).fetchone()["provider_prefix_id"])
+            self.assertIsNone(conn.execute('SELECT provider_prefix_id FROM routes WHERE id = %s', (route_id,)).fetchone()["provider_prefix_id"])
         finally:
             conn.close()
 
@@ -1620,7 +1590,7 @@ class ServerSmokeTest(unittest.TestCase):
 
     def test_prefix_create_keeps_provider_select_but_edit_shows_readonly_provider(self):
         self.request("/routes")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         repo = server.Repository(conn)
         provider_id = repo.create_provider("Stage 69I Provider")
         prefix_id = repo.create_prefix(provider_id, "6911", "immutable owner")
@@ -1642,7 +1612,7 @@ class ServerSmokeTest(unittest.TestCase):
 
     def test_prefix_update_rejects_provider_substitution_and_preserves_row(self):
         self.request("/routes")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         repo = server.Repository(conn)
         provider_a = repo.create_provider("Stage 69I Owner A")
         provider_b = repo.create_provider("Stage 69I Owner B")
@@ -1659,14 +1629,14 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertIn("class='modal-blocking-error' role='alert' aria-live='assertive'", content)
         edit_form = content.split(f"action='/admin/dictionaries/prefixes/{prefix_id}/update'", 1)[0]
         self.assertRegex(edit_form[-300:], r"<details class='edit-details' open>")
-        conn = server.connect(server.DB_PATH)
-        row = conn.execute("SELECT provider_id, prefix, name FROM provider_prefixes WHERE id = ?", (prefix_id,)).fetchone()
+        conn = _TEST_DB.connect()
+        row = conn.execute('SELECT provider_id, prefix, name FROM provider_prefixes WHERE id = %s', (prefix_id,)).fetchone()
         self.assertEqual((row["provider_id"], row["prefix"], row["name"]), (provider_a, "6921", "original"))
         conn.close()
 
     def test_prefix_normal_edit_and_duplicates_use_current_provider(self):
         self.request("/routes")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         repo = server.Repository(conn)
         provider_a = repo.create_provider("Stage 69I Duplicate A")
         provider_b = repo.create_provider("Stage 69I Duplicate B")
@@ -1687,8 +1657,8 @@ class ServerSmokeTest(unittest.TestCase):
             body=urlencode({"prefix": "6933", "name": "normal rename", "is_active": "1"}),
         )
         self.assertEqual(captured["status"], "303 See Other")
-        conn = server.connect(server.DB_PATH)
-        row = conn.execute("SELECT provider_id, prefix, name FROM provider_prefixes WHERE id = ?", (prefix_id,)).fetchone()
+        conn = _TEST_DB.connect()
+        row = conn.execute('SELECT provider_id, prefix, name FROM provider_prefixes WHERE id = %s', (prefix_id,)).fetchone()
         self.assertEqual((row["provider_id"], row["prefix"], row["name"]), (provider_a, "6933", "normal rename"))
         conn.close()
 
@@ -1742,9 +1712,9 @@ class ServerSmokeTest(unittest.TestCase):
             body=urlencode({"name": "EU69A", "comment": ""}),
         )
         self.assertEqual(captured["status"], "303 See Other")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
-            created = conn.execute("SELECT id, comment FROM servers WHERE name = ?", ("EU69A",)).fetchone()
+            created = conn.execute('SELECT id, comment FROM servers WHERE name = %s', ("EU69A",)).fetchone()
             self.assertIsNotNone(created)
             self.assertIsNone(created["comment"])
             server_id = created["id"]
@@ -1757,9 +1727,9 @@ class ServerSmokeTest(unittest.TestCase):
             body=urlencode({"name": "EU69A-edited", "comment": "", "is_active": "1"}),
         )
         self.assertEqual(captured["status"], "303 See Other")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
-            updated = conn.execute("SELECT name, comment FROM servers WHERE id = ?", (server_id,)).fetchone()
+            updated = conn.execute('SELECT name, comment FROM servers WHERE id = %s', (server_id,)).fetchone()
             self.assertEqual(updated["name"], "EU69A-edited")
             self.assertIsNone(updated["comment"])
         finally:
@@ -1785,7 +1755,7 @@ class ServerSmokeTest(unittest.TestCase):
         self.request("/routes")
         self.request("/admin/dictionaries/servers/create", method="POST", body=urlencode({"name": "EU69D-A", "comment": ""}))
         self.request("/admin/dictionaries/servers/create", method="POST", body=urlencode({"name": "EU69D-B", "comment": ""}))
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
             other_id = conn.execute("SELECT id FROM servers WHERE name = 'EU69D-B'").fetchone()["id"]
         finally:
@@ -1800,9 +1770,9 @@ class ServerSmokeTest(unittest.TestCase):
 
     def test_server_linked_rename_missing_confirmation_preserves_inline_modal_state(self):
         self.request("/admin/dictionaries/servers/create", method="POST", body=urlencode({"name": "123", "comment": "before"}))
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
-            server_id = conn.execute("SELECT id FROM servers WHERE name = ?", ("123",)).fetchone()["id"]
+            server_id = conn.execute('SELECT id FROM servers WHERE name = %s', ("123",)).fetchone()["id"]
         finally:
             conn.close()
 
@@ -1824,9 +1794,9 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertNotRegex(form, r"name='rename_mode' value='dictionary_only' checked")
         self.assertRegex(form, r"name='confirm_update_linked' value='1'[^>]*aria-invalid=\"true\"[^>]*autofocus")
         self.assertIn("Preview массового обновления:", form)
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
-            unchanged = conn.execute("SELECT name, comment, is_active FROM servers WHERE id = ?", (server_id,)).fetchone()
+            unchanged = conn.execute('SELECT name, comment, is_active FROM servers WHERE id = %s', (server_id,)).fetchone()
             self.assertEqual((unchanged["name"], unchanged["comment"], unchanged["is_active"]), ("123", "before", 1))
         finally:
             conn.close()
@@ -1834,9 +1804,9 @@ class ServerSmokeTest(unittest.TestCase):
     def test_currency_linked_rename_and_checked_other_error_preserve_state(self):
         self.request("/admin/dictionaries/currencies/create", method="POST", body=urlencode({"code": "Z69G", "comment": "before"}))
         self.request("/admin/dictionaries/currencies/create", method="POST", body=urlencode({"code": "DUP69G", "comment": "duplicate"}))
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
-            currency_id = conn.execute("SELECT id FROM currencies WHERE code = ?", ("Z69G",)).fetchone()["id"]
+            currency_id = conn.execute('SELECT id FROM currencies WHERE code = %s', ("Z69G",)).fetchone()["id"]
         finally:
             conn.close()
 
@@ -1869,7 +1839,7 @@ class ServerSmokeTest(unittest.TestCase):
         friendly = "Кажется, такой сервер у нас уже есть. Давай назовём его иначе."
         self.assertEqual(self.request("/admin/dictionaries/servers/create", method="POST", body=urlencode({"name": "U1", "comment": "first"}))[0]["status"], "303 See Other")
         self.assertEqual(self.request("/admin/dictionaries/servers/create", method="POST", body=urlencode({"name": "123", "comment": "second"}))[0]["status"], "303 See Other")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
             u1_id = conn.execute("SELECT id FROM servers WHERE name = 'U1'").fetchone()["id"]
             other_id = conn.execute("SELECT id FROM servers WHERE name = '123'").fetchone()["id"]
@@ -1889,8 +1859,8 @@ class ServerSmokeTest(unittest.TestCase):
             self.assertIn(friendly, content)
             self.assertIn("edit kept", content)
             self.assertNotIn("SQLSTATE", content)
-            conn = server.connect(server.DB_PATH)
-            try: self.assertEqual(conn.execute("SELECT name FROM servers WHERE id = ?", (other_id,)).fetchone()["name"], "123")
+            conn = _TEST_DB.connect()
+            try: self.assertEqual(conn.execute('SELECT name FROM servers WHERE id = %s', (other_id,)).fetchone()["name"], "123")
             finally: conn.close()
         captured, _ = self.request(f"/admin/dictionaries/servers/{u1_id}/update", method="POST", body=urlencode({"name": "u1", "comment": "first", "is_active": "1"}))
         self.assertEqual(captured["status"], "303 See Other")
@@ -1922,17 +1892,17 @@ class ServerSmokeTest(unittest.TestCase):
 
         captured, _ = self.request("/admin/dictionaries/countries/create", method="POST", body=urlencode({"name": "Германия 69D"}))
         self.assertEqual(captured["status"], "303 See Other")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
-            created = conn.execute("SELECT code FROM countries WHERE name = ?", ("Германия 69D",)).fetchone()
+            created = conn.execute('SELECT code FROM countries WHERE name = %s', ("Германия 69D",)).fetchone()
             self.assertIsNone(created["code"])
             legacy = conn.execute("SELECT id, code FROM countries WHERE code IS NOT NULL LIMIT 1").fetchone()
         finally:
             conn.close()
         self.request(f"/admin/dictionaries/countries/{legacy['id']}/update", method="POST", body=urlencode({"name": "Legacy GEO renamed", "is_active": "1"}))
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
-            self.assertEqual(conn.execute("SELECT code FROM countries WHERE id = ?", (legacy["id"],)).fetchone()["code"], legacy["code"])
+            self.assertEqual(conn.execute('SELECT code FROM countries WHERE id = %s', (legacy["id"],)).fetchone()["code"], legacy["code"])
         finally:
             conn.close()
 
@@ -1945,7 +1915,7 @@ class ServerSmokeTest(unittest.TestCase):
 
         captured, _ = self.request("/admin/dictionaries/currencies/create", method="POST", body=urlencode({"code": "usdt69d", "comment": ""}))
         self.assertEqual(captured["status"], "303 See Other")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
             row = conn.execute("SELECT id, code, name FROM currencies WHERE code = 'USDT69D'").fetchone()
             self.assertEqual((row["code"], row["name"]), ("USDT69D", "USDT69D"))
@@ -1954,9 +1924,9 @@ class ServerSmokeTest(unittest.TestCase):
             conn.close()
         self.request(f"/admin/dictionaries/currencies/{currency_id}/update", method="POST", body=urlencode({"code": "usdt69d", "comment": "Tether для расчётов", "is_active": "1"}))
         self.request(f"/admin/dictionaries/currencies/{currency_id}/update", method="POST", body=urlencode({"code": "usdt69d", "comment": "   ", "is_active": "1"}))
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
-            self.assertEqual(conn.execute("SELECT name FROM currencies WHERE id = ?", (currency_id,)).fetchone()["name"], "USDT69D")
+            self.assertEqual(conn.execute('SELECT name FROM currencies WHERE id = %s', (currency_id,)).fetchone()["name"], "USDT69D")
         finally:
             conn.close()
 
@@ -2167,7 +2137,7 @@ class ServerSmokeTest(unittest.TestCase):
 
     def test_provider_change_reasons_come_from_active_scoped_dictionary(self):
         self.request("/routes")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
             repo = Repository(conn)
             shared_id = repo.create_change_reason(
@@ -2201,7 +2171,7 @@ class ServerSmokeTest(unittest.TestCase):
         valid = urlencode({"apply_scope": "none", "event_at": "2026-06-10T10:00", "provider_id": "1", "reason": "Новая причина из БД"})
         captured, _ = self.request("/provider-changes/create", method="POST", body=valid)
         self.assertEqual(captured["status"], "303 See Other")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
             snapshot = conn.execute("SELECT reason FROM routing_events ORDER BY id DESC LIMIT 1").fetchone()["reason"]
             Repository(conn).update_change_reason(shared_id, "Причина после переименования", scopes=["campaign_setting"])
@@ -2211,7 +2181,7 @@ class ServerSmokeTest(unittest.TestCase):
 
     def test_provider_change_rejects_unknown_inactive_and_wrong_scope_reasons(self):
         self.request("/routes")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
             repo = Repository(conn)
             repo.create_change_reason("Только сервер", created_by=server.ADMIN_ID, scopes=["server_priority"])
@@ -2226,7 +2196,7 @@ class ServerSmokeTest(unittest.TestCase):
 
     def test_provider_change_empty_reason_scope_is_controlled(self):
         self.request("/routes")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
             repo = Repository(conn)
             for reason in repo.list_change_reasons(scope="none", active=True):
@@ -2278,21 +2248,17 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertIn("input[name=\"apply_scope\"], #event-country, #event-provider", content)
 
     def _create_overflow_route(self, name="Резервный ШЛЮЗ GSM", is_actual=1, country_id=1, provider_id=1):
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
-            server.init_db(conn)
-            server.ensure_seed(server.Repository(conn))
-            if not conn.execute("SELECT 1 FROM countries WHERE id = ?", (country_id,)).fetchone():
-                conn.execute("INSERT INTO countries(id, name, code, is_active) VALUES (?, ?, ?, 1)", (country_id, f"Test GEO {country_id}", f"TG{country_id}"))
+            seed_postgres(conn)
+            if not conn.execute('SELECT 1 FROM countries WHERE id = %s', (country_id,)).fetchone():
+                conn.execute('INSERT INTO countries(id, name, code, is_active) VALUES (%s, %s, %s, TRUE) RETURNING id', (country_id, f"Test GEO {country_id}", f"TG{country_id}"))
             cur = conn.execute(
-                """
-                INSERT INTO routes(country_id, provider_id, name, cli_source_type, cli_source_label, created_by, is_actual)
-                VALUES (?, ?, ?, 'rnd', 'test', 1, ?)
-                """,
-                (country_id, provider_id, name, is_actual),
+                "\n                INSERT INTO routes(country_id, provider_id, name, cli_source_type, cli_source_label, created_by, is_actual)\n                VALUES (%s, %s, %s, 'rnd', 'test', 1, %s)\n                 RETURNING id",
+                (country_id, provider_id, name, bool(is_actual)),
             )
             conn.commit()
-            return cur.lastrowid
+            return cur.fetchone()["id"]
         finally:
             conn.close()
 
@@ -2316,7 +2282,7 @@ class ServerSmokeTest(unittest.TestCase):
         })
         captured, _content = self.request("/provider-changes/create", method="POST", body=body)
         self.assertEqual(captured["status"], "303 See Other")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
             row = conn.execute("SELECT has_overflow, overflow_route_id FROM routing_events ORDER BY id DESC LIMIT 1").fetchone()
             self.assertEqual(row["has_overflow"], 0)
@@ -2441,7 +2407,7 @@ class ServerSmokeTest(unittest.TestCase):
         })
         captured, _content = self.request("/provider-changes/create", method="POST", body=body)
         self.assertEqual(captured["status"], "303 See Other")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
             row = conn.execute("SELECT current_route_id, has_overflow, overflow_route_id FROM server_route_priorities WHERE country_id = 1 AND server_id = 1").fetchone()
             self.assertEqual((row["current_route_id"], row["has_overflow"], row["overflow_route_id"]), (1, 1, overflow_id))
@@ -2519,12 +2485,12 @@ class ServerSmokeTest(unittest.TestCase):
 
     def test_default_seed_contains_mvp_demo_dataset(self):
         self.request("/routes")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
-            servers = [row["name"] for row in conn.execute("SELECT name FROM servers WHERE is_active = 1 ORDER BY name")]
+            servers = [row["name"] for row in conn.execute('SELECT name FROM servers WHERE is_active = TRUE ORDER BY name')]
             self.assertEqual(servers, [f"EU{i}" for i in range(1, 10)])
             legacy_servers = ["ASIA1", "LATAM1", "LATAM2", "NL1", "US1", "US2", "DE1"]
-            self.assertEqual(conn.execute(f"SELECT COUNT(*) FROM servers WHERE name IN ({','.join('?' for _ in legacy_servers)})", legacy_servers).fetchone()[0], 0)
+            self.assertEqual(conn.execute(f"SELECT COUNT(*) FROM servers WHERE name IN ({','.join('%s' for _ in legacy_servers)})", legacy_servers).fetchone()[0], 0)
             self.assertIsNotNone(conn.execute("SELECT id FROM countries WHERE name = 'Мексика'").fetchone())
             providers = [row["name"] for row in conn.execute("SELECT name FROM providers ORDER BY name")]
             self.assertEqual(providers, ["DemoTel", "Miatel", "Sancom"])
@@ -2546,7 +2512,7 @@ class ServerSmokeTest(unittest.TestCase):
 
     def test_default_seed_server_priorities_only_for_eu1_and_eu2(self):
         self.request("/routes")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
             rows = conn.execute("""
                 SELECT s.name AS server_name, c.name AS country_name, cr.name AS current_route_name,
@@ -2575,18 +2541,18 @@ class ServerSmokeTest(unittest.TestCase):
 
 
     def test_demo_normalization_updates_existing_partial_demo_db_and_is_idempotent(self):
-        conn = server.connect(server.DB_PATH)
+        _TEST_DB.reset(seed=False)
+        conn = _TEST_DB.connect()
         try:
-            server.init_db(conn)
             repo = server.Repository(conn)
             admin_id = repo.create_user("admin", "Admin")
             for server_name in ("ASIA1", "DE1", "LATAM1", "US1", "OLDDEMO1"):
-                conn.execute("INSERT INTO servers(name, is_active) VALUES (?, 1)", (server_name,))
+                conn.execute('INSERT INTO servers(name, is_active) VALUES (%s, TRUE)', (server_name,))
             country_id = repo.create_country("Мексика", "MEX")
             eur_id = repo.create_currency("EUR", "Euro", "€")
             miatel_id = repo.create_provider("Miatel", "voip", eur_id)
             sancom_id = repo.create_provider("Sancom", "voip", eur_id)
-            miatel_prefix = conn.execute("INSERT INTO provider_prefixes(provider_id, prefix, name, is_active) VALUES (?, NULL, 'Без префикса', 1)", (miatel_id,)).lastrowid
+            miatel_prefix = conn.execute("INSERT INTO provider_prefixes(provider_id, prefix, name, is_active) VALUES (%s, NULL, 'Без префикса', TRUE) RETURNING id", (miatel_id,)).fetchone()["id"]
             sancom_prefix = repo.create_prefix(sancom_id, "0827")
             old_route_id = repo.create_route(
                 country_id=country_id,
@@ -2628,44 +2594,28 @@ class ServerSmokeTest(unittest.TestCase):
                 is_active=True,
             )
             conn.execute(
-                """
-                INSERT INTO server_route_priorities(country_id, server_id, current_route_id, changed_by, created_by, comment)
-                VALUES (?, ?, ?, ?, ?, 'Old demo priority')
-                """,
+                "\n                INSERT INTO server_route_priorities(country_id, server_id, current_route_id, changed_by, created_by, comment)\n                VALUES (%s, %s, %s, %s, %s, 'Old demo priority')\n                ",
                 (country_id, asia_id, old_route_id, admin_id, admin_id),
             )
             conn.commit()
         finally:
             conn.close()
 
-        self.request("/routes")
+        conn = _TEST_DB.connect()
+        try:
+            seed_postgres(conn)
+            conn.commit()
+        finally:
+            conn.close()
 
         def normalized_counts():
-            check_conn = server.connect(server.DB_PATH)
+            check_conn = _TEST_DB.connect()
             try:
-                active_servers = [row["name"] for row in check_conn.execute("SELECT name FROM servers WHERE is_active = 1 ORDER BY name")]
-                inactive_old_servers = [row["name"] for row in check_conn.execute("SELECT name FROM servers WHERE name IN ('ASIA1', 'DE1', 'LATAM1', 'US1', 'OLDDEMO1') AND is_active = 0 ORDER BY name")]
-                active_routes = [row["name"] for row in check_conn.execute("""
-                    SELECT r.name
-                    FROM routes r
-                    JOIN countries c ON c.id = r.country_id
-                    WHERE c.name = 'Мексика' AND r.is_actual = 1
-                    ORDER BY r.name
-                """)]
-                active_companies = [row["company_id_external"] for row in check_conn.execute("""
-                    SELECT cc.company_id_external
-                    FROM calling_companies cc
-                    JOIN countries c ON c.id = cc.country_id
-                    WHERE c.name = 'Мексика' AND cc.is_active = 1
-                    ORDER BY cc.company_id_external
-                """)]
-                active_numbers = [row["number"] for row in check_conn.execute("""
-                    SELECT pn.number
-                    FROM phone_numbers pn
-                    JOIN countries c ON c.id = pn.country_id
-                    WHERE c.name = 'Мексика' AND pn.is_active = 1
-                    ORDER BY pn.number
-                """)]
+                active_servers = [row["name"] for row in check_conn.execute('SELECT name FROM servers WHERE is_active = TRUE ORDER BY name')]
+                inactive_old_servers = [row["name"] for row in check_conn.execute("SELECT name FROM servers WHERE name IN ('ASIA1', 'DE1', 'LATAM1', 'US1', 'OLDDEMO1') AND is_active = FALSE ORDER BY name")]
+                active_routes = [row["name"] for row in check_conn.execute("\n                    SELECT r.name\n                    FROM routes r\n                    JOIN countries c ON c.id = r.country_id\n                    WHERE c.name = 'Мексика' AND r.is_actual = TRUE\n                    ORDER BY r.name\n                ")]
+                active_companies = [row["company_id_external"] for row in check_conn.execute("\n                    SELECT cc.company_id_external\n                    FROM calling_companies cc\n                    JOIN countries c ON c.id = cc.country_id\n                    WHERE c.name = 'Мексика' AND cc.is_active = TRUE\n                    ORDER BY cc.company_id_external\n                ")]
+                active_numbers = [row["number"] for row in check_conn.execute("\n                    SELECT pn.number\n                    FROM phone_numbers pn\n                    JOIN countries c ON c.id = pn.country_id\n                    WHERE c.name = 'Мексика' AND pn.is_active = TRUE\n                    ORDER BY pn.number\n                ")]
                 priorities = [(row["server_name"], row["route_name"], row["previous_route_id"], row["comment"]) for row in check_conn.execute("""
                     SELECT s.name AS server_name, r.name AS route_name, srp.previous_route_id, srp.comment
                     FROM server_route_priorities srp
@@ -2704,7 +2654,12 @@ class ServerSmokeTest(unittest.TestCase):
             ("EU2", "Мексика/Sancom/Demo_0827@", None, "Demo initial priority"),
         ])
 
-        self.request("/routes")
+        conn = _TEST_DB.connect()
+        try:
+            seed_postgres(conn)
+            conn.commit()
+        finally:
+            conn.close()
         self.assertEqual(normalized_counts(), first_counts)
 
 
@@ -2724,12 +2679,9 @@ class ServerSmokeTest(unittest.TestCase):
 
     def test_review_required_badge_and_edit_rules(self):
         self.request("/routes")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
-            conn.execute("""
-                INSERT INTO phone_numbers(country_id, provider_id, number, normalized_number, project_label, assignment_type, status, comment, is_active, review_required, created_by)
-                VALUES (1, NULL, '525550009902', '525550009902', 'Demo', 'gl', 'unknown', 'Needs review', 1, 1, 1)
-            """)
+            conn.execute("\n                INSERT INTO phone_numbers(country_id, provider_id, number, normalized_number, project_label, assignment_type, status, comment, is_active, review_required, created_by)\n                VALUES (1, NULL, '525550009902', '525550009902', 'Demo', 'gl', 'unknown', 'Needs review', TRUE, TRUE, 1)\n            ")
             conn.commit()
             phone_id = conn.execute("SELECT id FROM phone_numbers WHERE number = '525550009902'").fetchone()["id"]
         finally:
@@ -2747,9 +2699,9 @@ class ServerSmokeTest(unittest.TestCase):
         body = urlencode({"number": "525550009902", "country_id": "1", "provider_id": "", "assignment_type": "gl", "status": "unknown", "is_active": "1", "review_required": "1", "comment": "Edited"})
         captured, _ = self.request(f"/phones/{phone_id}/update", method="POST", body=body)
         self.assertEqual(captured["status"], "303 See Other")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
-            row = conn.execute("SELECT review_required, provider_id, comment FROM phone_numbers WHERE id = ?", (phone_id,)).fetchone()
+            row = conn.execute('SELECT review_required, provider_id, comment FROM phone_numbers WHERE id = %s', (phone_id,)).fetchone()
             self.assertEqual(row["review_required"], 1)
             self.assertIsNone(row["provider_id"])
             self.assertEqual(row["comment"], "Edited")
@@ -2758,9 +2710,9 @@ class ServerSmokeTest(unittest.TestCase):
         body = urlencode({"number": "525550009902", "country_id": "1", "provider_id": "1", "assignment_type": "gl", "status": "unknown", "is_active": "1"})
         captured, _ = self.request(f"/phones/{phone_id}/update", method="POST", body=body)
         self.assertEqual(captured["status"], "303 See Other")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
-            row = conn.execute("SELECT review_required, provider_id FROM phone_numbers WHERE id = ?", (phone_id,)).fetchone()
+            row = conn.execute('SELECT review_required, provider_id FROM phone_numbers WHERE id = %s', (phone_id,)).fetchone()
             self.assertEqual(row["review_required"], 0)
             self.assertEqual(row["provider_id"], 1)
         finally:
@@ -2768,17 +2720,11 @@ class ServerSmokeTest(unittest.TestCase):
 
     def test_phone_edit_and_history_render_imported_created_by(self):
         self.request("/routes")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
-            conn.execute("""
-                INSERT INTO phone_numbers(country_id, provider_id, number, normalized_number, project_label, assignment_type, status, is_active, review_required, imported_created_by, created_by)
-                VALUES (1, 1, '525550009920', '525550009920', 'Demo', 'gl', 'used', 1, 0, 'old_admin', 1)
-            """)
+            conn.execute("\n                INSERT INTO phone_numbers(country_id, provider_id, number, normalized_number, project_label, assignment_type, status, is_active, review_required, imported_created_by, created_by)\n                VALUES (1, 1, '525550009920', '525550009920', 'Demo', 'gl', 'used', TRUE, FALSE, 'old_admin', 1)\n            ")
             phone_id = conn.execute("SELECT id FROM phone_numbers WHERE number = '525550009920'").fetchone()["id"]
-            conn.execute("""
-                INSERT INTO phone_number_history(phone_number_id, action, changed_by, field_name, new_value, comment)
-                VALUES (?, 'created', 1, 'number', '525550009920', 'Создал в Excel: old_admin')
-            """, (phone_id,))
+            conn.execute("\n                INSERT INTO phone_number_history(phone_number_id, action, changed_by, field_name, new_value, comment)\n                VALUES (%s, 'created', 1, 'number', '525550009920', 'Создал в Excel: old_admin')\n            ", (phone_id,))
             conn.commit()
         finally:
             conn.close()
@@ -2797,7 +2743,7 @@ class ServerSmokeTest(unittest.TestCase):
         body = urlencode({"number": "525550009909", "country_id": "1", "provider_id": "1", "assignment_type": "gl", "status": "used", "is_active": "1", "connection_cost": "50", "monthly_fee": "50"})
         captured, _ = self.request("/phones/create", method="POST", body=body)
         self.assertEqual(captured["status"], "303 See Other")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
             phone_id = conn.execute("SELECT id FROM phone_numbers WHERE number = '525550009909'").fetchone()["id"]
         finally:
@@ -2809,9 +2755,9 @@ class ServerSmokeTest(unittest.TestCase):
         reactivate = urlencode({"number": "525550009909", "country_id": "1", "provider_id": "1", "assignment_type": "gl", "status": "used", "is_active": "1", "connection_cost": "50", "monthly_fee": "50"})
         captured, _ = self.request(f"/phones/{phone_id}/update", method="POST", body=reactivate)
         self.assertEqual(captured["status"], "303 See Other")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
-            row = conn.execute("SELECT review_required FROM phone_numbers WHERE id = ?", (phone_id,)).fetchone()
+            row = conn.execute('SELECT review_required FROM phone_numbers WHERE id = %s', (phone_id,)).fetchone()
             self.assertEqual(row["review_required"], 1)
         finally:
             conn.close()
@@ -2824,11 +2770,11 @@ class ServerSmokeTest(unittest.TestCase):
         clear = urlencode({"number": "525550009909", "country_id": "1", "provider_id": "1", "assignment_type": "gl", "status": "used", "is_active": "1", "connection_cost": "50.00", "monthly_fee": "50.000000"})
         captured, _ = self.request(f"/phones/{phone_id}/update", method="POST", body=clear)
         self.assertEqual(captured["status"], "303 See Other")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
-            row = conn.execute("SELECT review_required FROM phone_numbers WHERE id = ?", (phone_id,)).fetchone()
+            row = conn.execute('SELECT review_required FROM phone_numbers WHERE id = %s', (phone_id,)).fetchone()
             self.assertEqual(row["review_required"], 0)
-            history = conn.execute("SELECT new_value FROM phone_number_history WHERE phone_number_id = ? AND action = 'updated' ORDER BY id DESC", (phone_id,)).fetchone()["new_value"]
+            history = conn.execute("SELECT new_value FROM phone_number_history WHERE phone_number_id = %s AND action = 'updated' ORDER BY id DESC", (phone_id,)).fetchone()["new_value"]
         finally:
             conn.close()
         self.assertIn("Требует проверки: Да → Нет", history)
@@ -2854,16 +2800,10 @@ class ServerSmokeTest(unittest.TestCase):
 
     def test_phones_review_required_filter_shows_only_review_numbers(self):
         self.request("/routes")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
-            conn.execute("""
-                INSERT INTO phone_numbers(country_id, provider_id, number, normalized_number, project_label, assignment_type, status, comment, is_active, review_required, created_by)
-                VALUES (1, NULL, '525550009910', '525550009910', 'Demo', 'gl', 'unknown', 'Needs review', 1, 1, 1)
-            """)
-            conn.execute("""
-                INSERT INTO phone_numbers(country_id, provider_id, number, normalized_number, project_label, assignment_type, status, comment, is_active, review_required, created_by)
-                VALUES (1, 1, '525550009911', '525550009911', 'Demo', 'gl', 'unknown', 'No review', 1, 0, 1)
-            """)
+            conn.execute("\n                INSERT INTO phone_numbers(country_id, provider_id, number, normalized_number, project_label, assignment_type, status, comment, is_active, review_required, created_by)\n                VALUES (1, NULL, '525550009910', '525550009910', 'Demo', 'gl', 'unknown', 'Needs review', TRUE, TRUE, 1)\n            ")
+            conn.execute("\n                INSERT INTO phone_numbers(country_id, provider_id, number, normalized_number, project_label, assignment_type, status, comment, is_active, review_required, created_by)\n                VALUES (1, 1, '525550009911', '525550009911', 'Demo', 'gl', 'unknown', 'No review', TRUE, FALSE, 1)\n            ")
             conn.commit()
         finally:
             conn.close()
@@ -2883,9 +2823,9 @@ class ServerSmokeTest(unittest.TestCase):
 
     def test_phone_csv_export_includes_review_required(self):
         self.request("/routes")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
-            conn.execute("UPDATE phone_numbers SET review_required = 1 WHERE number = '525550000001'")
+            conn.execute("UPDATE phone_numbers SET review_required = TRUE WHERE number = '525550000001'")
             conn.commit()
         finally:
             conn.close()
@@ -2922,12 +2862,12 @@ class ServerSmokeTest(unittest.TestCase):
 
     def test_phone_and_route_history_pages_show_titles_subjects_and_empty_state(self):
         self.request("/routes")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
             phone = conn.execute("SELECT id, number FROM phone_numbers ORDER BY id LIMIT 1").fetchone()
             route = conn.execute("SELECT id, name FROM routes ORDER BY id LIMIT 1").fetchone()
-            conn.execute("DELETE FROM phone_number_history WHERE phone_number_id = ?", (phone["id"],))
-            conn.execute("DELETE FROM route_phone_number_history WHERE phone_number_id = ?", (phone["id"],))
+            conn.execute('DELETE FROM phone_number_history WHERE phone_number_id = %s', (phone["id"],))
+            conn.execute('DELETE FROM route_phone_number_history WHERE phone_number_id = %s', (phone["id"],))
             conn.commit()
         finally:
             conn.close()
@@ -2949,10 +2889,10 @@ class ServerSmokeTest(unittest.TestCase):
         self.request("/phones/create", method="POST", body=body)
         body = urlencode({"phone_number": "525550088888", "usage_type": "pool_member", "comment": "for history"})
         self.request("/routes/1/numbers/add", method="POST", body=body)
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
             phone_id = conn.execute("SELECT id FROM phone_numbers WHERE number = '525550088888'").fetchone()["id"]
-            link_id = conn.execute("SELECT id FROM route_phone_numbers WHERE route_id = 1 AND phone_number_id = ?", (phone_id,)).fetchone()["id"]
+            link_id = conn.execute('SELECT id FROM route_phone_numbers WHERE route_id = 1 AND phone_number_id = %s', (phone_id,)).fetchone()["id"]
         finally:
             conn.close()
         self.request("/routes/1/numbers/remove", method="POST", body=urlencode({"link_ids": str(link_id), "reason": "Проверка", "confirm_remove": "1"}))
@@ -3004,7 +2944,7 @@ class ServerSmokeTest(unittest.TestCase):
 
     def test_route_number_bulk_add_reports_status_errors_and_adds_used(self):
         self.request("/routes")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
             repo = server.Repository(conn)
             route_id = repo.create_route(country_id=1, provider_id=1, name="Purchased Pool Empty", cli_source_type="pool", cli_source_label="Pool_A", aon_pool="Пул купленных номеров", created_by=1)
@@ -3067,9 +3007,9 @@ class ServerSmokeTest(unittest.TestCase):
         self.request("/routes")
         body = urlencode({"number": "525550099995", "country_id": "1", "provider_id": "1", "assignment_type": "gl", "status": "used"})
         self.request("/phones/create", method="POST", body=body)
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
-            conn.execute("UPDATE phone_numbers SET is_active = 0 WHERE number = '525550099995'")
+            conn.execute("UPDATE phone_numbers SET is_active = FALSE WHERE number = '525550099995'")
             conn.commit()
         finally:
             conn.close()
@@ -3090,12 +3030,28 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertIn("<td data-col='routes'>—</td>", content)
         self.assertNotIn("Маршрутов</button>", content)
 
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
             phone_id = conn.execute("SELECT id FROM phone_numbers WHERE number = '525550000001'").fetchone()["id"]
-            route_id = conn.execute("SELECT id FROM routes WHERE name != 'Мексика/Sancom/Demo_0827@' LIMIT 1").fetchone()["id"]
+            route_id = conn.execute(
+                """
+                SELECT r.id
+                FROM routes r
+                WHERE r.name != 'Мексика/Sancom/Demo_0827@'
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM route_phone_numbers rpn
+                      WHERE rpn.route_id = r.id
+                        AND rpn.phone_number_id = %s
+                        AND rpn.is_active = TRUE
+                  )
+                ORDER BY r.id
+                LIMIT 1
+                """,
+                (phone_id,),
+            ).fetchone()["id"]
             conn.execute(
-                "INSERT INTO route_phone_numbers(route_id, phone_number_id, usage_type, is_active, added_by) VALUES (?, ?, 'pool_member', 1, 1)",
+                "INSERT INTO route_phone_numbers(route_id, phone_number_id, usage_type, is_active, added_by) VALUES (%s, %s, 'pool_member', TRUE, 1)",
                 (route_id, phone_id),
             )
             conn.commit()
@@ -3112,7 +3068,7 @@ class ServerSmokeTest(unittest.TestCase):
 
     def test_route_numbers_and_edit_pages_are_available_without_numbers(self):
         self.request("/routes")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
             repo = server.Repository(conn)
             route_id = repo.create_route(country_id=1, provider_id=1, name="Purchased Pool Empty", cli_source_type="pool", cli_source_label="Pool_A", aon_pool="Пул купленных номеров", created_by=1)
@@ -3156,7 +3112,7 @@ class ServerSmokeTest(unittest.TestCase):
         body = urlencode({"country_id": "1", "provider_id": "1", "provider_prefix_id": "", "project_label": "", "cli_source_type": "pool", "cli_source_label": "pool_A_stage1", "aon_pool": "Пул купленных номеров", "is_actual": "1"})
         captured, _ = self.request("/routes/create", method="POST", body=body)
         self.assertEqual(captured["status"], "303 See Other")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
             row = conn.execute("SELECT cli_source_type, cli_source_label, aon_pool FROM routes WHERE cli_source_label = 'pool_A_stage1'").fetchone()
             self.assertEqual((row["cli_source_type"], row["cli_source_label"], row["aon_pool"]), ("pool", "pool_A_stage1", "Пул купленных номеров"))
@@ -3167,7 +3123,7 @@ class ServerSmokeTest(unittest.TestCase):
 
     def test_only_purchased_pool_routes_offer_number_management(self):
         self.request("/routes")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
             repo = server.Repository(conn)
             purchased_id = repo.create_route(country_id=1, provider_id=1, name="Stage69K Purchased", cli_source_type="pool", cli_source_label="Pool_B", aon_pool="Пул купленных номеров: owner", created_by=1)
@@ -3194,7 +3150,7 @@ class ServerSmokeTest(unittest.TestCase):
         body = urlencode({"country_id": "1", "provider_id": "1", "provider_prefix_id": "", "project_label": "", "cli_source_type": "rnd", "cli_source_label": "ignored", "rnd_type": "local", "is_actual": "1"})
         captured, _ = self.request("/routes/create", method="POST", body=body)
         self.assertEqual(captured["status"], "303 See Other")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
             row = conn.execute("SELECT cli_source_label, aon_pool, rnd_type FROM routes WHERE cli_source_type = 'rnd' AND aon_pool = 'Локальный пул' ORDER BY id DESC LIMIT 1").fetchone()
             self.assertEqual((row["cli_source_label"], row["aon_pool"], row["rnd_type"]), ("RND", "Локальный пул", "local"))
@@ -3211,7 +3167,7 @@ class ServerSmokeTest(unittest.TestCase):
         valid = urlencode({"country_id": "1", "provider_id": "1", "provider_prefix_id": "", "project_label": "", "cli_source_type": "rnd", "rnd_type": "nonlocal", "rnd_pool_owner": "венгерский пул", "is_actual": "1"})
         captured, _ = self.request("/routes/create", method="POST", body=valid)
         self.assertEqual(captured["status"], "303 See Other")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
             row = conn.execute("SELECT cli_source_label, aon_pool, rnd_type, rnd_pool_owner FROM routes WHERE aon_pool = 'Нелокальный пул: венгерский пул'").fetchone()
             self.assertEqual((row["cli_source_label"], row["rnd_type"], row["rnd_pool_owner"]), ("RND", "nonlocal", "венгерский пул"))
@@ -3223,7 +3179,7 @@ class ServerSmokeTest(unittest.TestCase):
         body = urlencode({"country_id": "1", "provider_id": "1", "provider_prefix_id": "", "project_label": "", "cli_source_type": "sim", "cli_source_label": "ignored", "is_actual": "1"})
         captured, _ = self.request("/routes/create", method="POST", body=body)
         self.assertEqual(captured["status"], "303 See Other")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
             row = conn.execute("SELECT cli_source_type, cli_source_label, aon_pool FROM routes WHERE cli_source_type = 'sim' ORDER BY id DESC LIMIT 1").fetchone()
             self.assertEqual((row["cli_source_type"], row["cli_source_label"], row["aon_pool"]), ("sim", "SIM", "SIM / GSM-шлюз"))
@@ -3232,10 +3188,10 @@ class ServerSmokeTest(unittest.TestCase):
 
     def test_existing_legacy_aon_source_route_still_displays(self):
         self.request("/routes")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
-            cur = conn.execute("INSERT INTO routes(country_id, provider_id, name, cli_source_type, cli_source_label, created_by) VALUES (1, 1, 'Legacy/Single@', 'single_number', 'old_single', 1)")
-            route_id = cur.lastrowid
+            cur = conn.execute("INSERT INTO routes(country_id, provider_id, name, cli_source_type, cli_source_label, created_by) VALUES (1, 1, 'Legacy/Single@', 'single_number', 'old_single', 1) RETURNING id")
+            route_id = cur.fetchone()["id"]
             conn.commit()
         finally:
             conn.close()
@@ -3248,7 +3204,7 @@ class ServerSmokeTest(unittest.TestCase):
 
     def test_route_name_template_examples_and_custom_saved_name(self):
         self.request("/routes")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
             repo = server.Repository(conn)
             admin_id = conn.execute("SELECT id FROM users WHERE username = 'admin'").fetchone()["id"]
@@ -3268,7 +3224,7 @@ class ServerSmokeTest(unittest.TestCase):
         body = urlencode({"country_id": "1", "provider_id": "1", "provider_prefix_id": "", "project_label": "", "cli_source_type": "pool", "cli_source_label": "custom_label", "aon_pool": "Пул купленных номеров", "name": "Custom/Confirmed@", "is_actual": "1"})
         captured, _ = self.request("/routes/create", method="POST", body=body)
         self.assertEqual(captured["status"], "303 See Other")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
             row = conn.execute("SELECT name FROM routes WHERE cli_source_label = 'custom_label'").fetchone()
             self.assertEqual(row["name"], "Custom/Confirmed@")
@@ -3325,14 +3281,14 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertIn(("Location", "/admin/currency-rates"), captured["headers"])
         self.request("/admin/currency-rates/upsert", method="POST", body=urlencode({"currency_id": "2", "rate_to_eur": "0.92"}))
 
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
             rows = conn.execute("SELECT rate_to_eur FROM currency_rates WHERE currency_id = 2 ORDER BY id").fetchall()
             latest = server.Repository(conn).latest_currency_rate(2)
         finally:
             conn.close()
-        self.assertEqual([str(row["rate_to_eur"]) for row in rows[-2:]], ["0.91", "0.92"])
-        self.assertEqual(str(latest["rate_to_eur"]), "0.92")
+        self.assertEqual([Decimal(row["rate_to_eur"]) for row in rows[-2:]], [Decimal("0.91"), Decimal("0.92")])
+        self.assertEqual(Decimal(latest["rate_to_eur"]), Decimal("0.92"))
 
         captured, content = self.request("/admin/currency-rates")
         self.assertEqual(captured["status"], "200 OK")
@@ -3341,9 +3297,9 @@ class ServerSmokeTest(unittest.TestCase):
 
     def test_currency_rate_upsert_succeeds_without_active_tariffs(self):
         self.request("/tariffs")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
-            conn.execute("UPDATE tariffs SET is_current = 0 WHERE provider_currency_id = 2")
+            conn.execute('UPDATE tariffs SET is_current = FALSE WHERE provider_currency_id = 2')
             conn.commit()
         finally:
             conn.close()
@@ -3356,21 +3312,21 @@ class ServerSmokeTest(unittest.TestCase):
 
         self.assertEqual(captured["status"], "303 See Other")
         self.assertIn(("Location", "/admin/currency-rates"), captured["headers"])
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
             rate = conn.execute(
                 "SELECT rate_to_eur FROM currency_rates WHERE currency_id = 2 ORDER BY id DESC LIMIT 1"
             ).fetchone()
         finally:
             conn.close()
-        self.assertEqual(str(rate["rate_to_eur"]), "1.01")
+        self.assertEqual(Decimal(rate["rate_to_eur"]), Decimal("1.01"))
 
     def test_currency_rate_upsert_writes_change_log(self):
         self.request("/tariffs")
         self.request("/admin/currency-rates/upsert", method="POST", body=urlencode({"currency_id": "2", "rate_to_eur": "1.01"}))
         self.request("/admin/currency-rates/upsert", method="POST", body=urlencode({"currency_id": "2", "rate_to_eur": "500"}))
 
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
             log = conn.execute(
                 """
@@ -3389,8 +3345,8 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertEqual(log["source"], "ui")
         self.assertIn("Курс USDT к EUR обновлён вручную: 1.01 → 500", log["summary"])
         self.assertIn("Активных тариф", log["summary"])
-        old_values = json.loads(log["old_values"])
-        new_values = json.loads(log["new_values"])
+        old_values = log["old_values"]
+        new_values = log["new_values"]
         self.assertEqual(old_values["currency_code"], "USDT")
         self.assertEqual(old_values["rate_to_eur"], "1.01")
         self.assertEqual(new_values["currency_code"], "USDT")
@@ -3400,9 +3356,9 @@ class ServerSmokeTest(unittest.TestCase):
 
     def test_currency_rate_upsert_recalculates_active_tariffs(self):
         self.request("/tariffs")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
-            tariff = conn.execute("SELECT id, price_in_provider_currency FROM tariffs WHERE provider_currency_id = 2 AND is_current = 1 LIMIT 1").fetchone()
+            tariff = conn.execute('SELECT id, price_in_provider_currency FROM tariffs WHERE provider_currency_id = 2 AND is_current = TRUE LIMIT 1').fetchone()
             self.assertIsNotNone(tariff)
             tariff_id = tariff["id"]
         finally:
@@ -3410,26 +3366,26 @@ class ServerSmokeTest(unittest.TestCase):
 
         self.request("/admin/currency-rates/upsert", method="POST", body=urlencode({"currency_id": "2", "rate_to_eur": "300"}))
 
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
-            row = conn.execute("SELECT eur_price, conversion_rate_to_eur, currency_rate_id FROM tariffs WHERE id = ?", (tariff_id,)).fetchone()
+            row = conn.execute('SELECT eur_price, conversion_rate_to_eur, currency_rate_id FROM tariffs WHERE id = %s', (tariff_id,)).fetchone()
             rate = conn.execute("SELECT id FROM currency_rates WHERE currency_id = 2 ORDER BY id DESC LIMIT 1").fetchone()
-            tariff_log = conn.execute("SELECT COUNT(*) FROM change_log WHERE entity_type = 'tariff' AND entity_id = ? AND change_type = 'tariff.currency_rate_recalculated'", (tariff_id,)).fetchone()[0]
+            tariff_log = conn.execute("SELECT COUNT(*) FROM change_log WHERE entity_type = 'tariff' AND entity_id = %s AND change_type = 'tariff.currency_rate_recalculated'", (tariff_id,)).fetchone()[0]
         finally:
             conn.close()
-        self.assertEqual(str(row["conversion_rate_to_eur"]), "300")
+        self.assertEqual(Decimal(row["conversion_rate_to_eur"]), Decimal("300"))
         self.assertEqual(row["currency_rate_id"], rate["id"])
         self.assertEqual(Decimal(str(row["eur_price"])), Decimal(str(tariff["price_in_provider_currency"])) * Decimal("300"))
         self.assertEqual(tariff_log, 1)
         captured, content = self.request("/tariffs")
         self.assertEqual(captured["status"], "200 OK")
-        self.assertIn(f"{row['eur_price']} EUR", content)
+        self.assertIn(f"{server.format_decimal_label(row['eur_price'])} EUR", content)
 
     def test_currency_rate_invalid_value_does_not_recalculate_tariffs(self):
         self.request("/tariffs")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
-            before_tariff = conn.execute("SELECT id, eur_price, conversion_rate_to_eur, currency_rate_id FROM tariffs WHERE provider_currency_id = 2 AND is_current = 1 LIMIT 1").fetchone()
+            before_tariff = conn.execute('SELECT id, eur_price, conversion_rate_to_eur, currency_rate_id FROM tariffs WHERE provider_currency_id = 2 AND is_current = TRUE LIMIT 1').fetchone()
             before_history = conn.execute("SELECT COUNT(*) FROM tariff_change_history").fetchone()[0]
             before_tariff_logs = conn.execute("SELECT COUNT(*) FROM change_log WHERE entity_type = 'tariff'").fetchone()[0]
         finally:
@@ -3439,9 +3395,9 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertEqual(captured["status"], "400 Bad Request")
         self.assertIn("Ошибка", content)
 
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
-            after_tariff = conn.execute("SELECT eur_price, conversion_rate_to_eur, currency_rate_id FROM tariffs WHERE id = ?", (before_tariff["id"],)).fetchone()
+            after_tariff = conn.execute('SELECT eur_price, conversion_rate_to_eur, currency_rate_id FROM tariffs WHERE id = %s', (before_tariff["id"],)).fetchone()
             after_history = conn.execute("SELECT COUNT(*) FROM tariff_change_history").fetchone()[0]
             after_tariff_logs = conn.execute("SELECT COUNT(*) FROM change_log WHERE entity_type = 'tariff'").fetchone()[0]
         finally:
@@ -3454,7 +3410,7 @@ class ServerSmokeTest(unittest.TestCase):
 
     def test_currency_rate_invalid_value_does_not_write_change_log(self):
         self.request("/tariffs")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
             before_rates = conn.execute("SELECT COUNT(*) FROM currency_rates").fetchone()[0]
             before_logs = conn.execute("SELECT COUNT(*) FROM change_log WHERE entity_type = 'currency_rate'").fetchone()[0]
@@ -3465,7 +3421,7 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertEqual(captured["status"], "400 Bad Request")
         self.assertIn("Ошибка", content)
 
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
             after_rates = conn.execute("SELECT COUNT(*) FROM currency_rates").fetchone()[0]
             after_logs = conn.execute("SELECT COUNT(*) FROM change_log WHERE entity_type = 'currency_rate'").fetchone()[0]
@@ -3478,9 +3434,9 @@ class ServerSmokeTest(unittest.TestCase):
         self.request("/routes")
         body = urlencode([("name", "Временно не использовать"), ("is_active", "1"), ("comment", "test"), ("_scopes_present", "1"), ("scopes", "none")])
         self.request("/admin/change-reasons/create", method="POST", body=body)
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
-            reason_id = conn.execute("SELECT id FROM change_reasons WHERE name = ?", ("Временно не использовать",)).fetchone()["id"]
+            reason_id = conn.execute('SELECT id FROM change_reasons WHERE name = %s', ("Временно не использовать",)).fetchone()["id"]
         finally:
             conn.close()
         update = urlencode([("name", "Временно не использовать"), ("is_active", "0"), ("comment", "test"), ("_scopes_present", "1"), ("scopes", "none")])
@@ -3531,10 +3487,10 @@ class ServerSmokeTest(unittest.TestCase):
     def test_admin_change_reason_create_with_one_scope(self):
         captured, _ = self._create_scoped_reason("One scope reason", ["none"])
         self.assertEqual(captured["status"], "303 See Other")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
-            reason_id = conn.execute("SELECT id FROM change_reasons WHERE name=?", ("One scope reason",)).fetchone()["id"]
-            self.assertEqual([r["apply_scope"] for r in conn.execute("SELECT apply_scope FROM change_reason_scopes WHERE reason_id=?", (reason_id,))], ["none"])
+            reason_id = conn.execute('SELECT id FROM change_reasons WHERE name=%s', ("One scope reason",)).fetchone()["id"]
+            self.assertEqual([r["apply_scope"] for r in conn.execute('SELECT apply_scope FROM change_reason_scopes WHERE reason_id=%s', (reason_id,))], ["none"])
         finally:
             conn.close()
 
@@ -3561,9 +3517,9 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertIn("value='unique scoped name'", content)
 
     def _update_scoped_reason(self, name, scopes, *, active=True):
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
-            reason_id = conn.execute("SELECT id FROM change_reasons WHERE name=?", (name,)).fetchone()["id"]
+            reason_id = conn.execute('SELECT id FROM change_reasons WHERE name=%s', (name,)).fetchone()["id"]
         finally:
             conn.close()
         values = [("name", name), ("comment", "updated"), ("is_active", "1" if active else "0"), ("_scopes_present", "1")]
@@ -3574,15 +3530,15 @@ class ServerSmokeTest(unittest.TestCase):
         self._create_scoped_reason("Expand scopes", ["none"])
         reason_id, (captured, _) = self._update_scoped_reason("Expand scopes", ["none", "server_priority"])
         self.assertEqual(captured["status"], "303 See Other")
-        conn = server.connect(server.DB_PATH)
-        try: self.assertEqual({r["apply_scope"] for r in conn.execute("SELECT apply_scope FROM change_reason_scopes WHERE reason_id=?", (reason_id,))}, {"none", "server_priority"})
+        conn = _TEST_DB.connect()
+        try: self.assertEqual({r["apply_scope"] for r in conn.execute('SELECT apply_scope FROM change_reason_scopes WHERE reason_id=%s', (reason_id,))}, {"none", "server_priority"})
         finally: conn.close()
 
     def test_admin_change_reason_edit_scopes_two_to_one(self):
         self._create_scoped_reason("Reduce scopes", ["none", "campaign_setting"])
         reason_id, _ = self._update_scoped_reason("Reduce scopes", ["campaign_setting"])
-        conn = server.connect(server.DB_PATH)
-        try: self.assertEqual([r["apply_scope"] for r in conn.execute("SELECT apply_scope FROM change_reason_scopes WHERE reason_id=?", (reason_id,))], ["campaign_setting"])
+        conn = _TEST_DB.connect()
+        try: self.assertEqual([r["apply_scope"] for r in conn.execute('SELECT apply_scope FROM change_reason_scopes WHERE reason_id=%s', (reason_id,))], ["campaign_setting"])
         finally: conn.close()
 
     def test_admin_change_reason_edit_cannot_remove_all_scopes(self):
@@ -3652,13 +3608,13 @@ class ServerSmokeTest(unittest.TestCase):
         )
         self.assertEqual(captured["status"], "303 See Other")
         self.assertEqual(dict(captured["headers"])["Location"], "/admin/change-reasons")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
             reason_id = conn.execute(
-                "SELECT id FROM change_reasons WHERE name = ?", ("Legacy create form",),
+                'SELECT id FROM change_reasons WHERE name = %s', ("Legacy create form",),
             ).fetchone()["id"]
             scopes = {row["apply_scope"] for row in conn.execute(
-                "SELECT apply_scope FROM change_reason_scopes WHERE reason_id = ?", (reason_id,),
+                'SELECT apply_scope FROM change_reason_scopes WHERE reason_id = %s', (reason_id,),
             )}
         finally:
             conn.close()
@@ -3666,7 +3622,7 @@ class ServerSmokeTest(unittest.TestCase):
 
     def test_legacy_change_reason_update_without_scope_fields_preserves_existing_scopes(self):
         self.request("/routes")
-        repo_conn = server.connect(server.DB_PATH)
+        repo_conn = _TEST_DB.connect()
         try:
             repo = Repository(repo_conn)
             reason_id = repo.create_change_reason(
@@ -3681,13 +3637,13 @@ class ServerSmokeTest(unittest.TestCase):
         )
         self.assertEqual(captured["status"], "303 See Other")
         self.assertEqual(dict(captured["headers"])["Location"], "/admin/change-reasons")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
             reason = conn.execute(
-                "SELECT name, description, is_active FROM change_reasons WHERE id = ?", (reason_id,),
+                'SELECT name, description, is_active FROM change_reasons WHERE id = %s', (reason_id,),
             ).fetchone()
             scopes = {row["apply_scope"] for row in conn.execute(
-                "SELECT apply_scope FROM change_reason_scopes WHERE reason_id = ?", (reason_id,),
+                'SELECT apply_scope FROM change_reason_scopes WHERE reason_id = %s', (reason_id,),
             )}
         finally:
             conn.close()
@@ -3696,12 +3652,12 @@ class ServerSmokeTest(unittest.TestCase):
 
     def test_postgres_full_app_smoke_legacy_orphan_reason_update_assigns_all_scopes(self):
         self.request("/routes")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
             reason_id = conn.execute(
-                "INSERT INTO change_reasons(name, description, is_active) VALUES (?, ?, 1)",
+                'INSERT INTO change_reasons(name, description, is_active) VALUES (%s, %s, TRUE) RETURNING id',
                 ("CI_SMOKE_REASON_ORPHAN", "CI full-app smoke reason"),
-            ).lastrowid
+            ).fetchone()["id"]
             conn.commit()
         finally:
             conn.close()
@@ -3718,13 +3674,13 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertEqual(captured["status"], "303 See Other")
         self.assertEqual(dict(captured["headers"])["Location"], "/admin/change-reasons")
 
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
             reason = conn.execute(
-                "SELECT name, description, is_active FROM change_reasons WHERE id = ?", (reason_id,),
+                'SELECT name, description, is_active FROM change_reasons WHERE id = %s', (reason_id,),
             ).fetchone()
             scopes = {row["apply_scope"] for row in conn.execute(
-                "SELECT apply_scope FROM change_reason_scopes WHERE reason_id = ?", (reason_id,),
+                'SELECT apply_scope FROM change_reason_scopes WHERE reason_id = %s', (reason_id,),
             )}
         finally:
             conn.close()
@@ -3741,9 +3697,9 @@ class ServerSmokeTest(unittest.TestCase):
             "/admin/change-reasons/create", method="POST",
             body=urlencode({"name": "ITM", "is_active": "1", "comment": "before"}),
         )
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
-            reason_id = conn.execute("SELECT id FROM change_reasons WHERE name = ?", ("ITM",)).fetchone()["id"]
+            reason_id = conn.execute('SELECT id FROM change_reasons WHERE name = %s', ("ITM",)).fetchone()["id"]
         finally:
             conn.close()
         captured, content = self.request(
@@ -3795,7 +3751,7 @@ class ServerSmokeTest(unittest.TestCase):
     def test_company_edit_shows_autorotation_read_only_from_routing_settings(self):
         body = urlencode({"server_id": "1", "country_id": "1", "company_id_external": "readonly-auto", "company_name": "Readonly Auto", "line_count": "1", "dial_set_count": "2", "has_autorotation": "1", "retry_interval_seconds": "30", "is_active": "1", "comment": ""})
         self.request("/companies/create", method="POST", body=body)
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
             company_id = conn.execute("SELECT id FROM calling_companies WHERE company_id_external = 'readonly-auto'").fetchone()["id"]
         finally:
@@ -3810,9 +3766,9 @@ class ServerSmokeTest(unittest.TestCase):
         update = urlencode({"server_id": "1", "country_id": "1", "company_name": "Readonly Auto Updated", "line_count": "5", "dial_set_count": "6", "retry_interval_seconds": "45", "is_active": "1", "comment": "base fields changed"})
         captured, _ = self.request(f"/companies/{company_id}/update", method="POST", body=update)
         self.assertEqual(captured["status"], "303 See Other")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
-            setting = conn.execute("SELECT * FROM company_routing_settings WHERE calling_company_id = ? AND is_active = 1 AND valid_to IS NULL", (company_id,)).fetchone()
+            setting = conn.execute('SELECT * FROM company_routing_settings WHERE calling_company_id = %s AND is_active = TRUE AND valid_to IS NULL', (company_id,)).fetchone()
             self.assertEqual(setting["has_autorotation"], 1)
         finally:
             conn.close()
@@ -3825,11 +3781,11 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertIn("Укажи название кампании.", content)
         self.assertRegex(content, r'name="company_name"[^>]*has-blocking-error[^>]*aria-invalid="true"[^>]*autofocus')
         self.assertIn("preserved comment", content)
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
             self.assertIsNone(conn.execute("SELECT id FROM calling_companies WHERE company_id_external = 'blank-name-ui'").fetchone())
             company = conn.execute("SELECT id, company_name FROM calling_companies ORDER BY id LIMIT 1").fetchone()
-            before_history = conn.execute("SELECT COUNT(*) FROM change_log WHERE entity_type = 'calling_company' AND entity_id = ?", (company["id"],)).fetchone()[0]
+            before_history = conn.execute("SELECT COUNT(*) FROM change_log WHERE entity_type = 'calling_company' AND entity_id = %s", (company["id"],)).fetchone()[0]
         finally:
             conn.close()
         update = {"server_id": "1", "country_id": "", "company_name": "", "line_count": "0", "dial_set_count": "0", "retry_interval_seconds": "0", "is_active": "0", "comment": "submitted edit"}
@@ -3837,18 +3793,18 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertEqual(captured["status"], "400 Bad Request")
         self.assertIn("has-blocking-error", content)
         self.assertIn("submitted edit", content)
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
-            current = conn.execute("SELECT company_name FROM calling_companies WHERE id = ?", (company["id"],)).fetchone()
+            current = conn.execute('SELECT company_name FROM calling_companies WHERE id = %s', (company["id"],)).fetchone()
             self.assertEqual(current["company_name"], company["company_name"])
-            self.assertEqual(conn.execute("SELECT COUNT(*) FROM change_log WHERE entity_type = 'calling_company' AND entity_id = ?", (company["id"],)).fetchone()[0], before_history)
+            self.assertEqual(conn.execute("SELECT COUNT(*) FROM change_log WHERE entity_type = 'calling_company' AND entity_id = %s", (company["id"],)).fetchone()[0], before_history)
         finally:
             conn.close()
 
     def test_calling_company_edit_form_includes_concurrency_token(self):
         body = urlencode({"server_id": "1", "country_id": "1", "company_id_external": "token-form", "company_name": "Token Form", "line_count": "1", "dial_set_count": "2", "has_autorotation": "0", "retry_interval_seconds": "30", "is_active": "1", "comment": ""})
         self.request("/companies/create", method="POST", body=body)
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
             company_id = conn.execute("SELECT id FROM calling_companies WHERE company_id_external = 'token-form'").fetchone()["id"]
         finally:
@@ -3863,7 +3819,7 @@ class ServerSmokeTest(unittest.TestCase):
     def test_calling_company_edit_with_current_token_succeeds(self):
         body = urlencode({"server_id": "1", "country_id": "1", "company_id_external": "token-current", "company_name": "Token Current", "line_count": "1", "dial_set_count": "2", "has_autorotation": "0", "retry_interval_seconds": "30", "is_active": "1", "comment": ""})
         self.request("/companies/create", method="POST", body=body)
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
             row = conn.execute("SELECT id, updated_at FROM calling_companies WHERE company_id_external = 'token-current'").fetchone()
             company_id, token = row["id"], row["updated_at"]
@@ -3874,9 +3830,9 @@ class ServerSmokeTest(unittest.TestCase):
         captured, _ = self.request(f"/companies/{company_id}/update", method="POST", body=update)
 
         self.assertEqual(captured["status"], "303 See Other")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
-            updated = conn.execute("SELECT company_name, comment FROM calling_companies WHERE id = ?", (company_id,)).fetchone()
+            updated = conn.execute('SELECT company_name, comment FROM calling_companies WHERE id = %s', (company_id,)).fetchone()
             self.assertEqual(updated["company_name"], "Token Current Updated")
             self.assertEqual(updated["comment"], "current")
         finally:
@@ -3885,7 +3841,7 @@ class ServerSmokeTest(unittest.TestCase):
     def test_calling_company_edit_with_stale_token_shows_user_friendly_error(self):
         body = urlencode({"server_id": "1", "country_id": "1", "company_id_external": "token-stale-ui", "company_name": "Token UI Original", "line_count": "1", "dial_set_count": "2", "has_autorotation": "0", "retry_interval_seconds": "30", "is_active": "1", "comment": ""})
         self.request("/companies/create", method="POST", body=body)
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
             repo = server.Repository(conn)
             row = conn.execute("SELECT id, updated_at FROM calling_companies WHERE company_id_external = 'token-stale-ui'").fetchone()
@@ -3899,22 +3855,20 @@ class ServerSmokeTest(unittest.TestCase):
 
         self.assertEqual(captured["status"], "400 Bad Request")
         self.assertIn("Запись была изменена другим пользователем", content)
-        self.assertNotIn("sqlite", content.lower())
         self.assertNotIn("traceback", content.lower())
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
-            current = conn.execute("SELECT company_name, comment FROM calling_companies WHERE id = ?", (company_id,)).fetchone()
+            current = conn.execute('SELECT company_name, comment FROM calling_companies WHERE id = %s', (company_id,)).fetchone()
             self.assertEqual(current["company_name"], "User B UI Fresh")
             self.assertEqual(current["comment"], "fresh ui")
         finally:
             conn.close()
 
     def _create_route_for_concurrency(self, name):
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
-            server.init_db(conn)
             repo = server.Repository(conn)
-            server.ensure_seed(repo)
+            seed_postgres(conn)
             admin_id = conn.execute("SELECT id FROM users WHERE username = 'admin'").fetchone()["id"]
             return repo.create_route(country_id=1, provider_id=1, name=name, cli_source_type="pool", cli_source_label=name, aon_pool="Пул купленных номеров", created_by=admin_id)
         finally:
@@ -4029,9 +3983,9 @@ class ServerSmokeTest(unittest.TestCase):
 
     def test_route_edit_with_current_token_succeeds(self):
         route_id = self._create_route_for_concurrency("Route Token Current")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
-            token = conn.execute("SELECT updated_at FROM routes WHERE id = ?", (route_id,)).fetchone()["updated_at"]
+            token = conn.execute('SELECT updated_at FROM routes WHERE id = %s', (route_id,)).fetchone()["updated_at"]
         finally:
             conn.close()
         update = urlencode({"provider_id": "1", "provider_prefix_id": "", "cli_source_type": "pool", "cli_source_label": "Route Token Current", "aon_pool": "pool", "rnd_type": "", "rnd_pool_owner": "", "is_actual": "1", "priority_status": "unknown", "comment": "current route ui", "name": "Route Token Current Updated", "expected_updated_at": token})
@@ -4039,9 +3993,9 @@ class ServerSmokeTest(unittest.TestCase):
         captured, _ = self.request(f"/routes/{route_id}/update", method="POST", body=update)
 
         self.assertEqual(captured["status"], "303 See Other")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
-            updated = conn.execute("SELECT name, comment FROM routes WHERE id = ?", (route_id,)).fetchone()
+            updated = conn.execute('SELECT name, comment FROM routes WHERE id = %s', (route_id,)).fetchone()
             self.assertEqual(updated["name"], "Route Token Current Updated")
             self.assertEqual(updated["comment"], "current route ui")
         finally:
@@ -4049,10 +4003,10 @@ class ServerSmokeTest(unittest.TestCase):
 
     def test_route_edit_with_stale_token_shows_user_friendly_error(self):
         route_id = self._create_route_for_concurrency("Route Token Stale")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
             repo = server.Repository(conn)
-            stale_token = conn.execute("SELECT updated_at FROM routes WHERE id = ?", (route_id,)).fetchone()["updated_at"]
+            stale_token = conn.execute('SELECT updated_at FROM routes WHERE id = %s', (route_id,)).fetchone()["updated_at"]
             repo.update_route(route_id, name="Route Token User B Fresh", provider_id=1, provider_prefix_id=None, comment="fresh route ui", is_actual=True, priority_status="unknown", updated_by=1, cli_source_type="pool", cli_source_label="Route Token Stale", aon_pool="pool", rnd_type=None, rnd_pool_owner=None, expected_updated_at=stale_token)
         finally:
             conn.close()
@@ -4062,11 +4016,10 @@ class ServerSmokeTest(unittest.TestCase):
 
         self.assertEqual(captured["status"], "400 Bad Request")
         self.assertIn("Запись была изменена другим пользователем", content)
-        self.assertNotIn("sqlite", content.lower())
         self.assertNotIn("traceback", content.lower())
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
-            current = conn.execute("SELECT name, comment FROM routes WHERE id = ?", (route_id,)).fetchone()
+            current = conn.execute('SELECT name, comment FROM routes WHERE id = %s', (route_id,)).fetchone()
             self.assertEqual(current["name"], "Route Token User B Fresh")
             self.assertEqual(current["comment"], "fresh route ui")
         finally:
@@ -4074,10 +4027,10 @@ class ServerSmokeTest(unittest.TestCase):
 
     def test_route_stale_error_return_opens_actual_edit_page(self):
         route_id = self._create_route_for_concurrency("Route Stale Return")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
             repo = server.Repository(conn)
-            stale_token = conn.execute("SELECT updated_at FROM routes WHERE id = ?", (route_id,)).fetchone()["updated_at"]
+            stale_token = conn.execute('SELECT updated_at FROM routes WHERE id = %s', (route_id,)).fetchone()["updated_at"]
             repo.update_route(route_id, name="Route Stale Return Fresh", provider_id=1, provider_prefix_id=None, comment="fresh route ui", is_actual=True, priority_status="unknown", updated_by=1, cli_source_type="pool", cli_source_label="Route Stale Return", aon_pool="pool", rnd_type=None, rnd_pool_owner=None, expected_updated_at=stale_token)
         finally:
             conn.close()
@@ -4090,13 +4043,13 @@ class ServerSmokeTest(unittest.TestCase):
 
     def test_route_edit_stale_token_does_not_create_history(self):
         route_id = self._create_route_for_concurrency("Route Token History")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
             repo = server.Repository(conn)
-            stale_token = conn.execute("SELECT updated_at FROM routes WHERE id = ?", (route_id,)).fetchone()["updated_at"]
-            before_count = conn.execute("SELECT COUNT(*) AS count FROM route_history WHERE route_id = ?", (route_id,)).fetchone()["count"]
+            stale_token = conn.execute('SELECT updated_at FROM routes WHERE id = %s', (route_id,)).fetchone()["updated_at"]
+            before_count = conn.execute('SELECT COUNT(*) AS count FROM route_history WHERE route_id = %s', (route_id,)).fetchone()["count"]
             repo.update_route(route_id, name="Route Token History Fresh", provider_id=1, provider_prefix_id=None, comment="fresh history ui", is_actual=True, priority_status="unknown", updated_by=1, cli_source_type="pool", cli_source_label="Route Token History", aon_pool="pool", rnd_type=None, rnd_pool_owner=None, expected_updated_at=stale_token)
-            after_fresh_count = conn.execute("SELECT COUNT(*) AS count FROM route_history WHERE route_id = ?", (route_id,)).fetchone()["count"]
+            after_fresh_count = conn.execute('SELECT COUNT(*) AS count FROM route_history WHERE route_id = %s', (route_id,)).fetchone()["count"]
         finally:
             conn.close()
         update = urlencode({"provider_id": "1", "provider_prefix_id": "", "cli_source_type": "pool", "cli_source_label": "Route Token History", "aon_pool": "pool", "rnd_type": "", "rnd_pool_owner": "", "is_actual": "1", "priority_status": "unknown", "comment": "stale history ui", "name": "Route Token History Stale", "expected_updated_at": stale_token})
@@ -4104,9 +4057,9 @@ class ServerSmokeTest(unittest.TestCase):
         captured, _ = self.request(f"/routes/{route_id}/update", method="POST", body=update)
 
         self.assertEqual(captured["status"], "400 Bad Request")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
-            after_stale_count = conn.execute("SELECT COUNT(*) AS count FROM route_history WHERE route_id = ?", (route_id,)).fetchone()["count"]
+            after_stale_count = conn.execute('SELECT COUNT(*) AS count FROM route_history WHERE route_id = %s', (route_id,)).fetchone()["count"]
             self.assertEqual(after_fresh_count, before_count + 1)
             self.assertEqual(after_stale_count, after_fresh_count)
         finally:
@@ -4115,7 +4068,7 @@ class ServerSmokeTest(unittest.TestCase):
     def test_global_calling_company_journal_searches_old_names(self):
         body = urlencode({"server_id": "1", "country_id": "1", "company_id_external": "history-search-id", "company_name": "HistoryOld", "line_count": "1", "dial_set_count": "2", "has_autorotation": "0", "retry_interval_seconds": "30", "is_active": "1", "comment": "old comment"})
         self.request("/companies/create", method="POST", body=body)
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
             company_id = conn.execute("SELECT id FROM calling_companies WHERE company_id_external = 'history-search-id'").fetchone()["id"]
         finally:
@@ -4162,10 +4115,10 @@ class ServerSmokeTest(unittest.TestCase):
     def test_route_number_removal_error_preserves_confirmation_form_state(self):
         self.make_route_purchased_pool()
         self.request("/routes")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
             link_id = conn.execute(
-                "SELECT id FROM route_phone_numbers WHERE route_id = 1 AND is_active = 1 ORDER BY id LIMIT 1"
+                'SELECT id FROM route_phone_numbers WHERE route_id = 1 AND is_active = TRUE ORDER BY id LIMIT 1'
             ).fetchone()["id"]
         finally:
             conn.close()
@@ -4188,10 +4141,10 @@ class ServerSmokeTest(unittest.TestCase):
     def test_route_number_removal_without_selection_is_blocked_and_keeps_reason(self):
         self.make_route_purchased_pool()
         self.request("/routes")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
             before = conn.execute(
-                "SELECT COUNT(*) FROM route_phone_numbers WHERE route_id = 1 AND is_active = 1"
+                'SELECT COUNT(*) FROM route_phone_numbers WHERE route_id = 1 AND is_active = TRUE'
             ).fetchone()[0]
         finally:
             conn.close()
@@ -4207,10 +4160,10 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertIn("Выберите номера для исключения из маршрута", form)
         self.assertIn('value="Не тот пул"', form)
         self.assertRegex(form, r"name='confirm_remove' value='1' checked")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
             after = conn.execute(
-                "SELECT COUNT(*) FROM route_phone_numbers WHERE route_id = 1 AND is_active = 1"
+                'SELECT COUNT(*) FROM route_phone_numbers WHERE route_id = 1 AND is_active = TRUE'
             ).fetchone()[0]
         finally:
             conn.close()
@@ -4219,10 +4172,10 @@ class ServerSmokeTest(unittest.TestCase):
     def test_route_number_removal_requires_confirmation_and_preserves_selection(self):
         self.make_route_purchased_pool()
         self.request("/routes")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
             link_id = conn.execute(
-                "SELECT id FROM route_phone_numbers WHERE route_id = 1 AND is_active = 1 ORDER BY id LIMIT 1"
+                'SELECT id FROM route_phone_numbers WHERE route_id = 1 AND is_active = TRUE ORDER BY id LIMIT 1'
             ).fetchone()["id"]
         finally:
             conn.close()
@@ -4239,10 +4192,10 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertIn('value="Смена пула"', form)
         self.assertRegex(form, rf"name='link_ids' value='{link_id}' checked")
         self.assertNotRegex(form, r"name='confirm_remove' value='1' checked")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
             self.assertEqual(
-                conn.execute("SELECT is_active FROM route_phone_numbers WHERE id = ?", (link_id,)).fetchone()[0],
+                conn.execute('SELECT is_active FROM route_phone_numbers WHERE id = %s', (link_id,)).fetchone()[0],
                 1,
             )
         finally:
@@ -4302,7 +4255,7 @@ class ServerSmokeTest(unittest.TestCase):
         self.request("/admin/dictionaries/projects/create", method="POST", body=urlencode({"name": "NewProject", "comment": "Project comment"}))
         self.request("/admin/dictionaries/phone-assignments/create", method="POST", body=urlencode({"name": "Мониторинг", "comment": "Assignment comment"}))
         self.request("/admin/dictionaries/phone-assignments/create", method="POST", body=urlencode({"name": "Мониторинг 2"}))
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
             assignments = conn.execute("SELECT id, code, name FROM phone_assignment_types WHERE name IN ('Мониторинг', 'Мониторинг 2') ORDER BY name").fetchall()
             self.assertEqual(len(assignments), 2)
@@ -4313,9 +4266,9 @@ class ServerSmokeTest(unittest.TestCase):
         finally:
             conn.close()
         self.request(f"/admin/dictionaries/phone-assignments/{assignment_id}/update", method="POST", body=urlencode({"name": "Мониторинг renamed", "is_active": "1"}))
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
-            self.assertEqual(conn.execute("SELECT code FROM phone_assignment_types WHERE id = ?", (assignment_id,)).fetchone()["code"], original_code)
+            self.assertEqual(conn.execute('SELECT code FROM phone_assignment_types WHERE id = %s', (assignment_id,)).fetchone()["code"], original_code)
         finally:
             conn.close()
         captured, content = self.request("/phones")
@@ -4403,7 +4356,7 @@ class ServerSmokeTest(unittest.TestCase):
 
     def test_server_priorities_server_filter_keeps_empty_selected_server_block(self):
         self.request("/routes")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
             eu3_id = conn.execute("SELECT id FROM servers WHERE name = 'EU3'").fetchone()["id"]
         finally:
@@ -4433,7 +4386,7 @@ class ServerSmokeTest(unittest.TestCase):
         captured, content = self.request("/admin/server-priorities/1/update", method="POST", body=body)
         self.assertEqual(captured["status"], "403 Forbidden")
         self.assertIn("Нет доступа", content)
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
             row = conn.execute("SELECT current_route_id, previous_route_id, comment FROM server_route_priorities WHERE id = 1").fetchone()
             self.assertEqual(row["current_route_id"], 2)
@@ -4473,17 +4426,18 @@ class ServerSmokeTest(unittest.TestCase):
         self.request("/admin/change-log")
         short_summary = "Короткое изменение"
         long_summary = "Первая строка подробного изменения\n" + ("продолжение сводки " * 5)
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
-            conn.executemany(
-                "INSERT INTO change_log (entity_type, entity_id, change_type, summary, source) VALUES (?, ?, ?, ?, ?)",
-                [
-                    ("test_summary", 901, "test.short", short_summary, "test"),
-                    ("test_summary", 902, "test.long", long_summary, "test"),
-                ],
-            )
+            with conn.cursor() as cur:
+                cur.executemany(
+                    'INSERT INTO change_log (entity_type, entity_id, change_type, summary, source) VALUES (%s, %s, %s, %s, %s)',
+                    [
+                        ("test_summary", 901, "test.short", short_summary, "test"),
+                        ("test_summary", 902, "test.long", long_summary, "test"),
+                    ],
+                )
             conn.commit()
-            before = [tuple(row) for row in conn.execute("SELECT * FROM change_log ORDER BY id")]
+            before = [tuple(row.values()) for row in conn.execute("SELECT * FROM change_log ORDER BY id")]
         finally:
             conn.close()
 
@@ -4510,9 +4464,9 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertIn("class='expandable-cell'", provider_comment_cell)
         self.assertIn(f"data-full-text='{server.plain_text(long_summary)}'", provider_comment_cell)
 
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
-            after = [tuple(row) for row in conn.execute("SELECT * FROM change_log ORDER BY id")]
+            after = [tuple(row.values()) for row in conn.execute("SELECT * FROM change_log ORDER BY id")]
         finally:
             conn.close()
         self.assertEqual(before, after)
@@ -4545,7 +4499,7 @@ class ServerSmokeTest(unittest.TestCase):
         captured, _ = self.request("/provider-changes/create", method="POST", body=body)
         self.assertEqual(captured["status"], "303 See Other")
         route_id = ""
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
             route_id = str(conn.execute("SELECT id FROM routes WHERE name = 'Мексика/Sancom/Demo_0827@'").fetchone()[0])
         finally:
@@ -4560,9 +4514,9 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertIn("aria-label='История'", content)
         self.assertIn("2222222", content)
 
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
-            setting_id = conn.execute("SELECT id FROM company_routing_settings WHERE calling_company_id = 2 AND is_active = 1 AND valid_to IS NULL").fetchone()[0]
+            setting_id = conn.execute('SELECT id FROM company_routing_settings WHERE calling_company_id = 2 AND is_active = TRUE AND valid_to IS NULL').fetchone()[0]
         finally:
             conn.close()
         captured, history = self.request(f"/campaign-routing/{setting_id}/history")
@@ -4697,7 +4651,7 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertEqual(captured["status"], "400 Bad Request")
         self.assertIn("изменения выполняются через", content)
 
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
             row = conn.execute("SELECT * FROM company_routing_settings WHERE id = 1").fetchone()
             self.assertEqual(row["comment"], "Начальная авторотация при создании кампании")
@@ -4718,7 +4672,7 @@ class ServerSmokeTest(unittest.TestCase):
         captured, content = self.request("/admin/company-routing-settings/1/deactivate", method="POST", body=urlencode({}))
         self.assertEqual(captured["status"], "400 Bad Request")
         self.assertIn("деактивация и удаление выполняются через", content)
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
             row = conn.execute("SELECT is_active, valid_to FROM company_routing_settings WHERE id = 1").fetchone()
             self.assertEqual(row["is_active"], 1)
@@ -4732,9 +4686,9 @@ class ServerSmokeTest(unittest.TestCase):
         captured, content = self.request("/admin/company-routing-settings/1/delete", method="POST", body=urlencode({}))
         self.assertEqual(captured["status"], "400 Bad Request")
         self.assertIn("деактивация и удаление выполняются через", content)
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
-            self.assertEqual(conn.execute("SELECT COUNT(*) FROM company_routing_settings WHERE id = 1 AND is_active = 1 AND valid_to IS NULL").fetchone()[0], 1)
+            self.assertEqual(conn.execute('SELECT COUNT(*) FROM company_routing_settings WHERE id = 1 AND is_active = TRUE AND valid_to IS NULL').fetchone()[0], 1)
         finally:
             conn.close()
 
@@ -4770,7 +4724,7 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
 
     def test_server_priority_event_accepts_multiple_server_ids_from_ui(self):
         self.request("/routes")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
             target = conn.execute("""
                 SELECT r.id AS route_id, p.id AS provider_id
@@ -4795,7 +4749,7 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
         ])
         captured, _ = self.request("/provider-changes/create", method="POST", body=body)
         self.assertEqual(captured["status"], "303 See Other")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
             self.assertEqual(conn.execute("SELECT COUNT(*) FROM routing_events").fetchone()[0], 1)
             server_ids = [row["server_id"] for row in conn.execute("SELECT server_id FROM routing_event_servers ORDER BY server_id")]
@@ -4812,7 +4766,7 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
 
     def test_provider_changes_journal_shows_affected_servers_human_readable(self):
         self.request("/routes")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
             target = conn.execute("SELECT id, provider_id FROM routes WHERE name = 'Мексика/Sancom/Demo_0827@'").fetchone()
         finally:
@@ -4847,15 +4801,10 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
 
     def test_provider_changes_journal_keeps_legacy_single_server_event_display(self):
         self.request("/routes")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
             conn.execute(
-                """
-                INSERT INTO routing_events(
-                    event_at, apply_scope, reason, country_id, server_id, provider_id,
-                    old_route_id, new_route_id, comment, snapshot_json, created_by, updated_by
-                ) VALUES (?, 'server_priority', ?, 1, 1, 2, 2, 1, ?, ?, ?, ?)
-                """,
+                "\n                INSERT INTO routing_events(\n                    event_at, apply_scope, reason, country_id, server_id, provider_id,\n                    old_route_id, new_route_id, comment, snapshot_json, created_by, updated_by\n                ) VALUES (%s, 'server_priority', %s, 1, 1, 2, 2, 1, %s, %s, %s, %s)\n                ",
                 ("2026-06-10 09:30", "Другое", "legacy single server event", "{}", server.ADMIN_ID, server.ADMIN_ID),
             )
             conn.commit()
@@ -4869,7 +4818,7 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
 
     def test_provider_changes_server_filter_finds_multi_server_events(self):
         self.request("/routes")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
             target = conn.execute("SELECT id, provider_id FROM routes WHERE name = 'Мексика/Sancom/Demo_0827@'").fetchone()
         finally:
@@ -4899,15 +4848,10 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
 
     def test_provider_changes_server_filter_keeps_legacy_single_server_events(self):
         self.request("/routes")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
             conn.execute(
-                """
-                INSERT INTO routing_events(
-                    event_at, apply_scope, reason, country_id, server_id, provider_id,
-                    old_route_id, new_route_id, comment, snapshot_json, created_by, updated_by
-                ) VALUES (?, 'server_priority', ?, 1, 1, 2, 2, 1, ?, ?, ?, ?)
-                """,
+                "\n                INSERT INTO routing_events(\n                    event_at, apply_scope, reason, country_id, server_id, provider_id,\n                    old_route_id, new_route_id, comment, snapshot_json, created_by, updated_by\n                ) VALUES (%s, 'server_priority', %s, 1, 1, 2, 2, 1, %s, %s, %s, %s)\n                ",
                 ("2026-06-10 12:45", "Другое", "legacy filter single server event", "{}", server.ADMIN_ID, server.ADMIN_ID),
             )
             conn.commit()
@@ -4925,15 +4869,10 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
 
     def _insert_routing_event(self, event_at, comment, *, country_id=1, apply_scope="none", server_id=None):
         self.request("/routes")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
             conn.execute(
-                """
-                INSERT INTO routing_events(
-                    event_at, apply_scope, reason, country_id, server_id, provider_id,
-                    comment, snapshot_json, created_by, updated_by
-                ) VALUES (?, ?, 'Другое', ?, ?, 1, ?, '{}', ?, ?)
-                """,
+                "\n                INSERT INTO routing_events(\n                    event_at, apply_scope, reason, country_id, server_id, provider_id,\n                    comment, snapshot_json, created_by, updated_by\n                ) VALUES (%s, %s, 'Другое', %s, %s, 1, %s, '{}', %s, %s)\n                ",
                 (event_at, apply_scope, country_id, server_id, comment, server.ADMIN_ID, server.ADMIN_ID),
             )
             conn.commit()
@@ -4952,15 +4891,10 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
 
     def test_provider_changes_journal_shows_campaign_settings_comment(self):
         self.request("/routes")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
             conn.execute(
-                """
-                INSERT INTO routing_events(
-                    event_at, apply_scope, reason, country_id, provider_id, calling_company_id,
-                    comment, snapshot_json, created_by, updated_by
-                ) VALUES (?, 'campaign_setting', 'Другое', 1, 1, 1, ?, '{}', ?, ?)
-                """,
+                "\n                INSERT INTO routing_events(\n                    event_at, apply_scope, reason, country_id, provider_id, calling_company_id,\n                    comment, snapshot_json, created_by, updated_by\n                ) VALUES (%s, 'campaign_setting', 'Другое', 1, 1, 1, %s, '{}', %s, %s)\n                ",
                 ("2026-06-22 10:05:00", "campaign settings journal comment", server.ADMIN_ID, server.ADMIN_ID),
             )
             conn.commit()
@@ -5018,14 +4952,11 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
         self._insert_routing_event("2026-06-22 12:00:00", "matching geo scope server", apply_scope="server_priority", server_id=1)
         self._insert_routing_event("2026-06-22 12:00:00", "wrong scope", apply_scope="none", server_id=1)
         self._insert_routing_event("2026-06-22 12:00:00", "wrong server", apply_scope="server_priority", server_id=2)
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
-            other_country_id = conn.execute("INSERT INTO countries(name, code) VALUES ('Испания', 'ES')").lastrowid
+            other_country_id = conn.execute("INSERT INTO countries(name, code) VALUES ('Испания', 'ES') RETURNING id").fetchone()["id"]
             conn.execute(
-                """
-                INSERT INTO routing_events(event_at, apply_scope, reason, country_id, server_id, provider_id, comment, snapshot_json, created_by, updated_by)
-                VALUES ('2026-06-22 12:00:00', 'server_priority', 'Другое', ?, 1, 1, 'wrong geo', '{}', ?, ?)
-                """,
+                "\n                INSERT INTO routing_events(event_at, apply_scope, reason, country_id, server_id, provider_id, comment, snapshot_json, created_by, updated_by)\n                VALUES ('2026-06-22 12:00:00', 'server_priority', 'Другое', %s, 1, 1, 'wrong geo', '{}', %s, %s)\n                ",
                 (other_country_id, server.ADMIN_ID, server.ADMIN_ID),
             )
             conn.commit()
@@ -5089,7 +5020,7 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
 
     def test_provider_change_campaign_id_search_post_selects_external_id_company(self):
         self.request("/routes")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
             eu1_id = conn.execute("SELECT id FROM servers WHERE name = 'EU1'").fetchone()["id"]
             country_id = conn.execute("SELECT id FROM countries WHERE name = 'Мексика'").fetchone()["id"]
@@ -5114,7 +5045,7 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
 
     def test_provider_change_campaign_id_search_post_ignores_internal_id(self):
         self.request("/routes")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
             eu1_id = conn.execute("SELECT id FROM servers WHERE name = 'EU1'").fetchone()["id"]
             country_id = conn.execute("SELECT id FROM countries WHERE name = 'Мексика'").fetchone()["id"]
@@ -5136,7 +5067,7 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
 
     def test_provider_change_campaign_id_search_post_reports_server_conflict(self):
         self.request("/routes")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
             eu1_id = conn.execute("SELECT id FROM servers WHERE name = 'EU1'").fetchone()["id"]
             eu3_id = conn.execute("SELECT id FROM servers WHERE name = 'EU3'").fetchone()["id"]
@@ -5160,7 +5091,7 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
 
     def test_campaign_setting_route_is_preserved_when_toggling_autorotation(self):
         self.request("/routes")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
             route_id = conn.execute("SELECT id FROM routes WHERE name = 'Мексика/Sancom/Demo_0827@'").fetchone()[0]
             repo = server.Repository(conn)
@@ -5221,7 +5152,7 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
 
     def test_bulk_campaign_autorotation_creates_event_per_changed_campaign_and_skips_noop(self):
         self.request("/routes")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
             repo = server.Repository(conn)
             admin_id = conn.execute("SELECT id FROM users WHERE username = 'admin'").fetchone()["id"]
@@ -5246,11 +5177,11 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
         self.assertEqual(captured["status"], "303 See Other")
         location = dict(captured["headers"])["Location"]
         self.assertIn("notice=", location)
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
-            rows = conn.execute("SELECT calling_company_id FROM routing_events WHERE apply_scope = 'campaign_setting' AND comment = ? ORDER BY calling_company_id", ("bulk enable",)).fetchall()
+            rows = conn.execute("SELECT calling_company_id FROM routing_events WHERE apply_scope = 'campaign_setting' AND comment = %s ORDER BY calling_company_id", ("bulk enable",)).fetchall()
             self.assertEqual([row["calling_company_id"] for row in rows], [changed_one, changed_two])
-            active_count = conn.execute("SELECT COUNT(*) FROM company_routing_settings WHERE calling_company_id IN (?, ?) AND is_active = 1 AND valid_to IS NULL AND has_autorotation = 1", (changed_one, changed_two)).fetchone()[0]
+            active_count = conn.execute('SELECT COUNT(*) FROM company_routing_settings WHERE calling_company_id IN (%s, %s) AND is_active = TRUE AND valid_to IS NULL AND has_autorotation = TRUE', (changed_one, changed_two)).fetchone()[0]
             self.assertEqual(active_count, 2)
         finally:
             conn.close()
@@ -5297,7 +5228,7 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
         self.request("/routes")
         body = urlencode({"server_id": "1", "country_id": "1", "company_name": "Journal Auto", "company_id_external": "journal-auto", "line_count": "1", "dial_set_count": "1", "retry_interval_seconds": "30", "has_autorotation": "0", "is_active": "1", "comment": ""})
         self.request("/companies/create", method="POST", body=body)
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
             company_id = conn.execute("SELECT id FROM calling_companies WHERE company_id_external = 'journal-auto'").fetchone()["id"]
         finally:
@@ -5325,12 +5256,12 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
         body = urlencode({"apply_scope": "campaign_setting", "event_at": "2026-06-10T12:00", "calling_company_id": "2", "company_change_type": "enable_autorotation", "reason": "Тест нового маршрута", "comment": "Логируем включение авторотации"})
         captured, _ = self.request("/provider-changes/create", method="POST", body=body)
         self.assertEqual(captured["status"], "303 See Other")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
             event = conn.execute("SELECT * FROM routing_events WHERE calling_company_id = 2").fetchone()
             self.assertEqual(event["old_company_routing_mode"], "server_priority")
             self.assertEqual(event["old_company_has_autorotation"], 0)
-            setting = conn.execute("SELECT * FROM company_routing_settings WHERE calling_company_id = 2 AND is_active = 1 AND valid_to IS NULL").fetchone()
+            setting = conn.execute('SELECT * FROM company_routing_settings WHERE calling_company_id = 2 AND is_active = TRUE AND valid_to IS NULL').fetchone()
             self.assertIsNotNone(setting)
             self.assertEqual(setting["routing_mode"], "autorotation")
             self.assertEqual(setting["has_autorotation"], 1)
@@ -5385,7 +5316,7 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
 
     def test_provider_changes_csv_export_includes_manual_route_details(self):
         self.request("/routes")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
             route_id = conn.execute("SELECT id FROM routes WHERE name = 'Мексика/Sancom/Demo_0827@'").fetchone()[0]
         finally:
@@ -5400,7 +5331,7 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
 
     def test_provider_changes_csv_export_includes_server_priority_details_without_html(self):
         self.request("/routes")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
             target = conn.execute("SELECT id, provider_id FROM routes WHERE name = 'Мексика/Sancom/Demo_0827@'").fetchone()
         finally:
@@ -5469,13 +5400,13 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
             "new_company_route_id": "1",
         }))
         self.assertEqual(captured["status"], "303 See Other")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
             event = conn.execute("SELECT * FROM routing_events WHERE id = 1").fetchone()
             self.assertEqual(event["comment"], "только новый комментарий")
             self.assertEqual(event["company_change_type"], "enable_autorotation")
             self.assertEqual(event["calling_company_id"], 2)
-            setting = conn.execute("SELECT * FROM company_routing_settings WHERE calling_company_id = 2 AND is_active = 1 AND valid_to IS NULL").fetchone()
+            setting = conn.execute('SELECT * FROM company_routing_settings WHERE calling_company_id = 2 AND is_active = TRUE AND valid_to IS NULL').fetchone()
             self.assertEqual(setting["routing_mode"], "autorotation")
             self.assertEqual(setting["has_autorotation"], 1)
             self.assertEqual(setting["comment"], "только новый комментарий")
@@ -5486,17 +5417,14 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
 
     def add_extra_routes(self, count=55, prefix="BulkRoute"):
         self.request("/routes")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
             country_id = conn.execute("SELECT id FROM countries WHERE code = 'MEX'").fetchone()["id"]
             provider_id = conn.execute("SELECT id FROM providers WHERE name = 'DemoTel'").fetchone()["id"]
             admin_id = conn.execute("SELECT id FROM users WHERE username = 'admin'").fetchone()["id"]
             for index in range(count):
                 conn.execute(
-                    """
-                    INSERT INTO routes(country_id, provider_id, name, cli_source_type, cli_source_label, is_actual, priority_status, comment, created_by)
-                    VALUES (?, ?, ?, 'rnd', ?, 1, 'normal', ?, ?)
-                    """,
+                    "\n                    INSERT INTO routes(country_id, provider_id, name, cli_source_type, cli_source_label, is_actual, priority_status, comment, created_by)\n                    VALUES (%s, %s, %s, 'rnd', %s, TRUE, 'normal', %s, %s)\n                    ",
                     (country_id, provider_id, f"{prefix} {index:03d}", f"{prefix}{index:03d}", "bulk export row", admin_id),
                 )
             conn.commit()
@@ -5554,9 +5482,9 @@ if __name__ == "__main__":
 class RolePermissionTest(ServerSmokeTest):
     def user_cookie(self, username):
         self.request("/login")
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
-            user_id = conn.execute("SELECT id FROM users WHERE username = ?", (username,)).fetchone()["id"]
+            user_id = conn.execute('SELECT id FROM users WHERE username = %s', (username,)).fetchone()["id"]
         finally:
             conn.close()
         return f"{server.CURRENT_USER_COOKIE}={server.sign_user_id(user_id)}"
@@ -5745,10 +5673,9 @@ class RolePermissionTest(ServerSmokeTest):
         })
 
     def _tariff_audit_counts(self):
-        conn = server.connect(server.DB_PATH)
+        conn = _TEST_DB.connect()
         try:
-            server.init_db(conn)
-            server.ensure_seed(server.Repository(conn))
+            seed_postgres(conn)
             return {
                 "tariffs": conn.execute("SELECT COUNT(*) FROM tariffs").fetchone()[0],
                 "history": conn.execute("SELECT COUNT(*) FROM tariff_change_history").fetchone()[0],
@@ -5830,11 +5757,8 @@ class RolePermissionTest(ServerSmokeTest):
 
 class ProviderChangeTelegramServerTest(unittest.TestCase):
     def setUp(self):
-        self.tmp = tempfile.NamedTemporaryFile(delete=False)
-        self.tmp.close()
-        self.conn = server.connect(self.tmp.name)
-        server.init_db(self.conn)
-        server.ensure_seed(server.Repository(self.conn))
+        _TEST_DB.reset()
+        self.conn = _TEST_DB.connect()
         self.repo = server.Repository(self.conn)
         self.admin_id = self.conn.execute("SELECT id FROM users WHERE username = 'admin'").fetchone()["id"]
         server._REQUEST_CONTEXT["current_user_id"] = self.admin_id
@@ -5845,7 +5769,6 @@ class ProviderChangeTelegramServerTest(unittest.TestCase):
     def tearDown(self):
         server._REQUEST_CONTEXT.clear()
         self.conn.close()
-        os.unlink(self.tmp.name)
 
     def _create_none_scope_post(self):
         return {

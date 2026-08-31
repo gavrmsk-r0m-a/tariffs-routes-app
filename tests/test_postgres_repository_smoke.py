@@ -1,16 +1,19 @@
-import importlib.util
+﻿import importlib.util
 import os
 import sys
-import sqlite3
 import tempfile
 import unittest
 from decimal import Decimal
 from pathlib import Path
 from unittest import mock
 
+from scripts import migrate_sqlite_to_postgres as mig
 from scripts import postgres_repository_smoke as smoke
 from scripts.create_migration_demo_sqlite import create_demo_sqlite
+from tests.postgres_test_support import SCHEMA_PATH, shared_database
 from app.repository import Repository
+
+_TEST_DB = shared_database()
 
 CHECKS_COUNT = 613
 
@@ -33,19 +36,42 @@ class RecordingRepository:
 
 
 class PostgreSQLRepositorySmokeTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+    
+        # Repository smoke must run against PostgreSQL.
+        # SQLite exists here only as the synthetic legacy migration source.
+        _TEST_DB.reset(seed=False)
+    
+        with tempfile.TemporaryDirectory() as directory:
+            sqlite_path = create_demo_sqlite(Path(directory) / "demo.db")
+            sqlite_conn = mig.open_sqlite_readonly(sqlite_path)
+            try:
+                plan = mig.build_plan(sqlite_conn, SCHEMA_PATH)
+                mig.run_apply(
+                    sqlite_conn,
+                    _TEST_DB.database_url,
+                    SCHEMA_PATH,
+                    plan,
+                    create_schema=False,
+                    drop_existing=False,
+                )
+            finally:
+                sqlite_conn.close()
+    
     def setUp(self):
-        self.temp_dir = tempfile.TemporaryDirectory()
-        path = create_demo_sqlite(Path(self.temp_dir.name) / "demo.db")
-        self.conn = sqlite3.connect(path)
-        self.conn.row_factory = sqlite3.Row
-
+        self.conn = _TEST_DB.connect()
+    
     def tearDown(self):
         self.conn.close()
-        self.temp_dir.cleanup()
-
+    
     def run_demo(self, repository=None):
-        return smoke.run_repository_checks(repository or Repository(self.conn), "postgresql://user:secret@localhost/demo")
-
+        return smoke.run_repository_checks(
+            repository or Repository(self.conn, backend="postgres"),
+            _TEST_DB.database_url,
+        )
+    
     def test_smoke_script_imports_without_psycopg(self):
         script = Path(smoke.__file__)
         spec = importlib.util.spec_from_file_location("lazy_smoke_test_module", script)
