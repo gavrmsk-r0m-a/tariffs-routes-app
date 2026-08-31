@@ -95,7 +95,13 @@ class TemporaryPostgresDatabase:
             conn.execute("SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = %s AND pid <> pg_backend_pid()", (self.name,))
             conn.execute(sql.SQL("DROP DATABASE IF EXISTS {}").format(sql.Identifier(self.name)))
 
-DEFAULT_PROJECTS = (("mezhdep", "Меж.деп.", 1, 0), ("rep", "REP", 2, 1), ("itm", "ИТМ", 3, 1), ("prepayment", "Предоплата", 4, 1), ("legal", "Юр.деп.", 5, 1))
+DEFAULT_PROJECTS = (
+    ("mezhdep", "Меж.деп.", 1, False),
+    ("rep", "REP", 2, True),
+    ("itm", "ИТМ", 3, True),
+    ("prepayment", "Предоплата", 4, True),
+    ("legal", "Юр.деп.", 5, True),
+)
 DEFAULT_PHONE_ASSIGNMENTS = (("gl", "ГЛ", 1), ("aon", "АОН", 2), ("scratchcards", "Scratchcards", 3), ("competitors", "Competitors", 4), ("sms", "SMS", 5), ("corporate_telephony", "Корп.телефония", 6), ("dozhim", "Дожим", 7), ("ivr", "IVR", 8))
 
 DEMO_DATA_VERSION = "mvp_mexico_demo_v2"

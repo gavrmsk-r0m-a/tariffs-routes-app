@@ -1,6 +1,7 @@
 import unittest
 
 from tests.postgres_test_support import (
+    DEFAULT_PROJECTS,
     TemporaryPostgresDatabase,
     _database_name,
     _with_database,
@@ -54,6 +55,12 @@ class PostgresTestSupportSafetyTest(unittest.TestCase):
         make_row = hybrid_row(CursorWithoutResult())
 
         self.assertEqual(make_row(()), {})
+
+    def test_default_projects_use_native_boolean_route_name_flags(self):
+        self.assertTrue(DEFAULT_PROJECTS)
+        self.assertTrue(
+            all(type(project[3]) is bool for project in DEFAULT_PROJECTS)
+        )
 
 
 if __name__ == "__main__":
