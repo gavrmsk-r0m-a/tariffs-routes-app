@@ -133,7 +133,6 @@ class TemporaryPostgresDatabase:
             conn.execute("DROP SCHEMA public CASCADE")
             conn.execute("CREATE SCHEMA public")
             conn.execute(SCHEMA_PATH.read_text(encoding="utf-8"))
-            seed_change_reason_defaults(conn)
             if seed:
                 seed_postgres(conn)
             conn.commit()
@@ -169,6 +168,7 @@ DEMO_COMPANY_EXTERNAL_IDS = tuple(str(1000 + i) for i in range(1, 6))
 
 def seed_postgres(conn) -> None:
     repo = Repository(conn)
+    seed_change_reason_defaults(conn)
     def ensure_demo_state_table() -> None:
         repo.conn.execute(
             """
@@ -489,9 +489,6 @@ def seed_postgres(conn) -> None:
         demotel_prefix = None
         repo.conn.execute("INSERT INTO currency_rates(currency_id, rate_to_eur, rate_date, updated_by, comment) SELECT %s, 1, '2026-06-07', %s, 'Demo EUR' WHERE NOT EXISTS (SELECT 1 FROM currency_rates WHERE currency_id = %s AND rate_date = '2026-06-07' AND comment = 'Demo EUR')", (eur_id, admin_id, eur_id))
         repo.conn.execute("INSERT INTO currency_rates(currency_id, rate_to_eur, rate_date, updated_by, comment) SELECT %s, 0.93, '2026-06-07', %s, 'Demo USDT' WHERE NOT EXISTS (SELECT 1 FROM currency_rates WHERE currency_id = %s AND rate_date = '2026-06-07' AND comment = 'Demo USDT')", (usdt_id, admin_id, usdt_id))
-        for reason in ("Плохие показатели", "Провайдер починил", "Обновлен пул номеров"):
-            repo.conn.execute("INSERT INTO change_reasons(name, description, is_active) VALUES (%s, %s, TRUE)", (reason, reason))
-
         server_ids = {row["name"]: row["id"] for row in repo.conn.execute("SELECT id, name FROM servers WHERE name IN (%s)" % ",".join("%s" for _ in DEMO_SERVER_NAMES), DEMO_SERVER_NAMES)}
         repo.conn.execute(
             "UPDATE servers SET is_active = FALSE, updated_at = CURRENT_TIMESTAMP WHERE name NOT IN (%s)" % ",".join("%s" for _ in DEMO_SERVER_NAMES),
