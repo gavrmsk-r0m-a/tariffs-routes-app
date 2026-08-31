@@ -2814,17 +2814,22 @@ class Repository:
     def _name_by_id(self, table: str, row_id: int | None, column: str = "name") -> str | None:
         if not row_id:
             return None
-        row = self.conn.execute(f"SELECT {column} FROM {table} WHERE id = ?", (row_id,)).fetchone()
+        p = placeholder(self.backend)
+        row = self.conn.execute(
+            f"SELECT {column} FROM {table} WHERE id = {p}",
+            (row_id,),
+        ).fetchone()
         return row[column] if row else None
 
     def _route_label(self, route_id: int | None) -> str | None:
         if not route_id:
             return None
+        p = placeholder(self.backend)
         row = self.conn.execute(
-            """
+            f"""
             SELECT r.name, p.name AS provider_name
             FROM routes r JOIN providers p ON p.id = r.provider_id
-            WHERE r.id = ?
+            WHERE r.id = {p}
             """,
             (route_id,),
         ).fetchone()

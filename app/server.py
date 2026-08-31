@@ -5122,9 +5122,23 @@ def clean_parts(parts: list[str]) -> str:
 
 
 def build_route_name(repo: Repository, country_id: int, provider_id: int, project_label: str | None, cli_source_label: str, provider_prefix_id: int | None) -> str:
-    country = repo.conn.execute("SELECT name FROM countries WHERE id = ?", (country_id,)).fetchone()
-    provider = repo.conn.execute("SELECT name FROM providers WHERE id = ?", (provider_id,)).fetchone()
-    prefix = repo.conn.execute("SELECT prefix FROM provider_prefixes WHERE id = ?", (provider_prefix_id,)).fetchone() if provider_prefix_id else None
+    p = placeholder(repo.backend)
+    country = repo.conn.execute(
+        f"SELECT name FROM countries WHERE id = {p}",
+        (country_id,),
+    ).fetchone()
+    provider = repo.conn.execute(
+        f"SELECT name FROM providers WHERE id = {p}",
+        (provider_id,),
+    ).fetchone()
+    prefix = (
+        repo.conn.execute(
+            f"SELECT prefix FROM provider_prefixes WHERE id = {p}",
+            (provider_prefix_id,),
+        ).fetchone()
+        if provider_prefix_id
+        else None
+    )
     country_name = country["name"] if country else ""
     provider_name = provider["name"] if provider else ""
     prefix_part = f"{prefix['prefix']}pfx" if prefix and prefix["prefix"] else ""
@@ -5182,12 +5196,13 @@ def route_options_for_country(repo: Repository, country_id: object | None = None
             selected=selected,
             empty=empty,
         )
+    p = placeholder(repo.backend)
     return select_options(
         repo,
-        """
+        f"""
         SELECT r.id, r.name AS label
         FROM routes r
-        WHERE r.country_id = ?
+        WHERE r.country_id = {p}
         ORDER BY r.name
         """,
         (country_id,),
@@ -9731,7 +9746,11 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
         provider_id = parse_int(data.get("provider_id"))
         review_required = 1 if data.get("review_required") == "1" else 0
         if provider_id is None and review_required == 0:
-            existing_phone = repo.conn.execute("SELECT is_active FROM phone_numbers WHERE id = ?", (phone_id,)).fetchone()
+            p = placeholder(repo.backend)
+            existing_phone = repo.conn.execute(
+                f"SELECT is_active FROM phone_numbers WHERE id = {p}",
+                (phone_id,),
+            ).fetchone()
             if is_active == 1 and existing_phone and int(existing_phone["is_active"]) == 0:
                 review_required = 1
             else:
@@ -9795,17 +9814,28 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
             calling_company_ids.append(legacy_calling_company_id)
         if apply_scope == "campaign_setting" and (data.get("campaign_id_search") or "").strip():
             campaign_id_search = (data.get("campaign_id_search") or "").strip()
-            found_company = repo.conn.execute("""
+            p = placeholder(repo.backend)
+            found_company = repo.conn.execute(
+                f"""
                 SELECT cc.id, cc.server_id, cc.company_id_external, s.name AS server_name
                 FROM calling_companies cc
                 JOIN servers s ON s.id = cc.server_id
-                WHERE cc.company_id_external = ? AND cc.is_active = 1
-                """, (campaign_id_search,)).fetchone()
+                WHERE cc.company_id_external = {p}
+                  AND cc.is_active = {p}
+                """,
+                (
+                    campaign_id_search,
+                    to_db_bool(True, repo.backend),
+                ),
+            ).fetchone()
             if not found_company:
                 raise BusinessRuleError("Кампания с таким ID не найдена")
             helper_server_id = parse_int(data.get("server_id"))
             if helper_server_id and int(found_company["server_id"]) != helper_server_id:
-                selected_server = repo.conn.execute("SELECT name FROM servers WHERE id = ?", (helper_server_id,)).fetchone()
+                selected_server = repo.conn.execute(
+                    f"SELECT name FROM servers WHERE id = {p}",
+                    (helper_server_id,),
+                ).fetchone()
                 selected_server_name = selected_server["name"] if selected_server else str(helper_server_id)
                 raise BusinessRuleError(f"Кампания с ID {campaign_id_search} находится на сервере {found_company['server_name']}, а выбран сервер {selected_server_name}")
             if int(found_company["id"]) not in calling_company_ids:
@@ -9826,7 +9856,21 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
                 return "/provider-changes"
             helper_server_id = parse_int(data.get("server_id"))
             if helper_server_id:
-                visible_ids = {int(row["id"]) for row in repo.conn.execute("SELECT id FROM calling_companies WHERE server_id = ? AND is_active = 1", (helper_server_id,)).fetchall()}
+                visible_ids = {
+                    int(row["id"])
+                    for row in repo.conn.execute(
+                        f"""
+                        SELECT id
+                        FROM calling_companies
+                        WHERE server_id = {p}
+                          AND is_active = {p}
+                        """,
+                        (
+                            helper_server_id,
+                            to_db_bool(True, repo.backend),
+                        ),
+                    ).fetchall()
+                }
                 calling_company_ids = [company_id for company_id in calling_company_ids if company_id in visible_ids]
                 if not calling_company_ids:
                     raise BusinessRuleError("Выберите хотя бы одну кампанию")
@@ -10090,12 +10134,117 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
     if path.startswith("/admin/company-routing-settings/") and (path.endswith("/deactivate") or path.endswith("/delete")):
         raise BusinessRuleError("Схема маршрутизации кампаний доступна только для просмотра текущего состояния; деактивация и удаление выполняются через ‘Смена провайдеров’")
     if path == "/admin/telegram/save":
-        repo.conn.execute("INSERT INTO telegram_settings(is_enabled, chat_id, bot_token_secret_ref, message_template, updated_by) VALUES (?, ?, ?, ?, ?)", (1 if data.get("is_enabled") == "1" else 0, data.get("chat_id"), data.get("bot_token_secret_ref"), data.get("message_template"), actor_id)); repo.conn.commit(); return "/admin/telegram"
+        p = placeholder(repo.backend)
+        repo.conn.execute(
+            f"""
+            INSERT INTO telegram_settings(
+                is_enabled,
+                chat_id,
+                bot_token_secret_ref,
+                message_template,
+                updated_by
+            )
+            VALUES ({p}, {p}, {p}, {p}, {p})
+            """,
+            (
+                to_db_bool(data.get("is_enabled") == "1", repo.backend),
+                data.get("chat_id"),
+                data.get("bot_token_secret_ref"),
+                data.get("message_template"),
+                actor_id,
+            ),
+        )
+        repo.conn.commit()
+        return "/admin/telegram"
     if path == "/admin/telegram/test":
-        repo.conn.execute("INSERT INTO telegram_settings(is_enabled, chat_id, bot_token_secret_ref, message_template, last_test_status, last_test_at, last_test_by, updated_by) VALUES (?, ?, ?, ?, 'success', CURRENT_TIMESTAMP, ?, ?)", (1 if data.get("is_enabled") == "1" else 0, data.get("chat_id"), data.get("bot_token_secret_ref"), data.get("message_template"), actor_id, actor_id)); repo.conn.execute("INSERT INTO change_log(entity_type, change_type, changed_by, summary, source) VALUES ('telegram', 'telegram.test_message_sent', ?, 'Test Telegram message requested', 'ui')", (actor_id,)); repo.conn.commit(); return "/admin/telegram"
+        p = placeholder(repo.backend)
+
+        repo.conn.execute(
+            f"""
+            INSERT INTO telegram_settings(
+                is_enabled,
+                chat_id,
+                bot_token_secret_ref,
+                message_template,
+                last_test_status,
+                last_test_at,
+                last_test_by,
+                updated_by
+            )
+            VALUES (
+                {p},
+                {p},
+                {p},
+                {p},
+                'success',
+                CURRENT_TIMESTAMP,
+                {p},
+                {p}
+            )
+            """,
+            (
+                to_db_bool(data.get("is_enabled") == "1", repo.backend),
+                data.get("chat_id"),
+                data.get("bot_token_secret_ref"),
+                data.get("message_template"),
+                actor_id,
+                actor_id,
+            ),
+        )
+
+        repo.conn.execute(
+            f"""
+            INSERT INTO change_log(
+                entity_type,
+                change_type,
+                changed_by,
+                summary,
+                source
+            )
+            VALUES (
+                'telegram',
+                'telegram.test_message_sent',
+                {p},
+                'Test Telegram message requested',
+                'ui'
+            )
+            """,
+            (actor_id,),
+        )
+
+        repo.conn.commit()
+        return "/admin/telegram"
     if path == "/admin/naming-rules/create":
-        if data.get("is_active") == "1": repo.conn.execute("UPDATE route_naming_rules SET is_active = 0")
-        repo.conn.execute("INSERT INTO route_naming_rules(name, template, is_active, comment, created_by) VALUES (?, ?, ?, ?, ?)", (data["name"], data["template"], 1 if data.get("is_active") == "1" else 0, data.get("comment"), actor_id)); repo.conn.commit(); return "/admin/naming-rules"
+        p = placeholder(repo.backend)
+
+        if data.get("is_active") == "1":
+            repo.conn.execute(
+                f"UPDATE route_naming_rules SET is_active = {p}",
+                (to_db_bool(False, repo.backend),),
+            )
+
+        repo.conn.execute(
+            f"""
+            INSERT INTO route_naming_rules(
+                name,
+                template,
+                is_active,
+                comment,
+                created_by
+            )
+            VALUES ({p}, {p}, {p}, {p}, {p})
+            """,
+            (
+                data["name"],
+                data["template"],
+                to_db_bool(data.get("is_active") == "1", repo.backend),
+                data.get("comment"),
+                actor_id,
+            ),
+        )
+
+        repo.conn.commit()
+        return "/admin/naming-rules"
     raise BusinessRuleError("Unsupported form action")
 
 

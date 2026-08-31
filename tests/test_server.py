@@ -4409,13 +4409,14 @@ class ServerSmokeTest(unittest.TestCase):
         long_summary = "Первая строка подробного изменения\n" + ("продолжение сводки " * 5)
         conn = _TEST_DB.connect()
         try:
-            conn.executemany(
-                'INSERT INTO change_log (entity_type, entity_id, change_type, summary, source) VALUES (%s, %s, %s, %s, %s)',
-                [
-                    ("test_summary", 901, "test.short", short_summary, "test"),
-                    ("test_summary", 902, "test.long", long_summary, "test"),
-                ],
-            )
+            with conn.cursor() as cur:
+                cur.executemany(
+                    'INSERT INTO change_log (entity_type, entity_id, change_type, summary, source) VALUES (%s, %s, %s, %s, %s)',
+                    [
+                        ("test_summary", 901, "test.short", short_summary, "test"),
+                        ("test_summary", 902, "test.long", long_summary, "test"),
+                    ],
+                )
             conn.commit()
             before = [tuple(row.values()) for row in conn.execute("SELECT * FROM change_log ORDER BY id")]
         finally:
