@@ -31,6 +31,54 @@ SCHEMA_PATH = ROOT / "docs/postgres/schema.postgres.sql"
 ADMIN_DATABASE_URL_ENV = "POSTGRES_TEST_ADMIN_URL"
 TEST_DATABASE_PREFIX = "teleroute_test_"
 
+DEFAULT_CHANGE_REASON_SCOPES = (
+    ("none", "Обновление/смена АОНов"),
+    ("none", "Провайдер сменил маршрут"),
+    ("none", "Другое"),
+    ("server_priority", "Массовый отбои/занято"),
+    ("server_priority", "Обратная смена провайдера"),
+    ("server_priority", "Задача руководства"),
+    ("server_priority", "Другое"),
+    ("campaign_setting", "Задача руководства"),
+    ("campaign_setting", "Массовые отбои / занято"),
+    ("campaign_setting", "Плохой дозвон"),
+    ("campaign_setting", "Провайдер не отвечает"),
+    ("campaign_setting", "Авария у провайдера"),
+    ("campaign_setting", "Тест нового маршрута"),
+    ("campaign_setting", "Плановое переключение"),
+    ("campaign_setting", "Обновление пула / АОН"),
+    ("campaign_setting", "Проблема с префиксом"),
+    ("campaign_setting", "Другое"),
+)
+
+
+def seed_change_reason_defaults(conn) -> None:
+    """Seed the canonical scoped provider-change reasons used by the application."""
+    for apply_scope, name in DEFAULT_CHANGE_REASON_SCOPES:
+        row = conn.execute(
+            "SELECT id FROM change_reasons WHERE lower(name) = lower(%s) ORDER BY id LIMIT 1",
+            (name,),
+        ).fetchone()
+        if row is None:
+            row = conn.execute(
+                """
+                INSERT INTO change_reasons(name, description, is_active)
+                VALUES (%s, %s, TRUE)
+                RETURNING id
+                """,
+                (name, name),
+            ).fetchone()
+        reason_id = row["id"]
+        conn.execute(
+            """
+            INSERT INTO change_reason_scopes(reason_id, apply_scope)
+            VALUES (%s, %s)
+            ON CONFLICT(reason_id, apply_scope) DO NOTHING
+            """,
+            (reason_id, apply_scope),
+        )
+
+
 
 def _database_name(database_url: str) -> str:
     return urlsplit(database_url).path.lstrip("/")
@@ -85,6 +133,7 @@ class TemporaryPostgresDatabase:
             conn.execute("DROP SCHEMA public CASCADE")
             conn.execute("CREATE SCHEMA public")
             conn.execute(SCHEMA_PATH.read_text(encoding="utf-8"))
+            seed_change_reason_defaults(conn)
             if seed:
                 seed_postgres(conn)
             conn.commit()
