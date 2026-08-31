@@ -5,7 +5,11 @@ from tests.postgres_test_support import shared_database
 
 _TEST_DB = shared_database()
 from app.importer import ImportPreview, apply_import, preview_import
-from app.repository import BusinessRuleError, Repository
+from app.repository import BusinessRuleError, Repository, format_decimal_label
+
+
+def _timestamp_text(value):
+    return value.strftime("%Y-%m-%d %H:%M:%S") if hasattr(value, "strftime") else str(value)
 
 
 class ImportFailureVisibilityTests(unittest.TestCase):
@@ -40,6 +44,8 @@ class ImporterTest(unittest.TestCase):
         usd_id = self.repo.create_currency('USD', 'USD')
         self.repo.create_provider('Miatel', default_currency_id=usd_id)
         self.conn.execute("INSERT INTO projects(name, is_active) VALUES ('Alpha', TRUE)")
+        self.repo.ensure_phone_assignment_type_exists("gl", "ГЛ")
+        self.repo.ensure_phone_assignment_type_exists("aon", "АОН")
         self.conn.commit()
         self.admin_id = self.repo.create_user("admin", "Admin")
 
@@ -247,7 +253,7 @@ class ImporterTest(unittest.TestCase):
         update_csv = "number;country;provider;project;assignment_type;Итоговый статус;connection_fee;monthly_fee;outgoing_rate;incoming_rate;currency;tariff_label;comment\n393331239021;Италия;Miatel;Alpha;ГЛ;Используется;1.25;2.50;0.10;0.20;EUR;T29;Updated\n"
         result = apply_import(self.conn, "phone_numbers", update_csv, user_id=self.admin_id)
         row = self.conn.execute("SELECT * FROM phone_numbers WHERE number = '393331239021'").fetchone()
-        self.assertEqual((row["status"], str(row["connection_cost"]), str(row["monthly_fee"]), str(row["outgoing_rate"]), str(row["incoming_rate"]), row["tariff_label"], row["comment"]), ("used", "1.25", "2.5", "0.1", "0.2", "T29", "Updated"))
+        self.assertEqual((row["status"], format_decimal_label(row["connection_cost"]), format_decimal_label(row["monthly_fee"]), format_decimal_label(row["outgoing_rate"]), format_decimal_label(row["incoming_rate"]), row["tariff_label"], row["comment"]), ("used", "1.25", "2.5", "0.1", "0.2", "T29", "Updated"))
         self.assertEqual((result.updated_rows, result.created_rows, result.skipped_rows), (1, 0, 0))
         self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM phone_number_history WHERE action = 'updated'").fetchone()[0], before + 1)
 
@@ -281,7 +287,7 @@ class ImporterTest(unittest.TestCase):
         update_preview = preview_import(self.conn, "phone_numbers", csv_text)
         update_result = apply_import(self.conn, "phone_numbers", csv_text, user_id=self.admin_id)
         stored = self.conn.execute(
-            "SELECT normalized_number, COUNT(*) AS copies FROM phone_numbers WHERE normalized_number IN ({}) GROUP BY normalized_number".format(
+            "SELECT normalized_number, COUNT(*) AS copies FROM phone_numbers WHERE normalized_number IN ({}) GROUP BY normalized_number ORDER BY normalized_number".format(
                 ",".join("%s" for _ in numbers)
             ),
             numbers,
@@ -309,7 +315,7 @@ class ImporterTest(unittest.TestCase):
         self.conn.execute("UPDATE phone_numbers SET deactivated_at = '2020-01-02 03:04:05' WHERE number = '393331239024'")
         self.conn.commit()
         apply_import(self.conn, "phone_numbers", inactive, user_id=self.admin_id)
-        self.assertEqual(self.conn.execute("SELECT deactivated_at FROM phone_numbers WHERE number = '393331239024'").fetchone()[0], "2020-01-02 03:04:05")
+        self.assertEqual(_timestamp_text(self.conn.execute("SELECT deactivated_at FROM phone_numbers WHERE number = '393331239024'").fetchone()[0]), "2020-01-02 03:04:05")
 
     def test_existing_phone_import_inactive_to_active_clears_deactivated_at(self):
         inactive = "country,provider,project,number,assignment_type,Итоговый статус\nИталия,Miatel,Alpha,393331239025,gl,Отключен\n"
@@ -345,7 +351,7 @@ class ImporterTest(unittest.TestCase):
         self.assertEqual((result.created_rows, result.updated_rows, result.skipped_rows), (0, 0, 1))
         self.assertEqual(preview.rows[0]["status"], "duplicate_in_db")
         rows = self.conn.execute("SELECT price_in_provider_currency, is_current FROM tariffs WHERE country_id = (SELECT id FROM countries WHERE name = 'Италия') ORDER BY id").fetchall()
-        self.assertEqual([(str(row["price_in_provider_currency"]), row["is_current"]) for row in rows], [("0.1", 0)])
+        self.assertEqual([(format_decimal_label(row["price_in_provider_currency"]), row["is_current"]) for row in rows], [("0.1", False)])
 
     def test_routes_preview_detects_duplicate_business_key(self):
         country_id = self.repo.create_country("Мексика")
@@ -398,11 +404,11 @@ class ImporterTest(unittest.TestCase):
         row = self.conn.execute("SELECT * FROM phone_numbers WHERE number = '393331234567'").fetchone()
         self.assertEqual(row["project_label"], "Competitors")
         self.assertEqual(row["assignment_type"], "gl")
-        self.assertEqual(str(row["connection_cost"]), "12.5")
-        self.assertEqual(str(row["monthly_fee"]), "3.25")
+        self.assertEqual(format_decimal_label(row["connection_cost"]), "12.5")
+        self.assertEqual(format_decimal_label(row["monthly_fee"]), "3.25")
         self.assertEqual(row["phone_type"], "Mobile")
         self.assertEqual(row["tariff_label"], "Tariff A")
-        self.assertEqual(row["created_at"], "2026-06-01 10:00:00")
+        self.assertEqual(_timestamp_text(row["created_at"]), "2026-06-01 10:00:00")
         self.assertIsNotNone(row["deactivated_at"])
 
         bad_preview = preview_import(self.conn, "phone_numbers", "number;country;project;assignment_type\n393331234568;Италия;NoSuchProject;ГЛ\n")
@@ -503,7 +509,7 @@ class ImporterTest(unittest.TestCase):
         result = apply_import(self.conn, "phone_numbers", csv_text, user_id=self.admin_id)
         self.assertEqual(result.created_rows, 5)
         rows = self.conn.execute("SELECT number, monthly_fee, review_required FROM phone_numbers WHERE number BETWEEN '393331234588' AND '393331234592' ORDER BY number").fetchall()
-        self.assertEqual(str(rows[0]["monthly_fee"]), "46.63")
+        self.assertEqual(format_decimal_label(rows[0]["monthly_fee"]), "46.63")
         self.assertTrue(all(row["monthly_fee"] is None for row in rows[1:]))
         self.assertTrue(all(row["review_required"] == 0 for row in rows))
 
@@ -582,6 +588,7 @@ class ImportReplaceModeTest(unittest.TestCase):
         self.repo.create_country('B')
         self.repo.create_currency('EUR', 'EUR')
         self.conn.execute("INSERT INTO projects(name, is_active) VALUES ('Alpha', TRUE)")
+        self.repo.ensure_phone_assignment_type_exists("gl", "ГЛ")
         self.conn.commit()
         self.admin_id = self.repo.create_user("admin2", "Admin")
 
@@ -605,6 +612,7 @@ class PhoneNumbersProductionSafeImportTest(unittest.TestCase):
         self.repo.create_provider("Miatel")
         self.conn.execute("INSERT INTO projects(name, is_active) VALUES ('Мех. деп.', TRUE), ('Legacy project', FALSE)")
         self.conn.execute("INSERT INTO phone_assignment_types(code, name, is_active) VALUES ('leaflets', 'Leaflets', FALSE)")
+        self.repo.ensure_phone_assignment_type_exists("aon", "АОН")
         self.conn.commit()
         self.admin_id = self.repo.create_user("import-admin", "Import Admin")
 

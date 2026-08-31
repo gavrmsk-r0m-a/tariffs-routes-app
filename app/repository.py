@@ -163,6 +163,11 @@ def _clean_number_label(value: object) -> str:
         text = text.rstrip("0").rstrip(".")
     return text or "0"
 
+
+def format_decimal_label(value: object) -> str:
+    """Render PostgreSQL NUMERIC values without storage-scale zero padding."""
+    return _clean_number_label(value)
+
 def _company_history_value(value: object, kind: str = "text") -> str:
     if kind == "bool":
         return _bool_label(value)
@@ -1652,10 +1657,10 @@ class Repository:
             ("is_active", "Активен у провайдера", _bool_label, "bool"),
             ("review_required", "Требует проверки", _bool_label, "bool"),
             ("phone_type", "Тип номера", _empty_label, "optional_text"),
-            ("connection_cost", "Стоимость подключения", _empty_label, "money"),
-            ("monthly_fee", "Абонентская плата", _empty_label, "money"),
-            ("outgoing_rate", "Исходящий тариф", _empty_label, "money"),
-            ("incoming_rate", "Входящий тариф", _empty_label, "money"),
+            ("connection_cost", "Стоимость подключения", _clean_number_label, "money"),
+            ("monthly_fee", "Абонентская плата", _clean_number_label, "money"),
+            ("outgoing_rate", "Исходящий тариф", _clean_number_label, "money"),
+            ("incoming_rate", "Входящий тариф", _clean_number_label, "money"),
             ("currency_id", "Валюта", self._currency_label, "default"),
             ("tariff_label", "Тариф", _empty_label, "optional_text"),
             ("imported_created_by", "Создал в Excel", _empty_label, "optional_text"),
@@ -1956,7 +1961,10 @@ class Repository:
         requested_current = bool(old["is_current"]) if is_current is None else bool(is_current)
         changes = []
         if Decimal(str(old["price_in_provider_currency"])) != price_value:
-            changes.append(f"Цена провайдера: {old['price_in_provider_currency']} → {price_value}")
+            changes.append(
+                f"Цена провайдера: {format_decimal_label(old['price_in_provider_currency'])} → "
+                f"{format_decimal_label(price_value)}"
+            )
         if int(old["provider_currency_id"]) != int(provider_currency_id):
             old_code = old["currency_code"]
             new_code_row = self.conn.execute(f"SELECT code FROM currencies WHERE id = {p}", (provider_currency_id,)).fetchone()
@@ -2083,7 +2091,7 @@ class Repository:
             "currency_id": int(rate["currency_id"]),
             "currency_code": currency_code,
             "currency_rate_id": int(rate["id"]),
-            "rate_to_eur": str(rate["rate_to_eur"]),
+            "rate_to_eur": format_decimal_label(rate["rate_to_eur"]),
             "rate_date": str(rate["rate_date"]),
             "source": rate["source"],
         }
@@ -2115,9 +2123,9 @@ class Repository:
         for tariff in tariffs:
             old_values = {
                 "currency_rate_id": tariff["currency_rate_id"],
-                "conversion_rate_to_eur": str(tariff["conversion_rate_to_eur"]),
+                "conversion_rate_to_eur": format_decimal_label(tariff["conversion_rate_to_eur"]),
                 "conversion_rate_date": str(tariff["conversion_rate_date"]),
-                "eur_price": str(tariff["eur_price"]),
+                "eur_price": format_decimal_label(tariff["eur_price"]),
             }
             new_eur_price = eur_price(tariff["price_in_provider_currency"], new_rate_value)
             self.conn.execute(
@@ -2151,9 +2159,9 @@ class Repository:
             )
             new_values = {
                 "currency_rate_id": currency_rate_id,
-                "conversion_rate_to_eur": str(new_rate_value),
+                "conversion_rate_to_eur": format_decimal_label(new_rate_value),
                 "conversion_rate_date": str(rate["rate_date"]),
-                "eur_price": str(new_eur_price),
+                "eur_price": format_decimal_label(new_eur_price),
             }
             summary = (
                 f"Тариф пересчитан из-за обновления курса {rate['currency_code']} к EUR: "

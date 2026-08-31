@@ -3,10 +3,30 @@ import unittest
 from decimal import Decimal
 
 from psycopg import IntegrityError
-from tests.postgres_test_support import shared_database
+from psycopg.pq import TransactionStatus
+from tests.postgres_test_support import seed_postgres, shared_database
 
 _TEST_DB = shared_database()
-from app.repository import hash_password, verify_password, BusinessRuleError, ConcurrencyConflict, Repository, _values_equal
+from app.repository import hash_password, verify_password, BusinessRuleError, ConcurrencyConflict, Repository, _values_equal, format_decimal_label
+
+
+def _json_value(value):
+    """Accept PostgreSQL JSONB values and legacy serialized JSON values."""
+    return value if isinstance(value, (dict, list)) else json.loads(value)
+
+
+def _json_text(value):
+    return json.dumps(value, ensure_ascii=False) if isinstance(value, (dict, list)) else value
+
+
+def _connection_in_transaction(conn):
+    return conn.info.transaction_status != TransactionStatus.IDLE
+
+
+def _timestamp_text(value, *, seconds=True):
+    if hasattr(value, "strftime"):
+        return value.strftime("%Y-%m-%d %H:%M:%S" if seconds else "%Y-%m-%d %H:%M")
+    return str(value)
 
 
 class RepositoryBusinessRulesTest(unittest.TestCase):
@@ -24,8 +44,8 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
         self.repo.update_change_reason(reason_id, "Scoped updated", scopes=["campaign_setting"], is_active=False)
         self.assertEqual([row["id"] for row in self.repo.list_change_reasons(scope="campaign_setting", active=False)], [reason_id])
         log = self.conn.execute("SELECT old_values, new_values FROM change_log WHERE entity_type='change_reason' AND entity_id=%s ORDER BY id DESC", (reason_id,)).fetchone()
-        self.assertIn("Не меняли настройки в нашей системе", log["old_values"])
-        self.assertIn("Настройка кампании", log["new_values"])
+        self.assertIn("Не меняли настройки в нашей системе", _json_text(log["old_values"]))
+        self.assertIn("Настройка кампании", _json_text(log["new_values"]))
 
     def setUp(self):
         _TEST_DB.reset(seed=False)
@@ -43,6 +63,10 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
             cli_source_label="Pool_A",
             created_by=self.admin_id,
         )
+        self.repo.ensure_project_exists("ИТМ")
+        self.repo.ensure_phone_assignment_type_exists("gl", "ГЛ")
+        self.repo.ensure_phone_assignment_type_exists("aon", "АОН")
+        self.repo.create_change_reason("Провайдер сменил маршрут", scopes=["none"])
 
     def tearDown(self):
         self.conn.close()
@@ -85,9 +109,9 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
             (row["country_id"], row["provider_id"], row["country_label"], row["provider_label"],
              row["number"], row["normalized_number"], row["project_label"], row["assignment_type"],
              row["assignment_label"], row["phone_type"], row["tariff_label"], row["status"],
-             str(row["connection_cost"]), str(row["monthly_fee"]), str(row["outgoing_rate"]),
-             str(row["incoming_rate"]), row["currency_id"], row["currency_label"], row["comment"],
-             row["imported_created_by"], row["created_by"], row["created_at"], row["deactivated_at"]),
+             format_decimal_label(row["connection_cost"]), format_decimal_label(row["monthly_fee"]), format_decimal_label(row["outgoing_rate"]),
+             format_decimal_label(row["incoming_rate"]), row["currency_id"], row["currency_label"], row["comment"],
+             row["imported_created_by"], row["created_by"], _timestamp_text(row["created_at"]), _timestamp_text(row["deactivated_at"])),
             (self.country_id, self.provider_id, "Италия", "Miatel", "393331234568", "393331234568",
              "ИТМ", "gl", "ГЛ", "Mobile", "Import tariff", "unknown", "1.25", "2.5", "0.1",
              "0.2", self.currency_id, "EUR", "Imported", "excel-user", self.admin_id,
@@ -128,14 +152,14 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
         ).fetchone()
         self.assertEqual((row["change_type"], row["changed_by"], row["source"]),
                          ("phone_number.created", self.admin_id, "ui"))
-        self.assertEqual(json.loads(row["new_values"]),
+        self.assertEqual(_json_value(row["new_values"]),
                          {"number": "393331234568", "imported_created_by": "excel-user"})
         self.assertIsNone(row["old_values"])
         self.assertIsNone(row["summary"])
 
     def test_create_phone_number_commit_false(self):
         phone_id = self.create_full_phone(commit=False)
-        self.assertTrue(self.conn.in_transaction)
+        self.assertTrue(_connection_in_transaction(self.conn))
         self.assertIsNotNone(self.conn.execute('SELECT id FROM phone_numbers WHERE id = %s', (phone_id,)).fetchone())
         self.assertEqual(self.conn.execute(
             'SELECT COUNT(*) FROM phone_number_history WHERE phone_number_id = %s', (phone_id,),
@@ -173,10 +197,10 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
         row = self.conn.execute('SELECT * FROM phone_numbers WHERE id = %s', (phone_id,)).fetchone()
         self.assertEqual(
             (row["country_id"], row["provider_id"], row["project_label"], row["assignment_type"],
-             row["status"], str(row["connection_cost"]), str(row["monthly_fee"]),
-             str(row["outgoing_rate"]), str(row["incoming_rate"]), row["currency_id"],
+             row["status"], format_decimal_label(row["connection_cost"]), format_decimal_label(row["monthly_fee"]),
+             format_decimal_label(row["outgoing_rate"]), format_decimal_label(row["incoming_rate"]), row["currency_id"],
              row["phone_type"], row["tariff_label"], row["comment"], row["imported_created_by"],
-             row["deactivated_at"], row["updated_by"]),
+             _timestamp_text(row["deactivated_at"]), row["updated_by"]),
             (self.country_id, self.provider_id, "Import Project", "aon", "unused", "1.25", "2.5",
              "0.1", "0.2", self.currency_id, "Mobile", "Import Tariff", "Imported", "excel-user",
              "2026-07-16 12:00:00", self.admin_id),
@@ -214,7 +238,7 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
     def test_update_phone_number_import_fields_with_history_commit_false(self):
         phone_id = self.create_phone()
         self.update_phone_import(phone_id, commit=False)
-        self.assertTrue(self.conn.in_transaction)
+        self.assertTrue(_connection_in_transaction(self.conn))
         self.conn.rollback()
         self.assertEqual(self.conn.execute('SELECT status FROM phone_numbers WHERE id = %s', (phone_id,)).fetchone()["status"], "used")
 
@@ -399,11 +423,11 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
         user_id = self.repo.create_user("permissions-user", "operator", "Permissions User")
         self.conn.execute(
             'INSERT INTO user_permissions(user_id, section_key, can_read, can_write, can_export) VALUES (%s, %s, %s, %s, %s)',
-            (user_id, "routes", 1, 0, 1),
+            (user_id, "routes", True, False, True),
         )
         self.conn.execute(
             'INSERT INTO user_permissions(user_id, section_key, can_read, can_write, can_export) VALUES (%s, %s, %s, %s, %s)',
-            (user_id, "tariffs", 1, 1, 0),
+            (user_id, "tariffs", True, True, False),
         )
         self.conn.commit()
 
@@ -469,7 +493,7 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
             (rate_id,),
         ).fetchone()
         self.assertIsNotNone(row)
-        self.assertEqual(str(row["rate_to_eur"]), "0.91")
+        self.assertEqual(format_decimal_label(row["rate_to_eur"]), "0.91")
 
     def test_repository_transaction_rolls_back_on_error(self):
         usd_id = self.repo.create_currency("USD", "US Dollar", "$")
@@ -503,12 +527,12 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
         ).fetchall()
         self.assertEqual(len(rows), 2)
         self.assertEqual(rows[0]["id"], first_id)
-        self.assertEqual(str(rows[0]["rate_to_eur"]), "0.91")
+        self.assertEqual(format_decimal_label(rows[0]["rate_to_eur"]), "0.91")
         self.assertEqual(rows[1]["id"], second_id)
-        self.assertEqual(str(rows[1]["rate_to_eur"]), "0.92")
+        self.assertEqual(format_decimal_label(rows[1]["rate_to_eur"]), "0.92")
         latest = self.repo.latest_currency_rate(usd_id)
         self.assertEqual(latest["id"], second_id)
-        self.assertEqual(str(latest["rate_to_eur"]), "0.92")
+        self.assertEqual(format_decimal_label(latest["rate_to_eur"]), "0.92")
 
         for invalid in ("", "0", "-1", "abc"):
             with self.subTest(invalid=invalid):
@@ -536,10 +560,10 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
 
         self.assertEqual(len(recalculated), 1)
         tariff = self.conn.execute('SELECT * FROM tariffs WHERE id = %s', (tariff_id,)).fetchone()
-        self.assertEqual(str(tariff["eur_price"]), "900")
+        self.assertEqual(format_decimal_label(tariff["eur_price"]), "900")
         self.assertEqual(tariff["currency_rate_id"], new_rate_id)
-        self.assertEqual(str(tariff["conversion_rate_to_eur"]), "300")
-        self.assertEqual(tariff["conversion_rate_date"], "2026-07-11")
+        self.assertEqual(format_decimal_label(tariff["conversion_rate_to_eur"]), "300")
+        self.assertEqual(str(tariff["conversion_rate_date"]), "2026-07-11")
 
     def test_currency_rate_recalculation_skips_inactive_tariffs(self):
         usdt_id = self.repo.create_currency("USDT", "Tether", "₮")
@@ -575,10 +599,10 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
 
         history = self.conn.execute('SELECT * FROM tariff_change_history WHERE tariff_id = %s ORDER BY id DESC LIMIT 1', (tariff_id,)).fetchone()
         self.assertEqual(history["reason"], "tariff.currency_rate_recalculated")
-        self.assertEqual(str(history["old_conversion_rate_to_eur"]), "500")
-        self.assertEqual(str(history["new_conversion_rate_to_eur"]), "300")
-        self.assertEqual(str(history["old_eur_price"]), "1500")
-        self.assertEqual(str(history["new_eur_price"]), "900")
+        self.assertEqual(format_decimal_label(history["old_conversion_rate_to_eur"]), "500")
+        self.assertEqual(format_decimal_label(history["new_conversion_rate_to_eur"]), "300")
+        self.assertEqual(format_decimal_label(history["old_eur_price"]), "1500")
+        self.assertEqual(format_decimal_label(history["new_eur_price"]), "900")
         self.assertIn("currency_rate_id", history["comment"])
 
     def test_currency_rate_recalculation_writes_change_log(self):
@@ -597,12 +621,12 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
 
         currency_log = self.conn.execute("SELECT * FROM change_log WHERE entity_type = 'currency_rate' ORDER BY id DESC LIMIT 1").fetchone()
         tariff_log = self.conn.execute("SELECT * FROM change_log WHERE entity_type = 'tariff' AND change_type = 'tariff.currency_rate_recalculated' ORDER BY id DESC LIMIT 1").fetchone()
-        self.assertEqual(json.loads(currency_log["new_values"])["recalculated_active_tariffs_count"], 1)
+        self.assertEqual(_json_value(currency_log["new_values"])["recalculated_active_tariffs_count"], 1)
         self.assertIn("Активных тарифов пересчитано: 1", currency_log["summary"])
         self.assertIsNotNone(tariff_log)
-        self.assertEqual(json.loads(tariff_log["old_values"])["currency_rate_id"], old_rate_id)
-        self.assertEqual(json.loads(tariff_log["new_values"])["currency_rate_id"], new_rate_id)
-        self.assertEqual(Decimal(json.loads(tariff_log["new_values"])["eur_price"]), Decimal("900"))
+        self.assertEqual(_json_value(tariff_log["old_values"])["currency_rate_id"], old_rate_id)
+        self.assertEqual(_json_value(tariff_log["new_values"])["currency_rate_id"], new_rate_id)
+        self.assertEqual(Decimal(_json_value(tariff_log["new_values"])["eur_price"]), Decimal("900"))
 
     def test_dictionary_rename_without_updating_linked_records_keeps_phone_snapshots(self):
         phone_id = self.create_phone(number="393331234570")
@@ -679,6 +703,7 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
 
 
     def test_reference_defaults_seed_current_projects_and_assignments(self):
+        seed_postgres(self.conn)
         projects = [tuple(row.values()) for row in self.conn.execute(
             'SELECT code, name, is_active, sort_order, include_in_route_name FROM projects WHERE is_active = TRUE ORDER BY sort_order'
         )]
@@ -800,8 +825,8 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
     def test_create_tariff_accepts_positive_comma_decimal_price(self):
         tariff_id = self._create_tariff("2,5")
         tariff = self.conn.execute('SELECT price_in_provider_currency, eur_price FROM tariffs WHERE id = %s', (tariff_id,)).fetchone()
-        self.assertEqual(str(tariff["price_in_provider_currency"]), "2.5")
-        self.assertEqual(str(tariff["eur_price"]), "2.5")
+        self.assertEqual(format_decimal_label(tariff["price_in_provider_currency"]), "2.5")
+        self.assertEqual(format_decimal_label(tariff["eur_price"]), "2.5")
 
     def test_tariff_duplicate_identity_checks_active_and_inactive_records(self):
         self._create_tariff("2.5")
@@ -891,7 +916,7 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
         )
 
         row = self.conn.execute('SELECT price_in_provider_currency, comment FROM tariffs WHERE id = %s', (tariff_id,)).fetchone()
-        self.assertEqual(str(row["price_in_provider_currency"]), "2.7")
+        self.assertEqual(format_decimal_label(row["price_in_provider_currency"]), "2.7")
         self.assertEqual(row["comment"], "current token")
 
     def test_tariff_update_rejects_stale_token(self):
@@ -911,7 +936,7 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
             )
 
         row = self.conn.execute('SELECT price_in_provider_currency, comment FROM tariffs WHERE id = %s', (tariff_id,)).fetchone()
-        self.assertEqual(str(row["price_in_provider_currency"]), "2.6")
+        self.assertEqual(format_decimal_label(row["price_in_provider_currency"]), "2.6")
         self.assertEqual(row["comment"], "fresh user b")
 
     def test_tariff_update_stale_token_does_not_write_history_or_change_log(self):
@@ -945,7 +970,7 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
         )
 
         row = self.conn.execute('SELECT price_in_provider_currency, comment FROM tariffs WHERE id = %s', (tariff_id,)).fetchone()
-        self.assertEqual(str(row["price_in_provider_currency"]), "2.8")
+        self.assertEqual(format_decimal_label(row["price_in_provider_currency"]), "2.8")
         self.assertEqual(row["comment"], "without token")
 
 
@@ -1093,7 +1118,7 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
         ).fetchone()
         self.assertIsNotNone(row)
         self.assertEqual(row["action"], "updated")
-        payload = json.loads(row["new_value"])
+        payload = _json_value(row["new_value"])
         self.assertIn("Рабочий статус: Свободен → Проблемный", payload["details"])
         self.assertIn("Провайдер: Miatel → Zadarma", payload["details"])
         self.assertIn("Проект: — → ИТМ", payload["details"])
@@ -1120,7 +1145,7 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
             "SELECT new_value FROM phone_number_history WHERE phone_number_id = %s AND action = 'updated' ORDER BY id DESC",
             (phone_id,),
         ).fetchone()
-        payload = json.loads(row["new_value"])
+        payload = _json_value(row["new_value"])
         self.assertIn("Активен у провайдера: Нет → Да", payload["details"])
         self.assertIn("Требует проверки: Нет → Да", payload["details"])
 
@@ -1141,7 +1166,7 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
             "SELECT new_value FROM route_history WHERE route_id = %s AND action = 'updated' ORDER BY id DESC",
             (self.route_id,),
         ).fetchone()
-        payload = json.loads(row["new_value"])
+        payload = _json_value(row["new_value"])
         self.assertIn("Название маршрута: Италия/Miatel/Pool_A@ → Италия/Miatel/Pool_B@", payload["details"])
         self.assertIn("Провайдер: Miatel → DemoTel", payload["details"])
         self.assertIn("Активность маршрута: Да → Нет", payload["details"])
@@ -1267,7 +1292,7 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
             "SELECT new_value FROM route_history WHERE route_id = %s AND action = 'updated' ORDER BY id DESC",
             (route_id,),
         ).fetchone()
-        payload = json.loads(row["new_value"])
+        payload = _json_value(row["new_value"])
         self.assertIn("Комментарий: Старый", payload["details"])
         self.assertIn("→ Новый", payload["details"])
         self.assertIn("…", payload["details"])
@@ -1297,7 +1322,7 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
             (phone_id,),
         ).fetchone()
         self.assertIsNotNone(row)
-        return json.loads(row["new_value"])["details"]
+        return _json_value(row["new_value"])["details"]
 
     def test_phone_money_history_ignores_unchanged_numeric_equivalents(self):
         phone_id = self.repo.create_phone_number(
@@ -1526,14 +1551,14 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
             is_active=True, comment=None, updated_by=self.admin_id,
         )
         self.assertEqual(self.repo.get_calling_company(company_id)["country_id"], self.country_id)
-        self.assertIn("GEO: Несколько GEO →", self.repo.list_calling_company_history(company_id)[0]["new_value"])
+        self.assertIn("GEO: Несколько GEO →", _json_text(self.repo.list_calling_company_history(company_id)[0]["new_value"]))
         self.repo.update_calling_company(
             company_id, server_id=server_id, country_id=None, company_name="Multi campaign",
             line_count=0, dial_set_count=0, has_autorotation=False, retry_interval_seconds=0,
             is_active=True, comment=None, updated_by=self.admin_id,
         )
         self.assertIsNone(self.repo.get_calling_company(company_id)["country_id"])
-        self.assertIn("→ Несколько GEO", self.repo.list_calling_company_history(company_id)[0]["new_value"])
+        self.assertIn("→ Несколько GEO", _json_text(self.repo.list_calling_company_history(company_id)[0]["new_value"]))
 
     def test_multi_geo_calling_company_initial_autorotation_creates_nullable_setting(self):
         server_id = self.repo.create_server("EU-multi-auto")
@@ -1643,14 +1668,14 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
         company_id = self.repo.create_calling_company(server_id=server_id, country_id=self.country_id, company_name="Mexico_old", company_id_external="cmp-1", has_autorotation=False, created_by=self.admin_id, comment="initial", is_active=False, line_count=10, dial_set_count=5, retry_interval_seconds=30)
         created = self.repo.list_calling_company_history(company_id)[0]
         self.assertIn("Компания создана", created["comment"])
-        self.assertIn("Название: Mexico_old", created["new_value"])
+        self.assertIn("Название: Mexico_old", _json_text(created["new_value"]))
         self.repo.update_calling_company(company_id, server_id=server_id, country_id=self.country_id, company_name="Mexico_new", line_count=10, dial_set_count=7, has_autorotation=False, retry_interval_seconds=45, is_active=False, comment="new comment", updated_by=self.admin_id)
         changed = self.repo.list_calling_company_history(company_id)[0]
         self.assertIn("Компания изменена", changed["comment"])
-        self.assertIn("Название: Mexico_old → Mexico_new", changed["new_value"])
-        self.assertIn("Количество наборов: 5 → 7", changed["new_value"])
-        self.assertIn("Интервал, сек.: 30 → 45", changed["new_value"])
-        self.assertIn("Комментарий: initial → new comment", changed["new_value"])
+        self.assertIn("Название: Mexico_old → Mexico_new", _json_text(changed["new_value"]))
+        self.assertIn("Количество наборов: 5 → 7", _json_text(changed["new_value"]))
+        self.assertIn("Интервал, сек.: 30 → 45", _json_text(changed["new_value"]))
+        self.assertIn("Комментарий: initial → new comment", _json_text(changed["new_value"]))
 
 
     def test_calling_company_update_succeeds_with_current_token(self):
@@ -1783,8 +1808,8 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
         self.assertTrue(any(row["id"] == company_id and row["current_has_autorotation"] == 1 for row in listed))
         created = self.repo.list_calling_company_history(company_id)[0]
         self.assertIn("Компания создана", created["comment"])
-        self.assertIn("ID кампании: auto-1", created["new_value"])
-        self.assertIn("Авторотация: Да", created["new_value"])
+        self.assertIn("ID кампании: auto-1", _json_text(created["new_value"]))
+        self.assertIn("Авторотация: Да", _json_text(created["new_value"]))
 
     def test_calling_company_list_autorotation_ignores_stale_company_field(self):
         server_id = self.repo.create_server("IT-stale")
@@ -1848,7 +1873,7 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
             (priority_id,),
         ).fetchone()
         self.assertIsNotNone(event)
-        self.assertIn(str(alt_route_id), event["new_values"])
+        self.assertIn(str(alt_route_id), _json_text(event["new_values"]))
         self.assertTrue(event["summary"])
         self.assertIn("GEO: Италия", event["summary"])
         self.assertIn("Сервер: IT1", event["summary"])
@@ -2126,6 +2151,7 @@ class RoutingEventsRepositoryTest(unittest.TestCase):
         self.other_route_id = self.repo.create_route(country_id=self.other_country_id, provider_id=self.provider_id, name="Перу/Sancom/RND@", cli_source_type="rnd", cli_source_label="RND", created_by=self.admin_id)
         self.server_id = self.repo.create_server("EU1")
         self.company_id = self.repo.create_calling_company(server_id=self.server_id, country_id=self.country_id, company_name="CC Mexico", company_id_external="1002", has_autorotation=False, created_by=self.admin_id)
+        self.repo.create_change_reason("Другое", scopes=["none", "server_priority", "campaign_setting"])
 
     def tearDown(self):
         self.conn.close()
@@ -2176,7 +2202,7 @@ class RoutingEventsRepositoryTest(unittest.TestCase):
             "SELECT new_values FROM change_log WHERE entity_type = 'routing_event' AND entity_id = %s",
             (event_id,),
         ).fetchone()[0]
-        new_values = json.loads(raw_new_values)
+        new_values = _json_value(raw_new_values)
 
         self.assertIsNone(new_values["server_ids"])
         self.assertIsNone(new_values["affected_servers"])
@@ -2191,7 +2217,7 @@ class RoutingEventsRepositoryTest(unittest.TestCase):
         )
         stored = self.conn.execute('SELECT server_id, snapshot_json FROM routing_events WHERE id = %s', (event_id,)).fetchone()
         self.assertIsNone(stored["server_id"])
-        self.assertIsNone(json.loads(stored["snapshot_json"])["server_name"])
+        self.assertIsNone(_json_value(stored["snapshot_json"])["server_name"])
 
         rows = self.repo.list_routing_events({"server_id": self.server_id})
         self.assertEqual([row["id"] for row in rows], [event_id])
@@ -2228,7 +2254,7 @@ class RoutingEventsRepositoryTest(unittest.TestCase):
         )
         updated = self.repo.get_calling_company(self.company_id)
         self.assertEqual(updated["server_id"], other_server_id)
-        self.assertIn("Сервер: EU1 → EU3", self.repo.list_calling_company_history(self.company_id)[0]["new_value"])
+        self.assertIn("Сервер: EU1 → EU3", _json_text(self.repo.list_calling_company_history(self.company_id)[0]["new_value"]))
 
     def test_server_priority_new_route_must_belong_to_provider(self):
         with self.assertRaisesRegex(BusinessRuleError, "новому провайдеру"):
@@ -2247,7 +2273,7 @@ class RoutingEventsRepositoryTest(unittest.TestCase):
 
         application = self.conn.execute('SELECT * FROM routing_event_servers WHERE routing_event_id = %s', (event_id,)).fetchone()
         priority = self.conn.execute('SELECT * FROM server_route_priorities WHERE country_id = %s AND server_id = %s', (self.country_id, self.server_id)).fetchone()
-        snapshot = json.loads(self.conn.execute('SELECT snapshot_json FROM routing_events WHERE id = %s', (event_id,)).fetchone()[0])
+        snapshot = _json_value(self.conn.execute('SELECT snapshot_json FROM routing_events WHERE id = %s', (event_id,)).fetchone()[0])
 
         self.assertEqual(application["server_id"], self.server_id)
         self.assertIsNone(application["old_route_id"])
@@ -2311,7 +2337,7 @@ class RoutingEventsRepositoryTest(unittest.TestCase):
         self.assertEqual(changed["previous_route_id"], self.route_id)
         self.assertEqual(skipped["current_route_id"], self.alt_route_id)
         self.assertIsNone(skipped["previous_route_id"])
-        snapshot = json.loads(self.conn.execute('SELECT snapshot_json FROM routing_events WHERE id = %s', (event_id,)).fetchone()[0])
+        snapshot = _json_value(self.conn.execute('SELECT snapshot_json FROM routing_events WHERE id = %s', (event_id,)).fetchone()[0])
         self.assertEqual([row["status"] for row in snapshot["affected_servers"]], ["applied", "skipped_noop"])
 
     def test_server_priority_requires_server_id_or_server_ids(self):
@@ -2398,7 +2424,7 @@ class RoutingEventsRepositoryTest(unittest.TestCase):
         before_events = self.conn.execute("SELECT COUNT(*) FROM routing_events").fetchone()[0]
         before_settings = self.conn.execute('SELECT COUNT(*) FROM company_routing_settings WHERE calling_company_id = %s', (self.company_id,)).fetchone()[0]
         before_setting_logs = self.conn.execute("SELECT COUNT(*) FROM change_log WHERE entity_type = 'company_routing_setting'").fetchone()[0]
-        before_company_journal = self.conn.execute("SELECT COUNT(*) FROM change_log WHERE entity_type = 'routing_event' AND json_extract(new_values, '$.calling_company_id') = %s", (self.company_id,)).fetchone()[0]
+        before_company_journal = self.conn.execute("SELECT COUNT(*) FROM change_log WHERE entity_type = 'routing_event' AND (new_values ->> 'calling_company_id')::bigint = %s", (self.company_id,)).fetchone()[0]
 
         with self.assertRaisesRegex(BusinessRuleError, "В этой компании уже включена авторотация"):
             self.create_event(apply_scope="campaign_setting", calling_company_id=self.company_id, company_change_type="enable_autorotation", provider_id=None)
@@ -2406,7 +2432,7 @@ class RoutingEventsRepositoryTest(unittest.TestCase):
         self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM routing_events").fetchone()[0], before_events)
         self.assertEqual(self.conn.execute('SELECT COUNT(*) FROM company_routing_settings WHERE calling_company_id = %s', (self.company_id,)).fetchone()[0], before_settings)
         self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM change_log WHERE entity_type = 'company_routing_setting'").fetchone()[0], before_setting_logs)
-        self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM change_log WHERE entity_type = 'routing_event' AND json_extract(new_values, '$.calling_company_id') = %s", (self.company_id,)).fetchone()[0], before_company_journal)
+        self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM change_log WHERE entity_type = 'routing_event' AND (new_values ->> 'calling_company_id')::bigint = %s", (self.company_id,)).fetchone()[0], before_company_journal)
 
     def test_campaign_setting_duplicate_disable_autorotation_is_blocked(self):
         with self.assertRaisesRegex(BusinessRuleError, "авторотация уже выключена"):
@@ -2581,8 +2607,8 @@ class RoutingEventsRepositoryTest(unittest.TestCase):
     def test_snapshot_json_is_saved(self):
         event_id = self.create_event(apply_scope="server_priority", country_id=self.country_id, server_id=self.server_id, new_route_id=self.route_id)
         snapshot = self.conn.execute('SELECT snapshot_json FROM routing_events WHERE id = %s', (event_id,)).fetchone()[0]
-        self.assertIn("Мексика", snapshot)
-        self.assertIn("Sancom", snapshot)
+        self.assertIn("Мексика", _json_text(snapshot))
+        self.assertIn("Sancom", _json_text(snapshot))
 
 
 class RepositoryHlrUsageConfigTest(unittest.TestCase):
@@ -2611,7 +2637,7 @@ class RepositoryHlrUsageConfigTest(unittest.TestCase):
         self.assertEqual(float(usage["credits_spent_today"]), 1.5)
         self.assertEqual(usage["last_check_count"], 3)
         self.assertEqual(float(usage["last_check_credits"]), 1.5)
-        self.assertEqual(usage["updated_at"], "2026-07-12 10:30")
+        self.assertEqual(_timestamp_text(usage["updated_at"], seconds=False), "2026-07-12 10:30")
 
     def test_upsert_hlr_daily_usage_updates_existing_day(self):
         self.repo.upsert_hlr_daily_usage("2026-07-12", 3, 1, "2026-07-12 10:30")
@@ -2624,7 +2650,7 @@ class RepositoryHlrUsageConfigTest(unittest.TestCase):
         self.assertEqual(float(usage["credits_spent_today"]), 1.5)
         self.assertEqual(usage["last_check_count"], 2)
         self.assertEqual(float(usage["last_check_credits"]), 0.5)
-        self.assertEqual(usage["updated_at"], "2026-07-12 11:00")
+        self.assertEqual(_timestamp_text(usage["updated_at"], seconds=False), "2026-07-12 11:00")
 
     def test_get_hlr_limit_override_returns_current_value(self):
         self.repo.set_hlr_limit_override(1000)

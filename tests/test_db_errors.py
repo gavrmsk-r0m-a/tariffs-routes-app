@@ -1,4 +1,3 @@
-import sqlite3
 import unittest
 
 from app.db_errors import (
@@ -13,82 +12,86 @@ from app.db_errors import (
 from app.server import user_error
 
 
-class DbErrorMapperTest(unittest.TestCase):
-    def test_sqlite_unique_violation_is_mapped(self):
-        info = map_database_error(sqlite3.IntegrityError("UNIQUE constraint failed: routes.country_id, routes.name"))
+class FakeDiag:
+    def __init__(self, *, table_name=None, constraint_name=None, column_name=None):
+        self.table_name = table_name
+        self.constraint_name = constraint_name
+        self.column_name = column_name
 
-        self.assertEqual(info.kind, UNIQUE_VIOLATION)
-        self.assertEqual(info.backend, "sqlite")
-        self.assertEqual(info.table, "routes")
-        self.assertEqual(info.columns, ("country_id", "name"))
 
-    def test_sqlite_unique_violation_multiple_columns_parsed(self):
-        info = map_database_error(
-            sqlite3.IntegrityError(
-                "UNIQUE constraint failed: tariffs.country_id, tariffs.provider_id, tariffs.route_id"
-            )
+class FakePgError(Exception):
+    def __init__(self, message, *, sqlstate, table=None, constraint=None, column=None):
+        super().__init__(message)
+        self.sqlstate = sqlstate
+        self.diag = FakeDiag(
+            table_name=table,
+            constraint_name=constraint,
+            column_name=column,
         )
 
-        self.assertEqual(info.kind, UNIQUE_VIOLATION)
-        self.assertEqual(info.table, "tariffs")
-        self.assertEqual(info.columns, ("country_id", "provider_id", "route_id"))
 
-    def test_sqlite_foreign_key_violation_is_mapped(self):
-        info = map_database_error(sqlite3.IntegrityError("FOREIGN KEY constraint failed"))
-
-        self.assertEqual(info.kind, FOREIGN_KEY_VIOLATION)
-
-    def test_sqlite_not_null_violation_is_mapped(self):
-        info = map_database_error(sqlite3.IntegrityError("NOT NULL constraint failed: users.username"))
-
-        self.assertEqual(info.kind, NOT_NULL_VIOLATION)
-        self.assertEqual(info.table, "users")
-        self.assertEqual(info.columns, ("username",))
-
-    def test_sqlite_check_violation_is_mapped(self):
-        info = map_database_error(sqlite3.IntegrityError("CHECK constraint failed: phone_numbers"))
-
-        self.assertEqual(info.kind, CHECK_VIOLATION)
-        self.assertEqual(info.constraint, "phone_numbers")
-
-    def test_sqlite_database_locked_is_mapped(self):
-        info = map_database_error(sqlite3.OperationalError("database is locked"))
-
-        self.assertEqual(info.kind, LOCK_TIMEOUT)
-
-    def test_postgres_sqlstate_unique_violation_is_mapped_without_psycopg(self):
-        class FakePgError(Exception):
-            sqlstate = "23505"
-
-        info = map_database_error(FakePgError("duplicate"), backend="postgres")
+class DbErrorMapperTest(unittest.TestCase):
+    def test_postgres_sqlstate_unique_violation_is_mapped(self):
+        info = map_database_error(FakePgError("duplicate", sqlstate="23505"))
 
         self.assertEqual(info.kind, UNIQUE_VIOLATION)
         self.assertEqual(info.backend, "postgres")
         self.assertEqual(info.sqlstate, "23505")
 
-    def test_postgres_diagnostics_are_preserved_for_user_mapping(self):
-        class Diag:
-            table_name = "servers"
-            constraint_name = "servers_name_key"
-            column_name = None
+    def test_named_route_constraint_restores_columns_missing_from_postgres_diag(self):
+        info = map_database_error(
+            FakePgError(
+                "duplicate route",
+                sqlstate="23505",
+                table="routes",
+                constraint="uq_routes_country_name",
+            )
+        )
 
-        class FakePgError(Exception):
-            sqlstate = "23505"
-            diag = Diag()
+        self.assertEqual(info.columns, ("country_id", "name"))
 
-        info = map_database_error(FakePgError("duplicate key"), backend="postgres")
-        self.assertEqual((info.table, info.constraint), ("servers", "servers_name_key"))
-        self.assertEqual(user_error(FakePgError("duplicate key")), "Кажется, такой сервер у нас уже есть. Давай назовём его иначе.")
+    def test_named_phone_constraint_restores_columns_missing_from_postgres_diag(self):
+        info = map_database_error(
+            FakePgError(
+                "duplicate phone",
+                sqlstate="23505",
+                table="phone_numbers",
+                constraint="uq_phone_numbers_normalized_number",
+            )
+        )
 
-    def test_postgres_sqlstate_foreign_key_violation_is_mapped_without_psycopg(self):
-        class FakePgError(Exception):
-            sqlstate = "23503"
+        self.assertEqual(info.columns, ("normalized_number",))
 
-        info = map_database_error(FakePgError("foreign key"), backend="postgres")
+    def test_postgres_foreign_key_violation_is_mapped(self):
+        info = map_database_error(FakePgError("foreign key", sqlstate="23503"))
 
         self.assertEqual(info.kind, FOREIGN_KEY_VIOLATION)
-        self.assertEqual(info.backend, "postgres")
-        self.assertEqual(info.sqlstate, "23503")
+
+    def test_postgres_not_null_diagnostics_preserve_column(self):
+        info = map_database_error(
+            FakePgError("not null", sqlstate="23502", table="users", column="username")
+        )
+
+        self.assertEqual(info.kind, NOT_NULL_VIOLATION)
+        self.assertEqual(info.table, "users")
+        self.assertEqual(info.columns, ("username",))
+
+    def test_postgres_check_violation_is_mapped(self):
+        info = map_database_error(
+            FakePgError(
+                "check failed",
+                sqlstate="23514",
+                table="phone_numbers",
+                constraint="phone_numbers_status_check",
+            )
+        )
+
+        self.assertEqual(info.kind, CHECK_VIOLATION)
+
+    def test_postgres_lock_timeout_is_mapped(self):
+        info = map_database_error(FakePgError("lock unavailable", sqlstate="55P03"))
+
+        self.assertEqual(info.kind, LOCK_TIMEOUT)
 
     def test_unknown_database_error_returns_unknown(self):
         info = map_database_error(RuntimeError("test"))
@@ -96,49 +99,50 @@ class DbErrorMapperTest(unittest.TestCase):
         self.assertEqual(info.kind, UNKNOWN_DATABASE_ERROR)
         self.assertEqual(info.raw_message, "test")
 
+    def test_non_postgres_backend_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, "Unsupported database backend"):
+            map_database_error(RuntimeError("test"), backend="sqlite")
+
 
 class UserErrorMessageTest(unittest.TestCase):
-    def test_dictionary_duplicate_messages(self):
-        cases = {
-            "servers.name": "Кажется, такой сервер у нас уже есть. Давай назовём его иначе.",
-            "countries.name": "Кажется, такое GEO у нас уже есть. Давай назовём его иначе.",
-            "providers.name": "Кажется, такой провайдер у нас уже есть. Давай назовём его иначе.",
-            "currencies.code": "Кажется, такая валюта у нас уже есть. Давай используем другой код.",
-            "phone_number_types.name": "Кажется, такой тип номера у нас уже есть. Давай назовём его иначе.",
-            "projects.name": "Кажется, такой проект у нас уже есть. Давай назовём его иначе.",
-            "provider_prefixes.provider_id, provider_prefixes.prefix": "Кажется, такой префикс у этого провайдера уже есть. Давай укажем другой.",
-            "phone_assignment_types.name": "Кажется, такое назначение у нас уже есть. Давай назовём его иначе.",
-            "phone_assignment_types.code": "Кажется, такой код назначения у нас уже есть. Давай используем другой.",
-        }
-        for columns, expected in cases.items():
-            with self.subTest(columns=columns):
-                self.assertEqual(user_error(sqlite3.IntegrityError(f"UNIQUE constraint failed: {columns}")), expected)
-    def test_duplicate_route_error_message_is_preserved(self):
-        message = user_error(sqlite3.IntegrityError("UNIQUE constraint failed: routes.country_id, routes.name"))
-
-        self.assertEqual(message, "Маршрут уже существует")
-        self.assertNotIn("UNIQUE constraint failed", message)
-
-    def test_duplicate_phone_error_message_is_preserved(self):
-        message = user_error(sqlite3.IntegrityError("UNIQUE constraint failed: phone_numbers.normalized_number"))
-
-        self.assertEqual(message, "Номер уже существует")
-        self.assertNotIn("UNIQUE constraint failed", message)
-
-    def test_duplicate_tariff_error_message_is_preserved(self):
+    def test_duplicate_route_error_message_uses_postgres_constraint(self):
         message = user_error(
-            sqlite3.IntegrityError(
-                "UNIQUE constraint failed: tariffs.country_id, tariffs.provider_id, tariffs.route_id"
+            FakePgError(
+                "duplicate route",
+                sqlstate="23505",
+                table="routes",
+                constraint="uq_routes_country_name",
             )
         )
 
-        self.assertEqual(message, "Активный тариф с такой связкой ГЕО + провайдер + префикс уже существует")
-        self.assertNotIn("UNIQUE constraint failed", message)
+        self.assertEqual(message, "Маршрут уже существует")
+
+    def test_duplicate_phone_error_message_uses_postgres_constraint(self):
+        message = user_error(
+            FakePgError(
+                "duplicate phone",
+                sqlstate="23505",
+                table="phone_numbers",
+                constraint="uq_phone_numbers_normalized_number",
+            )
+        )
+
+        self.assertEqual(message, "Номер уже существует")
+
+    def test_dictionary_duplicate_message_uses_postgres_table(self):
+        message = user_error(
+            FakePgError(
+                "duplicate server",
+                sqlstate="23505",
+                table="servers",
+                constraint="uq_servers_name",
+            )
+        )
+
+        self.assertEqual(message, "Кажется, такой сервер у нас уже есть. Давай назовём его иначе.")
 
     def test_unknown_db_error_fallback_is_preserved(self):
-        message = user_error(RuntimeError("test fallback"))
-
-        self.assertEqual(message, "test fallback")
+        self.assertEqual(user_error(RuntimeError("test fallback")), "test fallback")
 
 
 if __name__ == "__main__":

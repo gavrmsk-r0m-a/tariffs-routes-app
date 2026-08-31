@@ -13,6 +13,10 @@ UNKNOWN_DATABASE_ERROR = "unknown_database_error"
 SQLSTATE_ERROR_KINDS = {"23505": UNIQUE_VIOLATION, "23503": FOREIGN_KEY_VIOLATION,
  "23502": NOT_NULL_VIOLATION, "23514": CHECK_VIOLATION, "40001": SERIALIZATION_FAILURE,
  "40P01": DEADLOCK_DETECTED, "55P03": LOCK_TIMEOUT}
+POSTGRES_CONSTRAINT_COLUMNS = {
+    "uq_routes_country_name": ("country_id", "name"),
+    "uq_phone_numbers_normalized_number": ("normalized_number",),
+}
 
 @dataclass(frozen=True)
 class DbErrorInfo:
@@ -42,7 +46,8 @@ def map_database_error(exc: Exception, backend: str = "postgres") -> DbErrorInfo
         table = getattr(diagnostic, "table_name", None)
         constraint = getattr(diagnostic, "constraint_name", None)
         column = getattr(diagnostic, "column_name", None)
+        columns = (str(column),) if column else POSTGRES_CONSTRAINT_COLUMNS.get(str(constraint), ())
         return DbErrorInfo(SQLSTATE_ERROR_KINDS[sqlstate], "postgres",
-            table=str(table) if table else None, columns=(str(column),) if column else (),
+            table=str(table) if table else None, columns=columns,
             constraint=str(constraint) if constraint else None, sqlstate=sqlstate, raw_message=raw_message)
     return DbErrorInfo(UNKNOWN_DATABASE_ERROR, "postgres", sqlstate=sqlstate, raw_message=raw_message)

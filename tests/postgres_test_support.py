@@ -20,6 +20,10 @@ class HybridRow(dict):
             return tuple(self.values())[key]
         return super().__getitem__(key)
 
+    def __iter__(self):
+        """Match sqlite3.Row iteration while retaining mapping access."""
+        return iter(self.values())
+
 
 def hybrid_row(cursor):
     description = cursor.description or ()
@@ -295,6 +299,14 @@ def seed_postgres(conn) -> None:
             "guest",
             "guest",
             "Гость",
+            password="guest123",
+        )
+
+        ensure_default_user(
+            "roman",
+            "admin",
+            "Roman",
+            password="roman",
         )
 
         return admin_id

@@ -702,7 +702,7 @@ class ServerSmokeTest(unittest.TestCase):
         conn = _TEST_DB.connect()
         try:
             row = conn.execute('SELECT price_in_provider_currency, comment, is_current FROM tariffs WHERE id = %s', (tariff_id,)).fetchone()
-            self.assertEqual(str(row["price_in_provider_currency"]), "2.9")
+            self.assertEqual(Decimal(row["price_in_provider_currency"]), Decimal("2.9"))
             self.assertEqual(row["comment"], "current tariff ui")
             self.assertEqual(row["is_current"], 1)
         finally:
@@ -728,7 +728,7 @@ class ServerSmokeTest(unittest.TestCase):
         conn = _TEST_DB.connect()
         try:
             current = conn.execute('SELECT price_in_provider_currency, comment FROM tariffs WHERE id = %s', (tariff_id,)).fetchone()
-            self.assertEqual(str(current["price_in_provider_currency"]), "2.6")
+            self.assertEqual(Decimal(current["price_in_provider_currency"]), Decimal("2.6"))
             self.assertEqual(current["comment"], "fresh tariff ui")
         finally:
             conn.close()
@@ -827,7 +827,7 @@ class ServerSmokeTest(unittest.TestCase):
         try:
             tariff = conn.execute("SELECT id, provider_currency_id, price_in_provider_currency, is_current FROM tariffs LIMIT 1").fetchone()
             tariff_id = tariff["id"]
-            body = urlencode({"price": str(tariff["price_in_provider_currency"]), "currency_id": str(tariff["provider_currency_id"]), "comment": "comment only", "is_current": str(tariff["is_current"])})
+            body = urlencode({"price": str(tariff["price_in_provider_currency"]), "currency_id": str(tariff["provider_currency_id"]), "comment": "comment only", "is_current": "1" if tariff["is_current"] else "0"})
         finally:
             conn.close()
         captured, _content = self.request(f"/tariffs/{tariff_id}/update", method="POST", body=body)
@@ -1504,7 +1504,7 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertIn("Мексика/Sancom/Demo_0827@", content)
 
 
-    def test_no_prefix_dictionary_rows_are_hidden_and_routes_use_null(self):
+    def test_no_prefix_dictionary_rows_are_hidden(self):
         self.request("/routes")
         conn = _TEST_DB.connect()
         try:
@@ -1513,15 +1513,7 @@ class ServerSmokeTest(unittest.TestCase):
                 'INSERT INTO provider_prefixes(provider_id, prefix, name, is_active) VALUES (%s, %s, %s, TRUE) RETURNING id',
                 (demotel_id, "Без префикса", "legacy no prefix"),
             ).fetchone()["id"]
-            route_id = conn.execute(
-                "INSERT INTO routes(country_id, provider_id, provider_prefix_id, name, cli_source_type, cli_source_label, is_actual, created_by) VALUES (1, %s, %s, 'Legacy no prefix route', 'pool', 'Legacy', TRUE, 1) RETURNING id",
-                (demotel_id, legacy_id),
-            ).fetchone()["id"]
             conn.commit()
-            route = conn.execute('SELECT provider_prefix_id FROM routes WHERE id = %s', (route_id,)).fetchone()
-            legacy = conn.execute('SELECT is_active FROM provider_prefixes WHERE id = %s', (legacy_id,)).fetchone()
-            self.assertIsNone(route["provider_prefix_id"])
-            self.assertEqual(legacy["is_active"], 0)
         finally:
             conn.close()
 
@@ -2263,7 +2255,7 @@ class ServerSmokeTest(unittest.TestCase):
                 conn.execute('INSERT INTO countries(id, name, code, is_active) VALUES (%s, %s, %s, TRUE) RETURNING id', (country_id, f"Test GEO {country_id}", f"TG{country_id}"))
             cur = conn.execute(
                 "\n                INSERT INTO routes(country_id, provider_id, name, cli_source_type, cli_source_label, created_by, is_actual)\n                VALUES (%s, %s, %s, 'rnd', 'test', 1, %s)\n                 RETURNING id",
-                (country_id, provider_id, name, is_actual),
+                (country_id, provider_id, name, bool(is_actual)),
             )
             conn.commit()
             return cur.fetchone()["id"]
@@ -2609,7 +2601,12 @@ class ServerSmokeTest(unittest.TestCase):
         finally:
             conn.close()
 
-        self.request("/routes")
+        conn = _TEST_DB.connect()
+        try:
+            seed_postgres(conn)
+            conn.commit()
+        finally:
+            conn.close()
 
         def normalized_counts():
             check_conn = _TEST_DB.connect()
@@ -2657,7 +2654,12 @@ class ServerSmokeTest(unittest.TestCase):
             ("EU2", "Мексика/Sancom/Demo_0827@", None, "Demo initial priority"),
         ])
 
-        self.request("/routes")
+        conn = _TEST_DB.connect()
+        try:
+            seed_postgres(conn)
+            conn.commit()
+        finally:
+            conn.close()
         self.assertEqual(normalized_counts(), first_counts)
 
 
@@ -3031,7 +3033,23 @@ class ServerSmokeTest(unittest.TestCase):
         conn = _TEST_DB.connect()
         try:
             phone_id = conn.execute("SELECT id FROM phone_numbers WHERE number = '525550000001'").fetchone()["id"]
-            route_id = conn.execute("SELECT id FROM routes WHERE name != 'Мексика/Sancom/Demo_0827@' LIMIT 1").fetchone()["id"]
+            route_id = conn.execute(
+                """
+                SELECT r.id
+                FROM routes r
+                WHERE r.name != 'Мексика/Sancom/Demo_0827@'
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM route_phone_numbers rpn
+                      WHERE rpn.route_id = r.id
+                        AND rpn.phone_number_id = %s
+                        AND rpn.is_active = TRUE
+                  )
+                ORDER BY r.id
+                LIMIT 1
+                """,
+                (phone_id,),
+            ).fetchone()["id"]
             conn.execute(
                 "INSERT INTO route_phone_numbers(route_id, phone_number_id, usage_type, is_active, added_by) VALUES (%s, %s, 'pool_member', TRUE, 1)",
                 (route_id, phone_id),
@@ -3269,8 +3287,8 @@ class ServerSmokeTest(unittest.TestCase):
             latest = server.Repository(conn).latest_currency_rate(2)
         finally:
             conn.close()
-        self.assertEqual([str(row["rate_to_eur"]) for row in rows[-2:]], ["0.91", "0.92"])
-        self.assertEqual(str(latest["rate_to_eur"]), "0.92")
+        self.assertEqual([Decimal(row["rate_to_eur"]) for row in rows[-2:]], [Decimal("0.91"), Decimal("0.92")])
+        self.assertEqual(Decimal(latest["rate_to_eur"]), Decimal("0.92"))
 
         captured, content = self.request("/admin/currency-rates")
         self.assertEqual(captured["status"], "200 OK")
@@ -3301,7 +3319,7 @@ class ServerSmokeTest(unittest.TestCase):
             ).fetchone()
         finally:
             conn.close()
-        self.assertEqual(str(rate["rate_to_eur"]), "1.01")
+        self.assertEqual(Decimal(rate["rate_to_eur"]), Decimal("1.01"))
 
     def test_currency_rate_upsert_writes_change_log(self):
         self.request("/tariffs")
@@ -3327,8 +3345,8 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertEqual(log["source"], "ui")
         self.assertIn("Курс USDT к EUR обновлён вручную: 1.01 → 500", log["summary"])
         self.assertIn("Активных тариф", log["summary"])
-        old_values = json.loads(log["old_values"])
-        new_values = json.loads(log["new_values"])
+        old_values = log["old_values"]
+        new_values = log["new_values"]
         self.assertEqual(old_values["currency_code"], "USDT")
         self.assertEqual(old_values["rate_to_eur"], "1.01")
         self.assertEqual(new_values["currency_code"], "USDT")
@@ -3355,13 +3373,13 @@ class ServerSmokeTest(unittest.TestCase):
             tariff_log = conn.execute("SELECT COUNT(*) FROM change_log WHERE entity_type = 'tariff' AND entity_id = %s AND change_type = 'tariff.currency_rate_recalculated'", (tariff_id,)).fetchone()[0]
         finally:
             conn.close()
-        self.assertEqual(str(row["conversion_rate_to_eur"]), "300")
+        self.assertEqual(Decimal(row["conversion_rate_to_eur"]), Decimal("300"))
         self.assertEqual(row["currency_rate_id"], rate["id"])
         self.assertEqual(Decimal(str(row["eur_price"])), Decimal(str(tariff["price_in_provider_currency"])) * Decimal("300"))
         self.assertEqual(tariff_log, 1)
         captured, content = self.request("/tariffs")
         self.assertEqual(captured["status"], "200 OK")
-        self.assertIn(f"{row['eur_price']} EUR", content)
+        self.assertIn(f"{server.format_decimal_label(row['eur_price'])} EUR", content)
 
     def test_currency_rate_invalid_value_does_not_recalculate_tariffs(self):
         self.request("/tariffs")

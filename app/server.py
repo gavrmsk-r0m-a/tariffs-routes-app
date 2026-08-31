@@ -24,7 +24,7 @@ from app.db import connect_database, load_db_config
 from app.db_adapter import placeholder, to_db_bool
 from app.db_errors import UNKNOWN_DATABASE_ERROR, UNIQUE_VIOLATION, map_database_error
 from app.importer import apply_import, preview_import
-from app.repository import BusinessRuleError, COMPANY_CHANGE_LABELS, ROUTING_SCOPE_LABELS, Repository, normalize_phone_status, normalize_provider_name, normalize_real_prefix, validate_phone_number
+from app.repository import BusinessRuleError, COMPANY_CHANGE_LABELS, ROUTING_SCOPE_LABELS, Repository, format_decimal_label, normalize_phone_status, normalize_provider_name, normalize_real_prefix, validate_phone_number
 from app.security import (
     GENERIC_LOGIN_ERROR,
     clear_login_failures,
@@ -4895,6 +4895,7 @@ def active_options(repo: Repository, table: str, label: str = "name", selected: 
 def prefix_options(repo: Repository, selected: object | None = None, empty: str | None = "Без префикса") -> str:
     p = placeholder(repo.backend)
     selected_text = "" if selected is None else str(selected)
+    selected_id = int(selected_text) if selected_text.isdecimal() else 0
     opts = f"<option value='' {'selected' if selected_text == '' else ''}>{esc(empty)}</option>" if empty is not None else ""
     if empty == "Все":
         opts += f"<option value='__none__' {'selected' if selected_text == '__none__' else ''}>Без префикса</option>"
@@ -4907,7 +4908,7 @@ def prefix_options(repo: Repository, selected: object | None = None, empty: str 
           AND TRIM(pp.prefix) NOT IN ('Без префикса', 'без префикса', 'no prefix', '—', '-')
         ORDER BY pp.prefix, p.name
         """,
-        (selected or 0,),
+        (selected_id,),
     )
     for row in rows:
         opts += f"<option value='{row['id']}' {'selected' if str(row['id']) == selected_text else ''}>{esc(row['label'])}</option>"
@@ -7321,7 +7322,7 @@ def tariff_history_page(repo: Repository, tariff_id: int) -> bytes:
         return page("Тариф не найден", "<h1>Тариф не найден</h1>")
     prefix = tariff["prefix"] or "—"
     body = f"""<h1>История тарифа</h1>
-<section class='card'><h2>{esc(tariff['country_name'])} / {esc(tariff['provider_name'])} / {esc(prefix)}</h2><p class='muted'>{esc(tariff['price_in_provider_currency'])} {esc(tariff['currency_code'])} · {'Активный' if tariff['is_current'] else 'Неактивный'}</p><p><a href='/tariffs'>← Назад к тарифам</a>{' · <a href="/tariffs/' + str(tariff_id) + '/edit">Редактировать тариф</a>' if can_write('tariffs') else ''}</p></section>
+<section class='card'><h2>{esc(tariff['country_name'])} / {esc(tariff['provider_name'])} / {esc(prefix)}</h2><p class='muted'>{esc(format_decimal_label(tariff['price_in_provider_currency']))} {esc(tariff['currency_code'])} · {'Активный' if tariff['is_current'] else 'Неактивный'}</p><p><a href='/tariffs'>← Назад к тарифам</a>{' · <a href="/tariffs/' + str(tariff_id) + '/edit">Редактировать тариф</a>' if can_write('tariffs') else ''}</p></section>
 {tariff_history_table(repo.list_tariff_history(tariff_id))}"""
     return page("История тарифа", body)
 
@@ -7530,14 +7531,14 @@ def tariffs_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
     filters = {"country_id": q.get("country_id"), "provider_id": q.get("provider_id"), "status": q.get("status", "active")}
     records = list(repo.list_tariffs(filters))
     if q.get("export") == "csv":
-        return csv_response("tariffs_export.csv", ["GEO", "Provider", "Prefix", "Provider price", "Currency", "Price EUR", "Active", "Comment"], [[t["country_name"], t["provider_name"], t["prefix"] or "—", t["price_in_provider_currency"], t["currency_code"], t["eur_price"], "Да" if t["is_current"] else "Нет", t["comment"]] for t in records])
+        return csv_response("tariffs_export.csv", ["GEO", "Provider", "Prefix", "Provider price", "Currency", "Price EUR", "Active", "Comment"], [[t["country_name"], t["provider_name"], t["prefix"] or "—", format_decimal_label(t["price_in_provider_currency"]), t["currency_code"], format_decimal_label(t["eur_price"]), "Да" if t["is_current"] else "Нет", t["comment"]] for t in records])
     records, pagination_html = paginate_rows(records, q, "/tariffs")
     rows = []
     for t in records:
         prefix = t["prefix"] or "—"
         actions = f"<a class='button edit-action' href='/tariffs/{t['id']}/edit' data-remote-edit='1' title='Редактировать' aria-label='Редактировать' data-tooltip='Редактировать'>Редактировать</a>" if can_write("tariffs") else ""
         history = history_icon_link(f"/tariffs/{t['id']}/history")
-        rows.append(f"""<tr><td data-col='history' class='history-cell'>{history}</td><td data-col='actions' class='actions'>{actions}</td><td data-col='geo'>{esc(t['country_name'])}</td><td data-col='provider'>{esc(t['provider_name'])}</td><td data-col='prefix'>{esc(prefix)}</td><td data-col='provider_price'>{esc(t['price_in_provider_currency'])} {esc(t['currency_code'])}</td><td data-col='eur_price'>{esc(t['eur_price'])} EUR</td><td data-col='active'>{'Да' if t['is_current'] else 'Нет'}</td>{clamp_cell('comment', esc(t['comment']), t['comment'], classes='comment-cell')}</tr>""")
+        rows.append(f"""<tr><td data-col='history' class='history-cell'>{history}</td><td data-col='actions' class='actions'>{actions}</td><td data-col='geo'>{esc(t['country_name'])}</td><td data-col='provider'>{esc(t['provider_name'])}</td><td data-col='prefix'>{esc(prefix)}</td><td data-col='provider_price'>{esc(format_decimal_label(t['price_in_provider_currency']))} {esc(t['currency_code'])}</td><td data-col='eur_price'>{esc(format_decimal_label(t['eur_price']))} EUR</td><td data-col='active'>{'Да' if t['is_current'] else 'Нет'}</td>{clamp_cell('comment', esc(t['comment']), t['comment'], classes='comment-cell')}</tr>""")
     filters_html = f"""<form class="filter-grid" method="get" action="/tariffs">
 <label>ГЕО <select name="country_id">{options(repo, 'countries', selected=q.get('country_id'), empty='Все')}</select></label>
 <label>Провайдер <select name="provider_id">{options(repo, 'providers', selected=q.get('provider_id'), empty='Все')}</select></label>
@@ -9113,7 +9114,7 @@ def currency_rates_page(repo: Repository) -> bytes:
         )
         ORDER BY c.code
     """):
-        rows.append(f"<tr><td>{esc(rate['currency_code'])}</td><td>{esc(rate['rate_to_eur'])}</td><td>{esc(rate['rate_date'])}</td></tr>")
+        rows.append(f"<tr><td>{esc(rate['currency_code'])}</td><td>{esc(format_decimal_label(rate['rate_to_eur']))}</td><td>{esc(rate['rate_date'])}</td></tr>")
     create_html = f"""<form class="form-grid currency-rate-form" method="post" action="/admin/currency-rates/upsert">
 <label class="currency-rate-currency">Валюта провайдера <span class="required">*</span><select name="currency_id">{active_options(repo, 'currencies', 'code')}</select></label>
 <label class="currency-rate-value"><span>Курс к EUR</span><span class="currency-rate-inline"><span class="currency-rate-prefix">1 единица валюты провайдера =</span><input name="rate_to_eur" placeholder="0.92"><span class="currency-rate-suffix">EUR</span></span></label>
@@ -9401,7 +9402,7 @@ def tariff_edit_form(repo: Repository, tariff_id: int, tariff: dict, *, modal: b
 </div></section>
 <section class='tariff-dialog-section'><h3>Цена</h3><div class='tariff-dialog-grid'>
 <label>Валюта <span class='required'>*</span><select name='currency_id' id='tariff-currency' data-original-currency='{esc(tariff['provider_currency_id'])}'>{active_options(repo, 'currencies', 'code', selected=tariff['provider_currency_id'])}</select></label>
-<label>Цена провайдера <span class='required'>*</span><input name='price' value='{esc(tariff['price_in_provider_currency'])}'></label>
+<label>Цена провайдера <span class='required'>*</span><input name='price' value='{esc(format_decimal_label(tariff['price_in_provider_currency']))}'></label>
 <p class='muted tariff-dialog-hint' id='currency-warning' hidden>Вы меняете валюту тарифа. Проверьте, что цена указана в новой валюте.</p>
 </div></section>
 <section class='tariff-dialog-section'><h3>Описание</h3><div class='tariff-dialog-grid'>

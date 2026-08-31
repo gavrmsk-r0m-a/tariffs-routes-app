@@ -84,7 +84,7 @@ jobs:
         ports:
           - 5432:5432
         options: >-
-          --health-cmd pg_isready
+          --health-cmd "pg_isready -U postgres -d teleroute_migration_test"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
@@ -138,6 +138,7 @@ jobs:
           python -m unittest tests.test_server
           python -m unittest tests.test_repository
           python -m unittest tests.test_db
+          python -m unittest tests.test_db_errors
           python -m unittest tests.test_db_adapter
           python -m unittest tests.test_importer
           python -m unittest tests.test_postgres_security_gate -v
