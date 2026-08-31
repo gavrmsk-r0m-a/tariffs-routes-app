@@ -5016,6 +5016,26 @@ def normalize_route_aon_fields(data: dict[str, str]) -> tuple[str, str, str, str
         raise BusinessRuleError("Метка АОН обязательна")
     return cli_source_type, label, aon_pool, None, None
 
+AON_SOURCE_LABELS = {
+    "pool": "Pool",
+    "rnd": "RND",
+    "sim": "SIM",
+    "single_number": "Single",
+    "other": "Other",
+}
+
+POOL_TYPE_LABELS = {
+    "purchased": "Пул купленных номеров",
+    "local": "Локальный пул",
+    "nonlocal": "Нелокальный пул",
+    "sim_gateway": "SIM / GSM-шлюз",
+}
+
+RND_TYPE_LABELS = {
+    "local": "Локальный пул",
+    "nonlocal": "Нелокальный пул",
+}
+
 def aon_source_options(selected: object | None = None, *, include_legacy: bool = False) -> str:
     values = ["pool", "rnd", "sim"]
     if include_legacy and selected in {"single_number", "other"}:
