@@ -1263,14 +1263,15 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertIn('data-theme-current>Тема: Светлая 2.0 ▾', content)
         self.assertIn('data-theme-option="dark"', content)
         self.assertIn('data-theme-option="light-v2"', content)
-        self.assertIn('data-theme-option="tele-route-pro"', content)
+        self.assertNotIn('data-theme-option="tele-route-pro"', content)
+        self.assertIn('const themeLabels = { "dark": "Тёмная", "light-v2": "Светлая 2.0" };', content)
         self.assertIn('const themeAliases = { "mvp": "light-v2", "calm-blue": "light-v2", "cyber-sketch": "dark", "terminal-paper": "light-v2" };', content)
+        self.assertIn('const normalizeTheme = (theme) => themeAliases[theme] || (themeLabels[theme] ? theme : "light-v2")', content)
         self.assertIn('let savedTheme = normalizeTheme(localStorage.getItem("mvp-theme") || "light-v2")', content)
         self.assertIn('localStorage.setItem("mvp-theme", theme)', content)
         self.assertIn('Тёмная', content)
         self.assertIn('Светлая 2.0', content)
-        self.assertIn('TeleRoute Pro', content)
-        self.assertIn('\"tele-route-pro\": \"TeleRoute Pro\"', content)
+        self.assertNotIn('TeleRoute Pro', content)
 
     def test_selected_user_records_route_and_phone_history_actor(self):
         self.request("/routes")

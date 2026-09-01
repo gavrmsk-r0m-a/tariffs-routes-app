@@ -608,7 +608,6 @@ def theme_selector() -> str:
           <div class="theme-menu" data-theme-menu role="menu" aria-label="Выбор темы">
             <button type="button" role="menuitemradio" data-theme-option="light-v2" aria-checked="true"><span class="theme-check" aria-hidden="true">{nav_icon("check")}</span><span>Светлая 2.0</span></button>
             <button type="button" role="menuitemradio" data-theme-option="dark" aria-checked="false"><span class="theme-check" aria-hidden="true">{nav_icon("check")}</span><span>Тёмная</span></button>
-            <button type="button" role="menuitemradio" data-theme-option="tele-route-pro" aria-checked="false"><span class="theme-check" aria-hidden="true">{nav_icon("check")}</span><span>TeleRoute Pro</span></button>
           </div>
         </div>
     """
@@ -708,59 +707,6 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
       --shadow-card: 0 2px 8px rgba(31, 41, 51, .055);
       --shadow-card-hover: 0 4px 12px rgba(31, 41, 51, .075);
       --shadow-glow: 0 0 0 1px rgba(15, 118, 110, 0.14), 0 4px 10px rgba(15, 118, 110, 0.08);
-      --radius-control: 6px;
-      --radius-card: 10px;
-    }}
-    html[data-theme="tele-route-pro"] {{
-      --bg: #f4f6f9;
-      --surface: #ffffff;
-      --surface-muted: #f8fafc;
-      --surface-soft: #f3f6fa;
-      --surface-strong: #eef2f7;
-      --table-header-bg: #f3f6fa;
-      --table-row-alt: #f8fafc;
-      --table-row-hover: #eff6ff;
-      --sidebar-bg: #ffffff;
-      --text-strong: #111827;
-      --text: #243244;
-      --muted: #667085;
-      --text-soft: #667085;
-      --border: #e5eaf1;
-      --border-strong: #d7dee8;
-      --border-ink: #b8c2cf;
-      --accent: #2563eb;
-      --accent-strong: #1d4ed8;
-      --accent-hover: #1e40af;
-      --accent-soft: #eff6ff;
-      --accent-border: #bfdbfe;
-      --cyber: #2563eb;
-      --cyber-strong: #1d4ed8;
-      --cyber-soft: #eff6ff;
-      --pink: #2563eb;
-      --pink-soft: #eff6ff;
-      --olive: #2563eb;
-      --olive-soft: #eff6ff;
-      --success: #16a34a;
-      --success-soft: #dcfce7;
-      --success-border: #bbf7d0;
-      --warning: #f59e0b;
-      --warning-hover: #d97706;
-      --warning-soft: #fef3c7;
-      --warning-border: #fde68a;
-      --provider-accent: #f59e0b;
-      --provider-hover: #d97706;
-      --provider-soft: #fef3c7;
-      --provider-border: #fde68a;
-      --danger: #dc2626;
-      --danger-strong: #b91c1c;
-      --danger-soft: #fee2e2;
-      --danger-border: #fecaca;
-      --input-bg: #ffffff;
-      --focus: #2563eb;
-      --shadow-soft: 0 1px 2px rgba(17, 24, 39, .045);
-      --shadow-card: 0 2px 8px rgba(17, 24, 39, .055);
-      --shadow-card-hover: 0 4px 12px rgba(17, 24, 39, .075);
-      --shadow-glow: 0 0 0 1px rgba(37, 99, 235, .14), 0 4px 10px rgba(37, 99, 235, .08);
       --radius-control: 6px;
       --radius-card: 10px;
     }}
@@ -3045,254 +2991,13 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     html[data-theme="light-v2"] .checkbox-list label,
     html[data-theme="light-v2"] label.checkbox-inline {{ display: inline-flex; align-items: center; gap: 8px; background: #fff; border: 1px solid var(--border); border-radius: 7px; padding: 6px 8px; }}
 
-    /* TeleRoute Pro filters foundation v1: visual-only standard filter polish scoped to the new theme. */
-    html[data-theme="tele-route-pro"] details.filter-card {{ margin: 8px 0 12px; border: 1px solid var(--border-strong); border-radius: 10px; background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%); box-shadow: 0 1px 2px rgba(17, 24, 39, .04); overflow: hidden; }}
-    html[data-theme="tele-route-pro"] details.filter-card[open] {{ border-color: var(--accent-border); box-shadow: 0 0 0 1px rgba(37, 99, 235, .045), 0 4px 14px rgba(17, 24, 39, .055); }}
-    html[data-theme="tele-route-pro"] details.filter-card > .filter-summary {{ min-height: 34px; padding: 8px 12px; border-bottom: 1px solid transparent; background: linear-gradient(180deg, #f8fafc 0%, #f3f6fa 100%); color: #334155; font-size: 13px; font-weight: 780; letter-spacing: .01em; cursor: pointer; }}
-    html[data-theme="tele-route-pro"] details.filter-card > .filter-summary:hover {{ background: #eef6ff; color: var(--accent-strong); }}
-    html[data-theme="tele-route-pro"] details.filter-card[open] > .filter-summary {{ border-bottom-color: var(--accent-border); background: linear-gradient(180deg, #eff6ff 0%, #f8fbff 100%); color: var(--accent-strong); }}
-    html[data-theme="tele-route-pro"] details.filter-card > .filter-summary::after {{ color: var(--muted); font-size: 11px; font-weight: 740; text-transform: uppercase; letter-spacing: .04em; }}
-    html[data-theme="tele-route-pro"] details.filter-card[open] > .filter-summary::after {{ color: var(--accent-strong); }}
-    html[data-theme="tele-route-pro"] details.filter-card > form {{ margin: 0; }}
-    html[data-theme="tele-route-pro"] .filter-card .filter-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(min(176px, 100%), 1fr)); align-items: end; gap: 9px 10px; padding: 10px 12px 12px; background: #ffffff; }}
-    html[data-theme="tele-route-pro"] .filter-card .filter-grid label {{ min-width: 0; color: #334155; font-size: 12px; font-weight: 760; line-height: 1.25; }}
-    html[data-theme="tele-route-pro"] .filter-card .filter-grid label:not(.checkbox-inline) > input,
-    html[data-theme="tele-route-pro"] .filter-card .filter-grid label:not(.checkbox-inline) > select {{ margin-top: 4px; }}
-    html[data-theme="tele-route-pro"] .filter-card .filter-grid input,
-    html[data-theme="tele-route-pro"] .filter-card .filter-grid select {{ min-height: 32px; padding: 5px 8px; border: 1px solid var(--border-strong); border-radius: 7px; background-color: var(--input-bg); color: var(--text); font-size: 13px; box-shadow: inset 0 1px 1px rgba(17, 24, 39, .025); }}
-    html[data-theme="tele-route-pro"] .filter-card .filter-grid input:hover,
-    html[data-theme="tele-route-pro"] .filter-card .filter-grid select:hover {{ border-color: var(--border-ink); }}
-    html[data-theme="tele-route-pro"] .filter-card .filter-grid input:focus,
-    html[data-theme="tele-route-pro"] .filter-card .filter-grid select:focus {{ border-color: var(--accent); box-shadow: 0 0 0 3px rgba(37, 99, 235, .12); outline: none; }}
-    html[data-theme="tele-route-pro"] .filter-card .filter-grid button,
-    html[data-theme="tele-route-pro"] .filter-card .reset-filters {{ min-height: 32px; padding: 5px 10px; border-radius: 7px; font-size: 13px; font-weight: 760; box-shadow: none; }}
-    html[data-theme="tele-route-pro"] .filter-card .filter-grid button[type="submit"],
-    html[data-theme="tele-route-pro"] .filter-card .filter-grid > button {{ border-color: var(--accent-border); background: var(--accent-soft); color: var(--accent-strong); }}
-    html[data-theme="tele-route-pro"] .filter-card .filter-grid button[type="submit"]:hover,
-    html[data-theme="tele-route-pro"] .filter-card .filter-grid > button:hover {{ border-color: var(--accent); background: #dbeafe; color: var(--accent-hover); }}
-    html[data-theme="tele-route-pro"] .filter-card .reset-filters {{ display: inline-flex; align-items: center; justify-content: center; border-color: var(--border-strong); background: #f8fafc; color: #475569; text-decoration: none; }}
-    html[data-theme="tele-route-pro"] .filter-card .reset-filters:hover {{ border-color: var(--accent-border); background: #eef6ff; color: var(--accent-strong); }}
-    html[data-theme="tele-route-pro"] .filter-card .muted,
-    html[data-theme="tele-route-pro"] .filter-card .metric-hint,
-    html[data-theme="tele-route-pro"] .filter-card .form-hint,
-    html[data-theme="tele-route-pro"] .filter-card small {{ color: var(--muted); font-size: 12px; line-height: 1.35; }}
-    html[data-theme="tele-route-pro"] .filter-card .filter-grid .checkbox-inline {{ min-height: 32px; padding: 5px 8px; border: 1px solid var(--border); border-radius: 7px; background: #f8fafc; color: var(--text); }}
     .phones-page .filter-review-control {{ display: flex; flex-direction: column; justify-content: flex-end; min-width: 0; }}
     .phones-page .filter-review-spacer {{ display: block; height: 15px; margin: 0 0 4px; visibility: hidden; color: transparent; font-size: 12px; font-weight: 760; line-height: 1.25; user-select: none; }}
     .phones-page .filter-review-checkbox {{ box-sizing: border-box; width: 100%; min-height: 34px; display: flex; align-items: center; gap: 7px; margin: 0; padding: 6px 9px; border: 1px solid var(--border-strong); border-radius: var(--radius-control); background: var(--input-bg, var(--surface)); color: var(--text); font-weight: 760; line-height: 1.25; white-space: nowrap; }}
     .phones-page .filter-review-checkbox input[type="checkbox"] {{ flex: 0 0 16px; width: 16px; height: 16px; min-width: 16px; min-height: 16px; margin: 0; }}
-    html[data-theme="tele-route-pro"] .phones-page .filter-card .filter-grid .filter-review-control {{ min-width: 0; }}
-    html[data-theme="tele-route-pro"] .phones-page .filter-card .filter-grid .filter-review-spacer {{ height: 15px; margin-bottom: 4px; font-size: 12px; font-weight: 760; line-height: 1.25; }}
-    html[data-theme="tele-route-pro"] .phones-page .filter-card .filter-grid .filter-review-checkbox,
-    html[data-theme="tele-route-pro"] .phones-page .filter-card .filter-grid label.filter-review-checkbox:has(input[name="review_required"]) {{ min-height: 32px; padding: 5px 8px; border: 1px solid var(--border-strong); border-radius: 7px; background: var(--input-bg); color: var(--text); box-shadow: inset 0 1px 1px rgba(17, 24, 39, .025); }}
-    html[data-theme="tele-route-pro"] .phones-page .filter-card .filter-grid .filter-review-checkbox:has(input[name="review_required"]:checked) {{ border-color: var(--border-ink); background: #f1f5f9; color: var(--text-strong); }}
-    html[data-theme="tele-route-pro"] .phones-page .filter-card .filter-grid .filter-review-checkbox input[type="checkbox"] {{ width: 16px; height: 16px; min-width: 16px; min-height: 16px; margin: 0; padding: 0; }}
-
-    /* TeleRoute Pro tables foundation v1: visual-only table polish scoped to the new theme. */
-    html[data-theme="tele-route-pro"] .table-card {{ border: 1px solid var(--border-strong); border-radius: 10px; background: var(--surface); box-shadow: 0 1px 2px rgba(17, 24, 39, .05), 0 8px 20px rgba(17, 24, 39, .055); overflow: hidden; }}
-    html[data-theme="tele-route-pro"] .table-scroll {{ background: var(--surface); scrollbar-color: #cbd5e1 var(--surface-soft); }}
-    html[data-theme="tele-route-pro"] table {{ background: var(--surface); border-color: var(--border); border-collapse: separate; border-spacing: 0; }}
-    html[data-theme="tele-route-pro"] th {{ background: linear-gradient(180deg, #f4f7fb 0%, #edf3fa 100%); color: #1f2a3a; border-bottom: 1px solid var(--border-ink); border-right: 1px solid var(--border); font-weight: 800; letter-spacing: .018em; text-transform: none; }}
-    html[data-theme="tele-route-pro"] td {{ background: var(--surface); color: var(--text); border-bottom: 1px solid var(--border); border-right: 1px solid var(--border); font-weight: 440; }}
-    html[data-theme="tele-route-pro"] tbody tr:nth-child(even) td {{ background: #fbfdff; }}
-    html[data-theme="tele-route-pro"] tbody tr:hover td {{ background: #eef6ff !important; }}
-    html[data-theme="tele-route-pro"] .table-footer {{ display: flex; align-items: center; justify-content: space-between; gap: 8px 12px; min-height: 38px; margin: 0 0 12px; padding: 6px 9px; border: 1px solid var(--border-strong); border-radius: 0 0 10px 10px; background: linear-gradient(180deg, #fbfdff 0%, #f4f7fb 100%); box-shadow: none; color: var(--muted); }}
-    html[data-theme="tele-route-pro"] .table-card + .table-footer {{ margin-top: -13px; border-top-color: var(--border); }}
-    html[data-theme="tele-route-pro"] .table-status-action-bar {{ border-color: var(--border-strong); background: linear-gradient(180deg, #fbfdff 0%, #f4f7fb 100%); color: var(--text); box-shadow: none; }}
-    html[data-theme="tele-route-pro"] .table-footer-summary,
-    html[data-theme="tele-route-pro"] .table-status-nav,
-    html[data-theme="tele-route-pro"] .table-status-summary,
-    html[data-theme="tele-route-pro"] .pagination-controls {{ display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; }}
-    html[data-theme="tele-route-pro"] .table-footer-summary p,
-    html[data-theme="tele-route-pro"] .table-footer-summary nav {{ margin: 0; }}
-    html[data-theme="tele-route-pro"] .table-status-summary {{ color: var(--muted); font-size: 12px; font-weight: 700; line-height: 1.25; }}
-    html[data-theme="tele-route-pro"] .table-status-item {{ display: inline-flex; align-items: center; gap: 3px; min-height: 24px; padding: 2px 7px; border: 1px solid var(--border); border-radius: 999px; background: rgba(255, 255, 255, .72); color: #475569; white-space: nowrap; }}
-    html[data-theme="tele-route-pro"] .table-status-item strong {{ color: var(--text-strong); font-weight: 800; }}
-    html[data-theme="tele-route-pro"] .table-footer-tools {{ display: inline-flex; align-items: center; justify-content: flex-end; gap: 6px; flex-wrap: wrap; margin-left: auto; }}
-    html[data-theme="tele-route-pro"] .pagination-button,
-    html[data-theme="tele-route-pro"] .export-button,
-    html[data-theme="tele-route-pro"] .table-utility-button,
-    html[data-theme="tele-route-pro"] .column-settings > summary,
-    html[data-theme="tele-route-pro"] td .button,
-    html[data-theme="tele-route-pro"] td a.button,
-    html[data-theme="tele-route-pro"] td button {{ display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-height: 28px; padding: 4px 8px; border: 1px solid var(--border-strong); border-radius: 7px; background: #ffffff; color: #334155; box-shadow: none; font-size: 12px; font-weight: 740; line-height: 1.2; text-decoration: none; }}
-    html[data-theme="tele-route-pro"] .pagination-button {{ min-width: 30px; padding-inline: 9px; color: var(--accent-strong); }}
-    html[data-theme="tele-route-pro"] .pagination-button:hover,
-    html[data-theme="tele-route-pro"] .export-button:hover,
-    html[data-theme="tele-route-pro"] .table-utility-button:hover,
-    html[data-theme="tele-route-pro"] .column-settings > summary:hover,
-    html[data-theme="tele-route-pro"] td .button:hover,
-    html[data-theme="tele-route-pro"] td a.button:hover,
-    html[data-theme="tele-route-pro"] td button:hover {{ border-color: var(--accent-border); background: #eef6ff; color: var(--accent-strong); box-shadow: none; }}
-    html[data-theme="tele-route-pro"] .pagination-button[aria-current="page"],
-    html[data-theme="tele-route-pro"] .pagination .active,
-    html[data-theme="tele-route-pro"] .button.active {{ border-color: var(--accent); background: var(--accent); color: #ffffff; }}
-    html[data-theme="tele-route-pro"] .pagination-button.disabled,
-    html[data-theme="tele-route-pro"] .pagination-button[aria-disabled="true"],
-    html[data-theme="tele-route-pro"] .export-button.disabled,
-    html[data-theme="tele-route-pro"] .export-button[aria-disabled="true"] {{ border-color: var(--border); background: #f1f5f9; color: #94a3b8; opacity: 1; cursor: not-allowed; pointer-events: none; }}
-    html[data-theme="tele-route-pro"] .export-button,
-    html[data-theme="tele-route-pro"] .table-utility-button {{ color: #334155; }}
-    html[data-theme="tele-route-pro"] .export-button.icon-button {{ width: 30px; min-width: 30px; padding: 4px; }}
-    html[data-theme="tele-route-pro"] .export-button svg,
-    html[data-theme="tele-route-pro"] .table-utility-button svg {{ width: 15px; height: 15px; flex: 0 0 auto; }}
-    html[data-theme="tele-route-pro"] .column-settings {{ color: var(--text); }}
-    html[data-theme="tele-route-pro"] .column-settings summary {{ cursor: pointer; list-style: none; }}
-    html[data-theme="tele-route-pro"] .column-settings summary::-webkit-details-marker {{ display: none; }}
-    html[data-theme="tele-route-pro"] .column-settings[open] summary,
-    html[data-theme="tele-route-pro"] .column-settings[open] > summary {{ background: #eef6ff; border-color: var(--accent-border); color: var(--accent-strong); box-shadow: inset 0 0 0 1px rgba(37, 99, 235, .06); }}
-    html[data-theme="tele-route-pro"] .column-settings-panel {{ gap: 6px; min-width: 292px; padding: 8px; border: 1px solid var(--border-strong); border-radius: 10px; background: #ffffff; box-shadow: 0 12px 24px rgba(17, 24, 39, .12); color: var(--text); }}
-    html[data-theme="tele-route-pro"] .column-settings-list {{ gap: 3px; }}
-    html[data-theme="tele-route-pro"] .column-settings-row {{ min-height: 28px; padding: 3px 6px; border: 1px solid transparent; border-radius: 7px; color: var(--text); }}
-    html[data-theme="tele-route-pro"] .column-settings-row:hover {{ background: #eef6ff; color: var(--text-strong); }}
-    html[data-theme="tele-route-pro"] .column-settings-row label {{ font-size: 13px; font-weight: 600; color: inherit; }}
-    html[data-theme="tele-route-pro"] .column-settings-row.is-locked label {{ color: var(--muted); }}
-    html[data-theme="tele-route-pro"] .column-settings input[type="checkbox"] {{ width: 15px; height: 15px; min-height: 15px; margin: 0 6px 0 0; accent-color: var(--accent); }}
-    html[data-theme="tele-route-pro"] .column-settings .column-order-button {{ width: 24px; min-width: 24px; min-height: 24px; padding: 0; border-color: var(--border); border-radius: 6px; background: #ffffff; color: #64748b; box-shadow: none; font-size: 12px; }}
-    html[data-theme="tele-route-pro"] .column-settings .column-order-button:hover {{ border-color: var(--accent-border); background: #eff6ff; color: var(--accent-strong); }}
-    html[data-theme="tele-route-pro"] .column-settings .column-reset {{ justify-content: center; min-height: 28px; padding: 4px 8px; border: 1px solid var(--border); border-radius: 7px; background: #f8fafc; color: #475569; box-shadow: none; font-size: 12px; font-weight: 700; }}
-    html[data-theme="tele-route-pro"] .column-settings .column-reset:hover {{ background: #eef6ff; border-color: var(--accent-border); color: var(--accent-strong); }}
-    html[data-theme="tele-route-pro"] .status-badge {{ border: 1px solid var(--border-strong); border-radius: 999px; background: #f3f6fa; color: #475569; font-weight: 780; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .68); }}
-    html[data-theme="tele-route-pro"] .status-badge.success,
-    html[data-theme="tele-route-pro"] .status-badge.ok,
-    html[data-theme="tele-route-pro"] .status-badge.active,
-    html[data-theme="tele-route-pro"] .status-badge.live,
-    html[data-theme="tele-route-pro"] .status-badge.hlr-severity-ok {{ background: var(--success-soft); border-color: var(--success-border); color: #15803d; }}
-    html[data-theme="tele-route-pro"] .status-badge.warning,
-    html[data-theme="tele-route-pro"] .status-badge.review,
-    html[data-theme="tele-route-pro"] .status-badge.unknown,
-    html[data-theme="tele-route-pro"] .status-badge.hlr-severity-warning,
-    html[data-theme="tele-route-pro"] .status-badge.hlr-severity-unknown {{ background: var(--warning-soft); border-color: var(--warning-border); color: #b45309; }}
-    html[data-theme="tele-route-pro"] .status-badge.danger,
-    html[data-theme="tele-route-pro"] .status-badge.error,
-    html[data-theme="tele-route-pro"] .status-badge.inactive,
-    html[data-theme="tele-route-pro"] .status-badge.dead,
-    html[data-theme="tele-route-pro"] .status-badge.bad_format,
-    html[data-theme="tele-route-pro"] .status-badge.hlr-severity-danger {{ background: var(--danger-soft); border-color: var(--danger-border); color: var(--danger-strong); }}
 
 
-    /* TeleRoute Pro component polish v2: forms, modals, details, states, controls. Visual-only and scoped to the new theme. */
-    html[data-theme="tele-route-pro"] {{ --accent: #111827; --accent-strong: #0f172a; --accent-hover: #020617; --accent-soft: #f1f5f9; --accent-border: #cbd5e1; --info: #2563eb; --info-soft: #eff6ff; --info-border: #bfdbfe; --control-height: 34px; }}
-    html[data-theme="tele-route-pro"] input,
-    html[data-theme="tele-route-pro"] select,
-    html[data-theme="tele-route-pro"] textarea {{ max-width: 100%; min-width: 0; box-sizing: border-box; border: 1px solid var(--border-strong); border-radius: 7px; background: var(--input-bg); color: var(--text); box-shadow: inset 0 1px 1px rgba(17, 24, 39, .025); font: inherit; transition: border-color .14s ease, box-shadow .14s ease, background-color .14s ease, color .14s ease; }}
-    html[data-theme="tele-route-pro"] input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
-    html[data-theme="tele-route-pro"] select {{ min-height: var(--control-height); padding: 6px 9px; }}
-    html[data-theme="tele-route-pro"] textarea {{ min-height: 82px; padding: 8px 9px; resize: vertical; line-height: 1.45; }}
-    html[data-theme="tele-route-pro"] input::placeholder,
-    html[data-theme="tele-route-pro"] textarea::placeholder {{ color: #7b8794; opacity: 1; }}
-    html[data-theme="tele-route-pro"] input:hover,
-    html[data-theme="tele-route-pro"] select:hover,
-    html[data-theme="tele-route-pro"] textarea:hover {{ border-color: var(--border-ink); }}
-    html[data-theme="tele-route-pro"] input:focus,
-    html[data-theme="tele-route-pro"] select:focus,
-    html[data-theme="tele-route-pro"] textarea:focus,
-    html[data-theme="tele-route-pro"] button:focus-visible,
-    html[data-theme="tele-route-pro"] a.button:focus-visible,
-    html[data-theme="tele-route-pro"] summary:focus-visible {{ outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(17, 24, 39, .13); }}
-    html[data-theme="tele-route-pro"] input:disabled,
-    html[data-theme="tele-route-pro"] select:disabled,
-    html[data-theme="tele-route-pro"] textarea:disabled,
-    html[data-theme="tele-route-pro"] button:disabled {{ background: #eef2f7; border-color: var(--border); color: #7b8794; opacity: 1; cursor: not-allowed; }}
-    html[data-theme="tele-route-pro"] input[readonly],
-    html[data-theme="tele-route-pro"] textarea[readonly] {{ background: #f8fafc; border-color: var(--border); color: #475569; box-shadow: none; }}
-    html[data-theme="tele-route-pro"] label,
-    html[data-theme="tele-route-pro"] .form-label {{ color: #334155; font-size: 12px; font-weight: 760; line-height: 1.28; }}
-    html[data-theme="tele-route-pro"] label > input:not([type="checkbox"]):not([type="radio"]),
-    html[data-theme="tele-route-pro"] label > select,
-    html[data-theme="tele-route-pro"] label > textarea {{ margin-top: 4px; }}
-    html[data-theme="tele-route-pro"] label.required::after,
-    html[data-theme="tele-route-pro"] .required::after {{ content: " *"; color: var(--danger); font-weight: 850; }}
-    html[data-theme="tele-route-pro"] .form-hint,
-    html[data-theme="tele-route-pro"] .help-text,
-    html[data-theme="tele-route-pro"] .metric-hint,
-    html[data-theme="tele-route-pro"] small {{ color: var(--muted); font-size: 12px; line-height: 1.38; }}
-    html[data-theme="tele-route-pro"] fieldset {{ min-width: 0; border: 1px solid var(--border-strong); border-radius: 10px; background: #fbfdff; }}
-    html[data-theme="tele-route-pro"] legend {{ padding: 0 6px; color: var(--text-strong); font-size: 12px; font-weight: 820; }}
-    html[data-theme="tele-route-pro"] .form-grid,
-    html[data-theme="tele-route-pro"] .modal-form,
-    html[data-theme="tele-route-pro"] form .grid {{ gap: 10px 12px; }}
-    html[data-theme="tele-route-pro"] .campaign-id-inline-action,
-    html[data-theme="tele-route-pro"] .inline-action-group {{ display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; align-items: end; }}
-    html[data-theme="tele-route-pro"] .modal-overlay,
-    html[data-theme="tele-route-pro"] .modal-backdrop,
-    html[data-theme="tele-route-pro"] .dialog-backdrop {{ background: rgba(15, 23, 42, .48); }}
-    html[data-theme="tele-route-pro"] .modal-card,
-    html[data-theme="tele-route-pro"] .modal-content,
-    html[data-theme="tele-route-pro"] dialog,
-    html[data-theme="tele-route-pro"] .edit-details[open] > form {{ border: 1px solid var(--border-ink); border-radius: 12px; background: #fff; box-shadow: 0 18px 44px rgba(15, 23, 42, .22); color: var(--text); }}
-    html[data-theme="tele-route-pro"] .modal-card > h2,
-    html[data-theme="tele-route-pro"] .modal-header,
-    html[data-theme="tele-route-pro"] .modal-title {{ border-bottom: 1px solid var(--border-strong); background: #f8fafc; color: var(--text-strong); font-weight: 850; }}
-    html[data-theme="tele-route-pro"] .modal-body {{ background: #fff; }}
-    html[data-theme="tele-route-pro"] .modal-actions,
-    html[data-theme="tele-route-pro"] .modal-footer,
-    html[data-theme="tele-route-pro"] .form-actions,
-    html[data-theme="tele-route-pro"] .admin-edit-actions {{ display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: flex-end; border-top: 1px solid var(--border-strong); background: #f8fafc; }}
-    html[data-theme="tele-route-pro"] button,
-    html[data-theme="tele-route-pro"] .button,
-    html[data-theme="tele-route-pro"] input[type="submit"] {{ border: 1px solid var(--border-strong); border-radius: 7px; background: #fff; color: #334155; box-shadow: none; font-weight: 760; }}
-    html[data-theme="tele-route-pro"] button:hover,
-    html[data-theme="tele-route-pro"] .button:hover,
-    html[data-theme="tele-route-pro"] input[type="submit"]:hover {{ border-color: var(--border-ink); background: #f8fafc; color: var(--text-strong); }}
-    html[data-theme="tele-route-pro"] button[type="submit"],
-    html[data-theme="tele-route-pro"] .button.primary,
-    html[data-theme="tele-route-pro"] .primary-button {{ border-color: var(--accent); background: var(--accent); color: #fff; }}
-    html[data-theme="tele-route-pro"] button[type="submit"]:hover,
-    html[data-theme="tele-route-pro"] .button.primary:hover,
-    html[data-theme="tele-route-pro"] .primary-button:hover {{ border-color: var(--accent-hover); background: var(--accent-hover); color: #fff; }}
-    html[data-theme="tele-route-pro"] .danger,
-    html[data-theme="tele-route-pro"] .button.danger,
-    html[data-theme="tele-route-pro"] button.danger {{ border-color: var(--danger-border); background: var(--danger-soft); color: var(--danger-strong); }}
-    html[data-theme="tele-route-pro"] details:not(.current-user-selector):not(.column-settings):not(.filter-card) {{ border: 1px solid var(--border-strong); border-radius: 10px; background: #fff; overflow: hidden; }}
-    html[data-theme="tele-route-pro"] details:not(.current-user-selector):not(.column-settings):not(.filter-card) > summary {{ display: flex; align-items: center; gap: 8px; min-height: 36px; padding: 8px 12px; list-style: none; border-bottom: 1px solid transparent; background: #f8fafc; color: #334155; cursor: pointer; font-weight: 800; }}
-    html[data-theme="tele-route-pro"] details:not(.current-user-selector):not(.column-settings):not(.filter-card) > summary::-webkit-details-marker {{ display: none; }}
-    html[data-theme="tele-route-pro"] details:not(.current-user-selector):not(.column-settings):not(.filter-card) > summary::before {{ content: "▸"; color: var(--muted); font-size: 11px; transition: transform .14s ease; }}
-    html[data-theme="tele-route-pro"] details[open]:not(.current-user-selector):not(.column-settings):not(.filter-card) > summary {{ border-bottom-color: var(--border-strong); background: #f1f5f9; color: var(--text-strong); }}
-    html[data-theme="tele-route-pro"] details[open]:not(.current-user-selector):not(.column-settings):not(.filter-card) > summary::before {{ transform: rotate(90deg); color: var(--text-strong); }}
-    html[data-theme="tele-route-pro"] .empty-state,
-    html[data-theme="tele-route-pro"] .empty-row,
-    html[data-theme="tele-route-pro"] td.empty {{ padding: 18px 16px; border: 1px dashed var(--border-strong); border-radius: 10px; background: #fbfdff; color: var(--muted); text-align: center; font-weight: 650; }}
-    html[data-theme="tele-route-pro"] .alert,
-    html[data-theme="tele-route-pro"] .flash,
-    html[data-theme="tele-route-pro"] .message,
-    html[data-theme="tele-route-pro"] .validation-error {{ border: 1px solid var(--info-border); border-left-width: 3px; border-radius: 10px; background: var(--info-soft); color: #1d4ed8; padding: 9px 11px; font-weight: 700; }}
-    html[data-theme="tele-route-pro"] .success {{ border-color: var(--success-border); background: var(--success-soft); color: #15803d; }}
-    html[data-theme="tele-route-pro"] .warning,
-    html[data-theme="tele-route-pro"] .review-required {{ border-color: var(--warning-border); background: var(--warning-soft); color: #b45309; }}
-    html[data-theme="tele-route-pro"] .error,
-    html[data-theme="tele-route-pro"] .form-submit-error {{ border-color: var(--danger-border); background: var(--danger-soft); color: var(--danger-strong); }}
-    html[data-theme="tele-route-pro"] input[type="checkbox"],
-    html[data-theme="tele-route-pro"] input[type="radio"] {{ appearance: none; -webkit-appearance: none; display: inline-grid; place-content: center; width: 16px; height: 16px; min-width: 16px; min-height: 16px; margin: 0 6px 0 0; border: 1px solid var(--border-ink); background: #fff; vertical-align: -3px; }}
-    html[data-theme="tele-route-pro"] input[type="checkbox"] {{ border-radius: 4px; }}
-    html[data-theme="tele-route-pro"] input[type="radio"] {{ border-radius: 50%; }}
-    html[data-theme="tele-route-pro"] input[type="checkbox"]::before {{ content: ""; width: 8px; height: 5px; border-left: 2px solid #fff; border-bottom: 2px solid #fff; transform: rotate(-45deg) scale(0); transform-origin: center; }}
-    html[data-theme="tele-route-pro"] input[type="radio"]::before {{ content: ""; width: 7px; height: 7px; border-radius: 50%; background: #fff; transform: scale(0); }}
-    html[data-theme="tele-route-pro"] input[type="checkbox"]:checked,
-    html[data-theme="tele-route-pro"] input[type="radio"]:checked {{ border-color: var(--accent); background: var(--accent); }}
-    html[data-theme="tele-route-pro"] input[type="checkbox"]:checked::before {{ transform: rotate(-45deg) scale(1); }}
-    html[data-theme="tele-route-pro"] input[type="radio"]:checked::before {{ transform: scale(1); }}
-    html[data-theme="tele-route-pro"] input[type="checkbox"]:focus-visible,
-    html[data-theme="tele-route-pro"] input[type="radio"]:focus-visible {{ outline: none; box-shadow: 0 0 0 3px rgba(17, 24, 39, .15); }}
-    html[data-theme="tele-route-pro"] .important-checkbox,
-    html[data-theme="tele-route-pro"] .spillover-checkbox,
-    html[data-theme="tele-route-pro"] label:has(input[name="review_required"]),
-    html[data-theme="tele-route-pro"] label:has(input[name="has_overflow"]) {{ border: 1px solid var(--warning-border); border-radius: 9px; background: #fffbeb; padding: 7px 9px; font-weight: 780; }}
-    html[data-theme="tele-route-pro"] .scope-cards,
-    html[data-theme="tele-route-pro"] .segmented-control,
-    html[data-theme="tele-route-pro"] .tabs {{ gap: 4px; padding: 3px; border: 1px solid var(--border-strong); border-radius: 10px; background: #f1f5f9; }}
-    html[data-theme="tele-route-pro"] .scope-card,
-    html[data-theme="tele-route-pro"] .segment,
-    html[data-theme="tele-route-pro"] .tab {{ border: 1px solid transparent; border-radius: 7px; background: transparent; color: #475569; font-weight: 760; }}
-    html[data-theme="tele-route-pro"] .scope-card.selected,
-    html[data-theme="tele-route-pro"] .scope-card:has(input:checked),
-    html[data-theme="tele-route-pro"] .segment.active,
-    html[data-theme="tele-route-pro"] .tab.active {{ border-color: var(--border-ink); background: #fff; color: var(--text-strong); box-shadow: 0 1px 2px rgba(17, 24, 39, .08); }}
-    html[data-theme="tele-route-pro"] .table-footer,
-    html[data-theme="tele-route-pro"] .table-status-action-bar {{ border-color: var(--border-strong); background: #f8fafc; }}
-    html[data-theme="tele-route-pro"] .hlr-panel,
-    html[data-theme="tele-route-pro"] .hlr-summary,
-    html[data-theme="tele-route-pro"] .hlr-results {{ border-color: var(--border-strong); background: #fff; }}
+
 
 
     /* Routes page UI polish: dedicated route create/edit modal rebuilt as a compact portrait card. */
@@ -3561,140 +3266,7 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .admin-users-page .user-dialog-footer .modal-save:hover {{ border-color: #1d4ed8; background: #1d4ed8; color: #fff; }}
     .admin-users-page .user-dialog-footer .modal-cancel {{ order: 2; }}
     @media (max-width: 720px) {{ .modal-form-card[open] > form.naming-dialog, .naming-dialog.naming-dialog, .modal-form-card[open] > form.reason-dialog, .reason-dialog.reason-dialog, .modal-form-card[open] > form.user-dialog, .user-dialog.user-dialog {{ width: calc(100vw - 18px); max-width: calc(100vw - 18px); max-height: calc(100vh - 18px); }} .naming-dialog-grid, .reason-dialog-grid, .admin-users-page .user-dialog-grid {{ grid-template-columns: 1fr; }} .naming-dialog-header, .naming-dialog-body, .naming-dialog-footer, .reason-dialog-header, .reason-dialog-body, .reason-dialog-footer, .admin-users-page .user-dialog-header, .admin-users-page .user-dialog-body, .admin-users-page .user-dialog-footer {{ padding-left: 16px; padding-right: 16px; }} }}
-    html[data-theme="tele-route-pro"] .routes-page .table-footer-tools .export-button {{ width: auto; min-width: auto; padding: 5px 11px; border-color: var(--info); background: var(--info); color: #fff; }}
-    html[data-theme="tele-route-pro"] .routes-page .route-create-shell > .form-summary {{ border-color: #2563eb; background: #2563eb; color: #fff; }}
-    html[data-theme="tele-route-pro"] .routes-page .route-create-shell > .form-summary::after, html[data-theme="tele-route-pro"] .routes-page .route-create-shell[open] > .form-summary::after {{ content: none; }}
 
-    /* TeleRoute Pro forms/modals/details/states foundation v1. UI-only theme layer. */
-    html[data-theme="tele-route-pro"] select {{ width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
-    html[data-theme="tele-route-pro"] input[type="date"],
-    html[data-theme="tele-route-pro"] input[type="number"],
-    html[data-theme="tele-route-pro"] input[type="search"],
-    html[data-theme="tele-route-pro"] input[type="text"],
-    html[data-theme="tele-route-pro"] input[type="email"],
-    html[data-theme="tele-route-pro"] input[type="password"],
-    html[data-theme="tele-route-pro"] input[type="tel"],
-    html[data-theme="tele-route-pro"] input[type="url"],
-    html[data-theme="tele-route-pro"] select,
-    html[data-theme="tele-route-pro"] textarea {{ width: 100%; }}
-    html[data-theme="tele-route-pro"] input[type="file"] {{ min-height: var(--control-height); padding: 5px 8px; border: 1px dashed var(--border-ink); border-radius: 8px; background: #fbfdff; color: var(--muted); }}
-    html[data-theme="tele-route-pro"] input[type="file"]::file-selector-button {{ min-height: 26px; margin-right: 8px; border: 1px solid var(--border-strong); border-radius: 6px; background: #fff; color: var(--text-strong); font-weight: 760; }}
-    html[data-theme="tele-route-pro"] .form-grid label,
-    html[data-theme="tele-route-pro"] .filter-grid label,
-    html[data-theme="tele-route-pro"] .modal-card label,
-    html[data-theme="tele-route-pro"] .modal-form-card label {{ min-width: 0; }}
-    html[data-theme="tele-route-pro"] .form-grid label:not(.checkbox-inline):not(.scope-card):not(.spillover-checkbox):not(.important-checkbox),
-    html[data-theme="tele-route-pro"] .modal-card label:not(.checkbox-inline):not(.scope-card):not(.spillover-checkbox):not(.important-checkbox),
-    html[data-theme="tele-route-pro"] .modal-form-card label:not(.checkbox-inline):not(.scope-card):not(.spillover-checkbox):not(.important-checkbox) {{ display: flex; flex-direction: column; gap: 4px; white-space: normal; }}
-    html[data-theme="tele-route-pro"] label.required,
-    html[data-theme="tele-route-pro"] .required {{ display: inline-flex; align-items: baseline; gap: 3px; }}
-    html[data-theme="tele-route-pro"] label.required::after,
-    html[data-theme="tele-route-pro"] .required::after {{ display: inline; flex: 0 0 auto; margin-left: 1px; }}
-    html[data-theme="tele-route-pro"] .form-actions button,
-    html[data-theme="tele-route-pro"] .modal-actions button,
-    html[data-theme="tele-route-pro"] .modal-footer button,
-    html[data-theme="tele-route-pro"] .admin-edit-actions button {{ min-height: 32px; padding: 6px 11px; }}
-    html[data-theme="tele-route-pro"] .modal-form-card > summary {{ border-color: var(--border-ink); background: #111827; color: #fff; box-shadow: none; }}
-    html[data-theme="tele-route-pro"] .modal-form-card > summary:hover {{ border-color: #020617; background: #020617; color: #fff; }}
-    html[data-theme="tele-route-pro"] .modal-form-card[open]::before {{ background: rgba(15, 23, 42, .50); backdrop-filter: none; }}
-    html[data-theme="tele-route-pro"] .modal-form-card[open] > form,
-    html[data-theme="tele-route-pro"] .modal-form-card[open] > .modal-body,
-    html[data-theme="tele-route-pro"] .modal-card {{ border-radius: 14px; border-color: var(--border-ink); box-shadow: 0 22px 54px rgba(15, 23, 42, .24); }}
-    html[data-theme="tele-route-pro"] .modal-form-card[open] > form {{ gap: 11px 12px; }}
-    html[data-theme="tele-route-pro"] .modal-save,
-    html[data-theme="tele-route-pro"] .admin-edit-save {{ border-color: #111827; background: #111827; color: #fff; }}
-    html[data-theme="tele-route-pro"] .modal-save:hover,
-    html[data-theme="tele-route-pro"] .admin-edit-save:hover {{ border-color: #020617; background: #020617; color: #fff; }}
-    html[data-theme="tele-route-pro"] .routes-page .route-primary-summary {{ border-color: #2563eb !important; background: #2563eb !important; color: #fff !important; }}
-    html[data-theme="tele-route-pro"] .routes-page .route-primary-summary:hover {{ border-color: #1d4ed8 !important; background: #1d4ed8 !important; color: #fff !important; }}
-    html[data-theme="tele-route-pro"] .routes-page .route-primary-summary:focus-visible {{ border-color: #1d4ed8 !important; background: #2563eb !important; color: #fff !important; }}
-    html[data-theme="tele-route-pro"] .routes-page .route-primary-summary:active, html[data-theme="tele-route-pro"] .routes-page .route-create-shell[open] > .route-primary-summary {{ border-color: #1e40af !important; background: #1e40af !important; color: #fff !important; }}
-    html[data-theme="tele-route-pro"] .routes-page .route-primary-summary::after, html[data-theme="tele-route-pro"] .routes-page .route-create-shell[open] > .route-primary-summary::after {{ content: none !important; }}
-    html[data-theme="tele-route-pro"] .admin-naming-page .admin-naming-primary-summary,
-    html[data-theme="tele-route-pro"] .admin-change-reasons-page .admin-reason-primary-summary,
-    html[data-theme="tele-route-pro"] .admin-users-page .admin-user-primary-summary {{ border-color: #2563eb !important; background: #2563eb !important; color: #fff !important; }}
-    html[data-theme="tele-route-pro"] .admin-naming-page .admin-naming-primary-summary:hover,
-    html[data-theme="tele-route-pro"] .admin-change-reasons-page .admin-reason-primary-summary:hover,
-    html[data-theme="tele-route-pro"] .admin-users-page .admin-user-primary-summary:hover {{ border-color: #1d4ed8 !important; background: #1d4ed8 !important; color: #fff !important; }}
-    html[data-theme="tele-route-pro"] .reason-filter-options .button {{ background: #fff; }}
-    html[data-theme="tele-route-pro"] .reason-filter-options .button.active {{ border-color: #2563eb; background: #eff6ff; color: #1d4ed8; }}
-    html[data-theme="tele-route-pro"] .reason-dialog input.has-validation-error {{ border-color: var(--danger); box-shadow: 0 0 0 1px var(--danger); }}
-    html[data-theme="tele-route-pro"] .admin-naming-page .admin-naming-primary-summary::after,
-    html[data-theme="tele-route-pro"] .admin-naming-page details[open] > .admin-naming-primary-summary::after,
-    html[data-theme="tele-route-pro"] .admin-change-reasons-page .admin-reason-primary-summary::after,
-    html[data-theme="tele-route-pro"] .admin-change-reasons-page details[open] > .admin-reason-primary-summary::after,
-    html[data-theme="tele-route-pro"] .admin-users-page .admin-user-primary-summary::after,
-    html[data-theme="tele-route-pro"] .admin-users-page details[open] > .admin-user-primary-summary::after {{ content: none !important; }}
-    html[data-theme="tele-route-pro"] .modal-form-card[open] > form.naming-dialog,
-    html[data-theme="tele-route-pro"] .modal-form-card[open] > form.reason-dialog,
-    html[data-theme="tele-route-pro"] .modal-form-card[open] > form.user-dialog {{ gap: 0; padding: 0; }}
-    html[data-theme="tele-route-pro"] .naming-dialog-footer .modal-save,
-    html[data-theme="tele-route-pro"] .reason-dialog-footer .modal-save,
-    html[data-theme="tele-route-pro"] .user-dialog-footer .modal-save {{ border-color: #2563eb; background: #2563eb; color: #fff; }}
-    html[data-theme="tele-route-pro"] .naming-dialog-footer .modal-save:hover,
-    html[data-theme="tele-route-pro"] .reason-dialog-footer .modal-save:hover,
-    html[data-theme="tele-route-pro"] .user-dialog-footer .modal-save:hover {{ border-color: #1d4ed8; background: #1d4ed8; color: #fff; }}
-    html[data-theme="tele-route-pro"] .tariffs-page .table-footer-tools .export-button {{ width: auto; min-width: auto; padding: 5px 11px; border-color: var(--info); background: var(--info); color: #fff; }}
-    html[data-theme="tele-route-pro"] .tariffs-page .tariff-primary-summary {{ border-color: #2563eb !important; background: #2563eb !important; color: #fff !important; }}
-    html[data-theme="tele-route-pro"] .tariffs-page .tariff-primary-summary:hover {{ border-color: #1d4ed8 !important; background: #1d4ed8 !important; color: #fff !important; }}
-    html[data-theme="tele-route-pro"] .tariffs-page .tariff-primary-summary:focus-visible {{ border-color: #1d4ed8 !important; background: #2563eb !important; color: #fff !important; }}
-    html[data-theme="tele-route-pro"] .tariffs-page .tariff-primary-summary:active, html[data-theme="tele-route-pro"] .tariffs-page .tariff-create-shell[open] > .tariff-primary-summary {{ border-color: #1e40af !important; background: #1e40af !important; color: #fff !important; }}
-    html[data-theme="tele-route-pro"] .tariffs-page .tariff-primary-summary::after, html[data-theme="tele-route-pro"] .tariffs-page .tariff-create-shell[open] > .tariff-primary-summary::after {{ content: none !important; }}
-    html[data-theme="tele-route-pro"] .modal-form-card[open] > form.tariff-dialog, html[data-theme="tele-route-pro"] .tariff-dialog.tariff-dialog {{ gap: 0; padding: 0; }}
-    html[data-theme="tele-route-pro"] .tariff-dialog-header, html[data-theme="tele-route-pro"] .tariff-dialog-footer {{ grid-column: 1 / -1; width: 100%; max-width: none; box-sizing: border-box; margin: 0; }}
-    html[data-theme="tele-route-pro"] .tariff-dialog-footer {{ justify-content: flex-start; }}
-    html[data-theme="tele-route-pro"] .modal-form-card[open] > form.route-dialog, html[data-theme="tele-route-pro"] .route-dialog.route-dialog {{ gap: 0; padding: 0; }}
-    html[data-theme="tele-route-pro"] .route-dialog-header, html[data-theme="tele-route-pro"] .route-dialog-footer {{ grid-column: 1 / -1; width: 100%; max-width: none; box-sizing: border-box; margin: 0; }}
-    html[data-theme="tele-route-pro"] .route-dialog-footer {{ justify-content: flex-start; }}
-    html[data-theme="tele-route-pro"] .modal-form-card[open] > form.company-dialog, html[data-theme="tele-route-pro"] .company-dialog.company-dialog {{ gap: 0; padding: 0; }}
-    html[data-theme="tele-route-pro"] .company-dialog-header, html[data-theme="tele-route-pro"] .company-dialog-footer {{ grid-column: 1 / -1; width: 100%; max-width: none; box-sizing: border-box; margin: 0; }}
-    html[data-theme="tele-route-pro"] .company-dialog-footer {{ justify-content: flex-start; }}
-    html[data-theme="tele-route-pro"] .modal-cancel,
-    html[data-theme="tele-route-pro"] .admin-edit-cancel {{ border-color: var(--border-strong); background: #fff; color: #334155; }}
-    html[data-theme="tele-route-pro"] .modal-cancel:hover,
-    html[data-theme="tele-route-pro"] .admin-edit-cancel:hover {{ border-color: var(--border-ink); background: #f1f5f9; color: var(--text-strong); }}
-    html[data-theme="tele-route-pro"] details:not(.current-user-selector):not(.column-settings):not(.filter-card):not(.modal-form-card) > form,
-    html[data-theme="tele-route-pro"] details:not(.current-user-selector):not(.column-settings):not(.filter-card):not(.modal-form-card) > .card,
-    html[data-theme="tele-route-pro"] details:not(.current-user-selector):not(.column-settings):not(.filter-card):not(.modal-form-card) > p,
-    html[data-theme="tele-route-pro"] details:not(.current-user-selector):not(.column-settings):not(.filter-card):not(.modal-form-card) > table {{ margin: 0; padding: 12px; background: #fff; }}
-    html[data-theme="tele-route-pro"] details.filter-card > .filter-summary::before,
-    html[data-theme="tele-route-pro"] details.modal-form-card > summary::before {{ content: none; }}
-    html[data-theme="tele-route-pro"] .empty-state strong,
-    html[data-theme="tele-route-pro"] .empty-row strong,
-    html[data-theme="tele-route-pro"] td.empty strong {{ display: block; margin-bottom: 2px; color: var(--text-strong); }}
-    html[data-theme="tele-route-pro"] .badge,
-    html[data-theme="tele-route-pro"] .status-badge {{ gap: 5px; border-radius: 6px; }}
-    html[data-theme="tele-route-pro"] .badge::before,
-    html[data-theme="tele-route-pro"] .status-badge::before {{ content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; opacity: .85; }}
-    html[data-theme="tele-route-pro"] .alert.success,
-    html[data-theme="tele-route-pro"] .flash.success,
-    html[data-theme="tele-route-pro"] .message.success {{ border-color: var(--success-border); background: var(--success-soft); color: #15803d; }}
-    html[data-theme="tele-route-pro"] .alert.warning,
-    html[data-theme="tele-route-pro"] .flash.warning,
-    html[data-theme="tele-route-pro"] .message.warning {{ border-color: var(--warning-border); background: var(--warning-soft); color: #b45309; }}
-    html[data-theme="tele-route-pro"] .alert.danger,
-    html[data-theme="tele-route-pro"] .alert.error,
-    html[data-theme="tele-route-pro"] .flash.danger,
-    html[data-theme="tele-route-pro"] .flash.error,
-    html[data-theme="tele-route-pro"] .message.danger,
-    html[data-theme="tele-route-pro"] .message.error {{ border-color: var(--danger-border); background: var(--danger-soft); color: var(--danger-strong); }}
-    html[data-theme="tele-route-pro"] .alert.neutral,
-    html[data-theme="tele-route-pro"] .flash.neutral,
-    html[data-theme="tele-route-pro"] .message.neutral {{ border-color: var(--border-strong); background: #f1f5f9; color: #475569; }}
-    html[data-theme="tele-route-pro"] .checkbox-list label,
-    html[data-theme="tele-route-pro"] .permission-matrix label,
-    html[data-theme="tele-route-pro"] label.checkbox-inline {{ display: inline-flex; align-items: center; gap: 7px; min-height: 30px; padding: 5px 8px; border: 1px solid var(--border); border-radius: 7px; background: #fff; color: var(--text); }}
-    html[data-theme="tele-route-pro"] .checkbox-list label:has(input:checked),
-    html[data-theme="tele-route-pro"] .permission-matrix label:has(input:checked),
-    html[data-theme="tele-route-pro"] label.checkbox-inline:has(input:checked) {{ border-color: var(--border-ink); background: #f1f5f9; color: var(--text-strong); }}
-    html[data-theme="tele-route-pro"] .important-checkbox input[type="checkbox"],
-    html[data-theme="tele-route-pro"] .spillover-checkbox input[type="checkbox"],
-    html[data-theme="tele-route-pro"] label:has(input[name="review_required"]) input[type="checkbox"],
-    html[data-theme="tele-route-pro"] label:has(input[name="has_overflow"]) input[type="checkbox"] {{ width: 18px; height: 18px; min-width: 18px; min-height: 18px; }}
-    html[data-theme="tele-route-pro"] .important-checkbox:has(input:checked),
-    html[data-theme="tele-route-pro"] .spillover-checkbox:has(input:checked),
-    html[data-theme="tele-route-pro"] label:has(input[name="review_required"]:checked),
-    html[data-theme="tele-route-pro"] label:has(input[name="has_overflow"]:checked) {{ border-color: var(--warning); background: var(--warning-soft); color: #92400e; }}
 
     /* Phones review filter compact override: keep the checkbox aligned with normal filter controls. */
     .phones-page .filter-card .filter-grid .filter-review-control {{ display: flex; flex-direction: column; justify-content: flex-end; min-width: 0; margin: 0; padding: 0; }}
@@ -3703,20 +3275,10 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .phones-page .filter-card .filter-grid .filter-review-checkbox {{ box-sizing: border-box; width: 100%; height: 32px; min-height: 32px; max-height: 32px; display: inline-flex; align-items: center; gap: 7px; margin: 0; padding: 5px 8px; border: 1px solid var(--border-strong); border-radius: 7px; background: var(--input-bg, var(--surface)); color: var(--text); box-shadow: inset 0 1px 1px rgba(17, 24, 39, .025); font-size: 13px; font-weight: 760; line-height: 1.25; white-space: nowrap; }}
     .phones-page .filter-card .filter-grid label.filter-review-checkbox:has(input[name="review_required"]:checked),
     .phones-page .filter-card .filter-grid .filter-review-checkbox:has(input[name="review_required"]:checked) {{ border-color: var(--border-ink); background: #f1f5f9; color: var(--text-strong); }}
-    .phones-page .filter-card .filter-grid .filter-review-checkbox input[type="checkbox"],
-    html[data-theme="tele-route-pro"] .phones-page .filter-card .filter-grid label.filter-review-checkbox:has(input[name="review_required"]) input[type="checkbox"] {{ flex: 0 0 16px; width: 16px; height: 16px; min-width: 16px; min-height: 16px; margin: 0; padding: 0; }}
+    .phones-page .filter-card .filter-grid .filter-review-checkbox input[type="checkbox"] {{ flex: 0 0 16px; width: 16px; height: 16px; min-width: 16px; min-height: 16px; margin: 0; padding: 0; }}
     .phones-page .filter-card .filter-grid > button {{ border-color: #2563eb; background: #2563eb; color: #fff; }}
     .phones-page .filter-card .filter-grid > button:hover {{ border-color: #1d4ed8; background: #1d4ed8; color: #fff; }}
     .phones-page .filter-card .reset-filters {{ border-color: var(--border-strong); background: var(--surface-muted); color: var(--text); }}
-    html[data-theme="tele-route-pro"] .scope-cards,
-    html[data-theme="tele-route-pro"] .segmented-control,
-    html[data-theme="tele-route-pro"] .tabs,
-    html[data-theme="tele-route-pro"] .safe-rename-options {{ display: inline-flex; align-items: stretch; flex-wrap: wrap; }}
-    html[data-theme="tele-route-pro"] .safe-rename-option {{ border: 1px solid var(--border); border-radius: 7px; background: transparent; color: #475569; }}
-    html[data-theme="tele-route-pro"] .safe-rename-option:has(input:checked) {{ border-color: var(--border-ink); background: #fff; color: var(--text-strong); box-shadow: 0 1px 2px rgba(17, 24, 39, .08); }}
-    html[data-theme="tele-route-pro"] #hlr-form input,
-    html[data-theme="tele-route-pro"] #hlr-form select,
-    html[data-theme="tele-route-pro"] #hlr-form textarea {{ border-color: var(--border-strong); background: #fff; }}
 
     @media (max-width: 1020px) {{
       html[data-theme="light-v2"] #routing-event-form,
@@ -3814,7 +3376,7 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
       }});
       document.querySelectorAll("form").forEach(showFormSubmitError);
     }});
-    const themeLabels = {{ "dark": "Тёмная", "light-v2": "Светлая 2.0", "tele-route-pro": "TeleRoute Pro" }};
+    const themeLabels = {{ "dark": "Тёмная", "light-v2": "Светлая 2.0" }};
     const themeAliases = {{ "mvp": "light-v2", "calm-blue": "light-v2", "cyber-sketch": "dark", "terminal-paper": "light-v2" }};
     const normalizeTheme = (theme) => themeAliases[theme] || (themeLabels[theme] ? theme : "light-v2");
     let savedTheme = normalizeTheme(localStorage.getItem("mvp-theme") || "light-v2");
