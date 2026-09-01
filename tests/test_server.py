@@ -2839,7 +2839,7 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertIn("<!doctype html>", content)
         self.assertIn("phone-dialog phone-dialog-form phone-dialog-page-form", content)
         self.assertIn("class='button modal-cancel' href='/phones'>Отмена</a>", content)
-        self.assertNotIn("data-modal-ready='1'", content)
+        self.assertNotRegex(content, r"<[^>]+\bdata-modal-ready=['\"]1['\"]")
 
 
     def test_reactivation_review_can_be_cleared_from_phone_edit(self):
