@@ -7550,7 +7550,7 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
     <div class='campaign-create-row campaign-create-change-row'>
       <label class='campaign-reason-field'>Причина <span class='required'>*</span><select name='reason' id='campaign-routing-reason' required disabled>{routing_reason_options(reasons_by_scope['campaign_setting'], event['reason'] if event else None)}</select></label>
       <label data-campaign-route-field='1' hidden>Провайдер <span class='required'>*</span><select name='campaign_provider_id' id='campaign-provider' disabled>{active_options(repo, 'providers', selected=provider_selected, empty='—')}</select></label>
-      <label data-campaign-route-field='1' hidden>Новый маршрут <span class='required'>*</span><select name='new_company_route_id' id='company-route' disabled>{company_route_opts}</select></label>
+      <label data-campaign-route-field='1' hidden>Новый маршрут кампании <span class='required'>*</span><select name='new_company_route_id' id='company-route' disabled>{company_route_opts}</select></label>
     </div>
     <span class='route-empty-message muted' data-campaign-route-field='1' id='company-route-empty' hidden>Нет маршрутов для выбранного провайдера и ГЕО кампании</span>
     <label class='wide'>Комментарий <textarea name='comment' id='campaign-routing-comment' rows='3' cols='60' disabled>{esc(event['comment'] if event else '')}</textarea></label>
