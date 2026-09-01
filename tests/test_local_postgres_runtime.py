@@ -50,10 +50,11 @@ class LocalPostgresRuntimeTests(unittest.TestCase):
             application = run_local_postgres_app.load_application(LOCAL_URL, "x" * 32)
         self.assertIs(application, fake_module.app)
 
-    def test_local_env_example_contains_no_production_secrets(self):
+    def test_local_env_example_contains_current_local_settings(self):
         text = Path(".env.postgres.local.example").read_text(encoding="utf-8")
+        self.assertIn("DB_BACKEND=postgres", text)
         self.assertIn("DATABASE_URL=postgresql://postgres:postgres@localhost:5432/teleroute_local", text)
-        self.assertIn("POSTGRES_RUNTIME_ENABLED=1", text)
+        self.assertNotIn("POSTGRES_RUNTIME_ENABLED", text)
         self.assertIn("local-only-auth-secret", text)
         self.assertNotIn("production.example", text.lower())
         self.assertNotIn("prod_", text.lower())
