@@ -5138,6 +5138,37 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
         self.assertIn("Кампания с таким ID не найдена", content)
         self.assertIn("находится на сервере", content)
 
+    def test_provider_change_campaign_id_search_autofills_full_campaign_context(self):
+        self.request("/routes")
+        _, content = self.request("/provider-changes")
+        create_form = _form_fragment(content, "/provider-changes/create")
+        self.assertIn("type='button' id='campaign-id-search-button'", create_form)
+        self.assertIn("const matches = campaigns.filter", content)
+        self.assertIn("server.value = String(found.server_id);", content)
+        self.assertIn("country.value = found.country_id ? String(found.country_id) : previousCountryId;", content)
+        self.assertIn("const resolvedMatches = matches.length === 1 ? matches : serverMatches;", content)
+        self.assertIn("Найдено несколько кампаний с таким ID. Выберите сервер.", content)
+
+    def test_provider_change_multi_geo_search_pins_campaign_until_geo_selection(self):
+        self.request("/routes")
+        _, content = self.request("/provider-changes")
+        self.assertIn("let pinnedMultiGeoCampaignId = '';", content)
+        self.assertIn("Кампания используется для нескольких ГЕО. Выберите ГЕО.", content)
+        self.assertIn("matchesCountry || isPinnedMultiGeo", content)
+        self.assertIn("String(box.value) !== String(pinnedMultiGeoCampaignId)", content)
+        self.assertIn("campaignCountryFilter.value) setCampaignSearchError('')", content)
+
+    def test_provider_change_campaign_search_resets_dependencies_and_enter_does_not_submit(self):
+        self.request("/routes")
+        _, content = self.request("/provider-changes")
+        self.assertIn("campaignProvider.value = ''; delete campaignProvider.dataset.selectedProviderId;", content)
+        self.assertIn("if (campaignRoute) campaignRoute.value = '';", content)
+        self.assertIn("campaignSearchInput.addEventListener('keydown'", content)
+        self.assertIn("if (event.key !== 'Enter') return;", content)
+        self.assertIn("event.preventDefault();", content)
+        self.assertIn("event.stopPropagation();", content)
+        self.assertIn("findCampaignByVisibleId();", content)
+
     def test_campaign_setting_form_restores_conditional_new_route_controls(self):
         self.request("/routes")
         captured, content = self.request("/provider-changes")

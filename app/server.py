@@ -7712,6 +7712,7 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
     }}
     summary.textContent = `Выбрано: ${{checked.length}} кампании`;
   }}
+  let pinnedMultiGeoCampaignId = '';
   function filterCompanyOptions() {{
     const showNotice = arguments.length > 0 ? arguments[0] : false;
     const container = document.getElementById('event-company');
@@ -7726,10 +7727,12 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
     container.querySelectorAll('.multi-option').forEach((option) => {{
       const matchesServer = selectedServerId && String(option.dataset.serverId) === String(selectedServerId);
       const matchesCountry = selectedCountryId && (!option.dataset.countryId || String(option.dataset.countryId) === String(selectedCountryId));
-      const show = !!(matchesServer && matchesCountry);
+      const box = option.querySelector('input');
+      const isPinnedMultiGeo = pinnedMultiGeoCampaignId && !option.dataset.countryId && box &&
+        String(box.value) === String(pinnedMultiGeoCampaignId);
+      const show = !!(matchesServer && (matchesCountry || isPinnedMultiGeo));
       if (show) visibleCount += 1;
       option.hidden = !show;
-      const box = option.querySelector('input');
       if (box) {{
         box.disabled = !show || selectedScope() !== 'campaign_setting';
         if (!show && box.checked) {{ box.checked = false; cleared = true; }}
@@ -7748,20 +7751,30 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
     const campaignId = input.value.trim();
     setCampaignSearchError('');
     if (!campaignId) return;
-    const found = campaigns.find((company) => String(company.external_id) === campaignId);
-    if (!found) {{ setCampaignSearchError('Кампания с таким ID не найдена'); return; }}
-    if (server.value && String(found.server_id) !== String(server.value)) {{
-      const selectedServerName = (server.options[server.selectedIndex] && server.options[server.selectedIndex].textContent) || server.value;
-      setCampaignSearchError(`Кампания с ID ${{campaignId}} находится на сервере ${{found.server_name}}, а выбран сервер ${{selectedServerName}}`);
+    const matches = campaigns.filter((company) => String(company.external_id) === campaignId);
+    if (!matches.length) {{ setCampaignSearchError('Кампания с таким ID не найдена'); return; }}
+    const serverMatches = server.value ? matches.filter((company) => String(company.server_id) === String(server.value)) : [];
+    const resolvedMatches = matches.length === 1 ? matches : serverMatches;
+    if (resolvedMatches.length !== 1) {{
+      setCampaignSearchError('Найдено несколько кампаний с таким ID. Выберите сервер.');
       return;
     }}
-    if (country.value && found.country_id && String(found.country_id) !== String(country.value)) {{
-      setCampaignSearchError('Кампания не относится к выбранному ГЕО');
-      return;
-    }}
+    const found = resolvedMatches[0];
+    const previousCountryId = country.value;
+    server.value = String(found.server_id);
+    country.value = found.country_id ? String(found.country_id) : previousCountryId;
+    pinnedMultiGeoCampaignId = found.country_id ? '' : String(found.id);
+    const campaignProvider = document.getElementById('campaign-provider');
+    const campaignRoute = document.getElementById('company-route');
+    if (campaignProvider) {{ campaignProvider.value = ''; delete campaignProvider.dataset.selectedProviderId; }}
+    if (campaignRoute) campaignRoute.value = '';
+    form.querySelectorAll('input[name="calling_company_ids"]:checked').forEach((box) => {{ box.checked = false; }});
+    sync();
     const box = container.querySelector(`input[name="calling_company_ids"][value="${{found.id}}"]`);
     if (box && !box.disabled) box.checked = true;
     updateCompanySummary();
+    sync();
+    if (!found.country_id) setCampaignSearchError('Кампания используется для нескольких ГЕО. Выберите ГЕО.');
   }}
   function sync() {{
     const scope = selectedScope();
@@ -7826,6 +7839,7 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
   const campaignServerFilter = document.getElementById('campaign-server-filter');
   const campaignCountryFilter = document.getElementById('campaign-country-filter');
   if (campaignServerFilter) campaignServerFilter.addEventListener('change', () => {{
+    pinnedMultiGeoCampaignId = '';
     if (campaignCountryFilter) campaignCountryFilter.value = '';
     const campaignProvider = document.getElementById('campaign-provider');
     const campaignRoute = document.getElementById('company-route');
@@ -7839,8 +7853,11 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
     const campaignRoute = document.getElementById('company-route');
     if (campaignProvider) campaignProvider.value = '';
     if (campaignRoute) campaignRoute.value = '';
-    form.querySelectorAll('input[name="calling_company_ids"]:checked').forEach((box) => {{ box.checked = false; }});
+    form.querySelectorAll('input[name="calling_company_ids"]:checked').forEach((box) => {{
+      if (!pinnedMultiGeoCampaignId || String(box.value) !== String(pinnedMultiGeoCampaignId)) box.checked = false;
+    }});
     filterCompanyOptions(true); sync();
+    if (pinnedMultiGeoCampaignId && campaignCountryFilter.value) setCampaignSearchError('');
   }});
   const companyChangeType = document.getElementById('company-change-type');
   if (companyChangeType) companyChangeType.addEventListener('change', sync);
@@ -7852,6 +7869,13 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
   }});
   const campaignSearchButton = document.getElementById('campaign-id-search-button');
   if (campaignSearchButton) campaignSearchButton.addEventListener('click', findCampaignByVisibleId);
+  const campaignSearchInput = document.getElementById('campaign-id-search');
+  if (campaignSearchInput) campaignSearchInput.addEventListener('keydown', (event) => {{
+    if (event.key !== 'Enter') return;
+    event.preventDefault();
+    event.stopPropagation();
+    findCampaignByVisibleId();
+  }});
   const selectVisible = document.getElementById('campaign-select-visible');
   if (selectVisible) selectVisible.addEventListener('click', () => {{
     document.querySelectorAll('#event-company .multi-option:not([hidden]) input[name="calling_company_ids"]').forEach((box) => {{ if (!box.disabled) box.checked = true; }});
