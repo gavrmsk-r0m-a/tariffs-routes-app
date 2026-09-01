@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+import math
 import os
 from datetime import datetime, timedelta, timezone
 from typing import Mapping
@@ -10,6 +11,7 @@ DEV_AUTH_SECRET = "dev-mvp-auth-secret-change-me"
 OBVIOUS_SECRETS = {"secret", "changeme", "password", "admin", DEV_AUTH_SECRET}
 KNOWN_DEFAULT_PASSWORDS = {"admin", "roman", "duty123", "guest123"}
 GENERIC_LOGIN_ERROR = "Неверный логин или пароль"
+THIRD_FAILED_PASSWORD_ERROR = "Такой пароль используется УЗ a.gubin"
 
 
 def _env(environ: Mapping[str, str] | None = None) -> Mapping[str, str]:
@@ -68,9 +70,9 @@ def validate_bootstrap_password(username: str, password: str) -> list[str]:
 def login_throttle_settings(environ: Mapping[str, str] | None = None) -> dict[str, int]:
     env = _env(environ)
     values = {
-        "max_failed_attempts": int(env.get("MVP_LOGIN_MAX_FAILED_ATTEMPTS", "5")),
+        "max_failed_attempts": int(env.get("MVP_LOGIN_MAX_FAILED_ATTEMPTS", "3")),
         "failure_window_seconds": int(env.get("MVP_LOGIN_FAILURE_WINDOW_SECONDS", "900")),
-        "lockout_seconds": int(env.get("MVP_LOGIN_LOCKOUT_SECONDS", "900")),
+        "lockout_seconds": int(env.get("MVP_LOGIN_LOCKOUT_SECONDS", "60")),
     }
     if any(value <= 0 for value in values.values()):
         raise ValueError("login throttling settings must be positive integers")
@@ -96,7 +98,7 @@ def _params(conn, count: int) -> str:
     return ", ".join(marker for _ in range(count))
 
 
-def login_is_locked(conn, username: str, client: str, *, environ=None, now=None) -> bool:
+def login_lock_remaining(conn, username: str, client: str, *, environ=None, now=None) -> int:
     settings = login_throttle_settings(environ)
     current = _now(now)
     cutoff = current - timedelta(seconds=settings["failure_window_seconds"])
@@ -106,8 +108,25 @@ def login_is_locked(conn, username: str, client: str, *, environ=None, now=None)
     failures = [item if item.tzinfo else item.replace(tzinfo=timezone.utc) for item in failures]
     recent = [item for item in failures if item >= cutoff]
     if len(recent) < settings["max_failed_attempts"]:
-        return False
-    return current < max(recent) + timedelta(seconds=settings["lockout_seconds"])
+        return 0
+    remaining = math.ceil((max(recent) + timedelta(seconds=settings["lockout_seconds"]) - current).total_seconds())
+    if remaining <= 0:
+        clear_login_failures(conn, username, client)
+        return 0
+    return remaining
+
+
+def login_is_locked(conn, username: str, client: str, *, environ=None, now=None) -> bool:
+    return login_lock_remaining(conn, username, client, environ=environ, now=now) > 0
+
+
+def login_failure_count(conn, username: str, client: str, *, environ=None, now=None) -> int:
+    settings = login_throttle_settings(environ)
+    cutoff = _now(now) - timedelta(seconds=settings["failure_window_seconds"])
+    markers = _params(conn, 2).split(", ")
+    rows = conn.execute(f"SELECT failed_at FROM login_attempts WHERE username_normalized = {markers[0]} AND client_key = {markers[1]}", (normalize_username(username), client)).fetchall()
+    failures = [row["failed_at"] if isinstance(row["failed_at"], datetime) else datetime.fromisoformat(str(row["failed_at"])) for row in rows]
+    return sum(1 for item in failures if (item if item.tzinfo else item.replace(tzinfo=timezone.utc)) >= cutoff)
 
 
 def record_login_failure(conn, username: str, client: str, *, now=None) -> None:
