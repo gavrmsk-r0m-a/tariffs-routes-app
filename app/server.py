@@ -2878,7 +2878,11 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-content-grid .span-2 {{ grid-column: span 2; }}
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-content-grid .wide {{ grid-column: 1 / -1; }}
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-content-grid textarea {{ width: 100%; min-height: 170px; height: 100%; resize: vertical; }}
-    html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid {{ flex: 1 1 0; display: grid; grid-template-columns: minmax(125px, .85fr) minmax(125px, .85fr) minmax(205px, 1.2fr) minmax(150px, 1fr) 48px; grid-template-rows: repeat(2, max-content) minmax(170px, 1fr); gap: 12px; align-content: stretch; align-items: start; min-height: 0; padding: 0; }}
+    html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid {{ flex: 1 1 0; display: flex; flex-direction: column; gap: 12px; min-height: 0; padding: 0; }}
+    html[data-theme="light-v2"] .provider-change-create-shell .campaign-create-row {{ display: grid; gap: 12px; align-items: end; min-width: 0; }}
+    html[data-theme="light-v2"] .provider-change-create-shell .campaign-create-primary-row {{ grid-template-columns: repeat(4, minmax(0, 1fr)); }}
+    html[data-theme="light-v2"] .provider-change-create-shell .campaign-create-company-row {{ grid-template-columns: minmax(130px, .7fr) auto minmax(300px, 2.3fr); }}
+    html[data-theme="light-v2"] .provider-change-create-shell .campaign-create-change-row {{ grid-template-columns: minmax(220px, 1.25fr) minmax(180px, 1fr) minmax(220px, 1.25fr); }}
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid label,
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .campaign-id-action-field,
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .campaign-company-field {{ min-width: 0; width: auto; }}
@@ -2889,12 +2893,11 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .field-label {{ display: inline-flex; align-items: baseline; gap: 4px; margin-bottom: 4px; color: #26323A; font-size: 12px; font-weight: 760; line-height: inherit; white-space: nowrap; }}
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .campaign-id-action-field {{ display: block; align-self: start; }}
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .campaign-id-action-field input {{ display: block; margin-top: 0; }}
-    html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .campaign-id-action-button {{ align-self: start; margin-top: calc(1.25em + 4px); width: 48px; min-width: 0; }}
+    html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .campaign-id-action-button {{ align-self: start; margin-top: calc(1.25em + 4px); width: auto; min-width: 72px; }}
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .campaign-id-action-field input,
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .campaign-id-action-button {{ box-sizing: border-box; min-height: 31px; height: 31px; }}
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .campaign-id-action-button {{ padding: 5px 8px; font-size: 13px; line-height: 1.2; box-shadow: none; }}
-    html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .campaign-reason-field {{ grid-column: 1 / span 2; }}
-    html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .campaign-company-field {{ grid-column: 3 / span 2; }}
+    html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .campaign-company-field {{ min-width: 0; }}
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .campaign-company-field .company-select-control {{ position: relative; box-sizing: border-box; width: 100%; min-width: 0; margin: 4px 0 0; border: 0; border-radius: 0; background: transparent; }}
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .campaign-company-field .company-select-control > summary {{ position: relative; display: block; box-sizing: border-box; width: 100%; min-height: 32px; padding: 6px 28px 6px 8px; overflow: hidden; border: 1px solid var(--border-strong); border-radius: var(--radius-control); background: var(--input-bg); color: var(--text); font: inherit; line-height: normal; list-style: none; text-overflow: ellipsis; white-space: nowrap; box-shadow: inset 0 1px 1px rgba(34, 48, 42, 0.03); cursor: pointer; }}
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .campaign-company-field .company-select-control > summary::-webkit-details-marker {{ display: none; }}
@@ -2906,6 +2909,11 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .span-2 {{ grid-column: span 2; }}
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .wide {{ grid-column: 1 / -1; display: flex; flex-direction: column; min-height: 0; }}
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid textarea {{ width: 100%; min-height: 180px; height: 100%; resize: vertical; }}
+    @media (max-width: 760px) {{
+      html[data-theme="light-v2"] .provider-change-create-shell .campaign-create-primary-row {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }}
+      html[data-theme="light-v2"] .provider-change-create-shell .campaign-create-company-row {{ grid-template-columns: minmax(110px, .7fr) auto minmax(180px, 2fr); }}
+      html[data-theme="light-v2"] .provider-change-create-shell .campaign-create-change-row {{ grid-template-columns: minmax(0, 1fr); }}
+    }}
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-server-priority-create {{ flex: 1 1 0; display: flex; flex-direction: column; min-height: 0; min-width: 0; overflow: hidden; }}
     html[data-theme="light-v2"] .provider-change-create-shell .server-priority-create-columns {{ flex: 0 0 auto; display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: 14px; align-items: start; min-width: 0; }}
     html[data-theme="light-v2"] .provider-change-create-shell .server-priority-create-left {{ display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; min-width: 0; }}
@@ -7512,32 +7520,38 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
     <label class='server-priority-create-comment'>Комментарий <span class='required comment-required' hidden>*</span><textarea name='comment' id='server-routing-comment' rows='3' cols='60' disabled>{esc(event['comment'] if event else '')}</textarea></label>
   </div>
   <div class='provider-change-campaign-create-grid' data-scope-content='campaign_setting' data-scopes='campaign_setting' hidden>
-    <label>Дата события <span class='required'>*</span><input type='datetime-local' name='event_at' value='{esc(event_at)}' required disabled></label>
-    <label>Сервер <span class='required'>*</span><select name='server_id' id='campaign-server-filter' required disabled>{options(repo, 'servers', selected=event['server_id'] if event else None, empty='—')}</select></label>
-    <label>ГЕО <span class='required'>*</span><select name='country_id' id='campaign-country-filter' required disabled>{active_options(repo, 'countries', selected=event['country_id'] if event else None, empty='—')}</select></label>
-    <label>Тип изменения кампании <span class='required'>*</span><select name='company_change_type' id='company-change-type' required disabled>
-      <option value=''>—</option>
-      {''.join(f"<option value='{v}' {'selected' if event and event['company_change_type'] == v else ''}>{label}</option>" for v, label in [('enable_autorotation','Включили авторотацию'),('disable_autorotation','Выключили авторотацию'),('set_campaign_route','Прописали ручной маршрут'),('remove_campaign_route','Убрали ручной маршрут')])}
-    </select></label>
-    <div class='campaign-id-action-field'><span class='field-label'>ID кампании</span><input name='campaign_id_search' id='campaign-id-search' value='{esc(event['campaign_id_search'] if event and 'campaign_id_search' in event.keys() else '')}' disabled><span class='field-error' id='campaign-id-search-error' aria-live='polite'></span></div>
-    <button type='button' id='campaign-id-search-button' class='small-button campaign-id-action-button' disabled>OK</button>
-    <label class='campaign-reason-field'>Причина <span class='required'>*</span><select name='reason' id='campaign-routing-reason' required disabled>{routing_reason_options(reasons_by_scope['campaign_setting'], event['reason'] if event else None)}</select></label>
-    <div class='campaign-company-field'>
-      <span class='field-label'>Кампания <span class='required'>*</span></span>
-      <details class='company-select-control' id='event-company' data-placeholder='—'>
-        <summary id='event-company-summary'>—</summary>
-        <div class='company-select-panel'>
-          <div class='multi-select-actions'>
-            <button type='button' class='small-button' id='campaign-select-visible'>Выбрать все найденные</button>
-            <button type='button' class='small-button' id='campaign-clear-selected'>Отменить выбранные</button>
-          </div>
-          {company_opts}
-        </div>
-      </details>
-      <span class='field-helper' id='campaign-company-empty' hidden>Нет кампаний для выбранного ГЕО</span>
+    <div class='campaign-create-row campaign-create-primary-row'>
+      <label>Дата события <span class='required'>*</span><input type='datetime-local' name='event_at' value='{esc(event_at)}' required disabled></label>
+      <label>Сервер <span class='required'>*</span><select name='server_id' id='campaign-server-filter' required disabled>{options(repo, 'servers', selected=event['server_id'] if event else None, empty='—')}</select></label>
+      <label>ГЕО <span class='required'>*</span><select name='country_id' id='campaign-country-filter' required disabled>{active_options(repo, 'countries', selected=event['country_id'] if event else None, empty='—')}</select></label>
+      <label>Тип изменения кампании <span class='required'>*</span><select name='company_change_type' id='company-change-type' required disabled>
+        <option value=''>—</option>
+        {''.join(f"<option value='{v}' {'selected' if event and event['company_change_type'] == v else ''}>{label}</option>" for v, label in [('enable_autorotation','Включили авторотацию'),('disable_autorotation','Выключили авторотацию'),('set_campaign_route','Прописали ручной маршрут'),('remove_campaign_route','Убрали ручной маршрут')])}
+      </select></label>
     </div>
-    <label data-campaign-route-field='1' hidden>Новый провайдер кампании <span class='required'>*</span><select name='campaign_provider_id' id='campaign-provider' disabled>{active_options(repo, 'providers', selected=provider_selected, empty='—')}</select></label>
-    <label data-campaign-route-field='1' hidden>Новый маршрут кампании <span class='required'>*</span><select name='new_company_route_id' id='company-route' disabled>{company_route_opts}</select></label>
+    <div class='campaign-create-row campaign-create-company-row'>
+      <div class='campaign-id-action-field'><span class='field-label'>ID кампании</span><input name='campaign_id_search' id='campaign-id-search' value='{esc(event['campaign_id_search'] if event and 'campaign_id_search' in event.keys() else '')}' disabled><span class='field-error' id='campaign-id-search-error' aria-live='polite'></span></div>
+      <button type='button' id='campaign-id-search-button' class='small-button campaign-id-action-button' disabled>Поиск</button>
+      <div class='campaign-company-field'>
+        <span class='field-label'>Кампания <span class='required'>*</span></span>
+        <details class='company-select-control' id='event-company' data-placeholder='—'>
+          <summary id='event-company-summary'>—</summary>
+          <div class='company-select-panel'>
+            <div class='multi-select-actions'>
+              <button type='button' class='small-button' id='campaign-select-visible'>Выбрать все найденные</button>
+              <button type='button' class='small-button' id='campaign-clear-selected'>Отменить выбранные</button>
+            </div>
+            {company_opts}
+          </div>
+        </details>
+        <span class='field-helper' id='campaign-company-empty' hidden>Нет кампаний для выбранного ГЕО</span>
+      </div>
+    </div>
+    <div class='campaign-create-row campaign-create-change-row'>
+      <label class='campaign-reason-field'>Причина <span class='required'>*</span><select name='reason' id='campaign-routing-reason' required disabled>{routing_reason_options(reasons_by_scope['campaign_setting'], event['reason'] if event else None)}</select></label>
+      <label data-campaign-route-field='1' hidden>Провайдер <span class='required'>*</span><select name='campaign_provider_id' id='campaign-provider' disabled>{active_options(repo, 'providers', selected=provider_selected, empty='—')}</select></label>
+      <label data-campaign-route-field='1' hidden>Новый маршрут кампании <span class='required'>*</span><select name='new_company_route_id' id='company-route' disabled>{company_route_opts}</select></label>
+    </div>
     <span class='route-empty-message muted' data-campaign-route-field='1' id='company-route-empty' hidden>Нет маршрутов для выбранного провайдера и ГЕО кампании</span>
     <label class='wide'>Комментарий <textarea name='comment' id='campaign-routing-comment' rows='3' cols='60' disabled>{esc(event['comment'] if event else '')}</textarea></label>
   </div>
@@ -7826,7 +7840,7 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
       <option value=''>—</option>
       {''.join(f"<option value='{v}' {'selected' if event and event['company_change_type'] == v else ''}>{label}</option>" for v, label in [('enable_autorotation','Включили авторотацию'),('disable_autorotation','Выключили авторотацию'),('set_campaign_route','Прописали ручной маршрут'),('remove_campaign_route','Убрали ручной маршрут')])}
     </select></label>
-    <div class='scope-field campaign-helper-field campaign-id-action-field' data-scopes='campaign_setting'><span class='field-label'>ID кампании</span><div class='campaign-id-inline-action'><input name='campaign_id_search' id='campaign-id-search' value='{esc(event['campaign_id_search'] if event and 'campaign_id_search' in event.keys() else '')}'><button type='button' id='campaign-id-search-button' class='small-button'>OK</button></div><span class='field-error' id='campaign-id-search-error' aria-live='polite'></span></div>
+    <div class='scope-field campaign-helper-field campaign-id-action-field' data-scopes='campaign_setting'><span class='field-label'>ID кампании</span><div class='campaign-id-inline-action'><input name='campaign_id_search' id='campaign-id-search' value='{esc(event['campaign_id_search'] if event and 'campaign_id_search' in event.keys() else '')}'><button type='button' id='campaign-id-search-button' class='small-button'>Поиск</button></div><span class='field-error' id='campaign-id-search-error' aria-live='polite'></span></div>
   </div>
   <label class='scope-field routing-geo-field' data-scopes='none server_priority'>GEO <span class='required'>*</span><select name='country_id' id='event-country'>{active_options(repo, 'countries', selected=event['country_id'] if event else None, empty='—')}</select></label>
   <fieldset class='scope-field' data-scopes='server_priority'><legend>Серверы <span class='required'>*</span></legend>{server_priority_server_boxes}</fieldset>
@@ -7857,8 +7871,8 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
       </details>
     </div>
   </div>
-  <label class='scope-field conditional-field' data-scopes='campaign_setting' data-campaign-route-field='1'>Новый провайдер кампании <span class='required'>*</span><select name='campaign_provider_id' id='campaign-provider'>{active_options(repo, 'providers', selected=provider_selected, empty='—')}</select></label>
-  <label class='scope-field conditional-field' data-scopes='campaign_setting' data-campaign-route-field='1'>Новый маршрут кампании <span class='required'>*</span><select name='new_company_route_id' id='company-route'>{company_route_opts}</select></label>
+  <label class='scope-field conditional-field' data-scopes='campaign_setting' data-campaign-route-field='1'>Провайдер <span class='required'>*</span><select name='campaign_provider_id' id='campaign-provider'>{active_options(repo, 'providers', selected=provider_selected, empty='—')}</select></label>
+  <label class='scope-field conditional-field' data-scopes='campaign_setting' data-campaign-route-field='1'>Новый маршрут <span class='required'>*</span><select name='new_company_route_id' id='company-route'>{company_route_opts}</select></label>
   <span class='scope-field route-empty-message muted' data-scopes='campaign_setting' id='company-route-empty' hidden>Нет маршрутов для выбранного провайдера и GEO кампании</span>
   <label class='wide provider-change-comment-field'>Комментарий <span class='required comment-required'>*</span><textarea name='comment' id='routing-comment' rows='3' cols='60'>{esc(event['comment'] if event else '')}</textarea></label>
   <p class='scope-field muted wide provider-change-service-note' data-scopes='campaign_setting'>Событие будет сохранено в журнале и применено к ‘Схеме маршрутизации кампаний’.</p>

@@ -5047,6 +5047,12 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
         self.assertIn("ID кампании", create_form)
         self.assertIn("id='campaign-id-search'", create_form)
         self.assertIn("id='campaign-id-search-button'", create_form)
+        self.assertIn(">Поиск</button>", create_form)
+        self.assertIn("campaign-create-primary-row", create_form)
+        self.assertIn("campaign-create-company-row", create_form)
+        self.assertIn("campaign-create-change-row", create_form)
+        self.assertIn(">Провайдер <span class='required'>*</span>", create_form)
+        self.assertIn(">Новый маршрут <span class='required'>*</span>", create_form)
         self.assertLess(create_form.index("id='campaign-server-filter'"), create_form.index("id='event-company'"))
 
     def test_provider_change_company_dropdown_has_server_filter_metadata(self):
