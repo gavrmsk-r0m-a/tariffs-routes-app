@@ -5042,7 +5042,8 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
         self.assertEqual(captured["status"], "200 OK")
         create_form = _form_fragment(content, "/provider-changes/create")
         self.assertIn("id='campaign-server-filter'", create_form)
-        self.assertIn("Сервер <select name='server_id' id='campaign-server-filter'", create_form)
+        self.assertIn("Сервер <span class='required'>*</span><select name='server_id' id='campaign-server-filter'", create_form)
+        self.assertIn("ГЕО <span class='required'>*</span><select name='country_id' id='campaign-country-filter'", create_form)
         self.assertIn("ID кампании", create_form)
         self.assertIn("id='campaign-id-search'", create_form)
         self.assertIn("id='campaign-id-search-button'", create_form)
@@ -5056,9 +5057,22 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
         self.assertIn("data-server-id=", create_form)
         self.assertIn("data-campaign-id=", create_form)
         self.assertIn("function filterCompanyOptions()", content)
-        self.assertIn("!selectedServerId || String(option.dataset.serverId) === String(selectedServerId)", content)
+        self.assertIn("data-country-id=", create_form)
+        self.assertIn("matchesServer && matchesCountry", content)
+        self.assertIn("Нет кампаний для выбранного ГЕО", create_form)
         self.assertIn("Кампания с таким ID не найдена", content)
         self.assertIn("находится на сервере", content)
+
+    def test_campaign_setting_form_restores_conditional_new_route_controls(self):
+        self.request("/routes")
+        captured, content = self.request("/provider-changes")
+        self.assertEqual(captured["status"], "200 OK")
+        create_form = _form_fragment(content, "/provider-changes/create")
+        self.assertIn("Новый маршрут кампании <span class='required'>*</span>", create_form)
+        self.assertIn("name='new_company_route_id' id='company-route'", create_form)
+        self.assertIn("data-campaign-route-field='1'", create_form)
+        self.assertIn("const routeNeeds = new Set(['set_campaign_route']);", content)
+        self.assertIn("field.required = needsRoute", content)
 
     def test_provider_change_campaign_id_search_post_selects_external_id_company(self):
         self.request("/routes")

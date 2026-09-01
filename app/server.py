@@ -7444,7 +7444,7 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
             selected_company_ids = {str(event["calling_company_id"])}
     company_opts = ""
     for company in repo.conn.execute(f"""
-        SELECT cc.id, cc.server_id, cc.company_id_external, cc.company_name, s.name AS server_name
+        SELECT cc.id, cc.country_id, cc.server_id, cc.company_id_external, cc.company_name, s.name AS server_name
         FROM calling_companies cc
         JOIN servers s ON s.id = cc.server_id
         WHERE cc.is_active IS TRUE OR cc.id = {p}
@@ -7453,7 +7453,7 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
         label = f"{company['company_id_external']} / {company['company_name']}"
         checked = "checked" if str(company["id"]) in selected_company_ids else ""
         company_opts += (
-            f"<label class='multi-option' data-server-id='{company['server_id']}' "
+            f"<label class='multi-option' data-server-id='{company['server_id']}' data-country-id='{company['country_id'] or ''}' "
             f"data-campaign-id='{esc(company['company_id_external'])}' data-server-name='{esc(company['server_name'])}' "
             f"title='{esc(label)}'><input type='checkbox' name='calling_company_ids' value='{company['id']}' {checked}> "
             f"<span>{esc(label)}</span></label>"
@@ -7513,7 +7513,8 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
   </div>
   <div class='provider-change-campaign-create-grid' data-scope-content='campaign_setting' data-scopes='campaign_setting' hidden>
     <label>Дата события <span class='required'>*</span><input type='datetime-local' name='event_at' value='{esc(event_at)}' required disabled></label>
-    <label>Сервер <select name='server_id' id='campaign-server-filter' disabled>{options(repo, 'servers', selected=event['server_id'] if event else None, empty='—')}</select></label>
+    <label>Сервер <span class='required'>*</span><select name='server_id' id='campaign-server-filter' required disabled>{options(repo, 'servers', selected=event['server_id'] if event else None, empty='—')}</select></label>
+    <label>ГЕО <span class='required'>*</span><select name='country_id' id='campaign-country-filter' required disabled>{active_options(repo, 'countries', selected=event['country_id'] if event else None, empty='—')}</select></label>
     <label>Тип изменения кампании <span class='required'>*</span><select name='company_change_type' id='company-change-type' required disabled>
       <option value=''>—</option>
       {''.join(f"<option value='{v}' {'selected' if event and event['company_change_type'] == v else ''}>{label}</option>" for v, label in [('enable_autorotation','Включили авторотацию'),('disable_autorotation','Выключили авторотацию'),('set_campaign_route','Прописали ручной маршрут'),('remove_campaign_route','Убрали ручной маршрут')])}
@@ -7533,7 +7534,11 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
           {company_opts}
         </div>
       </details>
+      <span class='field-helper' id='campaign-company-empty' hidden>Нет кампаний для выбранного ГЕО</span>
     </div>
+    <label data-campaign-route-field='1' hidden>Новый провайдер кампании <span class='required'>*</span><select name='campaign_provider_id' id='campaign-provider' disabled>{active_options(repo, 'providers', selected=provider_selected, empty='—')}</select></label>
+    <label data-campaign-route-field='1' hidden>Новый маршрут кампании <span class='required'>*</span><select name='new_company_route_id' id='company-route' disabled>{company_route_opts}</select></label>
+    <span class='route-empty-message muted' data-campaign-route-field='1' id='company-route-empty' hidden>Нет маршрутов для выбранного провайдера и ГЕО кампании</span>
     <label class='wide'>Комментарий <textarea name='comment' id='campaign-routing-comment' rows='3' cols='60' disabled>{esc(event['comment'] if event else '')}</textarea></label>
   </div>
   <p class='provider-change-shell-hint' data-scope-hint='none'>Событие без изменения настроек фиксирует внешний или ручной контекст без применения изменений в системе.</p>
@@ -7548,6 +7553,7 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
   const routes = {route_metadata_json(repo)};
   const priorities = {current_priorities_json(repo)};
   const campaigns = {campaign_metadata_json(repo)};
+  const routeNeeds = new Set(['set_campaign_route']);
   function selectedScope() {{ return (form.querySelector('input[name="apply_scope"]:checked') || {{value: 'none'}}).value; }}
   function updateSelectTitle(select) {{
     if (!select) return;
@@ -7659,11 +7665,18 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
     const showNotice = arguments.length > 0 ? arguments[0] : false;
     const container = document.getElementById('event-company');
     const server = document.getElementById('campaign-server-filter');
-    if (!container || !server) return;
+    const country = document.getElementById('campaign-country-filter');
+    const empty = document.getElementById('campaign-company-empty');
+    if (!container || !server || !country) return;
     const selectedServerId = server.value;
+    const selectedCountryId = country.value;
     let cleared = false;
+    let visibleCount = 0;
     container.querySelectorAll('.multi-option').forEach((option) => {{
-      const show = !selectedServerId || String(option.dataset.serverId) === String(selectedServerId);
+      const matchesServer = selectedServerId && String(option.dataset.serverId) === String(selectedServerId);
+      const matchesCountry = selectedCountryId && (!option.dataset.countryId || String(option.dataset.countryId) === String(selectedCountryId));
+      const show = !!(matchesServer && matchesCountry);
+      if (show) visibleCount += 1;
       option.hidden = !show;
       const box = option.querySelector('input');
       if (box) {{
@@ -7671,6 +7684,7 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
         if (!show && box.checked) {{ box.checked = false; cleared = true; }}
       }}
     }});
+    if (empty) empty.hidden = !(selectedServerId && selectedCountryId && visibleCount === 0);
     if (cleared && showNotice) setCampaignSearchError('Выбор кампаний обновлён по выбранному серверу');
     updateCompanySummary();
   }}
@@ -7678,7 +7692,8 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
     const input = document.getElementById('campaign-id-search');
     const container = document.getElementById('event-company');
     const server = document.getElementById('campaign-server-filter');
-    if (!input || !container || !server) return;
+    const country = document.getElementById('campaign-country-filter');
+    if (!input || !container || !server || !country) return;
     const campaignId = input.value.trim();
     setCampaignSearchError('');
     if (!campaignId) return;
@@ -7687,6 +7702,10 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
     if (server.value && String(found.server_id) !== String(server.value)) {{
       const selectedServerName = (server.options[server.selectedIndex] && server.options[server.selectedIndex].textContent) || server.value;
       setCampaignSearchError(`Кампания с ID ${{campaignId}} находится на сервере ${{found.server_name}}, а выбран сервер ${{selectedServerName}}`);
+      return;
+    }}
+    if (country.value && found.country_id && String(found.country_id) !== String(country.value)) {{
+      setCampaignSearchError('Кампания не относится к выбранному ГЕО');
       return;
     }}
     const box = container.querySelector(`input[name="calling_company_ids"][value="${{found.id}}"]`);
@@ -7724,6 +7743,18 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
     if (serverOverflowRoute) {{ serverOverflowRoute.disabled = !serverOverflowEnabled || !(serverCountry && serverCountry.value) || !(serverOverflowProvider && serverOverflowProvider.value); serverOverflowRoute.required = !!serverOverflowEnabled; if (!serverOverflowEnabled) serverOverflowRoute.value = ''; }}
     updateServerSelectionCount();
     filterCompanyOptions(false);
+    const campaignServer = document.getElementById('campaign-server-filter');
+    const campaignCountryControl = document.getElementById('campaign-country-filter');
+    if (campaignCountryControl) campaignCountryControl.disabled = scope !== 'campaign_setting' || !(campaignServer && campaignServer.value);
+    const ctype = document.getElementById('company-change-type');
+    const needsRoute = scope === 'campaign_setting' && routeNeeds.has(ctype && ctype.value);
+    form.querySelectorAll('[data-campaign-route-field]').forEach((el) => {{
+      el.hidden = !needsRoute;
+      el.querySelectorAll('select').forEach((field) => {{ field.disabled = !needsRoute; field.required = needsRoute; }});
+    }});
+    const campaignCountry = document.getElementById('campaign-country-filter');
+    const campaignProvider = document.getElementById('campaign-provider');
+    rebuildServerRouteSelect(document.getElementById('company-route'), campaignCountry && campaignCountry.value, campaignProvider && campaignProvider.value, document.getElementById('company-route-empty'), true);
     syncCommentRequirement();
   }}
   form.querySelectorAll('input[name="apply_scope"], #event-country, #event-provider, #server-event-country, #server-event-provider, #server-has-overflow, #server-overflow-provider').forEach((el) => el.addEventListener('change', sync));
@@ -7739,7 +7770,17 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
   if (reason) reason.addEventListener('change', syncCommentRequirement);
   form.querySelectorAll('input[name="calling_company_ids"]').forEach((el) => el.addEventListener('change', updateCompanySummary));
   const campaignServerFilter = document.getElementById('campaign-server-filter');
-  if (campaignServerFilter) campaignServerFilter.addEventListener('change', () => {{ filterCompanyOptions(true); }});
+  const campaignCountryFilter = document.getElementById('campaign-country-filter');
+  if (campaignServerFilter) campaignServerFilter.addEventListener('change', () => {{
+    if (campaignCountryFilter) campaignCountryFilter.value = '';
+    form.querySelectorAll('input[name="calling_company_ids"]:checked').forEach((box) => {{ box.checked = false; }});
+    filterCompanyOptions(true); sync();
+  }});
+  if (campaignCountryFilter) campaignCountryFilter.addEventListener('change', () => {{
+    form.querySelectorAll('input[name="calling_company_ids"]:checked').forEach((box) => {{ box.checked = false; }});
+    filterCompanyOptions(true); sync();
+  }});
+  form.querySelectorAll('#company-change-type, #campaign-provider').forEach((el) => el.addEventListener('change', sync));
   const campaignSearchButton = document.getElementById('campaign-id-search-button');
   if (campaignSearchButton) campaignSearchButton.addEventListener('click', findCampaignByVisibleId);
   const selectVisible = document.getElementById('campaign-select-visible');
@@ -7752,6 +7793,15 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
     form.querySelectorAll('input[name="calling_company_ids"]:checked').forEach((box) => {{ box.checked = false; }});
     updateCompanySummary();
   }});
+  const campaignDropdown = document.getElementById('event-company');
+  if (campaignDropdown) {{
+    document.addEventListener('click', (event) => {{
+      if (campaignDropdown.open && !campaignDropdown.contains(event.target)) campaignDropdown.open = false;
+    }});
+    campaignDropdown.addEventListener('keydown', (event) => {{
+      if (campaignDropdown.open && event.key === 'Escape') {{ event.preventDefault(); campaignDropdown.open = false; }}
+    }});
+  }}
   sync();
 }})();
 </script>
@@ -9423,7 +9473,8 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
                 send_provider_change_notification(repo, event_id)
                 return "/provider-changes"
             helper_server_id = parse_int(data.get("server_id"))
-            if helper_server_id:
+            helper_country_id = parse_int(data.get("country_id"))
+            if helper_server_id and helper_country_id:
                 visible_ids = {
                     int(row["id"])
                     for row in repo.conn.execute(
@@ -9431,10 +9482,12 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
                         SELECT id
                         FROM calling_companies
                         WHERE server_id = {p}
+                          AND (country_id = {p} OR country_id IS NULL)
                           AND is_active = {p}
                         """,
                         (
                             helper_server_id,
+                            helper_country_id,
                             to_db_bool(True, repo.backend),
                         ),
                     ).fetchall()
