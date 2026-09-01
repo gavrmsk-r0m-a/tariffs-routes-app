@@ -5051,6 +5051,12 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
         self.assertIn(">Поиск</button>", create_form)
         self.assertIn("campaign-create-primary-row", create_form)
         self.assertIn("campaign-create-company-row", create_form)
+        company_row = create_form.split("campaign-create-company-row", 1)[1].split("</div>\n    <span class='field-error'", 1)[0]
+        self.assertIn("campaign-id-action-field", company_row)
+        self.assertIn("campaign-search-button-wrapper", company_row)
+        self.assertIn("campaign-company-field", company_row)
+        self.assertLess(company_row.index("campaign-id-action-field"), company_row.index("campaign-search-button-wrapper"))
+        self.assertLess(company_row.index("campaign-search-button-wrapper"), company_row.index("campaign-company-field"))
         self.assertIn("campaign-create-change-row", create_form)
         self.assertIn(">Провайдер <span class='required'>*</span>", create_form)
         self.assertIn(">Новый маршрут <span class='required'>*</span>", create_form)
@@ -5080,6 +5086,26 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
         self.assertIn("data-campaign-route-field='1'", create_form)
         self.assertIn("const routeNeeds = new Set(['set_campaign_route']);", content)
         self.assertIn("field.required = needsRoute", content)
+
+    def test_campaign_setting_providers_are_derived_from_geo_routes(self):
+        self.request("/routes")
+        captured, content = self.request("/provider-changes")
+        self.assertEqual(captured["status"], "200 OK")
+        create_form = _form_fragment(content, "/provider-changes/create")
+        provider_select = _select_fragment(create_form, "campaign-provider")
+        self.assertNotIn("DemoTel", provider_select)
+        self.assertIn("function rebuildCampaignProviderSelect(countryId, enabled)", content)
+        self.assertIn("routes.forEach((route)", content)
+        self.assertIn("providers.set(String(route.provider_id), route.provider_name)", content)
+        self.assertIn("Нет маршрутов для выбранного ГЕО", create_form)
+        self.assertIn("select.disabled = !enabled || !countryId || providers.size === 0", content)
+
+    def test_campaign_setting_geo_and_provider_changes_reset_dependent_route_fields(self):
+        self.request("/routes")
+        _, content = self.request("/provider-changes")
+        self.assertIn("if (campaignProvider) campaignProvider.value = '';", content)
+        self.assertGreaterEqual(content.count("if (campaignRoute) campaignRoute.value = '';"), 3)
+        self.assertIn("rebuildServerRouteSelect(campaignRoute, campaignCountry && campaignCountry.value, campaignProvider && campaignProvider.value", content)
 
     def test_provider_change_campaign_id_search_post_selects_external_id_company(self):
         self.request("/routes")
