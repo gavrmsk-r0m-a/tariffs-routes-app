@@ -3550,6 +3550,7 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertIn("value='No selected scope'", content)
         self.assertIn("kept", content)
         self.assertIn("reason-scope-field has-validation-error", content)
+        self.assertIn(".admin-change-reasons-page .reason-dialog-body .modal-blocking-error { position: static; width: 100%; max-width: 100%; min-width: 0; box-sizing: border-box;", content)
 
     def test_admin_change_reason_duplicate_is_case_insensitive_and_preserves_modal(self):
         self._create_scoped_reason("Unique Scoped Name", ["none"])

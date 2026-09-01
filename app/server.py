@@ -3234,7 +3234,9 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .admin-change-reasons-page .reason-scope-badges {{ display: flex; flex-wrap: wrap; align-items: flex-start; gap: 4px 5px; max-width: 100%; white-space: normal; }}
     .admin-change-reasons-page .reason-scope-badges .status-badge {{ flex: 0 0 auto; max-width: 100%; overflow: visible; text-overflow: clip; white-space: normal; line-height: 1.2; }}
     .admin-change-reasons-page .reason-dialog.reason-dialog {{ width: min(620px, calc(100vw - 48px)); max-height: min(560px, calc(100vh - 48px)); }}
-    .admin-change-reasons-page .reason-dialog-body {{ padding-top: 12px; padding-bottom: 12px; }}
+    .admin-change-reasons-page .reason-dialog-body {{ min-width: 0; box-sizing: border-box; padding-top: 12px; padding-bottom: 12px; }}
+    .admin-change-reasons-page .reason-dialog-body .modal-blocking-error {{ position: static; width: 100%; max-width: 100%; min-width: 0; box-sizing: border-box; transform: none; margin: 0 0 12px; overflow-wrap: anywhere; word-break: break-word; }}
+    .admin-change-reasons-page .reason-dialog-body .modal-blocking-error > span:last-child {{ min-width: 0; max-width: 100%; }}
     .admin-change-reasons-page .reason-scope-field {{ display: grid; gap: 7px; min-width: 0; margin: 1px 0 0; padding: 9px 11px 10px; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--surface); }}
     .admin-change-reasons-page .reason-scope-field.has-validation-error {{ border-color: var(--danger); box-shadow: 0 0 0 1px var(--danger); }}
     .admin-change-reasons-page .reason-scope-field legend {{ padding: 0 4px; color: var(--text); font-size: 12px; font-weight: 760; }}
