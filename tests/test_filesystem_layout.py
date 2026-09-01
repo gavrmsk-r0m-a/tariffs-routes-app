@@ -1,127 +1,115 @@
-import sqlite3
-import tempfile
 import unittest
 from pathlib import Path
 
-from app.db import DEFAULT_DB_PATH, load_db_config
-from scripts.relocate_sqlite_db import RelocatePlan, relocate_sqlite_db
 
-
-class FilesystemDbConfigTest(unittest.TestCase):
-    def test_db_config_prefers_sqlite_db_path(self):
-        config = load_db_config({
-            "SQLITE_DB_PATH": "/tmp/teleroute/sqlite.sqlite3",
-            "MVP_DB_PATH": "/tmp/teleroute/legacy.sqlite3",
-            "APP_DATA_DIR": "/tmp/teleroute/data",
-        })
-
-        self.assertEqual(config.sqlite_path, Path("/tmp/teleroute/sqlite.sqlite3"))
-
-    def test_db_config_supports_legacy_mvp_db_path(self):
-        config = load_db_config({
-            "MVP_DB_PATH": "/tmp/teleroute/legacy.sqlite3",
-            "APP_DATA_DIR": "/tmp/teleroute/data",
-        })
-
-        self.assertEqual(config.sqlite_path, Path("/tmp/teleroute/legacy.sqlite3"))
-
-    def test_db_config_supports_app_data_dir(self):
-        config = load_db_config({"APP_DATA_DIR": "/tmp/teleroute/data"})
-
-        self.assertEqual(config.sqlite_path, Path("/tmp/teleroute/data") / "mvp.sqlite3")
-
-    def test_db_config_fallback_unchanged(self):
-        config = load_db_config({})
-
-        self.assertEqual(config.sqlite_path, DEFAULT_DB_PATH)
-
-
-class RelocateSqliteDbTest(unittest.TestCase):
-    def _create_source_db(self, directory: Path) -> Path:
-        source = directory / "mvp.sqlite3"
-        conn = sqlite3.connect(source)
-        try:
-            conn.execute("PRAGMA journal_mode=WAL")
-            conn.execute("CREATE TABLE sample (id INTEGER PRIMARY KEY, name TEXT NOT NULL)")
-            conn.execute("INSERT INTO sample (name) VALUES ('alpha')")
-            conn.commit()
-        finally:
-            conn.close()
-        return source
-
-    def test_relocate_sqlite_db_dry_run_no_write(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            root = Path(tmpdir)
-            source = self._create_source_db(root)
-            target = root / "data" / "mvp.sqlite3"
-            backup_dir = root / "backups"
-
-            relocate_sqlite_db(RelocatePlan(source, target, backup_dir, dry_run=True, overwrite=False))
-
-            self.assertFalse(target.exists())
-            self.assertFalse(backup_dir.exists())
-
-    def test_relocate_sqlite_db_apply_creates_backup_and_target(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            root = Path(tmpdir)
-            source = self._create_source_db(root)
-            target = root / "data" / "mvp.sqlite3"
-            backup_dir = root / "backups"
-
-            relocate_sqlite_db(RelocatePlan(source, target, backup_dir, dry_run=False, overwrite=False))
-
-            self.assertTrue(source.exists())
-            self.assertTrue(target.exists())
-            backups = list(backup_dir.glob("mvp.backup.*.sqlite3"))
-            self.assertEqual(len(backups), 1)
-            with sqlite3.connect(target) as conn:
-                self.assertEqual(conn.execute("SELECT name FROM sample").fetchone()[0], "alpha")
-            with sqlite3.connect(backups[0]) as conn:
-                self.assertEqual(conn.execute("SELECT name FROM sample").fetchone()[0], "alpha")
-
-    def test_relocate_does_not_overwrite_existing_target_without_overwrite(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            root = Path(tmpdir)
-            source = self._create_source_db(root)
-            target = root / "data" / "mvp.sqlite3"
-            target.parent.mkdir()
-            target.write_text("existing target")
-            backup_dir = root / "backups"
-
-            with self.assertRaises(FileExistsError):
-                relocate_sqlite_db(RelocatePlan(source, target, backup_dir, dry_run=False, overwrite=False))
-
-            self.assertEqual(target.read_text(), "existing target")
-            self.assertFalse(backup_dir.exists())
-
-
-class GitignoreFilesystemLayoutTest(unittest.TestCase):
-    def test_gitignore_contains_sqlite_wal_backup_patterns(self):
-        gitignore = Path(".gitignore").read_text()
+class GitignoreRepositoryHygieneTest(unittest.TestCase):
+    def test_gitignore_contains_required_repository_hygiene_patterns(self):
+        patterns = set(Path(".gitignore").read_text().splitlines())
         required_patterns = {
             ".env",
             "*.sqlite",
             "*.sqlite3",
             "*.db",
+            "*.sqlite-journal",
+            "*.sqlite3-journal",
+            "*.db-journal",
             "*.sqlite3-wal",
             "*.sqlite3-shm",
             "*.db-wal",
             "*.db-shm",
-            "*.backup*.sqlite3",
+            "*.bak",
+            "*.backup",
+            "*.backup.*",
+            "*.orig",
+            "*~",
+            "*.swp",
+            "*.swo",
             "*.dump",
             "*.sql.dump",
-            "preflight_report.json",
-            "migration_report.json",
-            "/data/",
-            "/.data/",
-            "/backups/",
-            "/logs/",
+            "*.sql.gz",
+            "*.dump.gz",
+            "*.pgdump",
+            "*.pgbackup",
+            "pgdata/",
+            ".postgres/",
+            "*.log",
+            "*.log.*",
+            "/imports/",
+            "/exports/",
+            "/tmp/",
+            "/temp/",
+            "/reports/",
+            ".venv/",
+            "venv/",
+            "env/",
+            "build/",
+            "dist/",
+            "*.egg-info/",
+            "__pycache__/",
+            "*.pyc",
+            "*.pyo",
+            "*.pyd",
+            ".pytest_cache/",
+            ".mypy_cache/",
+            ".pyright/",
+            ".ruff_cache/",
+            ".coverage",
+            ".coverage.*",
+            "htmlcov/",
+            "coverage.xml",
+            ".tox/",
+            ".nox/",
+            ".idea/",
+            ".vscode/",
+            ".DS_Store",
+            "Thumbs.db",
+            "Desktop.ini",
+            "docker-compose.override.yml",
+            "compose.override.yml",
         }
 
         for pattern in required_patterns:
             with self.subTest(pattern=pattern):
-                self.assertIn(pattern, gitignore)
-        self.assertNotIn("*.sql\n", gitignore)
+                self.assertIn(pattern, patterns)
+
+    def test_gitignore_keeps_schema_and_reviewed_csv_files_trackable(self):
+        patterns = set(Path(".gitignore").read_text().splitlines())
+
+        self.assertNotIn("*.sql", patterns)
+        self.assertNotIn("*.csv", patterns)
+
+
+class ProductionFilesystemLayoutTest(unittest.TestCase):
+    def test_layout_documents_postgres_only_external_runtime_paths(self):
+        layout = Path("docs/deployment/filesystem_layout.md").read_text()
+        required_fragments = {
+            "/opt/teleroute/releases/",
+            "current -> releases/<release>",
+            "/etc/teleroute/",
+            "teleroute.env",
+            "/var/lib/teleroute/",
+            "imports/",
+            "exports/",
+            "tmp/",
+            "/var/backups/teleroute/postgres/",
+            "/var/log/teleroute/",
+            "/run/teleroute/",
+            "DATABASE_URL",
+            "read-only",
+            "there is no SQLite production runtime",
+        }
+
+        for fragment in required_fragments:
+            with self.subTest(fragment=fragment):
+                self.assertIn(fragment, layout)
+
+    def test_layout_does_not_document_legacy_runtime_configuration(self):
+        layout = Path("docs/deployment/filesystem_layout.md").read_text()
+
+        self.assertNotIn("SQLITE_DB_PATH", layout)
+        self.assertNotIn("MVP_DB_PATH", layout)
+        self.assertNotIn("APP_DATA_DIR", layout)
+        self.assertNotIn("POSTGRES_RUNTIME_ENABLED", layout)
 
 
 if __name__ == "__main__":

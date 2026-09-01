@@ -1,157 +1,67 @@
-# Production-like filesystem layout
+# PostgreSQL-only production filesystem layout
 
-TeleRoute should keep application code separate from persistent runtime data. In production, and in production-like local setups, the SQLite database must not live inside the git working tree/app root.
+TeleRoute production deployments separate immutable application releases, external configuration, runtime files, backups, logs, and process state. The application runtime uses PostgreSQL only; there is no SQLite production runtime.
 
-## Why the SQLite database should not be in the app root
-
-The app directory is updated by git/deploy operations. If the SQLite database, WAL files, backups, or logs are stored there, an application update can accidentally delete, overwrite, or package runtime data. Keeping data outside the repository makes the app replaceable while preserving operations data.
-
-## Directory roles
-
-- `app/` — application code and git repository. This directory can be updated or replaced during deploys.
-- `data/` — persistent SQLite database and SQLite WAL/SHM files.
-- `backups/` — database backups created before manual relocation or maintenance.
-- `logs/` — future runtime log files.
-
-## Recommended local production-like Windows layout
+## Recommended layout
 
 ```text
-C:\TeleRoute\app\
-  app\
-  docs\
-  scripts\
-  tests\
-  README.md
-  .env
+/opt/teleroute/
+  releases/
+    <release>/
+  current -> releases/<release>
 
-C:\TeleRoute\data\
-  mvp.sqlite3
-  mvp.sqlite3-wal
-  mvp.sqlite3-shm
+/etc/teleroute/
+  teleroute.env
 
-C:\TeleRoute\backups\
-  mvp.backup.YYYYMMDD-HHMMSS.sqlite3
+/var/lib/teleroute/
+  imports/
+  exports/
+  tmp/
 
-C:\TeleRoute\logs\
-  future log files
-```
+/var/backups/teleroute/postgres/
 
-For this layout, configure:
-
-```dotenv
-SQLITE_DB_PATH=C:\TeleRoute\data\mvp.sqlite3
-```
-
-## Windows production example
-
-```text
-D:\TeleRoute\app\
-D:\TeleRoute\data\
-D:\TeleRoute\backups\
-D:\TeleRoute\logs\
-D:\TeleRoute\.env
-```
-
-Example database setting:
-
-```dotenv
-SQLITE_DB_PATH=D:\TeleRoute\data\mvp.sqlite3
-```
-
-## Linux production example
-
-```text
-/opt/teleroute/app/
-/var/lib/teleroute/mvp.sqlite3
-/var/backups/teleroute/
 /var/log/teleroute/
-/etc/teleroute/.env
+
+/run/teleroute/
 ```
 
-Example database setting:
+## Directory responsibilities
+
+- `/opt/teleroute/releases/<release>/` contains one versioned application checkout. It is read-only for the runtime account.
+- `/opt/teleroute/current` is the atomic symlink to the active release. A deployment creates a new release rather than modifying the active checkout in place.
+- `/etc/teleroute/teleroute.env` contains deployment configuration references and is readable only by the appropriate service account. Secrets and configuration are outside Git and outside every release.
+- `/var/lib/teleroute/imports/` receives operator-approved input files; `/var/lib/teleroute/exports/` holds generated exports; `/var/lib/teleroute/tmp/` holds disposable runtime work. None belongs in the repository or release tree.
+- `/var/backups/teleroute/postgres/` contains protected PostgreSQL backups and manifests. Apply appropriate retention, encryption, and access controls.
+- `/var/log/teleroute/` contains application/service logs when the platform does not send them directly to centralized logging.
+- `/run/teleroute/` contains ephemeral process state such as a Unix socket or PID file. The service manager recreates it at boot.
+
+Create writable directories during provisioning and grant the runtime account only the permissions it needs. The application checkout and `current` release must remain non-writable.
+
+## Database configuration and ownership
+
+The application connects to PostgreSQL only through `DATABASE_URL`, supplied through the deployment secret/configuration mechanism:
 
 ```dotenv
-SQLITE_DB_PATH=/var/lib/teleroute/mvp.sqlite3
+DB_BACKEND=postgres
+DATABASE_URL=postgresql://USER:PASSWORD@HOST:5432/DATABASE
 ```
 
-## SQLite path configuration
+Do not put a real connection URL in a release, repository, image layer, or deployment log. PostgreSQL's data directory is owned and managed by PostgreSQL itself or by the hosting provider. It is not `/var/lib/teleroute/`, and application deploys must never copy, edit, or back it up as ordinary application files.
 
-Runtime SQLite path priority is:
+Use the procedures in the [backup/restore runbook](../postgres/backup_restore_runbook.md). Backups remain outside the repository and are restored only into a fresh database for verification or an approved recovery. Deployment and database rollback are covered by the [deployment rollback runbook](../postgres/deployment_rollback_runbook.md).
 
-1. `SQLITE_DB_PATH` — recommended production setting; use an absolute path.
-2. `MVP_DB_PATH` — legacy backward-compatible setting.
-3. `APP_DATA_DIR/mvp.sqlite3` — convenient directory-based alternative.
-4. `./mvp.sqlite3` in the app root — old development fallback only.
+## Deployment contract
 
-The app does not automatically move an existing database at startup. Configure the path after manually relocating the database.
+1. Materialize a versioned release under `/opt/teleroute/releases/`.
+2. Install/build release dependencies without writing runtime state into the checkout.
+3. Validate externally managed configuration and `DATABASE_URL`.
+4. Make the release read-only for the service account.
+5. Atomically repoint `/opt/teleroute/current` and restart or reload the managed service.
+6. Write imports, exports, temporary files, logs, and process state only to their designated external locations.
+7. Retain the prior known-good release for the approved rollback procedure.
 
-## APP_DATA_DIR alternative
+See the [PostgreSQL runtime contract](../postgres/runtime.md), [production readiness gate](../postgres/production_readiness_gate.md), and [security gate](../postgres/security_gate.md) for the remaining production requirements.
 
-If you prefer to configure a directory instead of a full file path, set:
+## Repository boundary
 
-```dotenv
-APP_DATA_DIR=C:\TeleRoute\data
-```
-
-The application will use:
-
-```text
-C:\TeleRoute\data\mvp.sqlite3
-```
-
-Use `SQLITE_DB_PATH` when you need a non-default filename or want the clearest production configuration.
-
-## Relocating an existing SQLite database
-
-Use the helper script to copy a database from the app root to the persistent data directory. The script uses the SQLite backup API, so committed WAL content is copied safely. It does not delete the source database.
-
-Dry-run example:
-
-```bash
-python scripts/relocate_sqlite_db.py \
-  --source ./mvp.sqlite3 \
-  --target C:\TeleRoute\data\mvp.sqlite3 \
-  --backup-dir C:\TeleRoute\backups \
-  --dry-run
-```
-
-Apply example:
-
-```bash
-python scripts/relocate_sqlite_db.py \
-  --source ./mvp.sqlite3 \
-  --target C:\TeleRoute\data\mvp.sqlite3 \
-  --backup-dir C:\TeleRoute\backups \
-  --apply --yes
-```
-
-Apply mode creates the target parent directory and backup directory if needed, creates a timestamped backup first, copies to the target, and prints the `SQLITE_DB_PATH=...` line to add to `.env`. If the target already exists, the script refuses to overwrite it unless `--overwrite` is provided. The script does not edit `.env` automatically.
-
-## Updating the application
-
-When updating TeleRoute:
-
-1. Update only the `app/` directory through git/deploy.
-2. Do not delete or replace `data/`, `backups/`, or `logs/`.
-3. Keep `.env` pointed at the persistent database path.
-4. Verify the application starts against the configured database path.
-
-## What must not be committed
-
-Do not commit:
-
-- `.env` with secrets or local paths.
-- SQLite databases: `*.sqlite`, `*.sqlite3`, `*.db`.
-- SQLite WAL/SHM files: `*.sqlite3-wal`, `*.sqlite3-shm`, `*.db-wal`, `*.db-shm`.
-- Backups, dumps, migration reports, preflight reports, runtime logs, or local `data/` directories.
-
-SQL schema files that are documentation or migrations, such as `docs/postgres/schema.postgres.sql`, remain valid repository files and must not be hidden by a broad `*.sql` ignore rule.
-
-## Future PostgreSQL transition
-
-When TeleRoute switches to PostgreSQL runtime:
-
-- the SQLite file path will no longer be needed for runtime;
-- configuration will use `DATABASE_URL`;
-- PostgreSQL's data directory will be managed by PostgreSQL/hosting infrastructure, not by the app repository;
-- `data/`, `backups/`, and `logs/` separation remains the same operational principle.
+Do not commit secrets, `.env` files, databases, PostgreSQL data, dumps, backups, logs, imports, exports, temporary runtime files, or migration reports. Canonical schema and migration SQL under `docs/postgres/` are reviewed source files and remain tracked.

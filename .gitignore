@@ -8,20 +8,76 @@
 *.sqlite
 *.sqlite3
 *.db
+*.sqlite-journal
+*.sqlite3-journal
+*.db-journal
 *.sqlite3-wal
 *.sqlite3-shm
 *.db-wal
 *.db-shm
 *.backup*.sqlite3
+*.bak
+*.backup
+*.backup.*
+*.orig
+*~
+*.swp
+*.swo
 *.dump
 *.sql.dump
+*.sql.gz
+*.dump.gz
+*.pgdump
+*.pgbackup
 preflight_report.json
 migration_report.json
 /data/
 /.data/
 /backups/
 /logs/
+pgdata/
+.postgres/
+/imports/
+/exports/
+/tmp/
+/temp/
+/reports/
 
-# Python cache
+# Python / test caches
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.pyright/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+.tox/
+.nox/
+
+# Virtual environments and build output
+.venv/
+venv/
+env/
+build/
+dist/
+*.egg-info/
+
+# Logs
+*.log
+*.log.*
+
+# IDE / operating system files
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Local Compose overrides
+docker-compose.override.yml
+compose.override.yml
