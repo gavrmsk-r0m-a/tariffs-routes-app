@@ -4,7 +4,31 @@
 !.env.example
 !.env.postgres.local.example
 
-# Database files and local persistent runtime data
+# Python and test caches
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.pyright/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+.tox/
+.nox/
+
+# Virtual environments and build output
+.venv/
+venv/
+env/
+build/
+dist/
+*.egg-info/
+
+# Local database files and SQLite migration artifacts
 *.sqlite
 *.sqlite3
 *.db
@@ -12,16 +36,54 @@
 *.sqlite3-shm
 *.db-wal
 *.db-shm
+*.sqlite-journal
+*.sqlite3-journal
+*.db-journal
 *.backup*.sqlite3
+
+# Backups, PostgreSQL dumps, and local PostgreSQL data
+*.bak
+*.backup
+*.backup.*
+*.orig
 *.dump
 *.sql.dump
+*.sql.gz
+*.dump.gz
+*.pgdump
+*.pgbackup
+pgdata/
+.postgres/
+
+# Editor backup and swap files
+*~
+*.swp
+*.swo
+
+# Generated reports and local runtime data
 preflight_report.json
 migration_report.json
 /data/
 /.data/
 /backups/
+/imports/
+/exports/
+/tmp/
+/temp/
+/reports/
+
+# Logs
+*.log
+*.log.*
 /logs/
 
-# Python cache
-__pycache__/
-*.pyc
+# IDE and operating-system metadata
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Local Docker Compose overrides
+docker-compose.override.yml
+compose.override.yml
