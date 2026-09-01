@@ -3156,7 +3156,13 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .phone-dialog-grid {{ display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px 12px; align-items: start; }}
     .phone-dialog label {{ display: block; min-width: 0; margin: 0; color: var(--text); font-size: 11.5px; font-weight: 740; line-height: 1.2; }}
     .phone-dialog input, .phone-dialog select, .phone-dialog textarea {{ display: block; width: 100%; min-height: 33px; box-sizing: border-box; margin-top: 3px; padding-top: 6px; padding-bottom: 6px; font-size: 13px; line-height: 1.25; }}
+    .phone-dialog textarea {{ min-height: 76px; resize: vertical; line-height: 1.35; }}
     .phone-dialog .phone-dialog-full {{ grid-column: 1 / -1; }}
+    .phone-dialog.phone-dialog-page-form {{ position: relative; left: auto; top: auto; z-index: auto; transform: none; margin: 0 0 16px; }}
+    .phone-dialog-checkbox {{ display: flex; flex-direction: column; min-width: 0; }}
+    .phone-dialog-checkbox .important-checkbox {{ display: flex; align-items: center; gap: 8px; min-height: 33px; box-sizing: border-box; margin-top: 3px; padding: 6px 9px; }}
+    .phone-dialog-checkbox .important-checkbox input {{ flex: 0 0 16px; width: 16px; min-height: 16px; margin: 0; }}
+    .phone-dialog-helper {{ margin: 0; padding: 0 20px 8px; font-size: 12px; overflow-wrap: anywhere; }}
     .phone-dialog-footer {{ display: flex; justify-content: flex-start; align-items: center; gap: 10px; grid-column: 1 / -1; width: 100%; box-sizing: border-box; margin: 0; padding: 10px 20px; border-top: 1px solid var(--border-strong); background: #eef5ff; }}
     .phone-dialog-footer button {{ min-height: 32px; padding-top: 6px; padding-bottom: 6px; }}
     .phone-dialog-footer .modal-save {{ order: 1; border-color: #2563eb; background: #2563eb; color: #fff; }}
@@ -9165,26 +9171,44 @@ def phone_edit_page(repo: Repository, phone_id: int) -> bytes:
     phone = repo.get_phone_number(phone_id)
     if phone is None:
         return page("Номер не найден", "<h1>Номер не найден</h1>")
-    body = f"""<h1>Редактировать номер</h1><p><a href='/phones'>← Назад</a></p>
-<form method='post' action='/phones/{phone_id}/update'>
-<label>Номер <span class='required'>*</span><input name='number' value='{esc(phone['number'])}'></label>
-<label>ГЕО <span class='required'>*</span><select name='country_id'>{active_options(repo, 'countries', selected=phone['country_id'])}</select></label>
+    is_modal = _REQUEST_CONTEXT.get("is_modal_request") is True
+    form_html = phone_edit_form(repo, phone_id, phone, modal=is_modal)
+    if is_modal:
+        return f"<div data-modal-ready='1'>{form_html}</div>".encode("utf-8")
+    return page("Редактировать номер", table_page_container(form_html, extra_class="phones-page"))
+
+
+def phone_edit_form(repo: Repository, phone_id: int, phone: dict, *, modal: bool = False) -> str:
+    cancel = "<button type='button' class='modal-cancel' data-modal-close>Отмена</button>" if modal else "<a class='button modal-cancel' href='/phones'>Отмена</a>"
+    imported_by = f"<p class='muted phone-dialog-helper'><strong>Создал в Excel:</strong> {esc(phone['imported_created_by'])}</p>" if phone['imported_created_by'] else ""
+    return f"""<form class='phone-dialog phone-dialog-form{' phone-dialog-page-form' if not modal else ''}' method='post' action='/phones/{phone_id}/update'>
+<header class='phone-dialog-header'><h2>Редактировать номер</h2></header>
+<div class='phone-dialog-body'>
+<section class='phone-dialog-section'><h3>Основные параметры</h3><div class='phone-dialog-grid'>
+<label>Номер <span class='required'>*</span><input name='number' value='{esc(phone['number'])}' required></label>
+<label>ГЕО <span class='required'>*</span><select name='country_id' required>{active_options(repo, 'countries', selected=phone['country_id'])}</select></label>
 <label>Провайдер <select name='provider_id'><option value=''>—</option>{active_options(repo, 'providers', selected=phone['provider_id'])}</select></label>
 <label>Проект <select name='project_label'>{project_options(repo, selected=phone['project_label'], empty='—')}</select></label>
 <label>Назначение <select name='assignment_type'>{assignment_options(repo, selected=phone['assignment_type'])}</select></label>
 <label>Рабочий статус <select name='status'>{phone_status_options(phone['status'])}</select></label>
 <label>Активен у провайдера <select name='is_active'><option value='1' {'selected' if phone['is_active'] else ''}>Да</option><option value='0' {'selected' if not phone['is_active'] else ''}>Нет</option></select></label>
-<label>Стоимость подключения <input name='connection_cost' value='{esc(phone['connection_cost'])}'></label>
+<div class='phone-dialog-checkbox'><span>Требует проверки</span><label class='important-checkbox'><input type='checkbox' name='review_required' value='1' {'checked' if phone['review_required'] else ''}><span>Требует проверки</span></label></div>
+</div></section>
+<section class='phone-dialog-section'><h3>Стоимость и тариф</h3><div class='phone-dialog-grid'>
+<label>Стоимость подключения <input name='connection_cost' value='{esc(phone['connection_cost'] or '')}'></label>
 <label>Абонентская плата <input name='monthly_fee' value='{esc(phone['monthly_fee'] or '')}'></label>
 <label>Валюта <select name='currency_id'><option value=''>—</option>{active_options(repo, 'currencies', 'code', selected=phone['currency_id'])}</select></label>
 <label>Тип номера <select name='phone_type'>{phone_type_options(repo, selected=phone['phone_type'], empty='—')}</select></label>
-<label>Тариф <input name='tariff_label' value='{esc(phone['tariff_label'])}'></label>
-<label>Комментарий <input name='comment' value='{esc(phone['comment'])}'></label>
-{f"<p class='muted'><strong>Создал в Excel:</strong> {esc(phone['imported_created_by'])}</p>" if phone['imported_created_by'] else ""}
-<label class='important-checkbox'><input type='checkbox' name='review_required' value='1' {'checked' if phone['review_required'] else ''}> <span>Требует проверки</span></label>
-<p class='muted'>Поле «Маршрутов» не редактируется и считается автоматически.</p>
-<button>Сохранить</button></form>"""
-    return page("Редактировать номер", body)
+<label class='phone-dialog-full'>Тариф <input name='tariff_label' value='{esc(phone['tariff_label'] or '')}'></label>
+</div></section>
+<section class='phone-dialog-section'><h3>Описание</h3><div class='phone-dialog-grid'>
+<label class='phone-dialog-full'>Комментарий <textarea name='comment' rows='3'>{esc(phone['comment'] or '')}</textarea></label>
+</div></section>
+{imported_by}
+<p class='muted phone-dialog-helper'>Поле «Маршрутов» не редактируется и считается автоматически.</p>
+</div>
+<footer class='phone-dialog-footer'><button type='submit' class='modal-save'>Сохранить</button>{cancel}</footer>
+</form>"""
 
 
 def company_edit_page(repo: Repository, company_id: int, *, form_error: str | None = None, form_data: dict[str, str] | None = None) -> bytes:
