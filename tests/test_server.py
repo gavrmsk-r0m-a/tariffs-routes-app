@@ -2779,6 +2779,68 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertIn("Admin", history)
         self.assertIn("Создал в Excel: old_admin", history)
 
+    def test_phone_edit_modal_uses_phone_dialog_with_prefilled_fields(self):
+        self.request("/routes")
+        conn = _TEST_DB.connect()
+        try:
+            conn.execute("""
+                INSERT INTO phone_numbers(
+                    country_id, provider_id, number, normalized_number, project_label,
+                    assignment_type, status, connection_cost, monthly_fee, currency_id,
+                    phone_type, tariff_label, comment, is_active, review_required,
+                    imported_created_by, created_by
+                ) VALUES (
+                    1, NULL, '525550009921', '525550009921', 'Demo', 'gl', 'unknown',
+                    12.5, 7.5, 1, 'mobile', 'Legacy tariff', 'Existing comment',
+                    TRUE, TRUE, 'legacy_admin', 1
+                )
+            """)
+            phone_id = conn.execute("SELECT id FROM phone_numbers WHERE number = '525550009921'").fetchone()["id"]
+            conn.commit()
+        finally:
+            conn.close()
+
+        captured, content = self.request(
+            f"/phones/{phone_id}/edit", headers={"HTTP_X_REQUESTED_WITH": "fetch"}
+        )
+
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("data-modal-ready='1'", content)
+        self.assertIn("<form class='phone-dialog phone-dialog-form'", content)
+        self.assertIn(f"action='/phones/{phone_id}/update'", content)
+        for field_name in (
+            "number", "country_id", "provider_id", "project_label", "assignment_type",
+            "status", "is_active", "connection_cost", "monthly_fee", "currency_id",
+            "phone_type", "tariff_label", "comment", "review_required",
+        ):
+            self.assertIn(f"name='{field_name}'", content)
+        self.assertIn("value='525550009921'", content)
+        self.assertIn("value='Legacy tariff'", content)
+        self.assertIn(">Existing comment</textarea>", content)
+        self.assertIn("name='provider_id'", content)
+        provider_select = re.search(r"<select name='provider_id'>(.*?)</select>", content, re.S).group(1)
+        self.assertIn("<option value=''>—</option>", provider_select)
+        self.assertNotIn("name='provider_id' required", content)
+        self.assertIn("name='review_required' value='1' checked", content)
+        self.assertIn("<header class='phone-dialog-header'><h2>Редактировать номер</h2></header>", content)
+        for section in ("Основные параметры", "Стоимость и тариф", "Описание"):
+            self.assertIn(f"<h3>{section}</h3>", content)
+        self.assertIn("<button type='submit' class='modal-save'>Сохранить</button>", content)
+        self.assertIn("class='modal-cancel' data-modal-close>Отмена</button>", content)
+        self.assertIn("Создал в Excel:", content)
+        self.assertIn("Поле «Маршрутов» не редактируется", content)
+        self.assertNotIn("<!doctype html>", content)
+        self.assertNotIn("← Назад", content)
+
+    def test_phone_edit_direct_url_uses_same_dialog_form_as_fallback(self):
+        captured, content = self.request("/phones/1/edit")
+
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("<!doctype html>", content)
+        self.assertIn("phone-dialog phone-dialog-form phone-dialog-page-form", content)
+        self.assertIn("class='button modal-cancel' href='/phones'>Отмена</a>", content)
+        self.assertNotRegex(content, r"<[^>]+\bdata-modal-ready=['\"]1['\"]")
+
 
     def test_reactivation_review_can_be_cleared_from_phone_edit(self):
         self.request("/routes")
