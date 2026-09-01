@@ -981,6 +981,47 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertEqual(captured["status"], "401 Unauthorized")
         self.assertIn("Неверный логин или пароль", content)
 
+    def test_third_consecutive_wrong_password_locks_existing_account(self):
+        body = urlencode({"username": "duty", "password": "wrong"})
+        for _ in range(2):
+            captured, content = self.request("/login", method="POST", body=body)
+            self.assertEqual(captured["status"], "401 Unauthorized")
+            self.assertIn("Неверный логин или пароль", content)
+            self.assertNotIn("Такой пароль используется УЗ a.gubin", content)
+
+        captured, content = self.request("/login", method="POST", body=body)
+        self.assertEqual(captured["status"], "401 Unauthorized")
+        self.assertIn("Такой пароль используется УЗ a.gubin", content)
+        self.assertIn("Повторная попытка через 01:00", content)
+        self.assertIn("id='login-lock-timer'", content)
+        self.assertIn(" disabled", content)
+
+        with patch.object(server.Repository, "authenticate_user") as authenticate:
+            captured, content = self.request("/login", method="POST", body=body)
+        authenticate.assert_not_called()
+        self.assertEqual(captured["status"], "401 Unauthorized")
+        self.assertIn("Повторная попытка через", content)
+
+    def test_unknown_username_never_gets_special_password_message(self):
+        body = urlencode({"username": "missing-user", "password": "wrong"})
+        for _ in range(3):
+            captured, content = self.request("/login", method="POST", body=body)
+        self.assertEqual(captured["status"], "401 Unauthorized")
+        self.assertIn("Неверный логин или пароль", content)
+        self.assertNotIn("Такой пароль используется УЗ a.gubin", content)
+
+    def test_successful_login_resets_wrong_password_counter(self):
+        wrong = urlencode({"username": "duty", "password": "wrong"})
+        self.request("/login", method="POST", body=wrong)
+        self.request("/login", method="POST", body=wrong)
+        captured, _ = self.request("/login", method="POST", body=urlencode({"username": "duty", "password": "duty123"}))
+        self.assertEqual(captured["status"], "303 See Other")
+
+        captured, content = self.request("/login", method="POST", body=wrong)
+        self.assertEqual(captured["status"], "401 Unauthorized")
+        self.assertIn("Неверный логин или пароль", content)
+        self.assertNotIn("Такой пароль используется УЗ a.gubin", content)
+
     def test_admin_default_fallback_login_opens_user_management_without_exposing_password(self):
         body = urlencode({"username": "admin", "password": "admin"})
         captured, _ = self.request("/login", method="POST", body=body)

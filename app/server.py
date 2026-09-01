@@ -27,10 +27,12 @@ from app.importer import apply_import, preview_import
 from app.repository import BusinessRuleError, COMPANY_CHANGE_LABELS, ROUTING_SCOPE_LABELS, Repository, format_decimal_label, normalize_phone_status, normalize_provider_name, normalize_real_prefix, validate_phone_number
 from app.security import (
     GENERIC_LOGIN_ERROR,
+    THIRD_FAILED_PASSWORD_ERROR,
     clear_login_failures,
     client_key,
     get_auth_cookie_secret,
-    login_is_locked,
+    login_lock_remaining,
+    login_failure_count,
     record_login_failure,
     render_cookie_attributes,
 )
@@ -4157,9 +4159,11 @@ def is_public_path(path: str) -> bool:
     return path in {"/login", "/logout", "/change-password", "/health", "/check"} or path.startswith("/static/")
 
 
-def login_page(repo: Repository, message: str | None = None, notice_type: str = "error") -> bytes:
+def login_page(repo: Repository, message: str | None = None, notice_type: str = "error", lock_seconds: int = 0) -> bytes:
     notice_class = "login-ok" if notice_type == "success" else "login-error"
     notice = f"<div class='{notice_class}'>{esc(message)}</div>" if message else ""
+    lock_notice = f"<div class='login-error' id='login-lock-timer' data-seconds='{lock_seconds}'>Повторная попытка через 01:00</div>" if lock_seconds else ""
+    disabled = " disabled" if lock_seconds else ""
     html = f"""<!doctype html>
 <html lang='ru' data-theme='mvp'>
 <head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'><title>Вход · TeleRoute</title><style>body{{font-family:Arial,sans-serif;background:#eef2f7;color:#172554}}.login-body{{min-height:100vh;display:grid;place-items:center;padding:24px}}.login-card{{width:min(420px,100%);padding:28px;border:1px solid #e3eaf7;border-radius:18px;background:white;box-shadow:0 10px 24px rgba(32,50,90,.08)}}.brand-block{{display:flex;gap:12px;align-items:center}}.brand-mark{{display:grid;place-items:center;width:36px;height:36px;border-radius:11px;background:#4f46e5;color:white;font-weight:900}}.brand-copy strong,.brand-copy span{{display:block}}.brand-copy span,.muted{{color:#7180a4}}.login-form{{display:grid;gap:14px;margin-top:18px}}label{{display:grid;gap:6px;font-weight:700}}input{{border:1px solid #cdd6e8;border-radius:10px;padding:10px 12px;font:inherit}}.button{{border:0;border-radius:10px;background:#2547e8;color:white;font-weight:800;padding:10px 18px}}.login-error,.login-ok{{padding:10px 12px;border-radius:10px;font-weight:700}}.login-error{{background:#fff0f0;color:#b42318}}.login-ok{{background:#ecfdf3;color:#027a48}}</style></head>
@@ -4168,12 +4172,13 @@ def login_page(repo: Repository, message: str | None = None, notice_type: str = 
     <section class='login-card'>
       <div class='brand-block'><div class='brand-mark'>⌁</div><div class='brand-copy'><strong>TeleRoute</strong><span>Вход в систему</span></div></div>
       <h1>Вход</h1>
-      {notice}
+      {notice}{lock_notice}
       <form method='post' action='/login' class='login-form'>
         <label>Логин <input name='username' autocomplete='username' required autofocus></label>
         <label>Пароль <input name='password' type='password' autocomplete='current-password' required></label>
-        <button class='button hero-action' type='submit'>Войти</button>
+        <button class='button hero-action' type='submit'{disabled}>Войти</button>
       </form>
+      <script>const timer=document.getElementById('login-lock-timer');if(timer){{let left=Number(timer.dataset.seconds);const button=document.querySelector("button[type='submit']");const tick=()=>{{const minutes=String(Math.floor(left/60)).padStart(2,'0');const seconds=String(left%60).padStart(2,'0');timer.textContent=`Повторная попытка через ${{minutes}}:${{seconds}}`;if(left<=0){{clearInterval(interval);timer.remove();button.disabled=false;return}}left-=1}};tick();const interval=setInterval(tick,1000)}}</script>
     </section>
   </main>
 </body>
@@ -9936,14 +9941,21 @@ def app(environ, start_response):
             parsed = {key: values[-1] for key, values in parse_qs(raw_body, keep_blank_values=True).items()}
             username = parsed.get("username", "")
             request_client_key = client_key(environ)
-            if login_is_locked(conn, username, request_client_key):
+            account = repo.get_user_by_username(username)
+            is_active_account = account is not None and bool(account["is_active"])
+            lock_seconds = login_lock_remaining(conn, username, request_client_key) if is_active_account else 0
+            if lock_seconds:
                 start_response("401 Unauthorized", [*html_headers(), clear_current_user_cookie()])
-                return [login_page(repo, GENERIC_LOGIN_ERROR)]
+                return [login_page(repo, None, lock_seconds=lock_seconds)]
             user = repo.authenticate_user(username, parsed.get("password", ""))
             if user is None:
                 record_login_failure(conn, username, request_client_key)
+                failure_count = login_failure_count(conn, username, request_client_key)
+                is_third_failure = is_active_account and failure_count == 3
+                lock_seconds = login_lock_remaining(conn, username, request_client_key) if is_third_failure else 0
                 start_response("401 Unauthorized", [*html_headers(), clear_current_user_cookie()])
-                return [login_page(repo, GENERIC_LOGIN_ERROR)]
+                message = THIRD_FAILED_PASSWORD_ERROR if is_third_failure else GENERIC_LOGIN_ERROR
+                return [login_page(repo, message, lock_seconds=lock_seconds)]
             clear_login_failures(conn, username, request_client_key)
             target = "/change-password" if user["must_change_password"] else safe_redirect_target(parsed.get("redirect_to") or "/routes")
             return redirect(start_response, target, [auth_cookie_header(int(user["id"]))])
