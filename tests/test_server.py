@@ -2729,11 +2729,59 @@ class ServerSmokeTest(unittest.TestCase):
     def test_bulk_phone_page_and_nonempty_line_counter_are_available(self):
         captured, content = self.request("/phones/bulk-create")
         self.assertEqual(captured["status"], "200 OK")
-        self.assertIn("Массовое добавление номеров", content)
+        self.assertNotIn("<h1>Массовое добавление номеров</h1>", content)
+        self.assertIn("Главная</a> › <a href='/phones'>Купленные номера</a> › Массовое добавление", content)
         self.assertIn("filter(v=&gt;v.trim())" if "filter(v=&gt;v.trim())" in content else "filter(v=>v.trim())", content)
         self.assertIn("Вставлено: 0 / 500", content)
+        self.assertIn("name='action' id='bulk-phone-action' value='validate'", content)
+        self.assertIn("action.value=button.dataset.bulkAction", content)
+        self.assertIn("requestAnimationFrame(()=>requestAnimationFrame(()=>form.submit()))", content)
+        self.assertIn("id='bulk-phone-progress'", content)
         _, phones = self.request("/phones")
+        self.assertIn("phones-create-actions", phones)
         self.assertIn("+ Массовое добавление", phones)
+
+    def test_bulk_phone_save_post_commits_phone_history_and_audit_log(self):
+        body = urlencode({"numbers": "3939393939", "country_id": "1", "provider_id": "1", "project_label": "REP", "assignment_type": "gl", "status": "used", "action": "save"})
+        captured, content = self.request("/phones/bulk-create", method="POST", body=body)
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertRegex(content, r"Сохранено\s*<strong>1</strong>")
+        self.assertRegex(content, r"Не сохранено\s*<strong>0</strong>")
+        conn = _TEST_DB.connect()
+        try:
+            phone = conn.execute("SELECT id FROM phone_numbers WHERE normalized_number = %s", ("3939393939",)).fetchone()
+            self.assertIsNotNone(phone)
+            history = conn.execute("SELECT COUNT(*) AS value FROM phone_number_history WHERE phone_number_id = %s AND action = 'created'", (phone["id"],)).fetchone()["value"]
+            audit = conn.execute("SELECT COUNT(*) AS value FROM change_log WHERE entity_type = 'phone_number' AND entity_id = %s AND change_type = 'phone_number.created'", (phone["id"],)).fetchone()["value"]
+            self.assertEqual((history, audit), (1, 1))
+        finally:
+            conn.close()
+
+    def test_bulk_phone_save_post_commits_two_distinct_numbers(self):
+        body = urlencode({"numbers": "3939393939\n3939393938", "country_id": "1", "provider_id": "1", "assignment_type": "gl", "status": "used", "action": "save"})
+        captured, content = self.request("/phones/bulk-create", method="POST", body=body)
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertRegex(content, r"Сохранено\s*<strong>2</strong>")
+        conn = _TEST_DB.connect()
+        try:
+            count = conn.execute("SELECT COUNT(*) AS value FROM phone_numbers WHERE normalized_number IN (%s, %s)", ("3939393939", "3939393938")).fetchone()["value"]
+            self.assertEqual(count, 2)
+        finally:
+            conn.close()
+
+    def test_bulk_phone_save_post_commits_one_of_repeated_numbers(self):
+        body = urlencode({"numbers": "3939393939\n3939393939\n3939393939", "country_id": "1", "provider_id": "1", "assignment_type": "gl", "status": "used", "action": "save"})
+        captured, content = self.request("/phones/bulk-create", method="POST", body=body)
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertRegex(content, r"Сохранено\s*<strong>1</strong>")
+        self.assertRegex(content, r"Не сохранено\s*<strong>2</strong>")
+        self.assertEqual(content.count("Дубликат в текущем списке (строка 1)"), 2)
+        conn = _TEST_DB.connect()
+        try:
+            count = conn.execute("SELECT COUNT(*) AS value FROM phone_numbers WHERE normalized_number = %s", ("3939393939",)).fetchone()["value"]
+            self.assertEqual(count, 1)
+        finally:
+            conn.close()
 
     def test_bulk_phone_validate_does_not_write_and_reports_row_errors(self):
         numbers = "525550009921\n\nBAD\n525550009921"
