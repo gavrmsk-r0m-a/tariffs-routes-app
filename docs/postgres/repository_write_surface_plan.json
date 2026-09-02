@@ -3,10 +3,10 @@
     "deferred_read_only_count": 0,
     "infrastructure_or_mixed_count": 1,
     "read_surface_coverage_percent": 100.0,
-    "repository_public_methods_count": 115,
+    "repository_public_methods_count": 116,
     "repository_smoke_checks_count": 613,
     "smoke_covered_read_count": 63,
-    "write_or_mutating_count": 51
+    "write_or_mutating_count": 52
   },
   "batches": {
     "app_settings_and_admin_low_risk": {
@@ -15,6 +15,7 @@
         "rollback-only PostgreSQL integration coverage"
       ],
       "methods": [
+        "clear_user_permissions",
         "create_user",
         "delete_app_setting_value",
         "set_app_setting_value",
@@ -1152,6 +1153,31 @@
       ],
       "transaction_contract": "optional_commit_parameter"
     },
+    "clear_user_permissions": {
+      "batch": "app_settings_and_admin_low_risk",
+      "current_commit_behavior": "mixed",
+      "dependencies": [],
+      "mutation_kind": "delete",
+      "notes": "Explicit user-permission deletion uses backend-aware placeholders and commit=False caller ownership in the Stage 53 rollback-only user/admin probe.",
+      "postgres_strategy": "Keep runtime disabled; use rollback-only harness and backend placeholders.",
+      "returns": "none",
+      "risk": "medium",
+      "rollback_strategy": "Caller-owned transaction supported with commit=False; rollback-only harness owns cleanup.",
+      "side_effects": [
+        "database_write"
+      ],
+      "sqlite_postgres_blockers": [
+        "needs_integration_test",
+        "postgres_transaction_aborted_behavior",
+        "sqlite_placeholder"
+      ],
+      "test_strategy": [
+        "SQL-recording test",
+        "SQLite regression test",
+        "PostgreSQL rollback-only integration test"
+      ],
+      "transaction_contract": "optional_commit_parameter"
+    },
     "set_user_permissions": {
       "batch": "app_settings_and_admin_low_risk",
       "current_commit_behavior": "mixed",
@@ -1606,6 +1632,7 @@
     "update_user",
     "update_user_password",
     "set_user_permissions",
+    "clear_user_permissions",
     "create_country",
     "create_currency",
     "create_provider",
