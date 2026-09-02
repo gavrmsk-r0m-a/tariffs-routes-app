@@ -13,6 +13,8 @@ import uuid
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from datetime import date, datetime
+from email.parser import BytesParser
+from email.policy import default as email_policy
 from http.cookies import SimpleCookie
 from pathlib import Path
 from urllib.parse import parse_qs, quote, unquote, urlencode, urlsplit
@@ -46,6 +48,25 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DOTENV_LOADED = False
 DOTENV_SOURCE_KEYS: set[str] = set()
 HLR_STARTUP_LOGGED = False
+
+
+def parse_post_form(environ: dict, raw_body: bytes) -> tuple[dict[str, str], str]:
+    """Parse the urlencoded forms used by the app and fetch FormData payloads."""
+    content_type = environ.get("CONTENT_TYPE", "")
+    if content_type.lower().startswith("multipart/form-data"):
+        message = BytesParser(policy=email_policy).parsebytes(
+            f"Content-Type: {content_type}\r\nMIME-Version: 1.0\r\n\r\n".encode("utf-8") + raw_body
+        )
+        pairs: list[tuple[str, str]] = []
+        if message.is_multipart():
+            for part in message.iter_parts():
+                name = part.get_param("name", header="content-disposition")
+                if name:
+                    pairs.append((name, part.get_content()))
+        encoded = urlencode(pairs)
+        return {key: values[-1] for key, values in parse_qs(encoded, keep_blank_values=True).items()}, encoded
+    raw_text = raw_body.decode("utf-8")
+    return {key: values[-1] for key, values in parse_qs(raw_text, keep_blank_values=True).items()}, raw_text
 
 
 def _parse_dotenv_keys(path: Path) -> set[str]:
@@ -3213,6 +3234,9 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .tariff-dialog-header {{ grid-column: 1 / -1; width: 100%; box-sizing: border-box; margin: 0; padding: 12px 20px 10px; border-bottom: 1px solid var(--border-strong); background: linear-gradient(180deg, #fff 0%, #f8fafc 100%); }}
     .tariff-dialog-header h2 {{ margin: 0; color: var(--text-strong); font-size: 17px; font-weight: 860; line-height: 1.16; }}
     .tariff-dialog-body {{ min-height: 0; overflow-y: auto; overflow-x: hidden; scrollbar-gutter: stable; }}
+    .tariff-dialog-error-slot {{ min-width: 0; max-width: 100%; box-sizing: border-box; padding: 10px 20px 0; }}
+    .tariff-dialog-error-slot .modal-blocking-error {{ position: static; width: 100%; max-width: 100%; min-width: 0; box-sizing: border-box; transform: none; overflow-wrap: anywhere; word-break: break-word; }}
+    .tariff-dialog-error-slot .modal-blocking-error > span:last-child {{ min-width: 0; max-width: 100%; }}
     .tariff-dialog-section {{ display: grid; gap: 8px; min-width: 0; margin: 0; padding: 10px 20px 12px; border: 0; border-bottom: 1px solid #e5edf7; background: #fff; }}
     .tariff-dialog-section h3 {{ margin: 0; color: #1e3a5f; font-size: 11.5px; font-weight: 850; line-height: 1.15; letter-spacing: .03em; text-transform: uppercase; }}
     .tariff-dialog-grid {{ display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px 12px; align-items: start; }}
@@ -3225,7 +3249,7 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .tariff-dialog-footer .modal-save {{ order: 1; border-color: #2563eb; background: #2563eb; color: #fff; }}
     .tariff-dialog-footer .modal-save:hover {{ border-color: #1d4ed8; background: #1d4ed8; color: #fff; }}
     .tariff-dialog-footer .modal-cancel {{ order: 2; }}
-    @media (max-width: 720px) {{ .modal-form-card[open] > form.tariff-dialog, .tariff-dialog.tariff-dialog {{ width: calc(100vw - 18px); max-width: calc(100vw - 18px); max-height: calc(100vh - 18px); }} .tariff-dialog-grid {{ grid-template-columns: 1fr; }} .tariff-dialog-section, .tariff-dialog-header, .tariff-dialog-footer {{ padding-left: 16px; padding-right: 16px; }} }}
+    @media (max-width: 720px) {{ .modal-form-card[open] > form.tariff-dialog, .tariff-dialog.tariff-dialog {{ width: calc(100vw - 18px); max-width: calc(100vw - 18px); max-height: calc(100vh - 18px); }} .tariff-dialog-grid {{ grid-template-columns: 1fr; }} .tariff-dialog-section, .tariff-dialog-header, .tariff-dialog-footer, .tariff-dialog-error-slot {{ padding-left: 16px; padding-right: 16px; }} }}
     .modal-form-card[open] > form.route-dialog, .route-dialog.route-dialog {{ position: fixed; left: 50%; top: 50%; z-index: 990; width: min(560px, calc(100vw - 48px)); max-width: calc(100vw - 48px); max-height: min(780px, calc(100vh - 48px)); margin: 0; padding: 0; transform: translate(-50%, -50%); display: grid; grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr) auto; gap: 0; overflow: hidden; border: 1px solid var(--border-strong); border-radius: 14px; background: #fff; color: var(--text); box-shadow: 0 22px 62px rgba(15, 23, 42, .22); box-sizing: border-box; }}
     .route-dialog.route-dialog-page-form {{ position: relative; left: auto; top: auto; transform: none; z-index: auto; margin: 0 0 16px; }}
     .route-dialog-header {{ grid-column: 1 / -1; align-self: stretch; width: 100%; max-width: none; box-sizing: border-box; margin: 0; padding: 12px 20px 10px; border-bottom: 1px solid var(--border-strong); background: linear-gradient(180deg, #fff 0%, #f8fafc 100%); }}
@@ -3613,6 +3637,52 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
       closeRemoteEditDetails();
       closeRemoteModal();
     }}
+    function runRemoteModalScripts(doc, card) {{
+      Array.from(doc.querySelectorAll("script")).forEach((script) => {{
+        if (!script.src && script.textContent.trim()) {{
+          const next = document.createElement("script");
+          next.textContent = `(function(){{\n${{script.textContent}}\n}})();`;
+          card.appendChild(next);
+        }}
+      }});
+    }}
+    function enhanceTariffModalSubmit(card, fallbackToFullPage) {{
+      const form = card.querySelector("form.tariff-dialog-form[action*='/tariffs/'][action$='/update']");
+      if (!form || form.dataset.remoteSubmitEnhanced === "1") return;
+      form.dataset.remoteSubmitEnhanced = "1";
+      form.addEventListener("submit", async (event) => {{
+        event.preventDefault();
+        const saveButton = form.querySelector('[type="submit"]');
+        if (saveButton) saveButton.disabled = true;
+        try {{
+          const response = await fetch(form.action, {{
+            method: "POST",
+            headers: {{ "X-Requested-With": "fetch" }},
+            body: new FormData(form),
+          }});
+          if (response.ok) {{
+            closeRemoteModal();
+            window.location.reload();
+            return;
+          }}
+          if (response.status !== 400) {{ fallbackToFullPage(); return; }}
+          const text = await response.text();
+          const doc = new DOMParser().parseFromString(text, "text/html");
+          const modalReady = doc.querySelector("[data-modal-ready='1']");
+          const nextForm = modalReady && modalReady.querySelector("form.tariff-dialog-form");
+          if (!modalReady || !nextForm) {{ fallbackToFullPage(); return; }}
+          card.replaceChildren(...Array.from(modalReady.childNodes).map((node) => document.importNode(node, true)));
+          const importedForm = card.querySelector("form.tariff-dialog-form");
+          enhanceModalForm(importedForm, closeRemoteModal);
+          enhanceTariffModalSubmit(card, fallbackToFullPage);
+          runRemoteModalScripts(doc, card);
+        }} catch (error) {{
+          fallbackToFullPage();
+        }} finally {{
+          if (saveButton && saveButton.isConnected) saveButton.disabled = false;
+        }}
+      }});
+    }}
     document.addEventListener("click", async (event) => {{
       const link = event.target.closest("a.edit-action[data-remote-edit='1'][href*='/edit'], a.edit-action[href*='/edit'][data-remote-edit='1']");
       if (!link || !link.href) return;
@@ -3656,6 +3726,7 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
         }}
         try {{
           enhanceModalForm(importedForm, closeRemoteModal);
+          enhanceTariffModalSubmit(card, fallbackToFullPage);
           if (!card.querySelector("form[action*='/update']") || !card.textContent.trim()) {{
             fallbackToFullPage();
             return;
@@ -3670,15 +3741,7 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
             fallbackToFullPage();
             return;
           }}
-          Array.from(doc.querySelectorAll("script")).forEach((script) => {{
-            if (!script.src && script.textContent.trim()) {{
-              const next = document.createElement("script");
-              next.textContent = `(function(){{
-${{script.textContent}}
-}})();`;
-              card.appendChild(next);
-            }}
-          }});
+          runRemoteModalScripts(doc, card);
         }} catch (modalError) {{
           fallbackToFullPage();
         }}
@@ -9283,26 +9346,33 @@ def yes_no(value: object) -> str:
     return "1" if str(value) in {"1", "True", "true"} else "0"
 
 
-def tariff_edit_form(repo: Repository, tariff_id: int, tariff: dict, *, modal: bool = False) -> str:
+def tariff_edit_form(repo: Repository, tariff_id: int, tariff: dict, *, modal: bool = False, form_error: str | None = None, form_data: dict | None = None) -> str:
+    values = form_data or {}
     prefix = tariff["prefix"] or "—"
+    expected_updated_at = values.get("expected_updated_at", tariff["updated_at"])
+    currency_id = values.get("currency_id", tariff["provider_currency_id"])
+    price = values.get("price", format_decimal_label(tariff["price_in_provider_currency"]))
+    is_current = values.get("is_current", "1" if tariff["is_current"] else "0")
+    comment = values.get("comment", tariff["comment"] or "")
     cancel = "<button type='button' class='modal-cancel' data-modal-close>Отмена</button>" if modal else "<a class='button modal-cancel' href='/tariffs'>Отмена</a>"
     return f"""<form class='tariff-dialog tariff-dialog-form{' tariff-dialog-page-form' if not modal else ''}' method='post' action='/tariffs/{tariff_id}/update'>
-<input type='hidden' name='expected_updated_at' value='{esc(tariff['updated_at'])}'>
+<input type='hidden' name='expected_updated_at' value='{esc(expected_updated_at)}'>
 <header class='tariff-dialog-header'><h2>Редактировать тариф</h2></header>
 <div class='tariff-dialog-body'>
+{f'<div class="tariff-dialog-error-slot">{modal_blocking_error(form_error)}</div>' if form_error else ''}
 <section class='tariff-dialog-section'><h3>Основные параметры</h3><div class='tariff-dialog-grid'>
 <label>ГЕО <input value='{esc(tariff['country_name'])}' readonly></label>
 <label>Провайдер <input value='{esc(tariff['provider_name'])}' readonly></label>
 <label>Префикс <input value='{esc(prefix)}' readonly></label>
-<label>Активен <span class='required'>*</span><select name='is_current'><option value='1' {'selected' if tariff['is_current'] else ''}>Да</option><option value='0' {'selected' if not tariff['is_current'] else ''}>Нет</option></select></label>
+<label>Активен <span class='required'>*</span><select name='is_current'><option value='1' {'selected' if str(is_current) == '1' else ''}>Да</option><option value='0' {'selected' if str(is_current) == '0' else ''}>Нет</option></select></label>
 </div></section>
 <section class='tariff-dialog-section'><h3>Цена</h3><div class='tariff-dialog-grid'>
-<label>Валюта <span class='required'>*</span><select name='currency_id' id='tariff-currency' data-original-currency='{esc(tariff['provider_currency_id'])}'>{active_options(repo, 'currencies', 'code', selected=tariff['provider_currency_id'])}</select></label>
-<label>Цена провайдера <span class='required'>*</span><input name='price' value='{esc(format_decimal_label(tariff['price_in_provider_currency']))}'></label>
+<label>Валюта <span class='required'>*</span><select name='currency_id' id='tariff-currency' data-original-currency='{esc(tariff['provider_currency_id'])}'>{active_options(repo, 'currencies', 'code', selected=currency_id)}</select></label>
+<label>Цена провайдера <span class='required'>*</span><input name='price' value='{esc(price)}'></label>
 <p class='muted tariff-dialog-hint' id='currency-warning' hidden>Вы меняете валюту тарифа. Проверьте, что цена указана в новой валюте.</p>
 </div></section>
 <section class='tariff-dialog-section'><h3>Описание</h3><div class='tariff-dialog-grid'>
-<label class='tariff-dialog-full'>Комментарий <input name='comment' value='{esc(tariff['comment'])}'></label>
+<label class='tariff-dialog-full'>Комментарий <input name='comment' value='{esc(comment)}'></label>
 <p class='muted tariff-dialog-hint'>GEO, провайдер и префикс задают идентичность тарифа и не редактируются.</p>
 </div></section>
 </div>
@@ -9319,12 +9389,12 @@ updateCurrencyWarning();
 </script>"""
 
 
-def tariff_edit_page(repo: Repository, tariff_id: int) -> bytes:
+def tariff_edit_page(repo: Repository, tariff_id: int, *, form_error: str | None = None, form_data: dict | None = None) -> bytes:
     tariff = repo.get_tariff(tariff_id)
     if tariff is None:
         return page("Тариф не найден", "<h1>Тариф не найден</h1>")
     is_modal = _REQUEST_CONTEXT.get("is_modal_request") is True
-    form_html = tariff_edit_form(repo, tariff_id, tariff, modal=is_modal)
+    form_html = tariff_edit_form(repo, tariff_id, tariff, modal=is_modal, form_error=form_error, form_data=form_data)
     if is_modal:
         return (f"<div data-modal-ready='1'>{form_html}</div>" + tariff_currency_script()).encode("utf-8")
     body = f"""<p><a href='/tariffs'>← Назад</a></p>
@@ -10337,8 +10407,7 @@ def app(environ, start_response):
             return redirect(start_response, "/login", [clear_current_user_cookie()] if cookie_id is not None else None)
         if method == "POST":
             raw_size = int(environ.get("CONTENT_LENGTH") or "0")
-            raw_body = environ["wsgi.input"].read(raw_size).decode("utf-8")
-            parsed = {key: values[-1] for key, values in parse_qs(raw_body, keep_blank_values=True).items()}
+            parsed, raw_body = parse_post_form(environ, environ["wsgi.input"].read(raw_size))
             parsed["_raw"] = raw_body
             require_permission("write", section_for_write_path(path))
             if path == "/phones/bulk-create":
@@ -10537,6 +10606,10 @@ def app(environ, start_response):
         if path.startswith("/companies/") and path.endswith("/update"):
             company_id = int(path.strip("/").split("/")[1])
             return [company_edit_page(repo, company_id, form_error=user_error(exc), form_data=dict(parsed))]
+        if path.startswith("/tariffs/") and path.endswith("/update"):
+            conn.rollback()
+            tariff_id = int(path.strip("/").split("/")[1])
+            return [tariff_edit_page(repo, tariff_id, form_error=user_error(exc), form_data=dict(parsed))]
         if return_path.startswith("/routes/") and return_path.endswith("/numbers/manage"):
             route_id = int(return_path.strip("/").split("/")[1])
             if not path.endswith("/numbers/remove"):
