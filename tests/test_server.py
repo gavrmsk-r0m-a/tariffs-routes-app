@@ -1,4 +1,5 @@
 import csv
+import html
 import json
 import io
 import os
@@ -2724,6 +2725,73 @@ class ServerSmokeTest(unittest.TestCase):
         create_form = content[content.index('<form class="phone-dialog phone-dialog-form"'):]
         self.assertLess(create_form.index("phone-dialog-header"), create_form.index("phone-dialog-error-slot"))
         self.assertLess(create_form.index("phone-dialog-error-slot"), create_form.index("Основные параметры"))
+
+    def test_bulk_phone_page_and_nonempty_line_counter_are_available(self):
+        captured, content = self.request("/phones/bulk-create")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("Массовое добавление номеров", content)
+        self.assertIn("filter(v=&gt;v.trim())" if "filter(v=&gt;v.trim())" in content else "filter(v=>v.trim())", content)
+        self.assertIn("Вставлено: 0 / 500", content)
+        _, phones = self.request("/phones")
+        self.assertIn("+ Массовое добавление", phones)
+
+    def test_bulk_phone_validate_does_not_write_and_reports_row_errors(self):
+        numbers = "525550009921\n\nBAD\n525550009921"
+        body = urlencode({"numbers": numbers, "country_id": "1", "provider_id": "1", "assignment_type": "gl", "status": "used", "action": "validate"})
+        captured, content = self.request("/phones/bulk-create", method="POST", body=body)
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("Результат проверки", content)
+        self.assertIn("Неверный формат номера", content)
+        self.assertIn("Дубликат в текущем списке (строка 1)", content)
+        conn = _TEST_DB.connect()
+        try:
+            self.assertIsNone(conn.execute("SELECT id FROM phone_numbers WHERE normalized_number = %s", ("525550009921",)).fetchone())
+        finally:
+            conn.close()
+
+    def test_bulk_phone_limit_and_common_error_retain_form(self):
+        numbers = "\n".join(str(525551000000 + index) for index in range(501))
+        body = urlencode({"numbers": numbers, "country_id": "1", "provider_id": "1", "assignment_type": "gl", "status": "used", "action": "save"})
+        captured, content = self.request("/phones/bulk-create", method="POST", body=body)
+        self.assertEqual(captured["status"], "400 Bad Request")
+        self.assertIn("Максимум 500 номеров за одну операцию", content)
+        retained = "525550009922\n525550009923"
+        body = urlencode({"numbers": retained, "country_id": "1", "provider_id": "", "assignment_type": "gl", "status": "used", "comment": "retain me", "action": "save"})
+        captured, content = self.request("/phones/bulk-create", method="POST", body=body)
+        self.assertEqual(captured["status"], "400 Bad Request")
+        self.assertIn("Провайдер обязателен", content)
+        self.assertIn("retain me", content)
+        self.assertIn("525550009922", content)
+
+    def test_bulk_phone_partial_save_and_resubmit_keep_successes(self):
+        conn = _TEST_DB.connect()
+        try:
+            conn.execute("INSERT INTO phone_numbers(country_id, provider_id, number, normalized_number, assignment_type, status, created_by) VALUES (1, 1, %s, %s, 'gl', 'used', 1)", ("525550009930", "525550009930"))
+            conn.commit()
+        finally:
+            conn.close()
+        numbers = "525550009931\n525550009932\n525550009930\nBAD\n525550009931"
+        common = {"numbers": numbers, "country_id": "1", "provider_id": "1", "assignment_type": "gl", "status": "used", "comment": "bulk audit", "action": "save"}
+        captured, content = self.request("/phones/bulk-create", method="POST", body=urlencode(common))
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("Результат добавления", content)
+        self.assertIn("Номер уже существует", content)
+        self.assertIn("Неверный формат номера", content)
+        self.assertIn("Дубликат в текущем списке", content)
+        self.assertRegex(content, r"Сохранено\s*<strong>2</strong>")
+        state = re.search(r"name='successful_lines' value='([^']+)'", content).group(1)
+        state = html.unescape(state)
+        common.update({"numbers": numbers.replace("BAD", "525550009933"), "successful_lines": state})
+        captured, content = self.request("/phones/bulk-create", method="POST", body=urlencode(common))
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertRegex(content, r"Сохранено\s*<strong>3</strong>")
+        conn = _TEST_DB.connect()
+        try:
+            count = conn.execute("SELECT COUNT(*) AS value FROM phone_numbers WHERE normalized_number IN (%s, %s, %s)", ("525550009931", "525550009932", "525550009933")).fetchone()["value"]
+            history = conn.execute("SELECT COUNT(*) AS value FROM phone_number_history h JOIN phone_numbers p ON p.id = h.phone_number_id WHERE p.normalized_number IN (%s, %s, %s) AND h.action = 'created'", ("525550009931", "525550009932", "525550009933")).fetchone()["value"]
+            self.assertEqual((count, history), (3, 3))
+        finally:
+            conn.close()
 
     def test_review_required_badge_and_edit_rules(self):
         self.request("/routes")
