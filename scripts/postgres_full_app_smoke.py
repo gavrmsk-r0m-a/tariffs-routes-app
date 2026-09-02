@@ -495,7 +495,7 @@ def _run_users_postgres_lifecycle(app, database_url: str, admin_cookie: str) -> 
 
         create_data = {
             "username": username, "display_name": display_name, "email": f"{suffix}@example.test",
-            "role_key": "operator", "password": initial_password,
+            "role_key": "operator", "permission_mode": "custom", "password": initial_password,
             "password_confirm": initial_password, "perm__routes__read": "1",
         }
         status, headers, body = wsgi_request(
@@ -526,7 +526,7 @@ def _run_users_postgres_lifecycle(app, database_url: str, admin_cookie: str) -> 
 
         update_data = {
             "username": username, "display_name": display_name, "email": f"{suffix}@example.test",
-            "role_key": "operator", "is_active": "1", "perm__hlr__read": "1",
+            "role_key": "operator", "permission_mode": "custom", "is_active": "1", "perm__hlr__read": "1",
             "perm__hlr__write": "1", "perm__hlr__export": "1",
         }
         status, headers, _ = wsgi_request(
