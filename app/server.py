@@ -3342,19 +3342,24 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .admin-users-page .user-permissions-section table {{ min-width: 620px; margin: 0; }}
     .admin-users-page .user-permissions-scroll {{ max-height: 260px; overflow: auto; border: 0; border-radius: 0; background: var(--surface); }}
     .admin-users-page .user-permissions-scroll + .muted, .admin-users-page .user-permissions-section fieldset > .muted {{ margin: 8px 0 0; }}
-    .admin-users-page .permission-mode-row {{ display: flex; align-items: center; gap: 12px; padding: 12px 12px 0; font-size: 12px; font-weight: 750; }}
-    .admin-users-page .permission-mode-control {{ display: inline-flex; overflow: hidden; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--surface); }}
-    .admin-users-page .permission-mode-control label {{ position: relative; margin: 0; padding: 6px 10px; cursor: pointer; font-weight: 700; }}
+    .admin-users-page .permission-mode-row {{ display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; min-width: 0; padding: 12px 12px 0; font-size: 12px; font-weight: 750; }}
+    .admin-users-page .permission-mode-control {{ box-sizing: border-box; display: inline-flex; flex: 0 1 300px; width: 300px; max-width: 100%; min-width: 0; min-height: 34px; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--surface); }}
+    .admin-users-page .permission-mode-control label {{ position: relative; box-sizing: border-box; display: inline-flex; flex: 1 1 50%; align-items: center; justify-content: center; min-width: 0; min-height: 32px; margin: 0; padding: 6px 10px; cursor: pointer; color: var(--text); font-weight: 700; line-height: 1.25; text-align: center; white-space: nowrap; }}
+    .admin-users-page .permission-mode-control label:first-child {{ border-radius: 7px 0 0 7px; }}
+    .admin-users-page .permission-mode-control label:last-child {{ border-radius: 0 7px 7px 0; }}
     .admin-users-page .permission-mode-control label + label {{ border-left: 1px solid var(--border-strong); }}
     .admin-users-page .permission-mode-control label:has(input:checked) {{ background: #2563eb; color: #fff; }}
+    .admin-users-page .permission-mode-control label:not(:has(input:checked)):not(:has(input:disabled)):hover {{ background: var(--surface-muted); color: var(--text-strong); }}
+    .admin-users-page .permission-mode-control label:has(input:focus-visible) {{ z-index: 1; outline: 2px solid var(--accent); outline-offset: 2px; }}
     .admin-users-page .permission-mode-control label:has(input:disabled) {{ cursor: not-allowed; opacity: .5; }}
     .admin-users-page .permission-mode-control input {{ position: absolute; opacity: 0; pointer-events: none; }}
-    .admin-users-page .permission-mode-helper {{ min-height: 18px; margin: 7px 12px 10px !important; }}
+    .admin-users-page .permission-mode-helper {{ min-height: 18px; margin: 8px 12px 12px !important; }}
     .admin-users-page .user-dialog-footer {{ display: flex; justify-content: flex-start; align-items: center; gap: 10px; grid-column: 1 / -1; width: 100%; box-sizing: border-box; margin: 0; padding: 12px 22px; border-top: 1px solid var(--border-strong); background: #eef5ff; }}
     .admin-users-page .user-dialog-footer .modal-save {{ order: 1; border-color: #2563eb; background: #2563eb; color: #fff; }}
     .admin-users-page .user-dialog-footer .modal-save:hover {{ border-color: #1d4ed8; background: #1d4ed8; color: #fff; }}
     .admin-users-page .user-dialog-footer .modal-cancel {{ order: 2; }}
     @media (max-width: 720px) {{ .modal-form-card[open] > form.naming-dialog, .naming-dialog.naming-dialog, .modal-form-card[open] > form.reason-dialog, .reason-dialog.reason-dialog, .modal-form-card[open] > form.user-dialog, .user-dialog.user-dialog {{ width: calc(100vw - 18px); max-width: calc(100vw - 18px); max-height: calc(100vh - 18px); }} .naming-dialog-grid, .reason-dialog-grid, .admin-users-page .user-dialog-grid {{ grid-template-columns: 1fr; }} .naming-dialog-header, .naming-dialog-body, .naming-dialog-footer, .reason-dialog-header, .reason-dialog-body, .reason-dialog-footer, .admin-users-page .user-dialog-header, .admin-users-page .user-dialog-body, .admin-users-page .user-dialog-footer {{ padding-left: 16px; padding-right: 16px; }} }}
+    @media (max-width: 420px) {{ .admin-users-page .permission-mode-row > span:first-child {{ flex: 0 0 100%; }} .admin-users-page .permission-mode-control {{ flex-basis: 100%; width: 100%; }} }}
 
 
     /* Phones review filter compact override: keep the checkbox aligned with normal filter controls. */
