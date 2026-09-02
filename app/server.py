@@ -3151,6 +3151,9 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .phone-dialog-header {{ grid-column: 1 / -1; width: 100%; box-sizing: border-box; margin: 0; padding: 12px 20px 10px; border-bottom: 1px solid var(--border-strong); background: linear-gradient(180deg, #fff 0%, #f8fafc 100%); }}
     .phone-dialog-header h2 {{ margin: 0; color: var(--text-strong); font-size: 17px; font-weight: 860; line-height: 1.16; }}
     .phone-dialog-body {{ min-height: 0; overflow-y: auto; overflow-x: hidden; scrollbar-gutter: stable; }}
+    .phone-dialog-error-slot {{ min-width: 0; box-sizing: border-box; padding: 10px 20px 0; }}
+    .phone-dialog-error-slot .modal-blocking-error {{ position: static; width: 100%; max-width: 100%; min-width: 0; box-sizing: border-box; transform: none; overflow-wrap: anywhere; word-break: break-word; }}
+    .phone-dialog-error-slot .modal-blocking-error > span:last-child {{ min-width: 0; max-width: 100%; }}
     .phone-dialog-section {{ display: grid; gap: 8px; min-width: 0; margin: 0; padding: 10px 20px 12px; border: 0; border-bottom: 1px solid #e5edf7; background: #fff; }}
     .phone-dialog-section h3 {{ margin: 0; color: #1e3a5f; font-size: 11.5px; font-weight: 850; line-height: 1.15; letter-spacing: .03em; text-transform: uppercase; }}
     .phone-dialog-grid {{ display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px 12px; align-items: start; }}
@@ -3168,7 +3171,7 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .phone-dialog-footer .modal-save {{ order: 1; border-color: #2563eb; background: #2563eb; color: #fff; }}
     .phone-dialog-footer .modal-save:hover {{ border-color: #1d4ed8; background: #1d4ed8; color: #fff; }}
     .phone-dialog-footer .modal-cancel {{ order: 2; }}
-    @media (max-width: 720px) {{ .modal-form-card[open] > form.phone-dialog, .phone-dialog.phone-dialog {{ width: calc(100vw - 18px); max-width: calc(100vw - 18px); max-height: calc(100vh - 18px); }} .phone-dialog-grid {{ grid-template-columns: 1fr; }} .phone-dialog-section, .phone-dialog-header, .phone-dialog-footer {{ padding-left: 16px; padding-right: 16px; }} }}
+    @media (max-width: 720px) {{ .modal-form-card[open] > form.phone-dialog, .phone-dialog.phone-dialog {{ width: calc(100vw - 18px); max-width: calc(100vw - 18px); max-height: calc(100vh - 18px); }} .phone-dialog-grid {{ grid-template-columns: 1fr; }} .phone-dialog-section, .phone-dialog-header, .phone-dialog-footer, .phone-dialog-error-slot {{ padding-left: 16px; padding-right: 16px; }} }}
 
     .modal-form-card[open] > form.tariff-dialog, .tariff-dialog.tariff-dialog {{ position: fixed; left: 50%; top: 50%; z-index: 990; width: min(520px, calc(100vw - 48px)); max-width: calc(100vw - 48px); max-height: min(680px, calc(100vh - 48px)); margin: 0; padding: 0; transform: translate(-50%, -50%); display: grid; grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr) auto; gap: 0; overflow: hidden; border: 1px solid var(--border-strong); border-radius: 14px; background: #fff; color: var(--text); box-shadow: 0 22px 62px rgba(15, 23, 42, .22); box-sizing: border-box; }}
     .tariff-dialog.tariff-dialog-page-form {{ position: relative; left: auto; top: auto; transform: none; z-index: auto; margin: 0 0 16px; }}
@@ -7183,8 +7186,8 @@ def phones_page(repo: Repository, q: dict[str, str] | None = None, *, form_error
 <div class="filter-review-control" aria-label="Фильтр: Требует проверки"><span class="filter-review-spacer" aria-hidden="true">Требует проверки</span><label class="checkbox-inline filter-review-checkbox"><input type="checkbox" name="review_required" value="1" {'checked' if q.get('review_required') == '1' else ''}> <span>Требует проверки</span></label></div><button>Найти</button></form>"""
     create_html = f"""<form class="phone-dialog phone-dialog-form" method="post" action="/phones/create">
   <header class="phone-dialog-header"><h2>Добавить номер</h2></header>
-  {modal_blocking_error(form_error)}
   <div class="phone-dialog-body">
+    {f'<div class="phone-dialog-error-slot">{modal_blocking_error(form_error)}</div>' if form_error else ''}
     <section class="phone-dialog-section"><h3>Основные параметры</h3><div class="phone-dialog-grid">
       <label>Номер <span class="required">*</span><input name="number" placeholder="393331234567" value="{esc(submitted('number'))}"></label>
       <label>ГЕО <span class="required">*</span><select name="country_id">{active_options(repo, 'countries', selected=submitted('country_id') or None)}</select></label>
