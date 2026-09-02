@@ -36,7 +36,7 @@ SMOKE_METHODS = (
     "dictionary_rename_preview", "get_user_section_permission", "get_user_permissions",
     "get_phone_number", "get_route", "route_numbers", "find_tariff_by_identity",
     "get_tariff",
-    "list_users", "get_user", "get_user_by_username", "authenticate_user",
+    "list_users", "get_user", "get_user_by_username", "authenticate_user", "count_active_admins",
     "list_routes", "list_tariffs", "list_phone_numbers",
     "list_company_routing_settings", "get_company_routing_setting",
     "list_provider_changes", "list_routing_events", "get_routing_event",
@@ -59,6 +59,7 @@ STAGE_35_METHODS = (
 
 STAGE_36_METHODS = (
     "list_users", "get_user", "get_user_by_username", "authenticate_user",
+    "count_active_admins",
 )
 
 STAGE_37_METHODS = (
@@ -308,6 +309,17 @@ def run_stage_36_checks(repo: Repository, check) -> None:
     check("list_users_inactive_flag", lambda: _check(inactive is not None and _is_database_false(inactive["is_active"]), "inactive fixture flag must be database false"))
     check("list_users_active_first", lambda: _check(not users or [bool(row["is_active"]) for row in users] == sorted((bool(row["is_active"]) for row in users), reverse=True), "active users must precede inactive users"))
     check("list_users_excludes_credentials", lambda: _check(all({"password_hash", "password_salt"}.isdisjoint(_row_keys(row)) for row in (users or [])), "user list must exclude credential columns"))
+
+    expected_active_admins = sum(
+        1 for row in (users or [])
+        if _is_database_true(row["is_active"]) and str(row["role_key"]).lower() == "admin"
+    )
+    excluded_admin_id = admin["id"] if admin is not None else -1
+    expected_without_admin = expected_active_admins - (
+        1 if admin is not None and _is_database_true(admin["is_active"]) and str(admin["role_key"]).lower() == "admin" else 0
+    )
+    check("count_active_admins", lambda: _check(repo.count_active_admins() == expected_active_admins, "active admin count is incorrect"))
+    check("count_active_admins_excluding_admin", lambda: _check(repo.count_active_admins(exclude_user_id=excluded_admin_id) == expected_without_admin, "excluded active admin count is incorrect"))
 
     active_users = check("list_users_active_only", lambda: repo.list_users(active_only=True))
     check("list_users_active_admin", lambda: _check(any(row["username"] == "admin" for row in (active_users or [])), "active list must contain admin"))

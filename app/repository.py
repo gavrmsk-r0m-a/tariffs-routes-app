@@ -488,6 +488,21 @@ class Repository:
             (user_id,),
         ).fetchone()
 
+    def count_active_admins(self, *, exclude_user_id: int | None = None) -> int:
+        """Return the number of active administrators, optionally excluding one user."""
+        p = placeholder(self.backend)
+        role_expr = "role_key" if "role_key" in self._user_columns() else "LOWER(role)"
+        where = [f"is_active = {p}", f"{role_expr} = {p}"]
+        params: list[object] = [to_db_bool(True, self.backend), "admin"]
+        if exclude_user_id is not None:
+            where.append(f"id <> {p}")
+            params.append(exclude_user_id)
+        row = self.conn.execute(
+            f"SELECT COUNT(*) AS active_admin_count FROM users WHERE {' AND '.join(where)}",
+            tuple(params),
+        ).fetchone()
+        return int(row["active_admin_count"] if row is not None else 0)
+
     def get_user_by_username(self, username: str) -> dict | None:
         p = placeholder(self.backend)
         columns = self._user_columns()

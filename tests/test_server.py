@@ -942,6 +942,86 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertIn("Гость", content)
         self.assertIn("Логин", content)
 
+    def test_current_admin_controls_are_read_only_with_safe_submitted_values(self):
+        captured, content = self.request("/admin/users")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("<input type='hidden' name='role_key' value='admin'><select disabled aria-readonly='true'>", content)
+        self.assertIn("<input type='hidden' name='is_active' value='1'><select disabled aria-readonly='true'>", content)
+        self.assertIn("Собственную учётную запись администратора нельзя отключить или понизить в роли.", content)
+
+    def test_admin_cannot_deactivate_or_demote_self_via_direct_post(self):
+        conn = _TEST_DB.connect()
+        try:
+            admin = conn.execute("SELECT id, display_name FROM users WHERE username = 'admin'").fetchone()
+        finally:
+            conn.close()
+        base = {"username": "admin", "display_name": admin["display_name"], "permission_mode": "role"}
+
+        for changes, message in (
+            ({"role_key": "admin", "is_active": "0"}, "Нельзя деактивировать собственную учётную запись."),
+            ({"role_key": "operator", "is_active": "1"}, "Нельзя снять роль администратора с собственной учётной записи."),
+        ):
+            with self.subTest(changes=changes):
+                captured, content = self.request(
+                    f"/admin/users/{admin['id']}/update", method="POST", body=urlencode({**base, **changes})
+                )
+                self.assertEqual(captured["status"], "400 Bad Request")
+                self.assertIn(message, content)
+                conn = _TEST_DB.connect()
+                try:
+                    unchanged = conn.execute("SELECT role_key, is_active FROM users WHERE id = %s", (admin["id"],)).fetchone()
+                finally:
+                    conn.close()
+                self.assertEqual((unchanged["role_key"], unchanged["is_active"]), ("admin", 1))
+
+    def test_two_admins_allow_deactivating_or_demoting_the_other_admin(self):
+        for requested_role, requested_active in (("admin", "0"), ("operator", "1")):
+            with self.subTest(role=requested_role, active=requested_active):
+                _TEST_DB.reset()
+                conn = _TEST_DB.connect()
+                try:
+                    repo = server.Repository(conn)
+                    other_id = repo.create_user("second-admin", "admin", "Second Admin", password="second123")
+                finally:
+                    conn.close()
+                body = urlencode({
+                    "username": "second-admin", "display_name": "Second Admin", "role_key": requested_role,
+                    "permission_mode": "role", "is_active": requested_active,
+                })
+                captured, _ = self.request(f"/admin/users/{other_id}/update", method="POST", body=body)
+                self.assertEqual(captured["status"], "303 See Other")
+                conn = _TEST_DB.connect()
+                try:
+                    admin = conn.execute("SELECT role_key, is_active FROM users WHERE username = 'admin'").fetchone()
+                    other = conn.execute("SELECT role_key, is_active FROM users WHERE id = %s", (other_id,)).fetchone()
+                finally:
+                    conn.close()
+                self.assertEqual((admin["role_key"], admin["is_active"]), ("admin", 1))
+                self.assertEqual((other["role_key"], other["is_active"]), (requested_role, int(requested_active)))
+
+    def test_admin_can_still_edit_own_profile_and_password(self):
+        admin_cookie = self.user_cookie("admin")
+        conn = _TEST_DB.connect()
+        try:
+            admin_id = conn.execute("SELECT id FROM users WHERE username = 'admin'").fetchone()["id"]
+        finally:
+            conn.close()
+        body = urlencode({
+            "username": "admin", "display_name": "Updated Admin", "email": "admin@example.test",
+            "role_key": "admin", "permission_mode": "role", "is_active": "1",
+            "password": "updated123", "password_confirm": "updated123",
+        })
+        captured, _ = self.request(f"/admin/users/{admin_id}/update", method="POST", body=body, cookie=admin_cookie, auto_login=False)
+        self.assertEqual(captured["status"], "303 See Other")
+        conn = _TEST_DB.connect()
+        try:
+            updated = conn.execute("SELECT display_name, email, role_key, is_active, password_hash, password_salt FROM users WHERE id = %s", (admin_id,)).fetchone()
+        finally:
+            conn.close()
+        self.assertEqual((updated["display_name"], updated["email"]), ("Updated Admin", "admin@example.test"))
+        self.assertEqual((updated["role_key"], updated["is_active"]), ("admin", 1))
+        self.assertTrue(verify_password("updated123", updated["password_hash"], updated["password_salt"]))
+
     def test_admin_inline_edit_uses_single_modal_with_cancel_outside_and_escape_close(self):
         for path, form_action in [
             ("/admin/change-reasons", "/admin/change-reasons/"),
