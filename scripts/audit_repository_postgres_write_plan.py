@@ -6,7 +6,7 @@ from collections import Counter
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]
 TOP={"schema_version","baseline","batches","methods","recommended_next_batch","foundation_status","rollback_smoke_covered_methods"}
-BASELINE={"repository_public_methods_count":116,"smoke_covered_read_count":63,"deferred_read_only_count":0,"write_or_mutating_count":52,"infrastructure_or_mixed_count":1,"read_surface_coverage_percent":100.0,"repository_smoke_checks_count":613}
+BASELINE={"repository_public_methods_count":117,"smoke_covered_read_count":64,"deferred_read_only_count":0,"write_or_mutating_count":52,"infrastructure_or_mixed_count":1,"read_surface_coverage_percent":100.0,"repository_smoke_checks_count":615}
 BATCH={"title","stage_hint","rationale","risk","scope","prerequisites","methods","out_of_scope","acceptance"}
 METHOD={"batch","mutation_kind","risk","transaction_contract","current_commit_behavior","sqlite_postgres_blockers","side_effects","dependencies","returns","postgres_strategy","test_strategy","rollback_strategy","notes"}
 RISK={"low","medium","high","critical"}; KINDS={"insert","update","delete","upsert","multi_write","transaction_boundary","write_with_history","write_with_external_side_effect","mixed_read_write"}
