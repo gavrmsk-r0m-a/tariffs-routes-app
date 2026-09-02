@@ -686,6 +686,76 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertNotIn("<!doctype html>", content)
         self.assertNotIn("table-page-container", content)
 
+    def test_tariff_modal_update_error_retains_submitted_values(self):
+        tariff_id = self._create_tariff_for_concurrency()
+        conn = _TEST_DB.connect()
+        try:
+            row = conn.execute("SELECT provider_currency_id, updated_at FROM tariffs WHERE id = %s", (tariff_id,)).fetchone()
+        finally:
+            conn.close()
+        body = urlencode({
+            "currency_id": str(row["provider_currency_id"]),
+            "price": "abc",
+            "is_current": "0",
+            "comment": "test error",
+            "expected_updated_at": row["updated_at"],
+        })
+
+        captured, content = self.request(
+            f"/tariffs/{tariff_id}/update",
+            method="POST",
+            body=body,
+            headers={"HTTP_X_REQUESTED_WITH": "fetch"},
+        )
+
+        self.assertEqual(captured["status"], "400 Bad Request")
+        self.assertIn("data-modal-ready='1'", content)
+        self.assertIn("tariff-dialog-form", content)
+        self.assertIn("modal-blocking-error", content)
+        self.assertIn("Цена должна быть числом", content)
+        self.assertIn("name='price' value='abc'", content)
+        self.assertIn("<option value='0' selected>Нет</option>", content)
+        self.assertIn("name='comment' value='test error'", content)
+        self.assertIn(f"name='expected_updated_at' value='{row['updated_at']}'", content)
+        self.assertNotIn("Вернуться и исправить", content)
+        self.assertNotIn("<!doctype html>", content)
+
+    def test_tariff_full_page_update_error_rerenders_edit_form(self):
+        tariff_id = self._create_tariff_for_concurrency()
+        conn = _TEST_DB.connect()
+        try:
+            row = conn.execute("SELECT provider_currency_id, updated_at FROM tariffs WHERE id = %s", (tariff_id,)).fetchone()
+        finally:
+            conn.close()
+        body = urlencode({
+            "currency_id": str(row["provider_currency_id"]),
+            "price": "",
+            "is_current": "1",
+            "comment": "full page error",
+            "expected_updated_at": row["updated_at"],
+        })
+
+        captured, content = self.request(f"/tariffs/{tariff_id}/update", method="POST", body=body)
+
+        self.assertEqual(captured["status"], "400 Bad Request")
+        self.assertIn("<!doctype html>", content)
+        self.assertIn("tariff-dialog-page-form", content)
+        self.assertIn("modal-blocking-error", content)
+        self.assertIn("Цена обязательна", content)
+        self.assertIn("name='comment' value='full page error'", content)
+        self.assertNotIn("Вернуться и исправить", content)
+
+    def test_remote_tariff_modal_submit_uses_fetch_form_data_and_rerender(self):
+        captured, content = self.request("/tariffs")
+
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("enhanceTariffModalSubmit", content)
+        self.assertIn('headers: { "X-Requested-With": "fetch" }', content)
+        self.assertIn("body: new FormData(form)", content)
+        self.assertIn("response.status !== 400", content)
+        self.assertIn("card.replaceChildren", content)
+        self.assertIn("window.location.reload()", content)
+
     def test_tariff_edit_with_current_token_succeeds(self):
         tariff_id = self._create_tariff_for_concurrency()
         conn = _TEST_DB.connect()
