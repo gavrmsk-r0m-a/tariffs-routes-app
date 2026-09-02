@@ -476,6 +476,17 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
         ).fetchone()
         self.assertEqual(dict(row), {"can_read": 1, "can_write": 0, "can_export": 0})
 
+    def test_clear_user_permissions_removes_all_explicit_rows(self):
+        user_id = self.repo.create_user("clear-permissions", "operator", "Clear Permissions")
+        self.repo.set_user_permissions(user_id, {
+            "routes": {"can_read": True},
+            "tariffs": {"can_read": False},
+        })
+
+        self.repo.clear_user_permissions(user_id)
+
+        self.assertEqual(self.repo.get_user_permissions(user_id), {})
+
     def test_repository_transaction_commits_on_success(self):
         usd_id = self.repo.create_currency("USD", "US Dollar", "$")
 

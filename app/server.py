@@ -3342,6 +3342,14 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .admin-users-page .user-permissions-section table {{ min-width: 620px; margin: 0; }}
     .admin-users-page .user-permissions-scroll {{ max-height: 260px; overflow: auto; border: 0; border-radius: 0; background: var(--surface); }}
     .admin-users-page .user-permissions-scroll + .muted, .admin-users-page .user-permissions-section fieldset > .muted {{ margin: 8px 0 0; }}
+    .admin-users-page .permission-mode-row {{ display: flex; align-items: center; gap: 12px; padding: 12px 12px 0; font-size: 12px; font-weight: 750; }}
+    .admin-users-page .permission-mode-control {{ display: inline-flex; overflow: hidden; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--surface); }}
+    .admin-users-page .permission-mode-control label {{ position: relative; margin: 0; padding: 6px 10px; cursor: pointer; font-weight: 700; }}
+    .admin-users-page .permission-mode-control label + label {{ border-left: 1px solid var(--border-strong); }}
+    .admin-users-page .permission-mode-control label:has(input:checked) {{ background: #2563eb; color: #fff; }}
+    .admin-users-page .permission-mode-control label:has(input:disabled) {{ cursor: not-allowed; opacity: .5; }}
+    .admin-users-page .permission-mode-control input {{ position: absolute; opacity: 0; pointer-events: none; }}
+    .admin-users-page .permission-mode-helper {{ min-height: 18px; margin: 7px 12px 10px !important; }}
     .admin-users-page .user-dialog-footer {{ display: flex; justify-content: flex-start; align-items: center; gap: 10px; grid-column: 1 / -1; width: 100%; box-sizing: border-box; margin: 0; padding: 12px 22px; border-top: 1px solid var(--border-strong); background: #eef5ff; }}
     .admin-users-page .user-dialog-footer .modal-save {{ order: 1; border-color: #2563eb; background: #2563eb; color: #fff; }}
     .admin-users-page .user-dialog-footer .modal-save:hover {{ border-color: #1d4ed8; background: #1d4ed8; color: #fff; }}
@@ -3614,6 +3622,39 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
         openDetails.removeAttribute("open");
         event.preventDefault();
       }}
+    }});
+    document.querySelectorAll("[data-permission-matrix]").forEach((matrix) => {{
+      const form = matrix.closest("form");
+      const roleSelect = form && form.querySelector("select[name='role_key']");
+      const roleRadio = matrix.querySelector("input[name='permission_mode'][value='role']");
+      const customRadio = matrix.querySelector("input[name='permission_mode'][value='custom']");
+      const helper = matrix.querySelector(".permission-mode-helper");
+      const boxes = Array.from(matrix.querySelectorAll("input[name^='perm__']"));
+      const defaults = JSON.parse(matrix.dataset.roleDefaults || "{{}}");
+      const applyDefaults = () => {{
+        const role = roleSelect ? roleSelect.value : "operator";
+        const policy = defaults[role] || defaults.guest || {{}};
+        boxes.forEach((box) => {{
+          const parts = box.name.split("__");
+          box.checked = Boolean(policy[parts[1]] && policy[parts[1]][parts[2]]);
+        }});
+      }};
+      const render = (initializeCustom = false) => {{
+        const isAdmin = roleSelect && roleSelect.value === "admin";
+        if (isAdmin) {{ roleRadio.checked = true; customRadio.checked = false; customRadio.disabled = true; }}
+        else customRadio.disabled = false;
+        const custom = customRadio.checked && !isAdmin;
+        if (custom && initializeCustom && matrix.dataset.customInitialized !== "1") {{
+          applyDefaults();
+          matrix.dataset.customInitialized = "1";
+        }} else if (!custom) applyDefaults();
+        boxes.forEach((box) => {{ box.disabled = !custom; }});
+        helper.textContent = isAdmin ? "Администратор имеет полный доступ." : (custom ? "Индивидуальные права переопределяют права роли." : "Права определяются выбранной ролью. Матрица ниже показана для просмотра.");
+      }};
+      roleRadio.addEventListener("change", () => render(false));
+      customRadio.addEventListener("change", () => render(true));
+      if (roleSelect) roleSelect.addEventListener("change", () => render(false));
+      render(false);
     }});
     function titleFromEditHref(href) {{
       if (href.includes("/routes/")) return "Редактировать маршрут";
@@ -8645,21 +8686,46 @@ def role_options(selected: str | None = None) -> str:
 
 
 
-def permission_matrix_form(repo: Repository, user_id: int | None = None) -> str:
+def role_permission_defaults() -> dict[str, dict[str, dict[str, bool]]]:
+    """Return the runtime role policy in the shape consumed by the user form."""
+    return {
+        role_key: {
+            section["section_key"]: {
+                action: role_allows(role_key, action, section["section_key"])
+                for action in ("read", "write", "export")
+            }
+            for section in SECTION_REGISTRY
+        }
+        for role_key in ("admin", "operator", "boss", "guest")
+    }
+
+
+def permission_matrix_form(repo: Repository, user_id: int | None = None, *, role_key: str = "operator") -> str:
     existing = repo.get_user_permissions(user_id) if user_id is not None else {}
+    is_admin = normalize_role(role_key) == "admin"
+    mode = "custom" if existing and not is_admin else "role"
+    defaults = role_permission_defaults()[role_key if role_key in ("admin", "operator", "boss", "guest") else "guest"]
     rows = []
     for section in SECTION_REGISTRY:
         key = section["section_key"]
         row = existing.get(key)
-        read_checked = " checked" if row and row["can_read"] else ""
-        write_checked = " checked" if row and row["can_write"] else ""
-        export_checked = " checked" if row and row["can_export"] else ""
+        effective = row if row is not None else {f"can_{action}": defaults[key][action] for action in ("read", "write", "export")}
+        read_checked = " checked" if effective["can_read"] else ""
+        write_checked = " checked" if effective["can_write"] else ""
+        export_checked = " checked" if effective["can_export"] else ""
+        disabled = " disabled" if mode == "role" else ""
         export_cell = (
-            f"<input type='checkbox' name='perm__{key}__export' value='1'{export_checked}>"
+            f"<input type='checkbox' name='perm__{key}__export' value='1'{export_checked}{disabled}>"
             if section["supports_export"] else "<span class='muted'>—</span>"
         )
-        rows.append(f"<tr><td>{esc(section['display_name'])}<br><code>{esc(key)}</code></td><td><input type='checkbox' name='perm__{key}__read' value='1'{read_checked}></td><td><input type='checkbox' name='perm__{key}__write' value='1'{write_checked}></td><td>{export_cell}</td></tr>")
-    return f"<fieldset><legend>Права доступа</legend><table><thead><tr><th>Раздел</th><th>Чтение</th><th>Запись</th><th>Экспорт</th></tr></thead><tbody>{''.join(rows)}</tbody></table><p class='muted'>Если явные права не сохранены, применяются права роли по умолчанию.</p></fieldset>"
+        rows.append(f"<tr><td>{esc(section['display_name'])}<br><code>{esc(key)}</code></td><td><input type='checkbox' name='perm__{key}__read' value='1'{read_checked}{disabled}></td><td><input type='checkbox' name='perm__{key}__write' value='1'{write_checked}{disabled}></td><td>{export_cell}</td></tr>")
+    defaults_json = esc(json.dumps(role_permission_defaults(), ensure_ascii=False))
+    helper = "Администратор имеет полный доступ." if is_admin else ("Индивидуальные права переопределяют права роли." if mode == "custom" else "Права определяются выбранной ролью. Матрица ниже показана для просмотра.")
+    return f"""<fieldset class='permission-mode-fieldset' data-permission-matrix data-role-defaults='{defaults_json}' data-custom-initialized='{'1' if mode == 'custom' else '0'}'>
+<legend>Права доступа</legend><div class='permission-mode-row'><span>Права</span><span class='permission-mode-control'>
+<label><input type='radio' name='permission_mode' value='role' {'checked' if mode == 'role' else ''}> По роли</label>
+<label><input type='radio' name='permission_mode' value='custom' {'checked' if mode == 'custom' else ''} {'disabled' if is_admin else ''}> Индивидуальные</label></span></div>
+<p class='muted permission-mode-helper'>{helper}</p><div class='user-permissions-scroll'><table><thead><tr><th>Раздел</th><th>Чтение</th><th>Запись</th><th>Экспорт</th></tr></thead><tbody>{''.join(rows)}</tbody></table></div></fieldset>"""
 
 
 def user_permissions_from_form(data: dict[str, str]) -> dict[str, dict[str, bool]]:
@@ -8674,8 +8740,19 @@ def user_permissions_from_form(data: dict[str, str]) -> dict[str, dict[str, bool
     return permissions
 
 
-def save_user_permissions(repo: Repository, user_id: int, data: dict[str, str]) -> None:
-    repo.set_user_permissions(user_id, user_permissions_from_form(data))
+def validate_permission_mode(data: dict[str, str]) -> str:
+    mode = data.get("permission_mode")
+    if mode not in {"role", "custom"}:
+        raise BusinessRuleError("Неизвестный режим прав доступа")
+    return mode
+
+
+def save_user_permissions(repo: Repository, user_id: int, data: dict[str, str], *, role_key: str) -> None:
+    mode = validate_permission_mode(data)
+    if normalize_role(role_key) == "admin" or mode == "role":
+        repo.clear_user_permissions(user_id)
+    else:
+        repo.set_user_permissions(user_id, user_permissions_from_form(data))
 
 def users_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
     q = q or {}
@@ -8701,17 +8778,17 @@ def users_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
         <label>Роль <select name='role_key'>{role_options(user['role_key'])}</select></label>
         <label>Активен <select name='is_active'><option value='1' {'selected' if user['is_active'] else ''}>Да</option><option value='0' {'selected' if not user['is_active'] else ''}>Нет</option></select></label>
         <fieldset><legend>Сбросить пароль</legend><label>Новый временный пароль <input name='password' type='password' minlength='6' autocomplete='new-password'></label><label>Повторите пароль <input name='password_confirm' type='password' minlength='6' autocomplete='new-password'></label><p class='muted'>При сбросе пользователь будет обязан сменить пароль при следующем входе.</p></fieldset>
-        {permission_matrix_form(repo, int(user['id']))}
+        {permission_matrix_form(repo, int(user['id']), role_key=user['role_key'])}
         <button>Сохранить</button>
       </form>
     </details>
   </td>
 </tr>""")
-    create_permissions_html = permission_matrix_form(repo).replace("<table>", "<div class='user-permissions-scroll'><table>", 1).replace("</table><p", "</table></div><p", 1)
+    create_permissions_html = permission_matrix_form(repo)
     create_html = f"""<form class='user-dialog user-dialog-form' method='post' action='/admin/users/create'>
   <div class='user-dialog-header'>
     <h2>Создать пользователя</h2>
-    <p class='muted'>Заполните учётные данные и индивидуальные права доступа.</p>
+    <p class='muted'>Заполните учётные данные и выберите режим прав доступа.</p>
   </div>
   <div class='user-dialog-body'>
     <section class='user-dialog-section'>
@@ -8743,7 +8820,7 @@ def users_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
     body = f"""
 <h1>Пользователи</h1>
 {f"<div class='notice ok'>{esc(q.get('notice'))}</div>" if q.get('notice') else ""}
-<p class='muted'>Пользователи входят по логину и паролю. Права доступа берутся из индивидуальной матрицы; если она не заполнена, применяются права роли по умолчанию.</p>
+<p class='muted'>Пользователи входят по логину и паролю. Права пользователя могут определяться ролью или индивидуальной матрицей доступа.</p>
 {form_card('+ Создать пользователя', create_html, extra_class='user-create-card', summary_class='admin-user-primary-summary')}
 {table_card(table_html)}
 {table_footer(f"<nav class='pagination table-status-nav' aria-label='Статус таблицы'><span class='table-status-summary'><span class='table-status-item'>Всего записей: {len(rows)}</span><span class='table-status-item table-selection-status' data-selected-count hidden>Выбрано: <strong>0</strong></span><span class='table-status-item'>Страница 1 из 1</span></span></nav>")}"""
@@ -9613,6 +9690,8 @@ def required_dictionary_int(data: dict[str, str], field: str, message: str) -> i
 def handle_post(repo: Repository, path: str, data: dict[str, str]):
     actor_id = current_actor_id()
     if path == "/admin/users/create":
+        validate_permission_mode(data)
+        role_key = data.get("role_key") or "operator"
         username = data["username"].strip()
         display_name = data["display_name"].strip()
         password = data.get("password", "")
@@ -9623,10 +9702,12 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
             raise BusinessRuleError("Пароль обязателен и должен быть не короче 6 символов")
         if password != password_confirm:
             raise BusinessRuleError("Пароли не совпадают")
-        new_user_id = repo.create_user(username, data.get("role_key") or "operator", display_name, password=password, email=data.get("email"), must_change_password=data.get("must_change_password") == "1")
-        save_user_permissions(repo, new_user_id, data)
+        new_user_id = repo.create_user(username, role_key, display_name, password=password, email=data.get("email"), must_change_password=data.get("must_change_password") == "1")
+        save_user_permissions(repo, new_user_id, data, role_key=role_key)
         return "/admin/users"
     if path.startswith("/admin/users/") and path.endswith("/update"):
+        validate_permission_mode(data)
+        role_key = data.get("role_key") or "operator"
         user_id = int(path.strip("/").split("/")[2])
         display_name = data["display_name"].strip()
         if not display_name:
@@ -9634,7 +9715,7 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
         repo.update_user(
             user_id,
             display_name=display_name,
-            role_key=data.get("role_key") or "operator",
+            role_key=role_key,
             is_active=data.get("is_active") == "1",
             username=data.get("username"),
             email=data.get("email"),
@@ -9652,9 +9733,9 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
             if user_id == actor_id:
                 return f"/login?notice={quote('Ваш пароль сброшен. Войдите с временным паролем и смените его.')}&notice_type=success"
             notice = f"Пароль пользователя {target_name} сброшен. При следующем входе пользователь должен сменить пароль."
-            save_user_permissions(repo, user_id, data)
+            save_user_permissions(repo, user_id, data, role_key=role_key)
             return f"/admin/users?notice={quote(notice)}"
-        save_user_permissions(repo, user_id, data)
+        save_user_permissions(repo, user_id, data, role_key=role_key)
         return "/admin/users"
     if path == "/routes/create":
         country_id = int(data["country_id"]); provider_id = int(data["provider_id"]); prefix_id = parse_int(data.get("provider_prefix_id"))

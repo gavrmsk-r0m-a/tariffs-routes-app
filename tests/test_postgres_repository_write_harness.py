@@ -90,6 +90,8 @@ class FakeRepo:
         self.calls.append(("update_user", user_id, kwargs)); self.user.update(display_name=kwargs["display_name"], email=kwargs["email"], role_key=kwargs["role_key"], is_active=kwargs["is_active"])
     def set_user_permissions(self, user_id, permissions, **kwargs):
         self.calls.append(("set_user_permissions", user_id, permissions, kwargs)); self.permissions = {key: dict(value) for key, value in permissions.items()}
+    def clear_user_permissions(self, user_id, **kwargs):
+        self.calls.append(("clear_user_permissions", user_id, kwargs)); self.permissions = {}
     def get_user_section_permission(self, user_id, section): return getattr(self, "permissions", {}).get(section)
     def get_user_permissions(self, user_id): return {} if getattr(self, "user_rollback", None) is not None and self.conn.rollbacks > self.user_rollback else getattr(self, "permissions", {})
     def update_user_password(self, user_id, password, **kwargs):
@@ -304,8 +306,8 @@ class WriteHarnessTest(unittest.TestCase):
     def test_stage53_user_admin_probe_is_rollback_only_and_uses_caller_owned_writes(self):
         conn, repo = FakeConnection(), FakeRepo(None); repo.conn = conn
         harness.run_user_admin_probe(repo, conn)
-        writes = [call for call in repo.calls if isinstance(call[0], str) and call[0] in {"create_user", "update_user", "set_user_permissions", "update_user_password"}]
-        self.assertEqual([call[0] for call in writes], ["create_user", "update_user", "set_user_permissions", "update_user_password"])
+        writes = [call for call in repo.calls if isinstance(call[0], str) and call[0] in {"create_user", "update_user", "set_user_permissions", "clear_user_permissions", "update_user_password"}]
+        self.assertEqual([call[0] for call in writes], ["create_user", "update_user", "set_user_permissions", "clear_user_permissions", "update_user_password"])
         self.assertTrue(all(call[-1]["commit"] is False for call in writes))
         self.assertEqual(conn.commits, 0)
         self.assertGreaterEqual(conn.rollbacks, 3)

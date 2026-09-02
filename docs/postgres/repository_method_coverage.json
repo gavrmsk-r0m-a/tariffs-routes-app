@@ -15,6 +15,10 @@
       "mutation_kind": "mixed_read_write",
       "reason": "Mixed read/write method: performs a read first but can call public write methods on the miss/update branch."
     },
+    "clear_user_permissions": {
+      "mutation_kind": "delete",
+      "reason": "Deletes explicit user permission rows so the user falls back to role permissions."
+    },
     "create_calling_company": {
       "mutation_kind": "insert",
       "reason": "Audited public Repository method can mutate database/application state through direct SQL writes, commit/rollback, private change-log helpers, or public write-method calls; Stage 44 does not adapt write paths."

@@ -696,6 +696,17 @@ class Repository:
                 self.conn.rollback()
             raise
 
+    def clear_user_permissions(self, user_id: int, *, commit: bool = True) -> None:
+        p = placeholder(self.backend)
+        try:
+            self.conn.execute(f"DELETE FROM user_permissions WHERE user_id = {p}", (user_id,))
+            if commit:
+                self.conn.commit()
+        except Exception:
+            if commit:
+                self.conn.rollback()
+            raise
+
     def update_user_password(self, user_id: int, password: str, *, must_change_password: bool = False, commit: bool = True) -> None:
         columns = self._user_columns()
         if not {"password_hash", "password_salt"}.issubset(columns):

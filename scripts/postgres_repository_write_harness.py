@@ -260,6 +260,9 @@ def run_user_admin_probe(repo: Repository, conn, username: str = USER_ADMIN_PROB
         permissions = repo.get_user_permissions(user_id)
         if not route or not (bool(route["can_read"]) and bool(route["can_write"]) and not bool(route["can_export"])) or "settings" not in permissions:
             raise AssertionError(f"{username}: permissions are not visible inside the transaction")
+        repo.clear_user_permissions(user_id, commit=False)
+        if repo.get_user_permissions(user_id):
+            raise AssertionError(f"{username}: explicit permissions were not cleared inside the transaction")
         repo.update_user_password(user_id, "stage53-new-password", must_change_password=False, commit=False)
         user = repo.get_user_by_username(username)
         if not repo.authenticate_user(username, "stage53-new-password") or repo.authenticate_user(username, "stage53-old-password") or bool(user["must_change_password"]):
