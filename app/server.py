@@ -8758,6 +8758,16 @@ def users_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
     q = q or {}
     rows = []
     for user in repo.list_users(active_only=False):
+        is_current_admin = int(user["id"]) == current_actor_id() and normalize_role(user["role_key"]) == "admin"
+        role_control = (
+            f"<input type='hidden' name='role_key' value='admin'><select disabled aria-readonly='true'>{role_options('admin')}</select>"
+            if is_current_admin else f"<select name='role_key'>{role_options(user['role_key'])}</select>"
+        )
+        active_control = (
+            "<input type='hidden' name='is_active' value='1'><select disabled aria-readonly='true'><option selected>Да</option></select>"
+            if is_current_admin else f"<select name='is_active'><option value='1' {'selected' if user['is_active'] else ''}>Да</option><option value='0' {'selected' if not user['is_active'] else ''}>Нет</option></select>"
+        )
+        self_admin_hint = "<p class='muted'>Собственную учётную запись администратора нельзя отключить или понизить в роли.</p>" if is_current_admin else ""
         rows.append(f"""
 <tr class="{'inactive-row' if not user['is_active'] else ''}">
   <td>{user['id']}</td>
@@ -8775,8 +8785,9 @@ def users_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
         <label>Логин <input name='username' value='{esc(user['username'])}' required></label>
         <label>Email <input name='email' type='email' value='{esc(user['email'] or '')}'></label>
         <label>Отображаемое имя <input name='display_name' value='{esc(user['display_name'])}' required></label>
-        <label>Роль <select name='role_key'>{role_options(user['role_key'])}</select></label>
-        <label>Активен <select name='is_active'><option value='1' {'selected' if user['is_active'] else ''}>Да</option><option value='0' {'selected' if not user['is_active'] else ''}>Нет</option></select></label>
+        <label>Роль {role_control}</label>
+        <label>Активен {active_control}</label>
+        {self_admin_hint}
         <fieldset><legend>Сбросить пароль</legend><label>Новый временный пароль <input name='password' type='password' minlength='6' autocomplete='new-password'></label><label>Повторите пароль <input name='password_confirm' type='password' minlength='6' autocomplete='new-password'></label><p class='muted'>При сбросе пользователь будет обязан сменить пароль при следующем входе.</p></fieldset>
         {permission_matrix_form(repo, int(user['id']), role_key=user['role_key'])}
         <button>Сохранить</button>
@@ -9709,6 +9720,17 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
         validate_permission_mode(data)
         role_key = data.get("role_key") or "operator"
         user_id = int(path.strip("/").split("/")[2])
+        target_user = repo.get_user(user_id)
+        requested_active = data.get("is_active") == "1"
+        if target_user is None:
+            raise BusinessRuleError("Пользователь не найден")
+        target_is_active_admin = bool(target_user["is_active"]) and normalize_role(target_user["role_key"]) == "admin"
+        if user_id == actor_id and bool(target_user["is_active"]) and not requested_active:
+            raise BusinessRuleError("Нельзя деактивировать собственную учётную запись.")
+        if user_id == actor_id and normalize_role(target_user["role_key"]) == "admin" and normalize_role(role_key) != "admin":
+            raise BusinessRuleError("Нельзя снять роль администратора с собственной учётной записи.")
+        if target_is_active_admin and (not requested_active or normalize_role(role_key) != "admin") and repo.count_active_admins(exclude_user_id=user_id) == 0:
+            raise BusinessRuleError("Нельзя отключить последнего активного администратора.")
         display_name = data["display_name"].strip()
         if not display_name:
             raise BusinessRuleError("Отображаемое имя обязательно")
@@ -9716,7 +9738,7 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
             user_id,
             display_name=display_name,
             role_key=role_key,
-            is_active=data.get("is_active") == "1",
+            is_active=requested_active,
             username=data.get("username"),
             email=data.get("email"),
         )
