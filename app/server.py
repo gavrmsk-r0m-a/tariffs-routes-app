@@ -7157,8 +7157,10 @@ def tariffs_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
     return page("Тарифы", table_page_container(body, extra_class="tariffs-page"))
 
 
-def phones_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
+def phones_page(repo: Repository, q: dict[str, str] | None = None, *, form_error: str | None = None, form_data: dict[str, str] | None = None) -> bytes:
     q = q or {}
+    form_data = form_data or {}
+    submitted = lambda name, default="": form_data.get(name, default)
     filters = {"country_id": q.get("country_id"), "provider_id": q.get("provider_id"), "project": q.get("project"), "assignment_type": q.get("assignment_type"), "status": q.get("status"), "number_like": q.get("number"), "review_required": q.get("review_required")}
     records = list(repo.list_phone_numbers(filters))
     if q.get("export") == "csv":
@@ -7181,24 +7183,25 @@ def phones_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
 <div class="filter-review-control" aria-label="Фильтр: Требует проверки"><span class="filter-review-spacer" aria-hidden="true">Требует проверки</span><label class="checkbox-inline filter-review-checkbox"><input type="checkbox" name="review_required" value="1" {'checked' if q.get('review_required') == '1' else ''}> <span>Требует проверки</span></label></div><button>Найти</button></form>"""
     create_html = f"""<form class="phone-dialog phone-dialog-form" method="post" action="/phones/create">
   <header class="phone-dialog-header"><h2>Добавить номер</h2></header>
+  {modal_blocking_error(form_error)}
   <div class="phone-dialog-body">
     <section class="phone-dialog-section"><h3>Основные параметры</h3><div class="phone-dialog-grid">
-      <label>Номер <span class="required">*</span><input name="number" placeholder="393331234567"></label>
-      <label>ГЕО <span class="required">*</span><select name="country_id">{active_options(repo, 'countries')}</select></label>
-      <label>Провайдер <span class="required">*</span><select name="provider_id"><option value="">—</option>{active_options(repo, 'providers')}</select></label>
-      <label>Проект <select name="project_label">{project_options(repo, empty='—')}</select></label>
-      <label>Назначение <span class="required">*</span><select name="assignment_type">{assignment_options(repo)}</select></label>
-      <label>Рабочий статус <span class="required">*</span><select name="status">{phone_status_options('unknown')}</select></label>
+      <label>Номер <span class="required">*</span><input name="number" placeholder="393331234567" value="{esc(submitted('number'))}"></label>
+      <label>ГЕО <span class="required">*</span><select name="country_id">{active_options(repo, 'countries', selected=submitted('country_id') or None)}</select></label>
+      <label>Провайдер <span class="required">*</span><select name="provider_id">{active_options(repo, 'providers', selected=submitted('provider_id') or None, empty='—')}</select></label>
+      <label>Проект <select name="project_label">{project_options(repo, selected=submitted('project_label') or None, empty='—')}</select></label>
+      <label>Назначение <span class="required">*</span><select name="assignment_type">{assignment_options(repo, selected=submitted('assignment_type') or None)}</select></label>
+      <label>Рабочий статус <span class="required">*</span><select name="status">{phone_status_options(submitted('status', 'unknown'))}</select></label>
     </div></section>
     <section class="phone-dialog-section"><h3>Стоимость и тариф</h3><div class="phone-dialog-grid">
-      <label>Стоимость подключения <input name="connection_cost"></label>
-      <label>Абонентская плата <input name="monthly_fee"></label>
-      <label>Валюта <select name="currency_id"><option value="">—</option>{active_options(repo, 'currencies', 'code')}</select></label>
-      <label>Тип номера <select name="phone_type">{phone_type_options(repo, empty='—')}</select></label>
-      <label class="phone-dialog-full">Тариф <input name="tariff_label"></label>
+      <label>Стоимость подключения <input name="connection_cost" value="{esc(submitted('connection_cost'))}"></label>
+      <label>Абонентская плата <input name="monthly_fee" value="{esc(submitted('monthly_fee'))}"></label>
+      <label>Валюта <select name="currency_id">{active_options(repo, 'currencies', 'code', selected=submitted('currency_id') or None, empty='—')}</select></label>
+      <label>Тип номера <select name="phone_type">{phone_type_options(repo, selected=submitted('phone_type') or None, empty='—')}</select></label>
+      <label class="phone-dialog-full">Тариф <input name="tariff_label" value="{esc(submitted('tariff_label'))}"></label>
     </div></section>
     <section class="phone-dialog-section"><h3>Описание</h3><div class="phone-dialog-grid">
-      <label class="phone-dialog-full">Комментарий <textarea name="comment" rows="3"></textarea></label>
+      <label class="phone-dialog-full">Комментарий <textarea name="comment" rows="3">{esc(submitted('comment'))}</textarea></label>
     </div></section>
   </div>
   <footer class="phone-dialog-footer"><button type="submit" class="modal-save">Сохранить</button><button type="button" class="modal-cancel" data-modal-close>Отмена</button></footer>
@@ -7206,7 +7209,7 @@ def phones_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
     table_html = f"{data_table('phones', [('number', f"<span class='copyable-header'>Номер {copy_column_button('phone-number')}</span>"), ('geo', 'ГЕО'), ('provider', 'Провайдер'), ('project', 'Проект'), ('assignment', 'Назначение'), ('status', 'Рабочий статус'), ('active', 'Активен у провайдера'), ('routes', 'Маршруты'), ('connection', 'Подключение'), ('monthly', 'Абонплата'), ('currency', 'Валюта'), ('phone_type', 'Тип номера'), ('tariff', 'Тариф'), ('created', 'Дата создания'), ('updated', 'Дата изменения'), ('deactivated', 'Дата отключения'), ('comment', 'Комментарий'), ('history', 'Ист.'), ('actions', 'Действия')], ''.join(rows))}"
     body = f"""
 {filter_card(filters_html, q, ('country_id', 'provider_id', 'project', 'assignment_type', 'status', 'number', 'review_required'))}
-{form_card('+ Добавить номер', create_html, extra_class='phone-create-shell', summary_class='phone-primary-summary') if can_write("phones") else ""}
+{form_card('+ Добавить номер', create_html, extra_class='phone-create-shell', summary_class='phone-primary-summary', open_by_default=bool(form_error)) if can_write("phones") else ""}
 {table_card(table_html)}
 {table_footer(pagination_html, column_settings('phones', [('number', 'Номер'), ('geo', 'ГЕО'), ('provider', 'Провайдер'), ('project', 'Проект'), ('assignment', 'Назначение'), ('status', 'Рабочий статус'), ('active', 'Активен у провайдера'), ('routes', 'Маршруты'), ('connection', 'Подключение'), ('monthly', 'Абонплата'), ('currency', 'Валюта'), ('phone_type', 'Тип номера'), ('tariff', 'Тариф'), ('created', 'Дата создания'), ('updated', 'Дата изменения'), ('deactivated', 'Дата отключения'), ('comment', 'Комментарий'), ('actions', 'Действия')], hlr_style=True) + export_link('/phones', q, text=True))}"""
     return page("Купленные номера", table_page_container(body, extra_class="phones-page"))
@@ -10310,7 +10313,7 @@ def app(environ, start_response):
                 raise
         # PostgreSQL marks a transaction failed after a constraint error.  Also
         # discard partial dictionary UPDATE work after a later business error.
-        if is_dictionary_request:
+        if is_dictionary_request or path == "/phones/create":
             conn.rollback()
         start_response("400 Bad Request", html_headers())
         return_path = error_return_path(path)
@@ -10331,6 +10334,8 @@ def app(environ, start_response):
             return [change_reasons_page(repo, {"scope": parsed.get("return_scope", ""), "activity": parsed.get("return_activity", "active")}, form_error=user_error(exc), form_data=dict(parsed))]
         if path == "/companies/create":
             return [companies_page(repo, form_error=user_error(exc), form_data=dict(parsed))]
+        if path == "/phones/create":
+            return [phones_page(repo, form_error=user_error(exc), form_data=dict(parsed))]
         if path.startswith("/companies/") and path.endswith("/update"):
             company_id = int(path.strip("/").split("/")[1])
             return [company_edit_page(repo, company_id, form_error=user_error(exc), form_data=dict(parsed))]
