@@ -2717,10 +2717,13 @@ class ServerSmokeTest(unittest.TestCase):
         body = urlencode({"number": "525550009901", "country_id": "1", "provider_id": "", "assignment_type": "gl", "status": "used", "comment": "Исправьте провайдера"})
         captured, content = self.request("/phones/create", method="POST", body=body)
         self.assertEqual(captured["status"], "400 Bad Request")
-        self.assertIn("Провайдер обязателен", content)
+        self.assertIn("Провайдер обязателен для создания номера", content)
         self.assertIn("modal-blocking-error", content)
         self.assertRegex(content, r"<details class='[^']*phone-create-shell[^']*' open\b")
         self.assertIn("Исправьте провайдера", content)
+        create_form = content[content.index('<form class="phone-dialog phone-dialog-form"'):]
+        self.assertLess(create_form.index("phone-dialog-header"), create_form.index("phone-dialog-error-slot"))
+        self.assertLess(create_form.index("phone-dialog-error-slot"), create_form.index("Основные параметры"))
 
     def test_review_required_badge_and_edit_rules(self):
         self.request("/routes")
@@ -3056,6 +3059,9 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertIn('name="tariff_label" value="Test tariff"', content)
         self.assertIn("тест на дубль &lt;важно&gt;", content)
         self.assertNotIn("<h1>Маршруты</h1>", content)
+        create_form = content[content.index('<form class="phone-dialog phone-dialog-form"'):]
+        self.assertLess(create_form.index("phone-dialog-header"), create_form.index("phone-dialog-error-slot"))
+        self.assertLess(create_form.index("phone-dialog-error-slot"), create_form.index("Основные параметры"))
 
     def test_unexpected_phone_create_exception_is_not_rendered_as_validation(self):
         self.request("/routes")
