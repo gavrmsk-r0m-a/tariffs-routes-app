@@ -2714,10 +2714,13 @@ class ServerSmokeTest(unittest.TestCase):
 
     def test_manual_phone_creation_without_provider_is_rejected(self):
         self.request("/routes")
-        body = urlencode({"number": "525550009901", "country_id": "1", "provider_id": "", "assignment_type": "gl", "status": "used"})
+        body = urlencode({"number": "525550009901", "country_id": "1", "provider_id": "", "assignment_type": "gl", "status": "used", "comment": "Исправьте провайдера"})
         captured, content = self.request("/phones/create", method="POST", body=body)
         self.assertEqual(captured["status"], "400 Bad Request")
         self.assertIn("Провайдер обязателен", content)
+        self.assertIn("modal-blocking-error", content)
+        self.assertRegex(content, r"<details class='[^']*phone-create-shell[^']*' open\b")
+        self.assertIn("Исправьте провайдера", content)
 
     def test_review_required_badge_and_edit_rules(self):
         self.request("/routes")
@@ -3021,12 +3024,45 @@ class ServerSmokeTest(unittest.TestCase):
 
     def test_duplicate_phone_returns_user_message(self):
         self.request("/routes")
-        body = urlencode({"number": "525550000001", "country_id": "1", "provider_id": "2", "assignment_type": "gl", "status": "used"})
+        submitted = {
+            "number": "525550000001",
+            "country_id": "1",
+            "provider_id": "2",
+            "project_label": "ИТМ",
+            "assignment_type": "gl",
+            "status": "used",
+            "connection_cost": "12.34",
+            "monthly_fee": "56.78",
+            "currency_id": "1",
+            "phone_type": "Mobile",
+            "tariff_label": "Test tariff",
+            "comment": "тест на дубль <важно>",
+        }
+        body = urlencode(submitted)
         captured, content = self.request("/phones/create", method="POST", body=body)
         self.assertEqual(captured["status"], "400 Bad Request")
         self.assertIn("Номер уже существует", content)
         self.assertIn("Купленные номера", content)
+        self.assertIn("modal-blocking-error", content)
+        self.assertRegex(content, r"<details class='[^']*phone-create-shell[^']*' open\b")
+        self.assertNotIn("Вернуться и исправить", content)
+        self.assertIn('name="number" placeholder="393331234567" value="525550000001"', content)
+        for value in ("1", "2", "gl", "used"):
+            self.assertRegex(content, rf"<option value=['\"]{value}['\"] selected")
+        self.assertIn("value='ИТМ' selected", content)
+        self.assertIn("value='Mobile' selected", content)
+        self.assertIn('name="connection_cost" value="12.34"', content)
+        self.assertIn('name="monthly_fee" value="56.78"', content)
+        self.assertIn('name="tariff_label" value="Test tariff"', content)
+        self.assertIn("тест на дубль &lt;важно&gt;", content)
         self.assertNotIn("<h1>Маршруты</h1>", content)
+
+    def test_unexpected_phone_create_exception_is_not_rendered_as_validation(self):
+        self.request("/routes")
+        body = urlencode({"number": "525550009999", "country_id": "1", "provider_id": "1", "assignment_type": "gl", "status": "used"})
+        with patch.object(server.Repository, "create_phone_number", side_effect=RuntimeError("database unavailable")):
+            with self.assertRaisesRegex(RuntimeError, "database unavailable"):
+                self.request("/phones/create", method="POST", body=body)
 
     def test_route_number_add_uses_phone_number_not_internal_id(self):
         self.make_route_purchased_pool(2)
