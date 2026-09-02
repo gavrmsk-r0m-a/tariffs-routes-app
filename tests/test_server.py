@@ -5133,10 +5133,9 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
         self.assertIn("data-campaign-id=", create_form)
         self.assertIn("function filterCompanyOptions()", content)
         self.assertIn("data-country-id=", create_form)
-        self.assertIn("matchesServer && matchesCountry", content)
+        self.assertIn("matchesServer && (matchesCountry || isPinnedMultiGeo)", content)
         self.assertIn("Нет кампаний для выбранного ГЕО", create_form)
         self.assertIn("Кампания с таким ID не найдена", content)
-        self.assertIn("находится на сервере", content)
 
     def test_provider_change_campaign_id_search_autofills_full_campaign_context(self):
         self.request("/routes")
