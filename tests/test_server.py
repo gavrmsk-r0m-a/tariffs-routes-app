@@ -1108,6 +1108,7 @@ class ServerSmokeTest(unittest.TestCase):
             "username": "operator2",
             "display_name": "Оператор",
             "role_key": "operator",
+            "permission_mode": "role",
             "password": "test123",
             "password_confirm": "test123",
         })
@@ -1132,6 +1133,7 @@ class ServerSmokeTest(unittest.TestCase):
             "username": "permuser",
             "display_name": "Perm User",
             "role_key": "operator",
+            "permission_mode": "custom",
             "password": "test123",
             "password_confirm": "test123",
             "perm__routes__read": "1",
@@ -1171,6 +1173,7 @@ class ServerSmokeTest(unittest.TestCase):
             "username": "editperm",
             "display_name": "Edit Permissions",
             "role_key": "operator",
+            "permission_mode": "custom",
             "is_active": "1",
             "perm__routes__read": "1",
             "perm__routes__write": "1",
@@ -1191,6 +1194,67 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertIn("name='perm__routes__read' value='1' checked", content)
         self.assertIn("name='perm__routes__write' value='1' checked", content)
 
+    def test_role_permission_mode_keeps_role_fallback_without_explicit_rows(self):
+        body = urlencode({
+            "username": "role-mode-user", "display_name": "Role Mode", "role_key": "operator",
+            "permission_mode": "role", "password": "test123", "password_confirm": "test123",
+        })
+        captured, _ = self.request("/admin/users/create", method="POST", body=body)
+        self.assertEqual(captured["status"], "303 See Other")
+        conn = _TEST_DB.connect()
+        try:
+            user = conn.execute("SELECT * FROM users WHERE username = 'role-mode-user'").fetchone()
+            count = conn.execute("SELECT COUNT(*) FROM user_permissions WHERE user_id = %s", (user["id"],)).fetchone()[0]
+        finally:
+            conn.close()
+        self.assertEqual(count, 0)
+        self.assertEqual(server.role_allows(user["role_key"], "read", "dashboard"), True)
+        self.assertEqual(server.role_allows(user["role_key"], "write", "phone_numbers"), True)
+        self.assertEqual(server.role_allows(user["role_key"], "write", "dashboard"), False)
+
+    def test_custom_all_false_is_preserved_and_can_be_switched_back_to_role(self):
+        create = urlencode({
+            "username": "deny-all-user", "display_name": "Deny All", "role_key": "operator",
+            "permission_mode": "custom", "password": "test123", "password_confirm": "test123",
+        })
+        captured, _ = self.request("/admin/users/create", method="POST", body=create)
+        self.assertEqual(captured["status"], "303 See Other")
+        conn = _TEST_DB.connect()
+        try:
+            user = conn.execute("SELECT * FROM users WHERE username = 'deny-all-user'").fetchone()
+            rows = conn.execute("SELECT can_read, can_write, can_export FROM user_permissions WHERE user_id = %s", (user["id"],)).fetchall()
+        finally:
+            conn.close()
+        self.assertEqual(len(rows), len(server.SECTION_REGISTRY))
+        self.assertTrue(all(not row["can_read"] and not row["can_write"] and not row["can_export"] for row in rows))
+
+        update = urlencode({
+            "username": user["username"], "display_name": user["display_name"], "role_key": "operator",
+            "permission_mode": "role", "is_active": "1",
+        })
+        self.request(f"/admin/users/{user['id']}/update", method="POST", body=update)
+        conn = _TEST_DB.connect()
+        try:
+            count = conn.execute("SELECT COUNT(*) FROM user_permissions WHERE user_id = %s", (user["id"],)).fetchone()[0]
+        finally:
+            conn.close()
+        self.assertEqual(count, 0)
+
+    def test_invalid_permission_mode_is_rejected_before_user_creation(self):
+        body = urlencode({
+            "username": "invalid-mode-user", "display_name": "Invalid", "role_key": "operator",
+            "permission_mode": "banana", "password": "test123", "password_confirm": "test123",
+        })
+        captured, content = self.request("/admin/users/create", method="POST", body=body)
+        self.assertEqual(captured["status"], "400 Bad Request")
+        self.assertIn("Неизвестный режим прав доступа", content)
+        conn = _TEST_DB.connect()
+        try:
+            row = conn.execute("SELECT id FROM users WHERE username = 'invalid-mode-user'").fetchone()
+        finally:
+            conn.close()
+        self.assertIsNone(row)
+
     def test_duplicate_username_update_returns_user_friendly_error(self):
         conn = _TEST_DB.connect()
         try:
@@ -1204,6 +1268,7 @@ class ServerSmokeTest(unittest.TestCase):
             "username": "seconddup",
             "display_name": "First Duplicate",
             "role_key": "operator",
+            "permission_mode": "role",
             "is_active": "1",
         })
         captured, content = self.request(f"/admin/users/{first_id}/update", method="POST", body=body)
@@ -1217,6 +1282,7 @@ class ServerSmokeTest(unittest.TestCase):
             "username": "operator3",
             "display_name": "Оператор",
             "role_key": "operator",
+            "permission_mode": "role",
             "password": "test123",
             "password_confirm": "test124",
         })
@@ -1234,6 +1300,7 @@ class ServerSmokeTest(unittest.TestCase):
         body = urlencode({
             "display_name": "Оператор",
             "role_key": "operator",
+            "permission_mode": "role",
             "is_active": "1",
             "password": "new123",
             "password_confirm": "new123",
@@ -1273,6 +1340,7 @@ class ServerSmokeTest(unittest.TestCase):
             "username": "admin",
             "display_name": "Админ",
             "role_key": "admin",
+            "permission_mode": "role",
             "is_active": "1",
             "password": "selfnew123",
             "password_confirm": "selfnew123",
@@ -1287,7 +1355,6 @@ class ServerSmokeTest(unittest.TestCase):
         captured, _ = self.request("/login", method="POST", body=urlencode({"username": "admin", "password": "selfnew123"}), auto_login=False)
         self.assertEqual(captured["status"], "303 See Other")
         self.assertIn(("Location", "/change-password"), captured["headers"])
-
 
     def test_sidebar_displays_selected_user_and_selector_is_single_source(self):
         cookie = self.user_cookie("duty")
