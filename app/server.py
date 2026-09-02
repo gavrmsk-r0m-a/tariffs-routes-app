@@ -10,6 +10,8 @@ import logging
 import os
 import re
 import uuid
+from dataclasses import dataclass
+from decimal import Decimal, InvalidOperation
 from datetime import date, datetime
 from http.cookies import SimpleCookie
 from pathlib import Path
@@ -3172,6 +3174,31 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .phone-dialog-footer .modal-save:hover {{ border-color: #1d4ed8; background: #1d4ed8; color: #fff; }}
     .phone-dialog-footer .modal-cancel {{ order: 2; }}
     @media (max-width: 720px) {{ .modal-form-card[open] > form.phone-dialog, .phone-dialog.phone-dialog {{ width: calc(100vw - 18px); max-width: calc(100vw - 18px); max-height: calc(100vh - 18px); }} .phone-dialog-grid {{ grid-template-columns: 1fr; }} .phone-dialog-section, .phone-dialog-header, .phone-dialog-footer, .phone-dialog-error-slot {{ padding-left: 16px; padding-right: 16px; }} }}
+    .phones-bulk-entry {{ display:flex; justify-content:flex-end; margin:-2px 0 12px; }}
+    .bulk-phone-page {{ display:grid; gap:16px; min-width:0; }}
+    .bulk-phone-page .page-heading h1 {{ margin:4px 0; }}
+    .bulk-phone-page .breadcrumbs {{ margin:0 0 6px; font-size:12px; }}
+    .bulk-phone-form {{ padding:0; overflow:hidden; }}
+    .bulk-phone-columns {{ display:grid; grid-template-columns:minmax(360px, 1.15fr) minmax(430px, .85fr); min-width:0; }}
+    .bulk-phone-input {{ display:flex; flex-direction:column; min-width:0; padding:20px; border-right:1px solid var(--border); }}
+    .bulk-phone-form h3 {{ margin:0 0 10px; color:#1e3a5f; font-size:11.5px; font-weight:850; letter-spacing:.03em; text-transform:uppercase; }}
+    .bulk-phone-input textarea {{ flex:1; width:100%; min-height:470px; box-sizing:border-box; resize:vertical; font:13px/1.45 ui-monospace, monospace; }}
+    .bulk-phone-hint {{ display:flex; justify-content:space-between; gap:12px; margin-top:8px; color:var(--text-muted); font-size:12px; }}
+    .bulk-phone-hint .error {{ color:var(--danger); }}
+    .bulk-phone-options {{ min-width:0; }}
+    .bulk-phone-options > section {{ padding:15px 20px; border-bottom:1px solid var(--border); }}
+    .bulk-phone-options label {{ display:block; min-width:0; margin:0; font-size:11.5px; font-weight:740; }}
+    .bulk-phone-options input,.bulk-phone-options select,.bulk-phone-options textarea {{ display:block; width:100%; min-height:33px; box-sizing:border-box; margin-top:3px; }}
+    .bulk-phone-actions {{ display:flex; align-items:center; gap:10px; padding:12px 20px; border-top:1px solid var(--border-strong); background:var(--surface-muted); }}
+    .bulk-phone-error {{ padding:12px 20px 0; }}
+    .bulk-phone-error .modal-blocking-error {{ position:static; transform:none; width:100%; max-width:none; box-sizing:border-box; }}
+    .bulk-phone-result {{ padding:18px 20px; }}
+    .bulk-phone-result h2 {{ margin:0 0 12px; font-size:16px; text-transform:uppercase; }}
+    .bulk-phone-summary {{ display:flex; flex-wrap:wrap; gap:10px; margin-bottom:12px; }}
+    .bulk-phone-summary span {{ padding:8px 12px; border:1px solid var(--border); border-radius:9px; background:var(--surface-muted); }}
+    .bulk-phone-summary strong {{ margin-left:6px; font-size:16px; }}
+    @media(max-width:900px) {{ .bulk-phone-columns {{ grid-template-columns:1fr; }} .bulk-phone-input {{ border-right:0; border-bottom:1px solid var(--border); }} .bulk-phone-input textarea {{ min-height:330px; }} }}
+    @media(max-width:560px) {{ .bulk-phone-options .phone-dialog-grid {{ grid-template-columns:1fr; }} .bulk-phone-actions {{ flex-wrap:wrap; }} }}
 
     .modal-form-card[open] > form.tariff-dialog, .tariff-dialog.tariff-dialog {{ position: fixed; left: 50%; top: 50%; z-index: 990; width: min(520px, calc(100vw - 48px)); max-width: calc(100vw - 48px); max-height: min(680px, calc(100vh - 48px)); margin: 0; padding: 0; transform: translate(-50%, -50%); display: grid; grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr) auto; gap: 0; overflow: hidden; border: 1px solid var(--border-strong); border-radius: 14px; background: #fff; color: var(--text); box-shadow: 0 22px 62px rgba(15, 23, 42, .22); box-sizing: border-box; }}
     .tariff-dialog.tariff-dialog-page-form {{ position: relative; left: auto; top: auto; transform: none; z-index: auto; margin: 0 0 16px; }}
@@ -4218,7 +4245,7 @@ def section_for_get_path(path: str) -> str | None:
         return "routes"
     if path == "/tariffs" or (path.startswith("/tariffs/") and (path.endswith("/history") or path.endswith("/edit"))):
         return "tariffs"
-    if path == "/phones" or (path.startswith("/phones/") and path.endswith("/history")):
+    if path in {"/phones", "/phones/bulk-create"} or (path.startswith("/phones/") and path.endswith("/history")):
         return "phones"
     if path == "/hlr":
         return "hlr"
@@ -7210,12 +7237,146 @@ def phones_page(repo: Repository, q: dict[str, str] | None = None, *, form_error
   <footer class="phone-dialog-footer"><button type="submit" class="modal-save">Сохранить</button><button type="button" class="modal-cancel" data-modal-close>Отмена</button></footer>
 </form>"""
     table_html = f"{data_table('phones', [('number', f"<span class='copyable-header'>Номер {copy_column_button('phone-number')}</span>"), ('geo', 'ГЕО'), ('provider', 'Провайдер'), ('project', 'Проект'), ('assignment', 'Назначение'), ('status', 'Рабочий статус'), ('active', 'Активен у провайдера'), ('routes', 'Маршруты'), ('connection', 'Подключение'), ('monthly', 'Абонплата'), ('currency', 'Валюта'), ('phone_type', 'Тип номера'), ('tariff', 'Тариф'), ('created', 'Дата создания'), ('updated', 'Дата изменения'), ('deactivated', 'Дата отключения'), ('comment', 'Комментарий'), ('history', 'Ист.'), ('actions', 'Действия')], ''.join(rows))}"
+    bulk_create_link = "<a class='button' href='/phones/bulk-create'>+ Массовое добавление</a>" if can_write("phones") else ""
     body = f"""
 {filter_card(filters_html, q, ('country_id', 'provider_id', 'project', 'assignment_type', 'status', 'number', 'review_required'))}
 {form_card('+ Добавить номер', create_html, extra_class='phone-create-shell', summary_class='phone-primary-summary', open_by_default=bool(form_error)) if can_write("phones") else ""}
+{f"<div class='phones-bulk-entry'>{bulk_create_link}</div>" if bulk_create_link else ""}
 {table_card(table_html)}
 {table_footer(pagination_html, column_settings('phones', [('number', 'Номер'), ('geo', 'ГЕО'), ('provider', 'Провайдер'), ('project', 'Проект'), ('assignment', 'Назначение'), ('status', 'Рабочий статус'), ('active', 'Активен у провайдера'), ('routes', 'Маршруты'), ('connection', 'Подключение'), ('monthly', 'Абонплата'), ('currency', 'Валюта'), ('phone_type', 'Тип номера'), ('tariff', 'Тариф'), ('created', 'Дата создания'), ('updated', 'Дата изменения'), ('deactivated', 'Дата отключения'), ('comment', 'Комментарий'), ('actions', 'Действия')], hlr_style=True) + export_link('/phones', q, text=True))}"""
     return page("Купленные номера", table_page_container(body, extra_class="phones-page"))
+
+
+BULK_PHONE_LIMIT = 500
+
+
+@dataclass
+class BulkPhoneRowResult:
+    line_number: int
+    input_number: str
+    normalized_number: str | None
+    status: str
+    reason: str | None = None
+    created_phone_id: int | None = None
+
+
+@dataclass
+class BulkPhoneResult:
+    total: int
+    ready: int
+    saved: int
+    failed: int
+    rows: list[BulkPhoneRowResult]
+    action: str
+    successful_lines: dict[int, str]
+
+
+def bulk_phone_input_rows(numbers: str) -> list[tuple[int, str]]:
+    return [(line_number, value.strip()) for line_number, value in enumerate(numbers.splitlines(), 1) if value.strip()]
+
+
+def bulk_phone_common_values(data: dict[str, str]) -> dict[str, object]:
+    required = (("country_id", "ГЕО обязательно для создания номера."), ("provider_id", "Провайдер обязателен для создания номера."), ("assignment_type", "Назначение обязательно для создания номера."), ("status", "Рабочий статус обязателен для создания номера."))
+    for key, message in required:
+        if not (data.get(key) or "").strip():
+            raise BusinessRuleError(message)
+    for key, label in (("connection_cost", "Стоимость подключения"), ("monthly_fee", "Абонентская плата")):
+        value = (data.get(key) or "").strip()
+        if value:
+            try:
+                if not Decimal(value.replace(",", ".")).is_finite():
+                    raise InvalidOperation
+            except InvalidOperation as exc:
+                raise BusinessRuleError(f"{label} должна быть числом.") from exc
+    return {
+        "country_id": int(data["country_id"]), "provider_id": int(data["provider_id"]),
+        "assignment_type": data["assignment_type"], "status": data["status"],
+        "project_label": data.get("project_label") or None, "connection_cost": data.get("connection_cost") or None,
+        "monthly_fee": data.get("monthly_fee") or None, "currency_id": parse_int(data.get("currency_id")),
+        "phone_type": data.get("phone_type") or None, "tariff_label": data.get("tariff_label") or None,
+        "comment": data.get("comment") or None,
+    }
+
+
+def parse_bulk_successful_lines(raw: str | None) -> dict[int, str]:
+    try:
+        value = json.loads(raw or "{}")
+        return {int(key): str(number) for key, number in value.items() if int(key) > 0}
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return {}
+
+
+def process_bulk_phones(repo: Repository, data: dict[str, str], actor_id: int, *, save: bool) -> BulkPhoneResult:
+    rows = bulk_phone_input_rows(data.get("numbers", ""))
+    if len(rows) > BULK_PHONE_LIMIT:
+        raise BusinessRuleError("Максимум 500 номеров за одну операцию.")
+    common = bulk_phone_common_values(data)
+    successful = parse_bulk_successful_lines(data.get("successful_lines")) if save else {}
+    seen: dict[str, int] = {}
+    results: list[BulkPhoneRowResult] = []
+    p = placeholder(repo.backend)
+    for line_number, input_number in rows:
+        try:
+            normalized = validate_phone_number(input_number)
+        except BusinessRuleError:
+            results.append(BulkPhoneRowResult(line_number, input_number, None, "error", "Неверный формат номера")); continue
+        if normalized in seen:
+            results.append(BulkPhoneRowResult(line_number, input_number, normalized, "error", f"Дубликат в текущем списке (строка {seen[normalized]})")); continue
+        seen[normalized] = line_number
+        if successful.get(line_number) == input_number:
+            results.append(BulkPhoneRowResult(line_number, input_number, normalized, "saved")); continue
+        existing = repo.conn.execute(f"SELECT id FROM phone_numbers WHERE normalized_number = {p}", (normalized,)).fetchone()
+        if existing:
+            results.append(BulkPhoneRowResult(line_number, input_number, normalized, "error", "Номер уже существует")); continue
+        if not save:
+            results.append(BulkPhoneRowResult(line_number, input_number, normalized, "ready")); continue
+        savepoint = f"bulk_phone_{line_number}"
+        repo.conn.execute(f"SAVEPOINT {savepoint}")
+        try:
+            phone_id = repo.create_phone_number(number=input_number, created_by=actor_id, commit=False, **common)
+            repo.conn.execute(f"RELEASE SAVEPOINT {savepoint}")
+            successful[line_number] = input_number
+            results.append(BulkPhoneRowResult(line_number, input_number, normalized, "saved", created_phone_id=phone_id))
+        except Exception as exc:
+            repo.conn.execute(f"ROLLBACK TO SAVEPOINT {savepoint}")
+            repo.conn.execute(f"RELEASE SAVEPOINT {savepoint}")
+            mapped = user_error(exc)
+            if isinstance(exc, BusinessRuleError) or mapped == "Номер уже существует":
+                results.append(BulkPhoneRowResult(line_number, input_number, normalized, "error", mapped))
+                continue
+            raise
+    if save:
+        repo.conn.commit()
+    failed = sum(row.status == "error" for row in results)
+    saved = sum(row.status == "saved" for row in results)
+    ready = sum(row.status == "ready" for row in results)
+    return BulkPhoneResult(len(rows), ready, saved, failed, results, "save" if save else "validate", successful)
+
+
+def bulk_phones_page(repo: Repository, form_data: dict[str, str] | None = None, *, result: BulkPhoneResult | None = None, form_error: str | None = None) -> bytes:
+    data = form_data or {}; submitted = lambda key, default="": data.get(key, default)
+    problem_rows = [row for row in (result.rows if result else []) if row.status == "error"]
+    result_html = ""
+    if result:
+        saved_label = "Сохранено" if result.action == "save" else "Готово к сохранению"
+        saved_value = result.saved if result.action == "save" else result.ready
+        title = "Результат добавления" if result.action == "save" else "Результат проверки"
+        success = "<p class='flash success'>Все номера готовы к сохранению.</p>" if result.action == "validate" and not result.failed else ""
+        body_rows = "".join(f"<tr><td>{row.line_number}</td><td>{esc(row.input_number)}</td><td>{'Не сохранён' if result.action == 'save' else 'Ошибка'}</td><td>{esc(row.reason)}</td></tr>" for row in problem_rows)
+        problems = table_card(data_table("bulk-phone-errors", [("line", "Строка"), ("number", "Номер"), ("status", "Статус"), ("reason", "Причина")], body_rows)) if body_rows else ""
+        result_html = f"<section class='card bulk-phone-result'><h2>{title}</h2><div class='bulk-phone-summary'><span>Всего <strong>{result.total}</strong></span><span>{saved_label} <strong>{saved_value}</strong></span><span>{'Не сохранено' if result.action == 'save' else 'Ошибок'} <strong>{result.failed}</strong></span></div>{success}{problems}</section>"
+    hidden_state = json.dumps(result.successful_lines if result else {}, ensure_ascii=False)
+    form = f"""<form method='post' action='/phones/bulk-create' class='card bulk-phone-form'>
+{f"<div class='bulk-phone-error'>{modal_blocking_error(form_error)}</div>" if form_error else ""}
+<input type='hidden' name='successful_lines' value='{esc(hidden_state)}'>
+<div class='bulk-phone-columns'><section class='bulk-phone-input'><h3>Номера для добавления</h3><textarea id='bulk-phone-numbers' name='numbers' rows='20' placeholder='393331234567&#10;393331234568&#10;393331234569'>{esc(submitted('numbers'))}</textarea><div class='bulk-phone-hint'><span>Один номер на строке.</span><strong id='bulk-phone-count'>Вставлено: 0 / 500</strong></div></section>
+<div class='bulk-phone-options'><section><h3>Основные параметры</h3><div class='phone-dialog-grid'><label>ГЕО <span class='required'>*</span><select name='country_id'>{active_options(repo, 'countries', selected=submitted('country_id') or None)}</select></label><label>Провайдер <span class='required'>*</span><select name='provider_id'>{active_options(repo, 'providers', selected=submitted('provider_id') or None, empty='—')}</select></label><label>Проект <select name='project_label'>{project_options(repo, selected=submitted('project_label') or None, empty='—')}</select></label><label>Назначение <span class='required'>*</span><select name='assignment_type'>{assignment_options(repo, selected=submitted('assignment_type') or None)}</select></label><label class='phone-dialog-full'>Рабочий статус <span class='required'>*</span><select name='status'>{phone_status_options(submitted('status', 'unknown'))}</select></label></div></section>
+<section><h3>Стоимость и тариф</h3><div class='phone-dialog-grid'><label>Стоимость подключения <input name='connection_cost' value='{esc(submitted('connection_cost'))}'></label><label>Абонентская плата <input name='monthly_fee' value='{esc(submitted('monthly_fee'))}'></label><label>Валюта <select name='currency_id'>{active_options(repo, 'currencies', 'code', selected=submitted('currency_id') or None, empty='—')}</select></label><label>Тип номера <select name='phone_type'>{phone_type_options(repo, selected=submitted('phone_type') or None, empty='—')}</select></label><label class='phone-dialog-full'>Тариф <input name='tariff_label' value='{esc(submitted('tariff_label'))}'></label></div></section>
+<section><h3>Описание</h3><label>Комментарий <textarea name='comment' rows='3'>{esc(submitted('comment'))}</textarea></label></section></div></div>
+<footer class='bulk-phone-actions'><button name='action' value='validate' class='secondary'>Проверить</button><button name='action' value='save'>Сохранить</button><button type='button' id='bulk-phone-clear' class='secondary'>Очистить список</button><a class='button secondary' href='/phones'>Назад</a></footer></form>"""
+    script = """<script>(()=>{const input=document.getElementById('bulk-phone-numbers'),count=document.getElementById('bulk-phone-count'),clear=document.getElementById('bulk-phone-clear');const update=()=>{const n=input.value.split(/\\r?\\n/).filter(v=>v.trim()).length;count.textContent=`Вставлено: ${n} / 500`;count.classList.toggle('error',n>500)};input.addEventListener('input',update);clear.addEventListener('click',()=>{input.value='';document.querySelector("input[name='successful_lines']").value='{}';document.querySelector('.bulk-phone-result')?.remove();update();input.focus()});update()})()</script>"""
+    heading = "<div class='page-heading'><p class='breadcrumbs'><a href='/'>Главная</a> › <a href='/phones'>Купленные номера</a> › Массовое добавление</p><h1>Массовое добавление номеров</h1><p class='muted'>Вставьте номера слева и укажите общие параметры для всей пачки.</p></div>"
+    return page("Массовое добавление номеров", f"<main class='bulk-phone-page'>{heading}{form}{result_html}</main>{script}")
 
 
 def companies_page(repo: Repository, q: dict[str, str] | None = None, *, form_error: str | None = None, form_data: dict[str, str] | None = None) -> bytes:
@@ -10161,6 +10322,15 @@ def app(environ, start_response):
             parsed = {key: values[-1] for key, values in parse_qs(raw_body, keep_blank_values=True).items()}
             parsed["_raw"] = raw_body
             require_permission("write", section_for_write_path(path))
+            if path == "/phones/bulk-create":
+                try:
+                    result = process_bulk_phones(repo, parsed, current_actor_id(), save=parsed.get("action") == "save")
+                    start_response("200 OK", html_headers())
+                    return [bulk_phones_page(repo, dict(parsed), result=result)]
+                except BusinessRuleError as exc:
+                    conn.rollback()
+                    start_response("400 Bad Request", html_headers())
+                    return [bulk_phones_page(repo, dict(parsed), form_error=user_error(exc))]
             if path == "/hlr/config/daily-limit":
                 if current_role_key() != "admin":
                     raise ForbiddenError()
@@ -10264,6 +10434,9 @@ def app(environ, start_response):
         elif path == "/routes": response = routes_page(repo, q)
         elif path == "/tariffs": response = tariffs_page(repo, q)
         elif path == "/phones": response = phones_page(repo, q)
+        elif path == "/phones/bulk-create":
+            require_permission("write", "phones")
+            response = bulk_phones_page(repo)
         elif path == "/companies": response = companies_page(repo, q)
         elif path == "/calling-companies/history": response = company_events_page(repo, q)
         elif path == "/provider-changes": response = provider_changes_page(repo, q)
