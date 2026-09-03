@@ -512,12 +512,12 @@ class ImporterTest(unittest.TestCase):
         self.assertEqual(result.created_rows, 6)
         rows = self.conn.execute("SELECT number, status, is_active, review_required FROM phone_numbers WHERE number BETWEEN '393331234580' AND '393331234585' ORDER BY number").fetchall()
         self.assertEqual([(r["status"], r["is_active"], r["review_required"]) for r in rows], [
-            ("unused", 0, 0),
-            ("unknown", 1, 1),
-            ("unknown", 1, 1),
-            ("unknown", 1, 1),
-            ("unknown", 1, 1),
-            ("used", 1, 0),
+            ("unused", 0, 0),   # Отключен
+            ("unknown", 1, 1),  # ???
+            ("unused", 1, 1),   # Не используется
+            ("unused", 1, 1),   # Не нужен
+            ("unused", 1, 1),   # Свободен
+            ("used", 1, 0),     # Используется
         ])
 
     def test_phone_import_rejects_empty_or_unknown_excel_final_status(self):
