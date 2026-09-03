@@ -548,9 +548,9 @@ class ServerSmokeTest(unittest.TestCase):
 
     def test_phone_status_options_expose_only_simplified_statuses(self):
         html = server.phone_status_options(empty="Все")
-        for label in ("Используется", "Не используется", "Свободен", "Проблемный", "Не известно"):
+        for label in ("Используется", "Не используется", "Не известно"):
             self.assertIn(label, html)
-        for old_value in ("reserved", "blocked", "disabled"):
+        for old_value in ("free", "problem", "reserved", "blocked", "disabled"):
             self.assertNotIn(f"value='{old_value}'", html)
 
     def test_head_root_initializes_database_without_crashing(self):
@@ -3466,7 +3466,7 @@ class ServerSmokeTest(unittest.TestCase):
         try:
             repo = server.Repository(conn)
             route_id = repo.create_route(country_id=1, provider_id=1, name="Purchased Pool Empty", cli_source_type="pool", cli_source_label="Pool_A", aon_pool="Пул купленных номеров", created_by=1)
-            conn.execute("UPDATE phone_numbers SET status = 'free' WHERE number = '525550000005'")
+            conn.execute("UPDATE phone_numbers SET status = 'unused' WHERE number = '525550000005'")
             conn.commit()
         finally:
             conn.close()
