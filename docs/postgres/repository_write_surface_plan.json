@@ -1376,7 +1376,9 @@
     "update_phone_number_import_fields_with_history": {
       "batch": "importer_and_bulk_mutation_writes",
       "current_commit_behavior": "mixed",
-      "dependencies": [],
+      "dependencies": [
+        "update_phone_number"
+      ],
       "mutation_kind": "multi_write",
       "notes": "Stage 66B phone import rollback smoke; caller-owned transactions are supported while production PostgreSQL runtime remains disabled.",
       "postgres_strategy": "Keep runtime disabled; use rollback-only harness, backend placeholders, and RETURNING where identity retrieval is required.",
