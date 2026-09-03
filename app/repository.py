@@ -99,6 +99,10 @@ def normalize_phone_status(status: str | None) -> str:
         return normalized
     return OLD_PHONE_STATUS_MAP.get(normalized, "unknown")
 
+
+def _is_legacy_problem_status(status: str | None) -> bool:
+    return (status or "").strip().lower() in {"blocked", "disabled", "problem"}
+
 ROUTING_SCOPE_LABELS = {
     "none": "Не меняли настройки в нашей системе",
     "server_priority": "Серверный приоритет",
@@ -943,6 +947,7 @@ class Repository:
     ) -> int:
         try:
             normalized = validate_phone_number(number)
+            is_problematic = bool(is_problematic or _is_legacy_problem_status(status))
             status = normalize_phone_status(status)
             if not is_active:
                 status = "unused"
@@ -1593,6 +1598,7 @@ class Repository:
             old_values = dict(existing)
             requested_active = to_db_bool(is_active, self.backend)
             forced_review_required = bool(is_active and not bool(existing["is_active"]))
+            is_problematic = bool(is_problematic or _is_legacy_problem_status(status))
             final_review_required = to_db_bool(review_required or forced_review_required or is_problematic, self.backend)
             if provider_id is None and not bool(final_review_required):
                 raise BusinessRuleError("Нельзя снять флаг проверки, пока не выбран провайдер")
@@ -4224,6 +4230,8 @@ class Repository:
         try:
             existing = self.conn.execute(f"SELECT * FROM phone_numbers WHERE id = {p}", (phone_number_id,)).fetchone()
             if existing is None:
+                return 0
+            if existing["normalized_number"] != normalized_number:
                 return 0
             self.update_phone_number(
                 phone_number_id, country_id=country_id, provider_id=provider_id,

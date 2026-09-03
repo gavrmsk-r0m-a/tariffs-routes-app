@@ -113,10 +113,11 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
              format_decimal_label(row["incoming_rate"]), row["currency_id"], row["currency_label"], row["comment"],
              row["imported_created_by"], row["created_by"], _timestamp_text(row["created_at"]), _timestamp_text(row["deactivated_at"])),
             (self.country_id, self.provider_id, "Италия", "Miatel", "393331234568", "393331234568",
-             "ИТМ", "gl", "ГЛ", "Mobile", "Import tariff", "unknown", "1.25", "2.5", "0.1",
+             "ИТМ", "gl", "ГЛ", "Mobile", "Import tariff", "unused", "1.25", "2.5", "0.1",
              "0.2", self.currency_id, "EUR", "Imported", "excel-user", self.admin_id,
              "2026-07-16 10:00:00", "2026-07-16 11:00:00"),
         )
+        self.assertEqual(row["is_active"], 0)
 
     def test_create_phone_number_stores_native_booleans(self):
         row = self.conn.execute(
@@ -212,8 +213,12 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
     def test_update_phone_number_import_fields_with_history_missing_phone_returns_0(self):
         phone_id = self.create_phone()
         before = self.conn.execute("SELECT COUNT(*) FROM phone_number_history").fetchone()[0]
+        before_logs = self.conn.execute("SELECT COUNT(*) FROM change_log").fetchone()[0]
         self.assertEqual(self.update_phone_import(phone_id, normalized_number="399999999999"), 0)
         self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM phone_number_history").fetchone()[0], before)
+        self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM change_log").fetchone()[0], before_logs)
+        row = self.conn.execute("SELECT number, normalized_number, status FROM phone_numbers WHERE id = %s", (phone_id,)).fetchone()
+        self.assertEqual((row["number"], row["normalized_number"], row["status"]), ("393331234567", "393331234567", "used"))
 
     def test_update_phone_number_import_fields_with_history_stores_native_booleans(self):
         phone_id = self.create_phone()
@@ -1146,7 +1151,7 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
         self.assertIsNotNone(log)
 
     def test_reactivating_previously_deactivated_phone_sets_review_required(self):
-        phone_id = self.create_phone(status="problem", is_active=False, number="393331234591")
+        phone_id = self.create_phone(status="unused", is_active=False, number="393331234591")
         self.repo.update_phone_number(
             phone_id,
             country_id=self.country_id,
@@ -1162,12 +1167,12 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
 
         row = self.conn.execute('SELECT is_active, status, review_required, deactivated_at FROM phone_numbers WHERE id = %s', (phone_id,)).fetchone()
         self.assertEqual(row["is_active"], 1)
-        self.assertEqual(row["status"], "free")
+        self.assertEqual(row["status"], "unused")
         self.assertEqual(row["review_required"], 1)
         self.assertIsNotNone(row["deactivated_at"])
 
     def test_phone_update_history_records_readable_field_changes(self):
-        phone_id = self.create_phone(status="free", number="393331234593")
+        phone_id = self.create_phone(status="unused", number="393331234593")
         new_provider_id = self.repo.create_provider("Zadarma", "voip", self.currency_id)
 
         self.repo.update_phone_number(
@@ -1176,7 +1181,8 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
             provider_id=new_provider_id,
             number="393331234593",
             assignment_type="gl",
-            status="problem",
+            status="unknown",
+            is_problematic=True,
             is_active=True,
             updated_by=self.admin_id,
             project_label="ИТМ",
@@ -1191,14 +1197,16 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
         self.assertIsNotNone(row)
         self.assertEqual(row["action"], "updated")
         payload = _json_value(row["new_value"])
-        self.assertIn("Рабочий статус: Свободен → Проблемный", payload["details"])
+        self.assertIn("Рабочий статус: Не используется → Не известно", payload["details"])
+        self.assertIn("Проблемный: Нет → Да", payload["details"])
+        self.assertIn("Требует проверки: Нет → Да", payload["details"])
         self.assertIn("Провайдер: Miatel → Zadarma", payload["details"])
         self.assertIn("Проект: — → ИТМ", payload["details"])
         self.assertIn("Комментарий: — → new comment", payload["details"])
         self.assertNotIn("provider_id", payload["details"])
 
     def test_phone_reactivation_history_includes_forced_review_required_change(self):
-        phone_id = self.create_phone(status="problem", is_active=False, number="393331234594")
+        phone_id = self.create_phone(status="unused", is_active=False, number="393331234594")
 
         self.repo.update_phone_number(
             phone_id,
@@ -1450,7 +1458,7 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
         self.assertNotIn("Абонентская плата", details)
 
     def test_reactivation_review_can_be_cleared_without_repeating_history(self):
-        phone_id = self.create_phone(status="problem", is_active=False, number="393331234589")
+        phone_id = self.create_phone(status="unused", is_active=False, number="393331234589")
         self.repo.update_phone_number(
             phone_id, country_id=self.country_id, provider_id=self.provider_id, number="393331234589",
             assignment_type="gl", status="used", is_active=True, updated_by=self.admin_id,
@@ -1492,7 +1500,7 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
         self.assertEqual(row["review_required"], 1)
 
     def test_past_deactivation_does_not_force_review_after_manual_clear(self):
-        phone_id = self.create_phone(status="problem", is_active=False, number="393331234587")
+        phone_id = self.create_phone(status="unused", is_active=False, number="393331234587")
         self.repo.update_phone_number(
             phone_id, country_id=self.country_id, provider_id=self.provider_id, number="393331234587",
             assignment_type="gl", status="used", is_active=True, updated_by=self.admin_id,
@@ -1517,19 +1525,31 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
         self.assertNotIn("Требует проверки: Нет → Да", details)
 
     def test_old_phone_statuses_are_normalized_on_create(self):
-        cases = {"reserved": "free", "blocked": "problem", "disabled": "problem", "": "unknown", "invalid": "unknown"}
+        cases = {
+            "reserved": ("unused", 0, 0), "free": ("unused", 0, 0),
+            "blocked": ("unknown", 1, 1), "disabled": ("unknown", 1, 1),
+            "problem": ("unknown", 1, 1), "": ("unknown", 0, 0),
+            "invalid": ("unknown", 0, 0),
+        }
         for index, (old_status, expected) in enumerate(cases.items()):
             with self.subTest(old_status=old_status):
                 phone_id = self.create_phone(status=old_status, number=f"3933312350{index:02d}")
-                row = self.conn.execute('SELECT status FROM phone_numbers WHERE id = %s', (phone_id,)).fetchone()
-                self.assertEqual(row["status"], expected)
+                row = self.conn.execute('SELECT status, is_problematic, review_required FROM phone_numbers WHERE id = %s', (phone_id,)).fetchone()
+                self.assertEqual((row["status"], row["is_problematic"], row["review_required"]), expected)
+
+        inactive_id = self.create_phone(status="problem", is_active=False, number="393331235099")
+        inactive = self.conn.execute(
+            'SELECT status, is_problematic, review_required FROM phone_numbers WHERE id = %s',
+            (inactive_id,),
+        ).fetchone()
+        self.assertEqual((inactive["status"], inactive["is_problematic"], inactive["review_required"]), ("unused", 1, 1))
 
 
 
 
 
     def test_reactivated_phone_can_be_added_to_route(self):
-        phone_id = self.create_phone(status="free", is_active=False, number="393331234592")
+        phone_id = self.create_phone(status="unused", is_active=False, number="393331234592")
         self.repo.update_phone_number(
             phone_id,
             country_id=self.country_id,
