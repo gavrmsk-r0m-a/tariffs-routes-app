@@ -4,7 +4,7 @@ from unittest.mock import Mock, patch
 from tests.postgres_test_support import shared_database
 
 _TEST_DB = shared_database()
-from app.importer import ImportPreview, apply_import, preview_import
+from app.importer import ImportPreview, _map_final_status, apply_import, preview_import
 from app.repository import BusinessRuleError, Repository, format_decimal_label
 
 
@@ -51,6 +51,22 @@ class ImporterTest(unittest.TestCase):
 
     def tearDown(self):
         self.conn.close()
+
+    def test_phone_state_v2_exact_final_status_mapping(self):
+        expected = {
+            "Используется": ("used", True, False),
+            "Отключен": ("unused", False, False),
+            "Не используется": ("unused", True, True),
+            "Не нужен": ("unused", True, True),
+            "Свободен": ("unused", True, True),
+            "???": ("unknown", True, True),
+        }
+        for value, result in expected.items():
+            with self.subTest(value=value):
+                self.assertEqual(_map_final_status(value), result)
+        for value in ("", "invalid"):
+            with self.subTest(value=value), self.assertRaises(BusinessRuleError):
+                _map_final_status(value)
 
 
     def test_phone_preview_create_update_duplicate_and_apply_block(self):
@@ -317,12 +333,32 @@ class ImporterTest(unittest.TestCase):
         apply_import(self.conn, "phone_numbers", inactive, user_id=self.admin_id)
         self.assertEqual(_timestamp_text(self.conn.execute("SELECT deactivated_at FROM phone_numbers WHERE number = '393331239024'").fetchone()[0]), "2020-01-02 03:04:05")
 
-    def test_existing_phone_import_inactive_to_active_clears_deactivated_at(self):
+    def test_existing_phone_import_reactivation_preserves_date_and_forces_review(self):
         inactive = "country,provider,project,number,assignment_type,Итоговый статус\nИталия,Miatel,Alpha,393331239025,gl,Отключен\n"
         apply_import(self.conn, "phone_numbers", inactive, user_id=self.admin_id)
         apply_import(self.conn, "phone_numbers", inactive.replace("Отключен", "Используется"), user_id=self.admin_id)
-        row = self.conn.execute("SELECT is_active, deactivated_at FROM phone_numbers WHERE number = '393331239025'").fetchone()
-        self.assertEqual((row["is_active"], row["deactivated_at"]), (1, None))
+        row = self.conn.execute("SELECT is_active, deactivated_at, review_required FROM phone_numbers WHERE number = '393331239025'").fetchone()
+        self.assertEqual((row["is_active"], row["review_required"]), (1, 1))
+        self.assertIsNotNone(row["deactivated_at"])
+
+    def test_phone_import_state_transitions_close_and_never_revive_route_links(self):
+        active = "country,provider,project,number,assignment_type,Итоговый статус\nИталия,Miatel,Alpha,393331239026,gl,Используется\n"
+        apply_import(self.conn, "phone_numbers", active, user_id=self.admin_id)
+        phone = self.conn.execute("SELECT id, country_id, provider_id FROM phone_numbers WHERE number='393331239026'").fetchone()
+        route_id = self.repo.create_route(
+            country_id=phone["country_id"], provider_id=phone["provider_id"], name="Import phone route",
+            cli_source_type="pool", cli_source_label="pool", created_by=self.admin_id,
+        )
+        link_id = self.repo.add_phone_to_route(
+            route_id=route_id, phone_number_id=phone["id"], usage_type="pool_member", added_by=self.admin_id,
+        ).route_phone_number_id
+        apply_import(self.conn, "phone_numbers", active.replace("Используется", "Не используется"), user_id=self.admin_id)
+        self.assertEqual(self.conn.execute("SELECT is_active FROM route_phone_numbers WHERE id=%s", (link_id,)).fetchone()[0], 0)
+        apply_import(self.conn, "phone_numbers", active.replace("Используется", "Отключен"), user_id=self.admin_id)
+        apply_import(self.conn, "phone_numbers", active, user_id=self.admin_id)
+        row = self.conn.execute("SELECT is_active, review_required FROM phone_numbers WHERE id=%s", (phone["id"],)).fetchone()
+        self.assertEqual((row["is_active"], row["review_required"]), (1, 1))
+        self.assertEqual(self.conn.execute("SELECT is_active FROM route_phone_numbers WHERE id=%s", (link_id,)).fetchone()[0], 0)
 
     def test_importer_exists_cleanup_preserves_calling_company_update_preview_and_summary(self):
         csv_text = "server,country,company_name,company_id_external,has_autorotation,is_active,comment\nEU1,Италия,Company One,cc-1,no,yes,Initial\n"
@@ -561,8 +597,8 @@ class ImporterTest(unittest.TestCase):
         csv_text = "country,project,number,assignment_type,status\nИталия,Competitors,393331234573,gl,reserved\nИталия,Competitors,393331234574,gl,blocked\nИталия,Competitors,393331234575,gl,disabled\n"
         result = apply_import(self.conn, "phone_numbers", csv_text, user_id=self.admin_id)
         self.assertEqual(result.created_rows, 3)
-        rows = self.conn.execute("SELECT number, status FROM phone_numbers WHERE number IN ('393331234573', '393331234574', '393331234575') ORDER BY number").fetchall()
-        self.assertEqual([(row["number"], row["status"]) for row in rows], [("393331234573", "free"), ("393331234574", "problem"), ("393331234575", "problem")])
+        rows = self.conn.execute("SELECT number, status, is_problematic, review_required FROM phone_numbers WHERE number IN ('393331234573', '393331234574', '393331234575') ORDER BY number").fetchall()
+        self.assertEqual([(row["status"], row["is_problematic"], row["review_required"]) for row in rows], [("unused", 0, 1), ("unknown", 1, 1), ("unknown", 1, 1)])
 
     def test_phone_import_without_created_at_uses_timestamp(self):
         self.conn.execute("INSERT INTO projects(name, is_active) VALUES ('Competitors', TRUE)")

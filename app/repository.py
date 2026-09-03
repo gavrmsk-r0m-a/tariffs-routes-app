@@ -1580,6 +1580,8 @@ class Repository:
         comment: str | None = None,
         review_required: bool = False,
         is_problematic: bool = False,
+        deactivated_at: str | None = None,
+        _record_history: bool = True,
         commit: bool = True,
     ) -> None:
         p = placeholder(self.backend)
@@ -1604,14 +1606,14 @@ class Repository:
             SET number = {p}, normalized_number = {p}, country_id = {p}, provider_id = {p}, country_label = {p}, provider_label = {p}, project_label = {p},
                 assignment_type = {p}, assignment_label = {p}, status = {p}, is_active = {p}, connection_cost = {p}, monthly_fee = {p},
                 currency_id = {p}, currency_label = {p}, phone_type = {p}, tariff_label = {p}, comment = {p}, review_required = {p}, is_problematic = {p},
-                deactivated_at = CASE WHEN {p} = {p} AND deactivated_at IS NULL THEN CURRENT_TIMESTAMP ELSE deactivated_at END,
+                deactivated_at = CASE WHEN {p} = {p} AND deactivated_at IS NULL THEN COALESCE({p}, CURRENT_TIMESTAMP) ELSE deactivated_at END,
                 updated_by = {p}, updated_at = CURRENT_TIMESTAMP
             WHERE id = {p}
             """,
             (
                 normalized, normalized, country_id, provider_id, labels["country_label"], labels["provider_label"], project_label, assignment_type, labels["assignment_label"], final_status,
                 requested_active, connection_cost, monthly_fee, currency_id, labels["currency_label"], phone_type, tariff_label, comment,
-                final_review_required, to_db_bool(is_problematic, self.backend), requested_active, to_db_bool(False, self.backend), updated_by, phone_id,
+                final_review_required, to_db_bool(is_problematic, self.backend), requested_active, to_db_bool(False, self.backend), deactivated_at, updated_by, phone_id,
             ),
             )
             if not is_active or final_status != "used":
@@ -1661,7 +1663,8 @@ class Repository:
             "review_required": final_review_required,
             "is_problematic": to_db_bool(is_problematic, self.backend),
             }
-            self.record_phone_update_history(phone_id, updated_by, old_values, new_values, comment, commit=False)
+            if _record_history:
+                self.record_phone_update_history(phone_id, updated_by, old_values, new_values, comment, commit=False)
             self._change_log(
             "phone_number",
             phone_id,
@@ -4229,7 +4232,8 @@ class Repository:
                 project_label=project_label, connection_cost=connection_cost,
                 monthly_fee=monthly_fee, currency_id=currency_id, phone_type=phone_type,
                 tariff_label=tariff_label, comment=comment,
-                review_required=review_required, is_problematic=is_problematic, commit=False,
+                review_required=review_required, is_problematic=is_problematic,
+                deactivated_at=deactivated_at, _record_history=False, commit=False,
             )
             cursor = self.conn.execute(
             f"""

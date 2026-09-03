@@ -3277,6 +3277,45 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertIn("Требует проверки", content)
         self.assertIn("Да", content)
 
+    def test_phone_state_v2_ui_filters_export_indicators_and_help(self):
+        self.request("/routes")
+        options = server.phone_status_options()
+        self.assertEqual(options.count("<option"), 3)
+        for value in ("used", "unused", "unknown"):
+            self.assertIn(f"value='{value}'", options)
+        self.assertNotIn("value='free'", options)
+        self.assertNotIn("value='problem'", options)
+
+        conn = _TEST_DB.connect()
+        try:
+            conn.execute("""
+                INSERT INTO phone_numbers(
+                    country_id, provider_id, number, normalized_number, assignment_type,
+                    status, is_active, review_required, is_problematic, created_by, comment
+                ) VALUES (1, 1, '525550009919', '525550009919', 'gl',
+                          'used', TRUE, TRUE, TRUE, 1, 'v2 both markers')
+            """)
+            conn.commit()
+        finally:
+            conn.close()
+
+        captured, content = self.request("/phones?is_problematic=1&review_required=1")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn('name="is_problematic" value="1" checked', content)
+        self.assertIn('name="review_required" value="1" checked', content)
+        row = content[content.index("525550009919"):content.index("525550009919") + 900]
+        self.assertIn("title='Требует проверки'", row)
+        self.assertIn("title='Проблемный номер'", row)
+        self.assertIn("Что означают статусы и признаки?", content)
+        self.assertIn("legacy из прошлой жизни", content)
+        self.assertIn("name=\"is_problematic\"", content)
+        self.assertIn("name=\"review_required\"", content)
+
+        captured, csv_content = self.request("/phones?is_problematic=1&review_required=1&export=csv")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("Проблемный", csv_content.splitlines()[0])
+        self.assertIn("525550009919", csv_content)
+
 
     def test_history_icon_links_are_in_phone_and_route_tables_not_exports(self):
         self.request("/routes")

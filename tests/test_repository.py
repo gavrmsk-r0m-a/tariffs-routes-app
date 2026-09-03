@@ -183,7 +183,7 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
             "is_active": False, "connection_cost": "1.25", "monthly_fee": "2.50",
             "outgoing_rate": "0.10", "incoming_rate": "0.20", "currency_id": self.currency_id,
             "phone_type": "Mobile", "tariff_label": "Import Tariff", "comment": "Imported",
-            "review_required": True, "imported_created_by": "excel-user",
+            "review_required": True, "is_problematic": False, "imported_created_by": "excel-user",
             "deactivated_at": "2026-07-16 12:00:00", "updated_by": self.admin_id,
             "history_changed_by": self.admin_id, "history_new_value": "detail",
             "history_comment": "detail",
@@ -241,6 +241,67 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
         self.assertTrue(_connection_in_transaction(self.conn))
         self.conn.rollback()
         self.assertEqual(self.conn.execute('SELECT status FROM phone_numbers WHERE id = %s', (phone_id,)).fetchone()["status"], "used")
+
+    def _update_phone_state(self, phone_id, **overrides):
+        values = dict(
+            country_id=self.country_id, provider_id=self.provider_id,
+            number=self.repo.get_phone_number(phone_id)["number"], assignment_type="gl",
+            status="used", is_active=True, updated_by=self.admin_id,
+            currency_id=self.currency_id, review_required=False, is_problematic=False,
+        )
+        values.update(overrides)
+        self.repo.update_phone_number(phone_id, **values)
+
+    def _add_active_phone_link(self, phone_id):
+        return self.repo.add_phone_to_route(
+            route_id=self.route_id, phone_number_id=phone_id,
+            usage_type="pool_member", added_by=self.admin_id,
+        ).route_phone_number_id
+
+    def test_phone_state_v2_deactivation_is_unused_clean_and_closes_links(self):
+        phone_id = self.create_phone()
+        link_id = self._add_active_phone_link(phone_id)
+        self._update_phone_state(phone_id, is_active=False)
+        phone = self.repo.get_phone_number(phone_id)
+        link = self.conn.execute("SELECT * FROM route_phone_numbers WHERE id = %s", (link_id,)).fetchone()
+        self.assertEqual((phone["status"], phone["is_active"], phone["is_problematic"]), ("unused", 0, 0))
+        self.assertEqual((link["is_active"], link["removed_by"]), (0, self.admin_id))
+
+    def test_phone_state_v2_problematic_forces_sticky_review_and_keeps_route(self):
+        phone_id = self.create_phone(number="393331234598")
+        link_id = self._add_active_phone_link(phone_id)
+        self._update_phone_state(phone_id, is_problematic=True, review_required=False)
+        phone = self.repo.get_phone_number(phone_id)
+        self.assertEqual((phone["status"], phone["is_problematic"], phone["review_required"]), ("used", 1, 1))
+        self.assertEqual(self.conn.execute("SELECT is_active FROM route_phone_numbers WHERE id = %s", (link_id,)).fetchone()[0], 1)
+        self._update_phone_state(phone_id, is_problematic=False, review_required=True)
+        phone = self.repo.get_phone_number(phone_id)
+        self.assertEqual((phone["is_problematic"], phone["review_required"]), (0, 1))
+
+    def test_phone_state_v2_problematic_used_number_can_be_added_to_route(self):
+        phone_id = self.create_phone(number="393331234599")
+        self._update_phone_state(phone_id, is_problematic=True)
+        self.assertIsInstance(self._add_active_phone_link(phone_id), int)
+
+    def test_phone_state_v2_non_used_statuses_close_links_without_deactivation(self):
+        for index, status in enumerate(("unused", "unknown")):
+            phone_id = self.create_phone(number=f"3933312350{index:02d}")
+            link_id = self._add_active_phone_link(phone_id)
+            self._update_phone_state(phone_id, status=status)
+            phone = self.repo.get_phone_number(phone_id)
+            link = self.conn.execute("SELECT is_active FROM route_phone_numbers WHERE id = %s", (link_id,)).fetchone()
+            self.assertEqual((phone["status"], phone["is_active"], link["is_active"]), (status, 1, 0))
+
+    def test_phone_state_v2_history_uses_new_labels(self):
+        phone_id = self.create_phone(number="393331235099")
+        self._update_phone_state(phone_id, status="unused", is_problematic=True)
+        history = self.conn.execute(
+            "SELECT new_value FROM phone_number_history WHERE phone_number_id = %s ORDER BY id DESC LIMIT 1",
+            (phone_id,),
+        ).fetchone()[0]
+        self.assertIn("Рабочий статус: Используется → Не используется", history)
+        self.assertIn("Проблемный: Нет → Да", history)
+        self.assertNotIn("Используется → Проблемный", history)
 
 
     def _create_basic_routing_event(self, comment="initial"):
