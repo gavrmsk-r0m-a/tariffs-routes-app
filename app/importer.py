@@ -70,7 +70,9 @@ def _map_final_status(value: str) -> tuple[str, bool, bool]:
         return "unused", False, False
     if text == "используется":
         return "used", True, False
-    if text in {"???", "не используется", "не нужен", "свободен"}:
+    if text in {"не используется", "не нужен", "свободен"}:
+        return "unused", True, True
+    if text == "???":
         return "unknown", True, True
     raise BusinessRuleError(f"Неизвестный Итоговый статус: {value}")
 
@@ -277,9 +279,10 @@ def _phone_import_values(conn, row: dict[str, str], *, backend: str = "postgres"
     if has_final_status:
         status, is_active, status_review_required = _map_final_status(_first(row, "Итоговый статус", "final_status"))
     else:
-        status = normalize_phone_status(_first(row, "status", "статус"))
+        raw_status = _first(row, "status", "статус").strip().lower()
+        status = normalize_phone_status(raw_status)
         is_active = _parse_bool(_first(row, "is_active", "активен"), default=True)
-        status_review_required = False
+        status_review_required = raw_status in {"blocked", "disabled", "problem"}
     monthly_fee = _parse_monthly_fee(_first(row, "АП в EUR", "monthly_fee"))
     return {
         "project_label": project,
@@ -290,6 +293,7 @@ def _phone_import_values(conn, row: dict[str, str], *, backend: str = "postgres"
         "status": status,
         "is_active": is_active,
         "status_review_required": status_review_required,
+        "is_problematic": (not has_final_status and raw_status in {"blocked", "disabled", "problem"}),
         "connection_cost": _first(row, "connection_fee", "connection_cost", "стоимость подключения") or None,
         "monthly_fee": monthly_fee,
         "phone_type": phone_type,
@@ -457,22 +461,33 @@ def _apply_phone(repo: Repository, row: dict[str, str], user_id: int, *, exists:
         "outgoing_rate": imported["outgoing_rate"],
         "incoming_rate": imported["incoming_rate"],
         "review_required": review_required,
+        "is_problematic": bool(imported["is_problematic"]),
         "has_imported_created_by": imported["has_imported_created_by"],
         "imported_created_by": imported["imported_created_by"],
     }
     if exists:
         existing = repo.get_phone_number_import_identity_by_normalized_number(validate_phone_number(number))
+        data["is_problematic"] = bool(data["is_problematic"] or (existing and existing["is_problematic"]))
+        if data["is_problematic"] and is_active:
+            p = placeholder(repo.backend)
+            active_link = repo.conn.execute(
+                f"SELECT 1 FROM route_phone_numbers WHERE phone_number_id = {p} AND is_active = {p}",
+                (existing["id"], True),
+            ).fetchone()
+            if active_link:
+                data["status"] = "used"
+                review_required = True
         imported_created_by = existing["imported_created_by"] if existing else None
         should_update_imported_created_by = bool(data["has_imported_created_by"] and data["imported_created_by"])
         if should_update_imported_created_by:
             imported_created_by = data["imported_created_by"]
         review_required = bool(data["review_required"] or (existing and existing["review_required"]))
-        if is_active:
-            deactivated_at = None
-        else:
+        if not is_active:
             deactivated_at = existing["deactivated_at"] if existing else None
             if deactivated_at is None:
                 deactivated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        else:
+            deactivated_at = existing["deactivated_at"] if existing else None
         details = "Номер импортирован/обновлён"
         if should_update_imported_created_by:
             old_label = existing["imported_created_by"] if existing and existing["imported_created_by"] else "—"
@@ -489,6 +504,7 @@ def _apply_phone(repo: Repository, row: dict[str, str], user_id: int, *, exists:
             incoming_rate=data["incoming_rate"], currency_id=data["currency_id"],
             phone_type=data["phone_type"], tariff_label=data["tariff_label"], comment=data["comment"],
             review_required=review_required, imported_created_by=imported_created_by,
+            is_problematic=bool(data["is_problematic"]),
             deactivated_at=deactivated_at, updated_by=user_id, history_changed_by=user_id,
             history_new_value=details, history_comment=details,
         )
