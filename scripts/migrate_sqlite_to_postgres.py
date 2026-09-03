@@ -66,6 +66,16 @@ JSONB_COLUMNS = {
     ("import_jobs", "summary"), ("import_jobs", "error_report"),
 }
 
+PHONE_ROUTE_RECONCILIATION_SQL = """
+    UPDATE phone_numbers AS pn SET status = 'used', review_required = true
+    WHERE pn.is_active IS TRUE
+      AND pn.status <> 'used'
+      AND EXISTS (
+          SELECT 1 FROM route_phone_numbers rpn
+          WHERE rpn.phone_number_id = pn.id AND rpn.is_active IS TRUE
+      )
+"""
+
 
 class MigrationError(Exception):
     """Data validation or migration error."""
@@ -382,13 +392,7 @@ def run_apply(sqlite_conn: sqlite3.Connection, pg_url: str, schema_path: Path, p
                 inserted[p.name] = import_table(sqlite_conn, pg_conn, p)
             with pg_conn.cursor() as cur:
                 if {p.name for p in plan} >= {"phone_numbers", "route_phone_numbers"}:
-                    cur.execute("""
-                        UPDATE phone_numbers pn SET status = 'used', review_required = true
-                        WHERE pn.is_active IS TRUE AND EXISTS (
-                            SELECT 1 FROM route_phone_numbers rpn
-                            WHERE rpn.phone_number_id = pn.id AND rpn.is_active IS TRUE
-                        )
-                    """)
+                    cur.execute(PHONE_ROUTE_RECONCILIATION_SQL)
                     cur.execute("""
                         UPDATE route_phone_numbers rpn
                         SET is_active = false, removed_at = COALESCE(removed_at, CURRENT_TIMESTAMP)
