@@ -23,7 +23,7 @@ from app.db_adapter import (
 )
 
 PHONE_RE = re.compile(r"^[1-9][0-9]{6,20}$")
-VALID_PHONE_STATUSES = {"used", "unused", "free", "problem", "unknown"}
+VALID_PHONE_STATUSES = {"used", "unused", "unknown"}
 
 
 def _normalize_required_company_name(company_name: str) -> str:
@@ -90,7 +90,7 @@ def search_text_matches(value: object, search: object) -> int:
         return 1
     haystack = "" if value is None else str(value)
     return 1 if needle in haystack.casefold() else 0
-OLD_PHONE_STATUS_MAP = {"reserved": "free", "blocked": "problem", "disabled": "problem"}
+OLD_PHONE_STATUS_MAP = {"reserved": "unused", "free": "unused"}
 
 
 def normalize_phone_status(status: str | None) -> str:
@@ -98,6 +98,10 @@ def normalize_phone_status(status: str | None) -> str:
     if normalized in VALID_PHONE_STATUSES:
         return normalized
     return OLD_PHONE_STATUS_MAP.get(normalized, "unknown")
+
+
+def _is_legacy_problem_status(status: str | None) -> bool:
+    return (status or "").strip().lower() in {"blocked", "disabled", "problem"}
 
 ROUTING_SCOPE_LABELS = {
     "none": "Не меняли настройки в нашей системе",
@@ -935,6 +939,7 @@ class Repository:
         comment: str | None = None,
         is_active: bool = True,
         review_required: bool = False,
+        is_problematic: bool = False,
         created_at: str | None = None,
         deactivated_at: str | None = None,
         imported_created_by: str | None = None,
@@ -942,6 +947,11 @@ class Repository:
     ) -> int:
         try:
             normalized = validate_phone_number(number)
+            is_problematic = bool(is_problematic or _is_legacy_problem_status(status))
+            status = normalize_phone_status(status)
+            if not is_active:
+                status = "unused"
+            review_required = bool(review_required or is_problematic)
             if not is_active and deactivated_at is None:
                 deactivated_at = created_at or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             labels = self._phone_snapshot_labels(country_id, provider_id, assignment_type, currency_id)
@@ -951,9 +961,9 @@ class Repository:
             INSERT INTO phone_numbers(
                 country_id, provider_id, country_label, provider_label, number, normalized_number, project_label,
                 assignment_type, assignment_label, phone_type, tariff_label, status, connection_cost, monthly_fee, outgoing_rate,
-                incoming_rate, currency_id, currency_label, comment, is_active, review_required, imported_created_by, created_by, created_at, deactivated_at
+                incoming_rate, currency_id, currency_label, comment, is_active, review_required, is_problematic, imported_created_by, created_by, created_at, deactivated_at
             )
-            VALUES ({', '.join([p] * 23)}, COALESCE({p}, CURRENT_TIMESTAMP), {p})
+            VALUES ({', '.join([p] * 24)}, COALESCE({p}, CURRENT_TIMESTAMP), {p})
             """,
             self.backend,
         )
@@ -971,7 +981,7 @@ class Repository:
                 labels["assignment_label"],
                 phone_type,
                 tariff_label,
-                normalize_phone_status(status),
+                status,
                 connection_cost,
                 monthly_fee,
                 outgoing_rate,
@@ -981,6 +991,7 @@ class Repository:
                 comment,
                 to_db_bool(is_active, self.backend),
                 to_db_bool(review_required, self.backend),
+                to_db_bool(is_problematic, self.backend),
                 imported_created_by,
                 created_by,
                 created_at,
@@ -1419,6 +1430,13 @@ class Repository:
             phone_filters.pop("review_required", None)
         else:
             phone_filters["review_required"] = normalized_review
+        supported, normalized_problematic = self._normalize_optional_bool_filter(phone_filters.get("is_problematic"))
+        if not supported:
+            return []
+        if normalized_problematic is None:
+            phone_filters.pop("is_problematic", None)
+        else:
+            phone_filters["is_problematic"] = normalized_problematic
 
         where, filter_params = query_filters(
             phone_filters,
@@ -1431,6 +1449,7 @@ class Repository:
                 "status": "pn.status",
                 "number_like": "pn.number",
                 "review_required": "pn.review_required",
+                "is_problematic": "pn.is_problematic",
             },
             backend=self.backend,
         )
@@ -1565,6 +1584,9 @@ class Repository:
         tariff_label: str | None = None,
         comment: str | None = None,
         review_required: bool = False,
+        is_problematic: bool = False,
+        deactivated_at: str | None = None,
+        _record_history: bool = True,
         commit: bool = True,
     ) -> None:
         p = placeholder(self.backend)
@@ -1576,30 +1598,31 @@ class Repository:
             old_values = dict(existing)
             requested_active = to_db_bool(is_active, self.backend)
             forced_review_required = bool(is_active and not bool(existing["is_active"]))
-            final_review_required = to_db_bool(review_required or forced_review_required, self.backend)
+            is_problematic = bool(is_problematic or _is_legacy_problem_status(status))
+            final_review_required = to_db_bool(review_required or forced_review_required or is_problematic, self.backend)
             if provider_id is None and not bool(final_review_required):
                 raise BusinessRuleError("Нельзя снять флаг проверки, пока не выбран провайдер")
             final_status = normalize_phone_status(status)
-            if not is_active and bool(existing["is_active"]) and existing["status"] == "used":
-                final_status = "problem"
+            if not is_active:
+                final_status = "unused"
             labels = self._phone_snapshot_labels(country_id, provider_id, assignment_type, currency_id)
             self.conn.execute(
             f"""
             UPDATE phone_numbers
             SET number = {p}, normalized_number = {p}, country_id = {p}, provider_id = {p}, country_label = {p}, provider_label = {p}, project_label = {p},
                 assignment_type = {p}, assignment_label = {p}, status = {p}, is_active = {p}, connection_cost = {p}, monthly_fee = {p},
-                currency_id = {p}, currency_label = {p}, phone_type = {p}, tariff_label = {p}, comment = {p}, review_required = {p},
-                deactivated_at = CASE WHEN {p} = {p} AND deactivated_at IS NULL THEN CURRENT_TIMESTAMP ELSE deactivated_at END,
+                currency_id = {p}, currency_label = {p}, phone_type = {p}, tariff_label = {p}, comment = {p}, review_required = {p}, is_problematic = {p},
+                deactivated_at = CASE WHEN {p} = {p} AND deactivated_at IS NULL THEN COALESCE({p}, CURRENT_TIMESTAMP) ELSE deactivated_at END,
                 updated_by = {p}, updated_at = CURRENT_TIMESTAMP
             WHERE id = {p}
             """,
             (
                 normalized, normalized, country_id, provider_id, labels["country_label"], labels["provider_label"], project_label, assignment_type, labels["assignment_label"], final_status,
                 requested_active, connection_cost, monthly_fee, currency_id, labels["currency_label"], phone_type, tariff_label, comment,
-                final_review_required, requested_active, to_db_bool(False, self.backend), updated_by, phone_id,
+                final_review_required, to_db_bool(is_problematic, self.backend), requested_active, to_db_bool(False, self.backend), deactivated_at, updated_by, phone_id,
             ),
             )
-            if not is_active:
+            if not is_active or final_status != "used":
                 links = list(self.conn.execute(
                     f"SELECT id, route_id, phone_number_id FROM route_phone_numbers WHERE phone_number_id = {p} AND is_active = {p}",
                     (phone_id, to_db_bool(True, self.backend)),
@@ -1617,12 +1640,12 @@ class Repository:
                     (link["route_id"], link["phone_number_id"], updated_by,
                      json.dumps({"is_active": 1}, ensure_ascii=False),
                      json.dumps({"is_active": 0, "removed_by": updated_by}, ensure_ascii=False),
-                     "phone_number.deactivated"),
+                     "phone_number.deactivated" if not is_active else "phone_number.working_status_changed"),
                     )
                     self._change_log(
                     "route_phone_number",
                     int(link["id"]),
-                    "route_phone_number.removed_by_phone_deactivation",
+                    "route_phone_number.removed_by_phone_deactivation" if not is_active else "route_phone_number.removed_by_working_status_change",
                     updated_by,
                     old_values={"is_active": 1},
                     new_values={"is_active": 0, "phone_number_id": phone_id},
@@ -1644,15 +1667,17 @@ class Repository:
             "tariff_label": tariff_label,
             "comment": comment,
             "review_required": final_review_required,
+            "is_problematic": to_db_bool(is_problematic, self.backend),
             }
-            self.record_phone_update_history(phone_id, updated_by, old_values, new_values, comment, commit=False)
+            if _record_history:
+                self.record_phone_update_history(phone_id, updated_by, old_values, new_values, comment, commit=False)
             self._change_log(
             "phone_number",
             phone_id,
             "phone_number.updated",
             updated_by,
-            old_values={"number": existing["number"], "status": existing["status"], "is_active": existing["is_active"], "review_required": existing["review_required"]},
-            new_values={"number": normalized, "status": final_status, "is_active": requested_active, "review_required": final_review_required},
+            old_values={"number": existing["number"], "status": existing["status"], "is_active": existing["is_active"], "review_required": existing["review_required"], "is_problematic": existing["is_problematic"]},
+            new_values={"number": normalized, "status": final_status, "is_active": requested_active, "review_required": final_review_required, "is_problematic": to_db_bool(is_problematic, self.backend)},
             )
             if commit:
                 self.conn.commit()
@@ -1673,7 +1698,7 @@ class Repository:
         return self._name_by_id("currencies", value, "code")
 
     def _phone_field_changes(self, old: dict, new: dict) -> list[str]:
-        status_labels = {"used": "Используется", "free": "Свободен", "problem": "Проблемный", "unknown": "Неизвестно"}
+        status_labels = {"used": "Используется", "unused": "Не используется", "unknown": "Не известно"}
         specs = [
             ("provider_id", "Провайдер", lambda v: self._name_by_id("providers", v), "default"),
             ("country_id", "GEO", lambda v: self._name_by_id("countries", v), "default"),
@@ -1682,6 +1707,7 @@ class Repository:
             ("status", "Рабочий статус", lambda v: status_labels.get(str(v), _empty_label(v)), "optional_text"),
             ("is_active", "Активен у провайдера", _bool_label, "bool"),
             ("review_required", "Требует проверки", _bool_label, "bool"),
+            ("is_problematic", "Проблемный", _bool_label, "bool"),
             ("phone_type", "Тип номера", _empty_label, "optional_text"),
             ("connection_cost", "Стоимость подключения", _clean_number_label, "money"),
             ("monthly_fee", "Абонентская плата", _clean_number_label, "money"),
@@ -4166,7 +4192,7 @@ class Repository:
     def get_phone_number_import_identity_by_normalized_number(self, normalized_number: str) -> dict | None:
         p = placeholder(self.backend)
         row = self.conn.execute(
-            f"SELECT id, imported_created_by, review_required, deactivated_at FROM phone_numbers WHERE normalized_number = {p}",
+            f"SELECT * FROM phone_numbers WHERE normalized_number = {p}",
             (normalized_number,),
         ).fetchone()
         return row_to_dict(row)
@@ -4191,6 +4217,7 @@ class Repository:
         tariff_label: str | None,
         comment: str | None,
         review_required: bool,
+        is_problematic: bool,
         imported_created_by: str | None,
         deactivated_at: str | None,
         updated_by: int,
@@ -4201,23 +4228,30 @@ class Repository:
     ) -> int:
         p = placeholder(self.backend)
         try:
+            existing = self.conn.execute(f"SELECT * FROM phone_numbers WHERE id = {p}", (phone_number_id,)).fetchone()
+            if existing is None:
+                return 0
+            if existing["normalized_number"] != normalized_number:
+                return 0
+            self.update_phone_number(
+                phone_number_id, country_id=country_id, provider_id=provider_id,
+                number=normalized_number, assignment_type=assignment_type or "other",
+                status=status, is_active=is_active, updated_by=updated_by,
+                project_label=project_label, connection_cost=connection_cost,
+                monthly_fee=monthly_fee, currency_id=currency_id, phone_type=phone_type,
+                tariff_label=tariff_label, comment=comment,
+                review_required=review_required, is_problematic=is_problematic,
+                deactivated_at=deactivated_at, _record_history=False, commit=False,
+            )
             cursor = self.conn.execute(
             f"""
             UPDATE phone_numbers
-            SET country_id = {p}, provider_id = {p}, project_label = {p}, assignment_type = {p},
-                status = {p}, is_active = {p}, connection_cost = {p}, monthly_fee = {p},
-                outgoing_rate = {p}, incoming_rate = {p}, currency_id = {p}, phone_type = {p},
-                tariff_label = {p}, comment = {p}, review_required = {p},
-                imported_created_by = {p}, deactivated_at = {p}, updated_by = {p},
+            SET outgoing_rate = {p}, incoming_rate = {p}, imported_created_by = {p},
                 updated_at = CURRENT_TIMESTAMP
             WHERE normalized_number = {p}
             """,
             (
-                country_id, provider_id, project_label, assignment_type, status,
-                to_db_bool(is_active, self.backend), connection_cost, monthly_fee,
-                outgoing_rate, incoming_rate, currency_id, phone_type, tariff_label,
-                comment, to_db_bool(review_required, self.backend), imported_created_by,
-                deactivated_at, updated_by, normalized_number,
+                outgoing_rate, incoming_rate, imported_created_by, normalized_number,
             ),
             )
             rowcount = int(cursor.rowcount)

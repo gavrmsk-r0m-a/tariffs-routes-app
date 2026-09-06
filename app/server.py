@@ -136,7 +136,7 @@ def auth_cookie_header(user_id: int) -> tuple[str, str]:
 FILTER_SECTIONS = {
     "/routes": ("routes", ("country_id", "provider_id", "prefix_id", "is_actual", "search")),
     "/tariffs": ("tariffs", ("country_id", "provider_id", "priority_status", "status")),
-    "/phones": ("phones", ("country_id", "provider_id", "project", "assignment_type", "status", "number", "review_required")),
+    "/phones": ("phones", ("country_id", "provider_id", "project", "assignment_type", "status", "number", "review_required", "is_problematic")),
     "/companies": ("companies", ("server_id", "country_id", "company", "external_id", "has_autorotation", "is_active")),
     "/provider-changes": ("provider_changes", ("date_from", "date_to", "country_id", "apply_scope", "server_id", "campaign_id", "provider_id", "include_inactive")),
     "/admin/server-priorities": ("admin_server_priorities", ("country_id", "server_id")),
@@ -152,8 +152,6 @@ _REQUEST_CONTEXT: dict[str, object] = {}
 STATUS_LABELS = {
     "used": "Используется",
     "unused": "Не используется",
-    "free": "Свободен",
-    "problem": "Проблемный",
     "unknown": "Не известно",
 }
 
@@ -2310,6 +2308,7 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     }}
 
     .review-required-icon .material-symbols-rounded {{ font-size: 18px; font-variation-settings: 'FILL' 1, 'wght' 500, 'GRAD' 0, 'opsz' 20; }}
+    .review-required-icon.problematic-icon {{ color: var(--danger); }}
 
     html[data-theme="light-v2"] ::selection {{ background: rgba(15, 118, 110, 0.28); color: #10201D; }}
     html[data-theme="light-v2"] * {{ scrollbar-color: #CCD3DA #F6F7F8; }}
@@ -7004,6 +7003,8 @@ def readable_history_event(row: dict, *, subject: str) -> tuple[str, str, str]:
             changes.append(f"Активен у провайдера изменено: {readable_bool(old_values.get('is_active'))} → {readable_bool(new_values.get('is_active'))}")
         if "review_required" in old_values or "review_required" in new_values:
             changes.append(f"Требует проверки изменено: {readable_bool(old_values.get('review_required'))} → {readable_bool(new_values.get('review_required'))}")
+        if "is_problematic" in old_values or "is_problematic" in new_values:
+            changes.append(f"Проблемный изменено: {readable_bool(old_values.get('is_problematic'))} → {readable_bool(new_values.get('is_problematic'))}")
         if not changes:
             changes.append("Номер изменён")
         return "Номер изменён", "; ".join(changes), details
@@ -7190,6 +7191,12 @@ def review_required_icon() -> str:
         "</span>"
     )
 
+def problematic_icon() -> str:
+    return (
+        "<span class='review-required-icon problematic-icon' title='Проблемный номер' aria-label='Проблемный номер'>"
+        f"{nav_icon('error')}<span class='sr-only'>Проблемный номер</span></span>"
+    )
+
 def route_number_rows(repo: Repository, route_id: int, *, selectable: bool = False, selected_link_ids: set[int] | None = None) -> tuple[list[dict], str, str]:
     numbers = repo.route_numbers(route_id)
     selected_link_ids = selected_link_ids or set()
@@ -7308,10 +7315,10 @@ def phones_page(repo: Repository, q: dict[str, str] | None = None, *, form_error
     q = q or {}
     form_data = form_data or {}
     submitted = lambda name, default="": form_data.get(name, default)
-    filters = {"country_id": q.get("country_id"), "provider_id": q.get("provider_id"), "project": q.get("project"), "assignment_type": q.get("assignment_type"), "status": q.get("status"), "number_like": q.get("number"), "review_required": q.get("review_required")}
+    filters = {"country_id": q.get("country_id"), "provider_id": q.get("provider_id"), "project": q.get("project"), "assignment_type": q.get("assignment_type"), "status": q.get("status"), "number_like": q.get("number"), "review_required": q.get("review_required"), "is_problematic": q.get("is_problematic")}
     records = list(repo.list_phone_numbers(filters))
     if q.get("export") == "csv":
-        return csv_response("phones_export.csv", ["Номер", "GEO", "Провайдер", "Тип номера", "Кампания", "Рабочий статус", "Активен у провайдера", "Маршруты", "Требует проверки", "Комментарий"], [[p["number"], p["country_name"], p["provider_name"], p["phone_type"], p["project_label"], STATUS_LABELS.get(p["status"], p["status"]), "Да" if p["is_active"] else "Нет", p["route_names"] or "—", "Да" if p["review_required"] else "Нет", p["comment"]] for p in records])
+        return csv_response("phones_export.csv", ["Номер", "GEO", "Провайдер", "Тип номера", "Кампания", "Рабочий статус", "Активен у провайдера", "Маршруты", "Требует проверки", "Проблемный", "Комментарий"], [[p["number"], p["country_name"], p["provider_name"], p["phone_type"], p["project_label"], STATUS_LABELS.get(p["status"], p["status"]), "Да" if p["is_active"] else "Нет", p["route_names"] or "—", "Да" if p["review_required"] else "Нет", "Да" if p["is_problematic"] else "Нет", p["comment"]] for p in records])
     records, pagination_html = paginate_rows(records, q, "/phones")
     rows = []
     for phone in records:
@@ -7319,7 +7326,8 @@ def phones_page(repo: Repository, q: dict[str, str] | None = None, *, form_error
         actions = f"<a class='button edit-action' href='/phones/{phone['id']}/edit' title='Редактировать' aria-label='Редактировать' data-tooltip='Редактировать'>Редактировать</a>" if can_write("phones") else ""
         history = history_icon_link(f"/phones/{phone['id']}/history")
         review_marker = review_required_icon() if phone["review_required"] else ""
-        rows.append(f"""<tr><td data-col='number' class='selectable-cell' data-copy-column='phone-number'>{selectable_text(f"{esc(phone['number'])}{review_marker}", phone['number'], classes='phone-number-cell compound-value-cell')}</td><td data-col='geo'>{esc(phone['country_name'])}</td><td data-col='provider'>{esc(phone['provider_name'])}</td><td data-col='project'>{esc(phone['project_label'])}</td><td data-col='assignment'>{esc(assignment_label)}</td><td data-col='status'>{dot_status(STATUS_LABELS.get(phone['status'], phone['status']), 'danger' if phone['status'] == 'problem' else ('warning' if phone['status'] == 'unknown' else ('neutral' if phone['status'] == 'free' else 'ok')))}</td><td data-col='active'>{dot_status('Да' if phone['is_active'] else 'Нет', 'ok' if phone['is_active'] else 'danger')}</td>{clamp_cell('routes', esc(phone['route_names']), phone['route_names'], selectable=True) if phone['route_names'] else "<td data-col='routes'>—</td>"}<td data-col='connection'>{esc(phone['connection_cost'])}</td><td data-col='monthly'>{esc(display_monthly_fee(phone['monthly_fee']))}</td><td data-col='currency'>{esc(phone['currency_code'])}</td><td data-col='phone_type'>{esc(phone['phone_type'])}</td><td data-col='tariff'>{esc(phone['tariff_label'])}</td><td data-col='created'>{esc(phone['created_at'])}</td><td data-col='updated'>{esc(phone['updated_at'])}</td><td data-col='deactivated'>{esc(phone['deactivated_at'])}</td>{clamp_cell('comment', esc(phone['comment'] or '—'), phone['comment'] or '—', classes='comment-cell')}<td data-col='history' class='history-cell'>{history}</td><td data-col='actions'>{actions}</td></tr>""")
+        problem_marker = problematic_icon() if phone["is_problematic"] else ""
+        rows.append(f"""<tr><td data-col='number' class='selectable-cell' data-copy-column='phone-number'>{selectable_text(f"{esc(phone['number'])}{review_marker}{problem_marker}", phone['number'], classes='phone-number-cell compound-value-cell')}</td><td data-col='geo'>{esc(phone['country_name'])}</td><td data-col='provider'>{esc(phone['provider_name'])}</td><td data-col='project'>{esc(phone['project_label'])}</td><td data-col='assignment'>{esc(assignment_label)}</td><td data-col='status'>{dot_status(STATUS_LABELS.get(phone['status'], phone['status']), 'warning' if phone['status'] == 'unknown' else ('neutral' if phone['status'] == 'unused' else 'ok'))}</td><td data-col='active'>{dot_status('Да' if phone['is_active'] else 'Нет', 'ok' if phone['is_active'] else 'danger')}</td>{clamp_cell('routes', esc(phone['route_names']), phone['route_names'], selectable=True) if phone['route_names'] else "<td data-col='routes'>—</td>"}<td data-col='connection'>{esc(phone['connection_cost'])}</td><td data-col='monthly'>{esc(display_monthly_fee(phone['monthly_fee']))}</td><td data-col='currency'>{esc(phone['currency_code'])}</td><td data-col='phone_type'>{esc(phone['phone_type'])}</td><td data-col='tariff'>{esc(phone['tariff_label'])}</td><td data-col='created'>{esc(phone['created_at'])}</td><td data-col='updated'>{esc(phone['updated_at'])}</td><td data-col='deactivated'>{esc(phone['deactivated_at'])}</td>{clamp_cell('comment', esc(phone['comment'] or '—'), phone['comment'] or '—', classes='comment-cell')}<td data-col='history' class='history-cell'>{history}</td><td data-col='actions'>{actions}</td></tr>""")
     filters_html = f"""<form class="filter-grid" method="get" action="/phones">
 <label>ГЕО <select name="country_id">{options(repo, 'countries', selected=q.get('country_id'), empty='Все')}</select></label>
 <label>Провайдер <select name="provider_id">{options(repo, 'providers', selected=q.get('provider_id'), empty='Все')}</select></label>
@@ -7327,6 +7335,7 @@ def phones_page(repo: Repository, q: dict[str, str] | None = None, *, form_error
     <label>Назначение <select name="assignment_type">{assignment_options(repo, selected=q.get('assignment_type'), empty='Все')}</select></label>
 <label>Рабочий статус <select name="status">{phone_status_options(q.get('status'), empty='Все')}</select></label>
 <label>Поиск по номеру <input name="number" value="{esc(q.get('number'))}"></label>
+<div class="filter-review-control"><label class="checkbox-inline filter-review-checkbox"><input type="checkbox" name="is_problematic" value="1" {'checked' if q.get('is_problematic') == '1' else ''}> <span>Проблемный</span></label></div>
 <div class="filter-review-control" aria-label="Фильтр: Требует проверки"><span class="filter-review-spacer" aria-hidden="true">Требует проверки</span><label class="checkbox-inline filter-review-checkbox"><input type="checkbox" name="review_required" value="1" {'checked' if q.get('review_required') == '1' else ''}> <span>Требует проверки</span></label></div><button>Найти</button></form>"""
     create_html = f"""<form class="phone-dialog phone-dialog-form" method="post" action="/phones/create">
   <header class="phone-dialog-header"><h2>Добавить номер</h2></header>
@@ -7339,6 +7348,8 @@ def phones_page(repo: Repository, q: dict[str, str] | None = None, *, form_error
       <label>Проект <select name="project_label">{project_options(repo, selected=submitted('project_label') or None, empty='—')}</select></label>
       <label>Назначение <span class="required">*</span><select name="assignment_type">{assignment_options(repo, selected=submitted('assignment_type') or None)}</select></label>
       <label>Рабочий статус <span class="required">*</span><select name="status">{phone_status_options(submitted('status', 'unknown'))}</select></label>
+      <div class="phone-dialog-checkbox"><span>Требует проверки</span><label class="important-checkbox"><input type="checkbox" name="review_required" value="1"><span>Требует проверки</span></label></div>
+      <div class="phone-dialog-checkbox"><span>Проблемный</span><label class="important-checkbox"><input type="checkbox" name="is_problematic" value="1"><span>Проблемный</span></label></div>
     </div></section>
     <section class="phone-dialog-section"><h3>Стоимость и тариф</h3><div class="phone-dialog-grid">
       <label>Стоимость подключения <input name="connection_cost" value="{esc(submitted('connection_cost'))}"></label>
@@ -7358,10 +7369,18 @@ def phones_page(repo: Repository, q: dict[str, str] | None = None, *, form_error
     create_action = form_card('+ Добавить номер', create_html, extra_class='phone-create-shell', summary_class='phone-primary-summary', open_by_default=bool(form_error)) if can_write("phones") else ""
     actions_html = f"<div class='phones-create-actions'>{create_action}<div class='phones-bulk-entry'>{bulk_create_link}</div></div>" if bulk_create_link else create_action
     body = f"""
-{filter_card(filters_html, q, ('country_id', 'provider_id', 'project', 'assignment_type', 'status', 'number', 'review_required'))}
+{filter_card(filters_html, q, ('country_id', 'provider_id', 'project', 'assignment_type', 'status', 'number', 'review_required', 'is_problematic'))}
 {actions_html}
 {table_card(table_html)}
 {table_footer(pagination_html, column_settings('phones', [('number', 'Номер'), ('geo', 'ГЕО'), ('provider', 'Провайдер'), ('project', 'Проект'), ('assignment', 'Назначение'), ('status', 'Рабочий статус'), ('active', 'Активен у провайдера'), ('routes', 'Маршруты'), ('connection', 'Подключение'), ('monthly', 'Абонплата'), ('currency', 'Валюта'), ('phone_type', 'Тип номера'), ('tariff', 'Тариф'), ('created', 'Дата создания'), ('updated', 'Дата изменения'), ('deactivated', 'Дата отключения'), ('comment', 'Комментарий'), ('actions', 'Действия')], hlr_style=True) + export_link('/phones', q, text=True))}"""
+    body += """<details class='card'><summary>Что означают статусы и признаки?</summary>
+<p><strong>Рабочий статус</strong></p><p><strong>Используется</strong> — номер сейчас задействован в работе.</p>
+<p><strong>Не используется</strong> — номер сейчас нигде не задействован.</p>
+<p><strong>Не известно</strong> — текущее использование пока не определено. Обычно это legacy из прошлой жизни: данные старой базы, Excel или предыдущих импортов, которые ещё не разобраны вручную.</p>
+<p><strong>Активен у провайдера</strong>: Да — номер всё ещё принадлежит нам; Нет — отключён и хранится только для истории.</p>
+<p><strong>Требует проверки 🟠</strong> — маячок внимания, а не обязательно подтверждённая проблема.</p>
+<p><strong>Проблемный 🔴</strong> — подтверждённая проблема (жалобы, неисправность, недоступность или плохая SPAM-репутация). Номер может временно продолжать использоваться.</p>
+<p><strong>Legacy</strong> — данные «из прошлой жизни», которые сохраняются для истории и постепенно уточняются вручную.</p></details>"""
     return page("Купленные номера", table_page_container(body, extra_class="phones-page"))
 
 
@@ -9566,6 +9585,7 @@ def phone_edit_form(repo: Repository, phone_id: int, phone: dict, *, modal: bool
 <label>Рабочий статус <select name='status'>{phone_status_options(phone['status'])}</select></label>
 <label>Активен у провайдера <select name='is_active'><option value='1' {'selected' if phone['is_active'] else ''}>Да</option><option value='0' {'selected' if not phone['is_active'] else ''}>Нет</option></select></label>
 <div class='phone-dialog-checkbox'><span>Требует проверки</span><label class='important-checkbox'><input type='checkbox' name='review_required' value='1' {'checked' if phone['review_required'] else ''}><span>Требует проверки</span></label></div>
+<div class='phone-dialog-checkbox'><span>Проблемный</span><label class='important-checkbox'><input type='checkbox' name='is_problematic' value='1' {'checked' if phone['is_problematic'] else ''}><span>Проблемный</span></label></div>
 </div></section>
 <section class='phone-dialog-section'><h3>Стоимость и тариф</h3><div class='phone-dialog-grid'>
 <label>Стоимость подключения <input name='connection_cost' value='{esc(phone['connection_cost'] or '')}'></label>
@@ -9830,7 +9850,7 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
         provider_id = parse_int(data.get("provider_id"))
         if provider_id is None:
             raise BusinessRuleError("Провайдер обязателен для создания номера")
-        repo.create_phone_number(country_id=int(data["country_id"]), provider_id=provider_id, number=data["number"], assignment_type=data["assignment_type"], status=data["status"], created_by=actor_id, project_label=data.get("project_label") or None, connection_cost=data.get("connection_cost") or None, monthly_fee=data.get("monthly_fee") or None, currency_id=parse_int(data.get("currency_id")), phone_type=data.get("phone_type") or None, tariff_label=data.get("tariff_label") or None, comment=data.get("comment"))
+        repo.create_phone_number(country_id=int(data["country_id"]), provider_id=provider_id, number=data["number"], assignment_type=data["assignment_type"], status=data["status"], created_by=actor_id, project_label=data.get("project_label") or None, connection_cost=data.get("connection_cost") or None, monthly_fee=data.get("monthly_fee") or None, currency_id=parse_int(data.get("currency_id")), phone_type=data.get("phone_type") or None, tariff_label=data.get("tariff_label") or None, comment=data.get("comment"), review_required=data.get("review_required") == "1", is_problematic=data.get("is_problematic") == "1")
         return "/phones"
     if path.startswith("/phones/") and path.endswith("/update"):
         phone_id = int(path.strip("/").split("/")[1])
@@ -9865,6 +9885,7 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
             tariff_label=data.get("tariff_label") or None,
             comment=data.get("comment"),
             review_required=review_required == 1,
+            is_problematic=data.get("is_problematic") == "1",
         )
         return "/phones"
     if path == "/tariffs/create":

@@ -31,8 +31,30 @@ CHANGE_REASON_SCOPES_MIGRATION = (
     / "docs/postgres/migrations/0069p1_change_reason_scopes.sql"
 )
 
+PURCHASED_PHONE_STATE_MIGRATION = (
+    REPO_ROOT / "docs/postgres/migrations/0069p2_purchased_phone_state_v2.sql"
+)
+
 
 class PostgresSchemaDraftTests(unittest.TestCase):
+    def test_purchased_phone_state_v2_schema_and_backfill_contract(self):
+        schema = POSTGRES_SCHEMA.read_text(encoding="utf-8")
+        migration = PURCHASED_PHONE_STATE_MIGRATION.read_text(encoding="utf-8")
+        self.assertIn("is_problematic BOOLEAN NOT NULL DEFAULT false", schema)
+        self.assertIn("status IN ('used', 'unused', 'unknown')", schema)
+        self.assertNotIn("status IN ('used', 'unused', 'free', 'problem', 'unknown')", schema)
+        for contract in (
+            "pn.status IN ('free', 'unused', 'unknown', 'problem')",
+            "WHEN is_active IS FALSE THEN 'unused'",
+            "WHEN status = 'problem' THEN 'unknown'",
+            "WHEN status = 'free' THEN 'unused'",
+            "is_problematic = is_problematic OR status = 'problem'",
+            "review_required = review_required OR status = 'problem' OR is_problematic",
+            "pn.is_active IS FALSE OR pn.status <> 'used'",
+            "DROP CONSTRAINT IF EXISTS ck_phone_numbers_status",
+        ):
+            with self.subTest(contract=contract):
+                self.assertIn(contract, migration)
     def test_change_reason_scopes_schema_and_idempotent_migration_contract(self):
         schema = POSTGRES_SCHEMA.read_text(encoding="utf-8")
         migration = CHANGE_REASON_SCOPES_MIGRATION.read_text(encoding="utf-8")

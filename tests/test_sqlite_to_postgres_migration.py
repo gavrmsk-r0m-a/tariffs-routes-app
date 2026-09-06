@@ -110,6 +110,42 @@ class SqliteToPostgresMigrationTests(unittest.TestCase):
         self.assertNotIn("secret", masked)
         self.assertNotIn("sslmode", masked)
 
+    def test_phone_route_reconciliation_only_promotes_non_used_statuses(self):
+        sql = " ".join(mig.PHONE_ROUTE_RECONCILIATION_SQL.split())
+        self.assertIn("pn.is_active IS TRUE", sql)
+        self.assertIn("pn.status <> 'used'", sql)
+        self.assertIn("rpn.is_active IS TRUE", sql)
+        self.assertNotIn("'free'", sql)
+        self.assertNotIn("'problem'", sql)
+
+        conn = sqlite3.connect(":memory:")
+        self.addCleanup(conn.close)
+        conn.executescript("""
+            CREATE TABLE phone_numbers (
+                id INTEGER PRIMARY KEY, status TEXT, is_active BOOLEAN,
+                review_required BOOLEAN
+            );
+            CREATE TABLE route_phone_numbers (
+                phone_number_id INTEGER, is_active BOOLEAN
+            );
+            INSERT INTO phone_numbers VALUES (1, 'used', TRUE, FALSE);
+            INSERT INTO phone_numbers VALUES (2, 'unused', TRUE, FALSE);
+            INSERT INTO route_phone_numbers VALUES (1, TRUE);
+            INSERT INTO route_phone_numbers VALUES (2, TRUE);
+        """)
+        conn.execute(mig.PHONE_ROUTE_RECONCILIATION_SQL)
+        self.assertEqual(
+            [("used", 1, 0), ("used", 1, 1)],
+            conn.execute(
+                "SELECT status, is_active, review_required FROM phone_numbers ORDER BY id"
+            ).fetchall(),
+        )
+
+        # The synthetic legacy fixture exercises both sides end-to-end in the
+        # PostgreSQL repository smoke: 525550000001 is already used and must
+        # keep review=false; 525550000020 is legacy free and is promoted with
+        # review=true after its active route links have loaded.
+
 
 if __name__ == "__main__":
     unittest.main()

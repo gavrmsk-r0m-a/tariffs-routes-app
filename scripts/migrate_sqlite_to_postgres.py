@@ -43,7 +43,7 @@ IGNORED_SQLITE_TABLES = {"sqlite_sequence"}
 NO_ID_TABLES = {"app_settings", "hlr_daily_usage", "demo_data_state"}
 
 BOOLEAN_COLUMNS = {
-    "must_change_password", "is_active", "include_in_route_name", "is_actual",
+    "must_change_password", "is_active", "is_problematic", "include_in_route_name", "is_actual",
     "inbound_line_available", "is_estimated", "is_current", "review_required",
     "has_autorotation", "has_overflow", "provider_changed", "can_read",
     "can_write", "can_export", "is_enabled", "old_company_has_autorotation",
@@ -65,6 +65,16 @@ JSONB_COLUMNS = {
     ("routing_events", "snapshot_json"), ("import_jobs", "preview_data"),
     ("import_jobs", "summary"), ("import_jobs", "error_report"),
 }
+
+PHONE_ROUTE_RECONCILIATION_SQL = """
+    UPDATE phone_numbers AS pn SET status = 'used', review_required = true
+    WHERE pn.is_active IS TRUE
+      AND pn.status <> 'used'
+      AND EXISTS (
+          SELECT 1 FROM route_phone_numbers rpn
+          WHERE rpn.phone_number_id = pn.id AND rpn.is_active IS TRUE
+      )
+"""
 
 
 class MigrationError(Exception):
@@ -192,6 +202,8 @@ def build_plan(conn: sqlite3.Connection, schema_path: str | Path, selected_table
         scols = sqlite_columns(conn, table)
         pcols = pg_columns.get(table, [])
         insert_cols = [c for c in pcols if c in scols]
+        if table == "phone_numbers" and "is_problematic" in pcols and "is_problematic" not in insert_cols:
+            insert_cols.append("is_problematic")
         has_id = "id" in insert_cols
         count = conn.execute(f"SELECT COUNT(*) AS c FROM {quote_ident(table)}").fetchone()["c"]
         plan.append(TablePlan(table, scols, pcols, insert_cols, has_id, count))
@@ -320,9 +332,26 @@ def import_table(sqlite_conn: sqlite3.Connection, pg_conn, table_plan: TablePlan
     sql = f"INSERT INTO {quote_ident(table_plan.name)} ({', '.join(quote_ident(c) for c in cols)}) VALUES ({placeholders})"
     inserted = 0
     with pg_conn.cursor() as cur:
-        for row in sqlite_conn.execute(f"SELECT {', '.join(quote_ident(c) for c in cols)} FROM {quote_ident(table_plan.name)}"):
+        source_cols = [c for c in cols if c in table_plan.sqlite_columns]
+        for row in sqlite_conn.execute(f"SELECT {', '.join(quote_ident(c) for c in source_cols)} FROM {quote_ident(table_plan.name)}"):
             try:
-                values = [convert_for_postgres(table_plan.name, c, row[c]) for c in cols]
+                legacy_status = str(row["status"] or "").lower() if table_plan.name == "phone_numbers" else ""
+                values = []
+                for c in cols:
+                    if table_plan.name == "phone_numbers" and c == "is_problematic" and c not in row.keys():
+                        values.append(legacy_status in {"problem", "blocked", "disabled"})
+                    elif table_plan.name == "phone_numbers" and c == "status":
+                        active = bool(row["is_active"])
+                        if legacy_status in {"free", "reserved"}:
+                            values.append("unused")
+                        elif legacy_status in {"problem", "blocked", "disabled"}:
+                            values.append("unused" if not active else "unknown")
+                        else:
+                            values.append(legacy_status if legacy_status in {"used", "unused", "unknown"} else "unknown")
+                    elif table_plan.name == "phone_numbers" and c == "review_required" and legacy_status in {"problem", "blocked", "disabled"}:
+                        values.append(True)
+                    else:
+                        values.append(convert_for_postgres(table_plan.name, c, row[c]))
                 cur.execute(sql, values)
                 inserted += 1
             except Exception as exc:
@@ -362,6 +391,15 @@ def run_apply(sqlite_conn: sqlite3.Connection, pg_url: str, schema_path: Path, p
             for p in plan:
                 inserted[p.name] = import_table(sqlite_conn, pg_conn, p)
             with pg_conn.cursor() as cur:
+                if {p.name for p in plan} >= {"phone_numbers", "route_phone_numbers"}:
+                    cur.execute(PHONE_ROUTE_RECONCILIATION_SQL)
+                    cur.execute("""
+                        UPDATE route_phone_numbers rpn
+                        SET is_active = false, removed_at = COALESCE(removed_at, CURRENT_TIMESTAMP)
+                        FROM phone_numbers pn
+                        WHERE rpn.phone_number_id = pn.id AND rpn.is_active IS TRUE
+                          AND pn.is_active IS FALSE
+                    """)
                 for table in reset_tables:
                     cur.execute(sequence_reset_sql(table))
             validate_counts(sqlite_conn, pg_conn, plan)

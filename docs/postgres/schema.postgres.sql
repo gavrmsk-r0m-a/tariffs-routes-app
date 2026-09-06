@@ -253,6 +253,7 @@ CREATE TABLE IF NOT EXISTS phone_numbers (
     comment TEXT,
     is_active BOOLEAN NOT NULL DEFAULT true,
     review_required BOOLEAN NOT NULL DEFAULT false,
+    is_problematic BOOLEAN NOT NULL DEFAULT false,
     imported_created_by TEXT,
     created_by BIGINT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -265,7 +266,8 @@ CREATE TABLE IF NOT EXISTS phone_numbers (
     CONSTRAINT fk_phone_numbers_currency FOREIGN KEY (currency_id) REFERENCES currencies(id) ON DELETE RESTRICT,
     CONSTRAINT fk_phone_numbers_created_by FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE RESTRICT,
     CONSTRAINT fk_phone_numbers_updated_by FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE RESTRICT,
-    CONSTRAINT ck_phone_numbers_status CHECK (status IN ('used', 'unused', 'free', 'problem', 'unknown')),
+    CONSTRAINT ck_phone_numbers_status CHECK (status IN ('used', 'unused', 'unknown')),
+    CONSTRAINT ck_phone_numbers_problematic_review CHECK (is_problematic IS FALSE OR review_required IS TRUE),
     CONSTRAINT ck_phone_numbers_costs_nonnegative CHECK ((connection_cost IS NULL OR connection_cost >= 0) AND (monthly_fee IS NULL OR monthly_fee >= 0) AND (outgoing_rate IS NULL OR outgoing_rate >= 0) AND (incoming_rate IS NULL OR incoming_rate >= 0)),
     CONSTRAINT ck_phone_numbers_number_format CHECK (number ~ '^[1-9][0-9]{6,20}$'),
     CONSTRAINT ck_phone_numbers_normalized_matches CHECK (normalized_number = number)

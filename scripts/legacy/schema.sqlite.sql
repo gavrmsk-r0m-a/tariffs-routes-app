@@ -194,7 +194,7 @@ CREATE TABLE IF NOT EXISTS phone_numbers (
     assignment_label TEXT,
     phone_type TEXT,
     tariff_label TEXT,
-    status TEXT NOT NULL DEFAULT 'unknown' CHECK (status IN ('used', 'unused', 'free', 'problem', 'unknown')),
+    status TEXT NOT NULL DEFAULT 'unknown' CHECK (status IN ('used', 'unused', 'unknown')),
     connection_cost NUMERIC CHECK (connection_cost IS NULL OR connection_cost >= 0),
     monthly_fee NUMERIC CHECK (monthly_fee IS NULL OR monthly_fee >= 0),
     outgoing_rate NUMERIC CHECK (outgoing_rate IS NULL OR outgoing_rate >= 0),
@@ -204,6 +204,7 @@ CREATE TABLE IF NOT EXISTS phone_numbers (
     comment TEXT,
     is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
     review_required INTEGER NOT NULL DEFAULT 0 CHECK (review_required IN (0, 1)),
+    is_problematic INTEGER NOT NULL DEFAULT 0 CHECK (is_problematic IN (0, 1)),
     imported_created_by TEXT,
     created_by INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -211,7 +212,8 @@ CREATE TABLE IF NOT EXISTS phone_numbers (
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     deactivated_at TEXT,
     CHECK (number GLOB '[1-9]*' AND number NOT GLOB '*[^0-9]*' AND length(number) BETWEEN 7 AND 21),
-    CHECK (normalized_number = number)
+    CHECK (normalized_number = number),
+    CHECK (is_problematic = 0 OR review_required = 1)
 );
 
 CREATE TABLE IF NOT EXISTS route_phone_numbers (
