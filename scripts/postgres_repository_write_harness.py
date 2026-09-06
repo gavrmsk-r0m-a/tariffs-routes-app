@@ -1316,12 +1316,12 @@ def run_phone_import_lifecycle_probe(repo: Repository, conn) -> None:
 
         repo.update_phone_number(
             phone_id, country_id=country["id"], provider_id=provider["id"], number=PHONE_IMPORT_NUMBER,
-            assignment_type=assignment["code"], status="free", is_active=True, updated_by=user["id"],
+            assignment_type=assignment["code"], status="unused", is_active=True, updated_by=user["id"],
             project_label="Stage 66B", currency_id=currency["id"], phone_type=phone_type["name"],
             comment=PHONE_UPDATED_MARKER, commit=False,
         )
         updated = conn.execute("SELECT * FROM phone_numbers WHERE id = %s", (phone_id,)).fetchone()
-        if updated["status"] != "free" or updated["comment"] != PHONE_UPDATED_MARKER:
+        if updated["status"] != "unused" or not bool(updated["is_active"]) or bool(updated["is_problematic"]) or updated["comment"] != PHONE_UPDATED_MARKER:
             raise AssertionError("Stage 66B phone update fields are incomplete")
         if not conn.execute("SELECT 1 FROM phone_number_history WHERE phone_number_id = %s AND field_name = 'changes'", (phone_id,)).fetchone():
             raise AssertionError("Stage 66B update history is missing")
@@ -1332,12 +1332,13 @@ def run_phone_import_lifecycle_probe(repo: Repository, conn) -> None:
             assignment_type=assignment["code"], status="unused", is_active=True,
             connection_cost=None, monthly_fee=None, outgoing_rate=None, incoming_rate=None,
             currency_id=currency["id"], phone_type=phone_type["name"], tariff_label=None,
-            comment=PHONE_IMPORT_MARKER, review_required=False, imported_created_by=PHONE_IMPORT_MARKER,
+            comment=PHONE_IMPORT_MARKER, review_required=False, is_problematic=False,
+            imported_created_by=PHONE_IMPORT_MARKER,
             deactivated_at=None, updated_by=user["id"], history_changed_by=user["id"],
             history_new_value=PHONE_IMPORT_MARKER, history_comment=PHONE_IMPORT_MARKER, commit=False,
         )
         imported = conn.execute("SELECT * FROM phone_numbers WHERE id = %s", (phone_id,)).fetchone()
-        if affected != 1 or imported["project_label"] != "Stage 66B imported" or imported["status"] != "unused":
+        if affected != 1 or imported["project_label"] != "Stage 66B imported" or imported["status"] != "unused" or not bool(imported["is_active"]) or bool(imported["review_required"]) or bool(imported["is_problematic"]):
             raise AssertionError("Stage 66B import update did not affect exactly the intended phone")
         if not conn.execute("SELECT 1 FROM phone_number_history WHERE phone_number_id = %s AND field_name = 'import' AND new_value = %s", (phone_id, PHONE_IMPORT_MARKER)).fetchone():
             raise AssertionError("Stage 66B import history is missing")
@@ -1371,7 +1372,7 @@ def run_phone_import_lifecycle_probe(repo: Repository, conn) -> None:
                 status="used", is_active=True, connection_cost=None, monthly_fee=None,
                 outgoing_rate=None, incoming_rate=None, currency_id=currency["id"],
                 phone_type=phone_type["name"], tariff_label=None, comment=None,
-                review_required=False, imported_created_by=None, deactivated_at=None,
+                review_required=False, is_problematic=False, imported_created_by=None, deactivated_at=None,
                 updated_by=user["id"], history_changed_by=user["id"], history_new_value="missing",
                 history_comment="missing", commit=False,
             )
