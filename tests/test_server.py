@@ -2954,9 +2954,23 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertIn("action.value=button.dataset.bulkAction", content)
         self.assertIn("requestAnimationFrame(()=>requestAnimationFrame(()=>form.submit()))", content)
         self.assertIn("id='bulk-phone-progress'", content)
+        self.assertIn("class='card bulk-phone-form'", content)
+        columns = content[content.index("<div class='bulk-phone-columns'"):content.index("<footer class='bulk-phone-actions'")]
+        self.assertLess(columns.index("Основные параметры"), columns.index("Номера для добавления"))
+        for field_name in ("country_id", "provider_id", "project_label", "assignment_type", "status", "numbers"):
+            self.assertIn(f"name='{field_name}'", columns)
+        self.assertNotIn("bulk-phone-result", columns)
+        self.assertLess(content.index("</div>\n<footer class='bulk-phone-actions'"), content.index("</form>"))
+        action_row = content[content.index("<footer class='bulk-phone-actions'"):content.index("</footer>")]
+        self.assertIn("data-bulk-action='validate'", action_row)
+        self.assertIn("data-bulk-action='save'", action_row)
         _, phones = self.request("/phones")
         self.assertIn("phones-create-actions", phones)
         self.assertIn("+ Массовое добавление", phones)
+        create_actions = phones[phones.index("<div class='phones-create-actions'"):phones.index("<section class='table-card'")]
+        self.assertEqual(create_actions.count("phone-create-action"), 2)
+        filters = phones[phones.index('<form class="filter-grid"'):phones.index('</form>')]
+        self.assertLess(filters.index("Сбросить фильтры"), filters.index("Найти"))
 
     def test_bulk_phone_save_post_commits_phone_history_and_audit_log(self):
         body = urlencode({"numbers": "3939393939", "country_id": "1", "provider_id": "1", "project_label": "REP", "assignment_type": "gl", "status": "used", "action": "save"})
@@ -3296,6 +3310,7 @@ class ServerSmokeTest(unittest.TestCase):
                           'used', TRUE, TRUE, TRUE, 1, 'v2 both markers')
             """)
             conn.commit()
+            conn_phone_id = conn.execute("SELECT id FROM phone_numbers WHERE number = '525550009919'").fetchone()["id"]
         finally:
             conn.close()
 
@@ -3306,10 +3321,18 @@ class ServerSmokeTest(unittest.TestCase):
         row = content[content.index("525550009919"):content.index("525550009919") + 900]
         self.assertIn("title='Требует проверки'", row)
         self.assertIn("title='Проблемный номер'", row)
+        self.assertIn("class='review-required-icon problematic-icon'", row)
+        self.assertIn("class='review-required-icon'", row)
         self.assertIn("Что означают статусы и признаки?", content)
         self.assertIn("legacy из прошлой жизни", content)
         self.assertIn("name=\"is_problematic\"", content)
         self.assertIn("name=\"review_required\"", content)
+
+        captured, edit = self.request(f"/phones/{conn_phone_id}/edit")
+        self.assertEqual(captured["status"], "200 OK")
+        edit_form = edit[edit.index("<form class='phone-dialog"):edit.index("</form>")]
+        self.assertEqual(edit_form.count("<span>Проблемный</span>"), 1)
+        self.assertEqual(edit_form.count("<span>Требует проверки</span>"), 1)
 
         captured, csv_content = self.request("/phones?is_problematic=1&review_required=1&export=csv")
         self.assertEqual(captured["status"], "200 OK")

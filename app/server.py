@@ -2308,7 +2308,7 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     }}
 
     .review-required-icon .material-symbols-rounded {{ font-size: 18px; font-variation-settings: 'FILL' 1, 'wght' 500, 'GRAD' 0, 'opsz' 20; }}
-    .review-required-icon.problematic-icon {{ color: var(--danger); }}
+    .review-required-icon.problematic-icon {{ color: var(--danger) !important; }}
 
     html[data-theme="light-v2"] ::selection {{ background: rgba(15, 118, 110, 0.28); color: #10201D; }}
     html[data-theme="light-v2"] * {{ scrollbar-color: #CCD3DA #F6F7F8; }}
@@ -3184,8 +3184,9 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .phone-dialog textarea {{ min-height: 76px; resize: vertical; line-height: 1.35; }}
     .phone-dialog .phone-dialog-full {{ grid-column: 1 / -1; }}
     .phone-dialog.phone-dialog-page-form {{ position: relative; left: auto; top: auto; z-index: auto; transform: none; margin: 0 0 16px; }}
-    .phone-dialog-checkbox {{ display: flex; flex-direction: column; min-width: 0; }}
-    .phone-dialog-checkbox .important-checkbox {{ display: flex; align-items: center; gap: 8px; min-height: 33px; box-sizing: border-box; margin-top: 3px; padding: 6px 9px; }}
+    .phone-dialog-flags {{ display: grid; grid-column: 1; gap: 6px; min-width: 0; }}
+    .phone-dialog-checkbox {{ display: flex; min-width: 0; }}
+    .phone-dialog-checkbox .important-checkbox {{ display: flex; align-items: center; gap: 8px; min-height: 33px; box-sizing: border-box; margin: 0; padding: 6px 9px; }}
     .phone-dialog-checkbox .important-checkbox input {{ flex: 0 0 16px; width: 16px; min-height: 16px; margin: 0; }}
     .phone-dialog-helper {{ margin: 0; padding: 0 20px 8px; font-size: 12px; overflow-wrap: anywhere; }}
     .phone-dialog-footer {{ display: flex; justify-content: flex-start; align-items: center; gap: 10px; grid-column: 1 / -1; width: 100%; box-sizing: border-box; margin: 0; padding: 10px 20px; border-top: 1px solid var(--border-strong); background: #eef5ff; }}
@@ -3194,17 +3195,17 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .phone-dialog-footer .modal-save:hover {{ border-color: #1d4ed8; background: #1d4ed8; color: #fff; }}
     .phone-dialog-footer .modal-cancel {{ order: 2; }}
     @media (max-width: 720px) {{ .modal-form-card[open] > form.phone-dialog, .phone-dialog.phone-dialog {{ width: calc(100vw - 18px); max-width: calc(100vw - 18px); max-height: calc(100vh - 18px); }} .phone-dialog-grid {{ grid-template-columns: 1fr; }} .phone-dialog-section, .phone-dialog-header, .phone-dialog-footer, .phone-dialog-error-slot {{ padding-left: 16px; padding-right: 16px; }} }}
-    .phones-create-actions {{ display:flex; align-items:center; justify-content:space-between; gap:12px; margin:0 0 12px; }}
-    .phones-create-actions .phone-create-shell {{ margin:0; }}
-    .phones-create-actions .phone-primary-summary, .phones-create-actions .phones-bulk-entry .button {{ min-height:36px; box-sizing:border-box; padding:8px 14px; border-color:#2563eb; border-radius:10px; background:#2563eb; color:#fff; font-weight:760; line-height:18px; }}
-    .phones-create-actions .phone-primary-summary:hover, .phones-create-actions .phone-primary-summary:focus-visible, .phones-create-actions .phones-bulk-entry .button:hover, .phones-create-actions .phones-bulk-entry .button:focus-visible {{ border-color:#1d4ed8; background:#1d4ed8; color:#fff; }}
+    .phones-create-actions {{ display:flex; flex-wrap:wrap; align-items:center; justify-content:flex-start; gap:12px; margin:0 0 12px; }}
+    .phones-create-actions .phone-create-shell {{ width:210px; margin:0; }}
+    .phones-create-actions .phone-create-action {{ display:inline-flex; align-items:center; justify-content:center; width:210px; min-height:36px; box-sizing:border-box; padding:8px 14px; border-color:var(--accent); border-radius:10px; background:var(--accent); color:#fff; font-size:13px; font-weight:760; line-height:18px; }}
+    .phones-create-actions .phone-create-action:hover, .phones-create-actions .phone-create-action:focus-visible {{ border-color:var(--accent-hover); background:var(--accent-hover); color:#fff; }}
     .phones-bulk-entry {{ display:flex; align-items:center; }}
     .bulk-phone-page {{ display:grid; gap:16px; min-width:0; }}
     .bulk-phone-page .page-heading h1 {{ margin:4px 0; }}
     .bulk-phone-page .breadcrumbs {{ margin:0 0 6px; font-size:12px; }}
-    .bulk-phone-form {{ padding:0; overflow:hidden; }}
-    .bulk-phone-columns {{ display:grid; grid-template-columns:minmax(360px, 1.15fr) minmax(430px, .85fr); min-width:0; }}
-    .bulk-phone-input {{ display:flex; flex-direction:column; min-width:0; padding:20px; border-right:1px solid var(--border); }}
+    .bulk-phone-form {{ display:block; width:100%; max-width:1060px; box-sizing:border-box; margin-inline:auto; padding:0; overflow:hidden; }}
+    .bulk-phone-columns {{ display:grid; grid-template-columns:minmax(0, 3fr) minmax(320px, 2fr); min-width:0; }}
+    .bulk-phone-input {{ display:flex; flex-direction:column; min-width:0; padding:20px; border-left:1px solid var(--border); }}
     .bulk-phone-form h3 {{ margin:0 0 10px; color:#1e3a5f; font-size:11.5px; font-weight:850; letter-spacing:.03em; text-transform:uppercase; }}
     .bulk-phone-input textarea {{ flex:1; width:100%; min-height:470px; box-sizing:border-box; resize:vertical; font:13px/1.45 ui-monospace, monospace; }}
     .bulk-phone-hint {{ display:flex; justify-content:space-between; gap:12px; margin-top:8px; color:var(--text-muted); font-size:12px; }}
@@ -3213,20 +3214,23 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .bulk-phone-options > section {{ padding:15px 20px; border-bottom:1px solid var(--border); }}
     .bulk-phone-options label {{ display:block; min-width:0; margin:0; font-size:11.5px; font-weight:740; }}
     .bulk-phone-options input,.bulk-phone-options select,.bulk-phone-options textarea {{ display:block; width:100%; min-height:33px; box-sizing:border-box; margin-top:3px; }}
-    .bulk-phone-actions {{ display:flex; align-items:center; gap:10px; padding:12px 20px; border-top:1px solid var(--border-strong); background:var(--surface-muted); }}
+    .bulk-phone-actions {{ display:flex; flex-wrap:wrap; align-items:center; gap:10px; padding:12px 20px; border-top:1px solid var(--border-strong); background:var(--surface-muted); }}
+    .bulk-phone-actions > button, .bulk-phone-actions > .button {{ display:inline-flex; align-items:center; justify-content:center; width:auto; min-width:138px; min-height:36px; box-sizing:border-box; padding:8px 14px; border-radius:var(--radius-control); }}
+    .bulk-phone-actions #bulk-phone-clear {{ min-width:164px; }}
+    .bulk-phone-actions #bulk-phone-back {{ min-width:116px; }}
     .bulk-phone-notification {{ position:fixed; z-index:1100; top:18px; right:18px; width:min(440px, calc(100vw - 36px)); max-height:calc(100vh - 36px); box-sizing:border-box; overflow:auto; padding:12px 15px; border:1px solid #c91429; border-radius:10px; background:#dc1e36; color:#fff; box-shadow:0 14px 34px rgba(95, 8, 22, .28); font-weight:700; overflow-wrap:anywhere; }}
     .bulk-phone-notification.is-success {{ border-color:#15803d; background:#168447; }}
     .bulk-phone-notification.is-partial {{ border-color:#b7791f; background:#a96207; }}
     .bulk-phone-progress {{ display:none; flex:1 1 280px; min-width:min(280px, 100%); }}
     .bulk-phone-progress.is-active {{ display:block; }}
     .bulk-phone-progress .hlr-progress-track {{ height:28px; }}
-    .bulk-phone-result {{ padding:18px 20px; }}
+    .bulk-phone-result {{ width:100%; min-width:0; box-sizing:border-box; padding:18px 20px; }}
     .bulk-phone-result h2 {{ margin:0 0 12px; font-size:16px; text-transform:uppercase; }}
     .bulk-phone-summary {{ display:flex; flex-wrap:wrap; gap:10px; margin-bottom:12px; }}
     .bulk-phone-summary span {{ padding:8px 12px; border:1px solid var(--border); border-radius:9px; background:var(--surface-muted); }}
     .bulk-phone-summary strong {{ margin-left:6px; font-size:16px; }}
-    @media(max-width:900px) {{ .bulk-phone-columns {{ grid-template-columns:1fr; }} .bulk-phone-input {{ border-right:0; border-bottom:1px solid var(--border); }} .bulk-phone-input textarea {{ min-height:330px; }} }}
-    @media(max-width:560px) {{ .phones-create-actions {{ align-items:stretch; flex-direction:column; }} .phones-create-actions .phones-bulk-entry .button {{ width:100%; }} .bulk-phone-options .phone-dialog-grid {{ grid-template-columns:1fr; }} .bulk-phone-actions {{ flex-wrap:wrap; }} }}
+    @media(max-width:900px) {{ .bulk-phone-columns {{ grid-template-columns:1fr; }} .bulk-phone-input {{ border-left:0; border-top:1px solid var(--border); }} .bulk-phone-input textarea {{ min-height:330px; }} }}
+    @media(max-width:560px) {{ .phones-create-actions {{ align-items:stretch; flex-direction:column; }} .phones-create-actions .phone-create-shell, .phones-create-actions .phone-create-action, .phones-create-actions .phones-bulk-entry {{ width:100%; }} .bulk-phone-form {{ width:100%; }} .bulk-phone-options .phone-dialog-grid {{ grid-template-columns:1fr; }} .bulk-phone-actions > button, .bulk-phone-actions > .button {{ flex:1 1 calc(50% - 10px); min-width:0; }} }}
 
     .modal-form-card[open] > form.tariff-dialog, .tariff-dialog.tariff-dialog {{ position: fixed; left: 50%; top: 50%; z-index: 990; width: min(520px, calc(100vw - 48px)); max-width: calc(100vw - 48px); max-height: min(680px, calc(100vh - 48px)); margin: 0; padding: 0; transform: translate(-50%, -50%); display: grid; grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr) auto; gap: 0; overflow: hidden; border: 1px solid var(--border-strong); border-radius: 14px; background: #fff; color: var(--text); box-shadow: 0 22px 62px rgba(15, 23, 42, .22); box-sizing: border-box; }}
     .tariff-dialog.tariff-dialog-page-form {{ position: relative; left: auto; top: auto; transform: none; z-index: auto; margin: 0 0 16px; }}
@@ -4514,7 +4518,11 @@ def filter_card(form_html: str, q: dict[str, str], keys: list[str] | tuple[str, 
     reset_href = f"{reset_href}?reset_filters=1"
     reset_link = f"<a class='button reset-filters' href='{esc(reset_href)}'>Сбросить фильтры</a>"
     hidden_open = f'<input type="hidden" name="{FILTER_OPEN_KEY}" value="{'1' if is_open else '0'}" data-filters-open-field>'
-    if "</form>" in form_html:
+    reset_marker = "<!-- filter-reset-action -->"
+    if reset_marker in form_html:
+        form_html = form_html.replace(reset_marker, reset_link, 1)
+        form_html = form_html.replace("</form>", hidden_open + "</form>", 1)
+    elif "</form>" in form_html:
         form_html = form_html.replace("</form>", hidden_open + reset_link + "</form>", 1)
     else:
         form_html += reset_link
@@ -7336,7 +7344,7 @@ def phones_page(repo: Repository, q: dict[str, str] | None = None, *, form_error
 <label>Рабочий статус <select name="status">{phone_status_options(q.get('status'), empty='Все')}</select></label>
 <label>Поиск по номеру <input name="number" value="{esc(q.get('number'))}"></label>
 <div class="filter-review-control"><label class="checkbox-inline filter-review-checkbox"><input type="checkbox" name="is_problematic" value="1" {'checked' if q.get('is_problematic') == '1' else ''}> <span>Проблемный</span></label></div>
-<div class="filter-review-control" aria-label="Фильтр: Требует проверки"><span class="filter-review-spacer" aria-hidden="true">Требует проверки</span><label class="checkbox-inline filter-review-checkbox"><input type="checkbox" name="review_required" value="1" {'checked' if q.get('review_required') == '1' else ''}> <span>Требует проверки</span></label></div><button>Найти</button></form>"""
+<div class="filter-review-control" aria-label="Фильтр: Требует проверки"><span class="filter-review-spacer" aria-hidden="true">Требует проверки</span><label class="checkbox-inline filter-review-checkbox"><input type="checkbox" name="review_required" value="1" {'checked' if q.get('review_required') == '1' else ''}> <span>Требует проверки</span></label></div><!-- filter-reset-action --><button>Найти</button></form>"""
     create_html = f"""<form class="phone-dialog phone-dialog-form" method="post" action="/phones/create">
   <header class="phone-dialog-header"><h2>Добавить номер</h2></header>
   <div class="phone-dialog-body">
@@ -7348,8 +7356,7 @@ def phones_page(repo: Repository, q: dict[str, str] | None = None, *, form_error
       <label>Проект <select name="project_label">{project_options(repo, selected=submitted('project_label') or None, empty='—')}</select></label>
       <label>Назначение <span class="required">*</span><select name="assignment_type">{assignment_options(repo, selected=submitted('assignment_type') or None)}</select></label>
       <label>Рабочий статус <span class="required">*</span><select name="status">{phone_status_options(submitted('status', 'unknown'))}</select></label>
-      <div class="phone-dialog-checkbox"><span>Требует проверки</span><label class="important-checkbox"><input type="checkbox" name="review_required" value="1"><span>Требует проверки</span></label></div>
-      <div class="phone-dialog-checkbox"><span>Проблемный</span><label class="important-checkbox"><input type="checkbox" name="is_problematic" value="1"><span>Проблемный</span></label></div>
+      <div class="phone-dialog-flags"><div class="phone-dialog-checkbox"><label class="important-checkbox"><input type="checkbox" name="is_problematic" value="1"><span>Проблемный</span></label></div><div class="phone-dialog-checkbox"><label class="important-checkbox"><input type="checkbox" name="review_required" value="1"><span>Требует проверки</span></label></div></div>
     </div></section>
     <section class="phone-dialog-section"><h3>Стоимость и тариф</h3><div class="phone-dialog-grid">
       <label>Стоимость подключения <input name="connection_cost" value="{esc(submitted('connection_cost'))}"></label>
@@ -7365,8 +7372,8 @@ def phones_page(repo: Repository, q: dict[str, str] | None = None, *, form_error
   <footer class="phone-dialog-footer"><button type="submit" class="modal-save">Сохранить</button><button type="button" class="modal-cancel" data-modal-close>Отмена</button></footer>
 </form>"""
     table_html = f"{data_table('phones', [('number', f"<span class='copyable-header'>Номер {copy_column_button('phone-number')}</span>"), ('geo', 'ГЕО'), ('provider', 'Провайдер'), ('project', 'Проект'), ('assignment', 'Назначение'), ('status', 'Рабочий статус'), ('active', 'Активен у провайдера'), ('routes', 'Маршруты'), ('connection', 'Подключение'), ('monthly', 'Абонплата'), ('currency', 'Валюта'), ('phone_type', 'Тип номера'), ('tariff', 'Тариф'), ('created', 'Дата создания'), ('updated', 'Дата изменения'), ('deactivated', 'Дата отключения'), ('comment', 'Комментарий'), ('history', 'Ист.'), ('actions', 'Действия')], ''.join(rows))}"
-    bulk_create_link = "<a class='button' href='/phones/bulk-create'>+ Массовое добавление</a>" if can_write("phones") else ""
-    create_action = form_card('+ Добавить номер', create_html, extra_class='phone-create-shell', summary_class='phone-primary-summary', open_by_default=bool(form_error)) if can_write("phones") else ""
+    bulk_create_link = "<a class='button phone-create-action' href='/phones/bulk-create'>+ Массовое добавление</a>" if can_write("phones") else ""
+    create_action = form_card('+ Добавить номер', create_html, extra_class='phone-create-shell', summary_class='phone-primary-summary phone-create-action', open_by_default=bool(form_error)) if can_write("phones") else ""
     actions_html = f"<div class='phones-create-actions'>{create_action}<div class='phones-bulk-entry'>{bulk_create_link}</div></div>" if bulk_create_link else create_action
     body = f"""
 {filter_card(filters_html, q, ('country_id', 'provider_id', 'project', 'assignment_type', 'status', 'number', 'review_required', 'is_problematic'))}
@@ -7516,11 +7523,10 @@ def bulk_phones_page(repo: Repository, form_data: dict[str, str] | None = None, 
     form = f"""<form method='post' action='/phones/bulk-create' class='card bulk-phone-form'>
 <input type='hidden' name='successful_lines' value='{esc(hidden_state)}'>
 <input type='hidden' name='action' id='bulk-phone-action' value='validate'>
-<div class='bulk-phone-columns'><section class='bulk-phone-input'><h3>Номера для добавления</h3><textarea id='bulk-phone-numbers' name='numbers' rows='20' placeholder='393331234567&#10;393331234568&#10;393331234569'>{esc(submitted('numbers'))}</textarea><div class='bulk-phone-hint'><span>Один номер на строке.</span><strong id='bulk-phone-count'>Вставлено: 0 / 500</strong></div></section>
-<div class='bulk-phone-options'><section><h3>Основные параметры</h3><div class='phone-dialog-grid'><label>ГЕО <span class='required'>*</span><select name='country_id'>{active_options(repo, 'countries', selected=submitted('country_id') or None)}</select></label><label>Провайдер <span class='required'>*</span><select name='provider_id'>{active_options(repo, 'providers', selected=submitted('provider_id') or None, empty='—')}</select></label><label>Проект <select name='project_label'>{project_options(repo, selected=submitted('project_label') or None, empty='—')}</select></label><label>Назначение <span class='required'>*</span><select name='assignment_type'>{assignment_options(repo, selected=submitted('assignment_type') or None)}</select></label><label class='phone-dialog-full'>Рабочий статус <span class='required'>*</span><select name='status'>{phone_status_options(submitted('status', 'unknown'))}</select></label></div></section>
+<div class='bulk-phone-columns'><div class='bulk-phone-options'><section><h3>Основные параметры</h3><div class='phone-dialog-grid'><label>ГЕО <span class='required'>*</span><select name='country_id'>{active_options(repo, 'countries', selected=submitted('country_id') or None)}</select></label><label>Провайдер <span class='required'>*</span><select name='provider_id'>{active_options(repo, 'providers', selected=submitted('provider_id') or None, empty='—')}</select></label><label>Проект <select name='project_label'>{project_options(repo, selected=submitted('project_label') or None, empty='—')}</select></label><label>Назначение <span class='required'>*</span><select name='assignment_type'>{assignment_options(repo, selected=submitted('assignment_type') or None)}</select></label><label class='phone-dialog-full'>Рабочий статус <span class='required'>*</span><select name='status'>{phone_status_options(submitted('status', 'unknown'))}</select></label></div></section>
 <section><h3>Стоимость и тариф</h3><div class='phone-dialog-grid'><label>Стоимость подключения <input name='connection_cost' value='{esc(submitted('connection_cost'))}'></label><label>Абонентская плата <input name='monthly_fee' value='{esc(submitted('monthly_fee'))}'></label><label>Валюта <select name='currency_id'>{active_options(repo, 'currencies', 'code', selected=submitted('currency_id') or None, empty='—')}</select></label><label>Тип номера <select name='phone_type'>{phone_type_options(repo, selected=submitted('phone_type') or None, empty='—')}</select></label><label class='phone-dialog-full'>Тариф <input name='tariff_label' value='{esc(submitted('tariff_label'))}'></label></div></section>
-<section><h3>Описание</h3><label>Комментарий <textarea name='comment' rows='3'>{esc(submitted('comment'))}</textarea></label></section></div></div>
-<footer class='bulk-phone-actions'><button type='submit' data-bulk-action='validate' class='secondary'>Проверить</button><button type='submit' data-bulk-action='save'>Сохранить</button><button type='button' id='bulk-phone-clear' class='secondary'>Очистить список</button><a class='button secondary' id='bulk-phone-back' href='/phones'>Назад</a><div class='bulk-phone-progress' id='bulk-phone-progress' role='status' aria-label='Операция выполняется' aria-hidden='true'><span class='hlr-progress-track' aria-hidden='true'><span class='hlr-progress-bar'></span></span></div></footer></form>"""
+<section><h3>Описание</h3><label>Комментарий <textarea name='comment' rows='3'>{esc(submitted('comment'))}</textarea></label></section></div><section class='bulk-phone-input'><h3>Номера для добавления</h3><textarea id='bulk-phone-numbers' name='numbers' rows='20' placeholder='393331234567&#10;393331234568&#10;393331234569'>{esc(submitted('numbers'))}</textarea><div class='bulk-phone-hint'><span>Один номер на строке.</span><strong id='bulk-phone-count'>Вставлено: 0 / 500</strong></div></section></div>
+<footer class='bulk-phone-actions'><button type='submit' data-bulk-action='validate'>Проверить</button><button type='submit' data-bulk-action='save'>Сохранить</button><button type='button' id='bulk-phone-clear' class='secondary'>Очистить список</button><a class='button secondary' id='bulk-phone-back' href='/phones'>Назад</a><div class='bulk-phone-progress' id='bulk-phone-progress' role='status' aria-label='Операция выполняется' aria-hidden='true'><span class='hlr-progress-track' aria-hidden='true'><span class='hlr-progress-bar'></span></span></div></footer></form>"""
     script = """<script>(()=>{const form=document.querySelector('.bulk-phone-form'),input=document.getElementById('bulk-phone-numbers'),count=document.getElementById('bulk-phone-count'),clear=document.getElementById('bulk-phone-clear'),action=document.getElementById('bulk-phone-action'),progress=document.getElementById('bulk-phone-progress'),back=document.getElementById('bulk-phone-back');let submitting=false;const update=()=>{const n=input.value.split(/\\r?\\n/).filter(v=>v.trim()).length;count.textContent=`Вставлено: ${n} / 500`;count.classList.toggle('error',n>500)};form.querySelectorAll('[data-bulk-action]').forEach(button=>button.addEventListener('click',()=>{action.value=button.dataset.bulkAction}));form.addEventListener('submit',event=>{if(submitting){event.preventDefault();return}event.preventDefault();submitting=true;progress.classList.add('is-active');progress.setAttribute('aria-hidden','false');form.querySelectorAll('button').forEach(button=>button.disabled=true);back.setAttribute('aria-disabled','true');back.addEventListener('click',block=>block.preventDefault(),{once:true});requestAnimationFrame(()=>requestAnimationFrame(()=>form.submit()))});input.addEventListener('input',update);clear.addEventListener('click',()=>{input.value='';document.querySelector("input[name='successful_lines']").value='{}';document.querySelector('.bulk-phone-result')?.remove();update();input.focus()});update()})()</script>"""
     breadcrumbs = "<p class='breadcrumbs'><a href='/'>Главная</a> › <a href='/phones'>Купленные номера</a> › Массовое добавление</p>"
     return page("Массовое добавление номеров", f"{notification}<main class='bulk-phone-page'>{breadcrumbs}{form}{result_html}</main>{script}")
@@ -9584,8 +9590,7 @@ def phone_edit_form(repo: Repository, phone_id: int, phone: dict, *, modal: bool
 <label>Назначение <select name='assignment_type'>{assignment_options(repo, selected=phone['assignment_type'])}</select></label>
 <label>Рабочий статус <select name='status'>{phone_status_options(phone['status'])}</select></label>
 <label>Активен у провайдера <select name='is_active'><option value='1' {'selected' if phone['is_active'] else ''}>Да</option><option value='0' {'selected' if not phone['is_active'] else ''}>Нет</option></select></label>
-<div class='phone-dialog-checkbox'><span>Требует проверки</span><label class='important-checkbox'><input type='checkbox' name='review_required' value='1' {'checked' if phone['review_required'] else ''}><span>Требует проверки</span></label></div>
-<div class='phone-dialog-checkbox'><span>Проблемный</span><label class='important-checkbox'><input type='checkbox' name='is_problematic' value='1' {'checked' if phone['is_problematic'] else ''}><span>Проблемный</span></label></div>
+<div class='phone-dialog-flags'><div class='phone-dialog-checkbox'><label class='important-checkbox'><input type='checkbox' name='is_problematic' value='1' {'checked' if phone['is_problematic'] else ''}><span>Проблемный</span></label></div><div class='phone-dialog-checkbox'><label class='important-checkbox'><input type='checkbox' name='review_required' value='1' {'checked' if phone['review_required'] else ''}><span>Требует проверки</span></label></div></div>
 </div></section>
 <section class='phone-dialog-section'><h3>Стоимость и тариф</h3><div class='phone-dialog-grid'>
 <label>Стоимость подключения <input name='connection_cost' value='{esc(phone['connection_cost'] or '')}'></label>
