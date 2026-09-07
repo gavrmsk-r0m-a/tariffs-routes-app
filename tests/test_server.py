@@ -2957,7 +2957,11 @@ class ServerSmokeTest(unittest.TestCase):
         columns = content[content.index("<div class='bulk-phone-columns'"):content.index("<footer class='bulk-phone-actions'")]
         self.assertLess(columns.index("Основные параметры"), columns.index("Номера для добавления"))
         self.assertNotIn("bulk-phone-result", columns)
-        self.assertLess(content.index("</div>\n<footer class='bulk-phone-actions'"), content.index("</form>"))
+        for field_name in ("country_id", "provider_id", "project_label", "assignment_type", "status", "connection_cost", "monthly_fee", "currency_id", "phone_type", "tariff_label", "comment", "numbers"):
+            self.assertIn(f"name='{field_name}'", columns)
+        actions = content[content.index("<footer class='bulk-phone-actions'"):content.index("</form>")]
+        self.assertIn("data-bulk-action='validate'", actions)
+        self.assertIn("data-bulk-action='save'", actions)
         _, phones = self.request("/phones")
         self.assertIn("phones-create-actions", phones)
         self.assertIn("+ Массовое добавление", phones)
@@ -3014,6 +3018,7 @@ class ServerSmokeTest(unittest.TestCase):
         captured, content = self.request("/phones/bulk-create", method="POST", body=body)
         self.assertEqual(captured["status"], "200 OK")
         self.assertIn("Результат проверки", content)
+        self.assertLess(content.index("</form>"), content.index("<section class='card bulk-phone-result'"))
         self.assertIn("Неверный формат номера", content)
         self.assertIn("Дубликат в текущем списке (строка 1)", content)
         conn = _TEST_DB.connect()
