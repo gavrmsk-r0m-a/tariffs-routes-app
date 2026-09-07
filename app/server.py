@@ -3203,7 +3203,7 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .bulk-phone-page {{ display:grid; gap:16px; min-width:0; }}
     .bulk-phone-page .page-heading h1 {{ margin:4px 0; }}
     .bulk-phone-page .breadcrumbs {{ margin:0 0 6px; font-size:12px; }}
-    .bulk-phone-form {{ width:min(1180px, calc(100% - 32px)); max-width:100%; box-sizing:border-box; margin:0 auto; padding:0; overflow:hidden; }}
+    .bulk-phone-form {{ display:block; width:100%; max-width:1060px; box-sizing:border-box; margin-block:0; margin-inline:auto; padding:0; overflow:hidden; }}
     .bulk-phone-columns {{ display:grid; grid-template-columns:minmax(0, 3fr) minmax(320px, 2fr); min-width:0; }}
     .bulk-phone-input {{ display:flex; flex-direction:column; min-width:0; padding:20px; border-left:1px solid var(--border); }}
     .bulk-phone-form h3 {{ margin:0 0 10px; color:#1e3a5f; font-size:11.5px; font-weight:850; letter-spacing:.03em; text-transform:uppercase; }}
@@ -3224,7 +3224,7 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .bulk-phone-progress {{ display:none; flex:1 1 280px; min-width:min(280px, 100%); }}
     .bulk-phone-progress.is-active {{ display:block; }}
     .bulk-phone-progress .hlr-progress-track {{ height:28px; }}
-    .bulk-phone-result {{ padding:18px 20px; }}
+    .bulk-phone-result {{ width:100%; min-width:0; box-sizing:border-box; padding:18px 20px; }}
     .bulk-phone-result h2 {{ margin:0 0 12px; font-size:16px; text-transform:uppercase; }}
     .bulk-phone-summary {{ display:flex; flex-wrap:wrap; gap:10px; margin-bottom:12px; }}
     .bulk-phone-summary span {{ padding:8px 12px; border:1px solid var(--border); border-radius:9px; background:var(--surface-muted); }}
