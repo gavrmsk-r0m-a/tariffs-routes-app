@@ -3472,35 +3472,73 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertEqual(captured["status"], "400 Bad Request")
         self.assertIn("Номер уже добавлен", content)
 
-    def test_route_number_add_rejects_non_used_phone_status(self):
+    def test_route_number_add_promotes_active_unused_and_unknown_phones(self):
         self.make_route_purchased_pool()
         self.request("/routes")
-        body = urlencode({"number": "525550099998", "country_id": "1", "provider_id": "1", "assignment_type": "gl", "status": "free", "is_active": "1"})
-        self.request("/phones/create", method="POST", body=body)
-        body = urlencode({"phone_number": "525550099998", "usage_type": "pool_member"})
-        captured, content = self.request("/routes/1/numbers/add", method="POST", body=body)
+        for index, status in enumerate(("used", "unused", "unknown")):
+            number = f"52555009999{index}"
+            body = urlencode({"number": number, "country_id": "1", "provider_id": "1", "assignment_type": "gl", "status": status, "is_active": "1"})
+            self.request("/phones/create", method="POST", body=body)
+            body = urlencode({"phone_number": number, "usage_type": "pool_member"})
+            captured, _ = self.request("/routes/1/numbers/add", method="POST", body=body)
+            self.assertEqual(captured["status"], "303 See Other")
+            conn = _TEST_DB.connect()
+            try:
+                phone = conn.execute("SELECT id, status FROM phone_numbers WHERE number = %s", (number,)).fetchone()
+                link = conn.execute("SELECT is_active FROM route_phone_numbers WHERE route_id = 1 AND phone_number_id = %s", (phone["id"],)).fetchone()
+                self.assertEqual(phone["status"], "used")
+                self.assertTrue(bool(link["is_active"]))
+            finally:
+                conn.close()
+        conn = _TEST_DB.connect()
+        try:
+            repo = server.Repository(conn)
+            repo.create_phone_number(
+                country_id=1, provider_id=1, number="525550099993", assignment_type="gl",
+                status="unknown", is_active=False, created_by=1,
+            )
+        finally:
+            conn.close()
+        captured, content = self.request(
+            "/routes/1/numbers/add", method="POST",
+            body=urlencode({"phone_number": "525550099993", "usage_type": "pool_member"}),
+        )
         self.assertEqual(captured["status"], "400 Bad Request")
-        self.assertIn("рабочий статус номера должен быть ‘Используется’", content)
+        self.assertIn("не активен у провайдера", content)
 
-    def test_route_number_bulk_add_reports_status_errors_and_adds_used(self):
+    def test_route_number_bulk_add_promotes_eligible_phones_and_reports_inactive(self):
         self.request("/routes")
         conn = _TEST_DB.connect()
         try:
             repo = server.Repository(conn)
             route_id = repo.create_route(country_id=1, provider_id=1, name="Purchased Pool Empty", cli_source_type="pool", cli_source_label="Pool_A", aon_pool="Пул купленных номеров", created_by=1)
-            conn.execute("UPDATE phone_numbers SET status = 'unused' WHERE number = '525550000005'")
+            conn.execute("UPDATE phone_numbers SET status = 'used', is_active = TRUE WHERE number = '525550000005'")
+            conn.execute("UPDATE phone_numbers SET status = 'unused', is_active = TRUE WHERE number = '525550000006'")
+            conn.execute("UPDATE phone_numbers SET status = 'unknown', is_active = TRUE WHERE number = '525550000007'")
+            conn.execute("UPDATE phone_numbers SET status = 'unused', is_active = FALSE WHERE number = '525550000008'")
             conn.commit()
         finally:
             conn.close()
-        body = urlencode({"phone_numbers": "525550000005\n525550000006"})
+        body = urlencode({"phone_numbers": "525550000005\n525550000006\n525550000007\n525550000008"})
         captured, _ = self.request(f"/routes/{route_id}/numbers/bulk-add", method="POST", body=body)
         self.assertEqual(captured["status"], "303 See Other")
         location = dict(captured["headers"])["Location"]
         self.assertIn("numbers/manage?notice=", location)
         captured, content = self.request(location)
-        self.assertIn("Добавлено 1 из 2", content)
-        self.assertIn("рабочий статус номера должен быть ‘Используется’", content)
-        self.assertIn("525550000006", content)
+        self.assertIn("Добавлено 3 из 4", content)
+        self.assertIn("не активен у провайдера", content)
+        self.assertIn("525550000008", content)
+        conn = _TEST_DB.connect()
+        try:
+            rows = conn.execute("SELECT id, number, status FROM phone_numbers WHERE number IN (%s, %s, %s, %s)", ("525550000005", "525550000006", "525550000007", "525550000008")).fetchall()
+            by_number = {row["number"]: row for row in rows}
+            for number in ("525550000005", "525550000006", "525550000007"):
+                self.assertEqual(by_number[number]["status"], "used")
+                link = conn.execute("SELECT is_active FROM route_phone_numbers WHERE route_id = %s AND phone_number_id = %s", (route_id, by_number[number]["id"])).fetchone()
+                self.assertTrue(bool(link["is_active"]))
+            self.assertEqual(by_number["525550000008"]["status"], "unused")
+        finally:
+            conn.close()
 
 
     def test_route_numbers_read_only_page_shows_numbers_without_management_forms(self):
@@ -3515,24 +3553,36 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertNotIn('action="/routes/1/numbers/remove"', content)
         self.assertNotIn("Причина", content)
 
-    def test_route_number_management_errors_stay_in_context_and_use_error_style(self):
+    def test_route_number_management_inactive_error_stays_in_context(self):
         self.make_route_purchased_pool()
         self.request("/routes")
-        body = urlencode({"number": "525550099997", "country_id": "1", "provider_id": "1", "assignment_type": "gl", "status": "free", "is_active": "1"})
+        body = urlencode({"number": "525550099997", "country_id": "1", "provider_id": "1", "assignment_type": "gl", "status": "unused"})
         self.request("/phones/create", method="POST", body=body)
+        conn = _TEST_DB.connect()
+        try:
+            conn.execute("UPDATE phone_numbers SET is_active = FALSE WHERE number = %s", ("525550099997",))
+            conn.commit()
+        finally:
+            conn.close()
         body = urlencode({"phone_number": "525550099997", "usage_type": "pool_member"})
         captured, content = self.request("/routes/1/numbers/add", method="POST", body=body)
         self.assertEqual(captured["status"], "400 Bad Request")
         self.assertIn("Номера маршрута / АОНы", content)
         self.assertIn("class='error'", content)
-        self.assertIn("рабочий статус номера должен быть ‘Используется’", content)
+        self.assertIn("не активен у провайдера", content)
         self.assertIn('action="/routes/1/numbers/add"', content)
 
     def test_route_number_bulk_add_error_notice_uses_error_style(self):
         self.make_route_purchased_pool()
         self.request("/routes")
-        body = urlencode({"number": "525550099996", "country_id": "1", "provider_id": "1", "assignment_type": "gl", "status": "free", "is_active": "1"})
+        body = urlencode({"number": "525550099996", "country_id": "1", "provider_id": "1", "assignment_type": "gl", "status": "unused"})
         self.request("/phones/create", method="POST", body=body)
+        conn = _TEST_DB.connect()
+        try:
+            conn.execute("UPDATE phone_numbers SET is_active = FALSE WHERE number = %s", ("525550099996",))
+            conn.commit()
+        finally:
+            conn.close()
         body = urlencode({"phone_numbers": "525550099996"})
         captured, _ = self.request("/routes/1/numbers/bulk-add", method="POST", body=body)
         self.assertEqual(captured["status"], "303 See Other")

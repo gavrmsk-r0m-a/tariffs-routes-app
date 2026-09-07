@@ -1045,8 +1045,28 @@ class Repository:
                 raise BusinessRuleError("Phone number not found")
             if not bool(phone["is_active"]):
                 raise BusinessRuleError("Нельзя добавить номер в маршрут: номер не активен у провайдера")
+
+            existing = self.conn.execute(
+                f"SELECT id FROM route_phone_numbers WHERE route_id = {p} AND phone_number_id = {p} AND is_active = {p}",
+                (route_id, phone_number_id, to_db_bool(True, self.backend)),
+            ).fetchone()
+            if existing:
+                raise BusinessRuleError("Номер уже добавлен в этот маршрут")
+
             if phone["status"] != "used":
-                raise BusinessRuleError("Нельзя добавить номер в маршрут: рабочий статус номера должен быть ‘Используется’")
+                old_values = {"status": phone["status"]}
+                new_values = {"status": "used"}
+                self.conn.execute(
+                    f"UPDATE phone_numbers SET status = 'used', updated_by = {p}, updated_at = CURRENT_TIMESTAMP WHERE id = {p}",
+                    (added_by, phone_number_id),
+                )
+                self.record_phone_update_history(
+                    phone_number_id, added_by, old_values, new_values, commit=False,
+                )
+                self._change_log(
+                    "phone_number", phone_number_id, "phone_number.updated", added_by,
+                    old_values=old_values, new_values=new_values,
+                )
 
             insert_sql = prepare_insert_returning_id(f"""
             INSERT INTO route_phone_numbers(route_id, phone_number_id, usage_type, is_active, added_by, comment)

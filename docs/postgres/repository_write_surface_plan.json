@@ -226,9 +226,11 @@
     "add_phone_to_route": {
       "batch": "phone_route_tariff_core_writes",
       "current_commit_behavior": "mixed",
-      "dependencies": [],
+      "dependencies": [
+        "record_phone_update_history"
+      ],
       "mutation_kind": "mixed_read_write",
-      "notes": "Stage 66C route-phone link rollback smoke; production PostgreSQL runtime remains disabled.",
+      "notes": "Stage 66C route-phone link rollback smoke, including atomic phone-status promotion history; production PostgreSQL runtime remains disabled.",
       "postgres_strategy": "Backend-aware placeholders and booleans with caller-owned transaction support; use RETURNING for the route-phone link identity.",
       "returns": "PhoneLinkResult containing the inserted link and phone IDs",
       "risk": "medium",
