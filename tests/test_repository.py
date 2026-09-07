@@ -71,7 +71,7 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
     def tearDown(self):
         self.conn.close()
 
-    def create_phone(self, status="used", is_active=True, number="393331234567"):
+    def create_phone(self, status="used", is_active=True, number="393331234567", **overrides):
         return self.repo.create_phone_number(
             country_id=self.country_id,
             provider_id=self.provider_id,
@@ -81,6 +81,7 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
             created_by=self.admin_id,
             currency_id=self.currency_id,
             is_active=is_active,
+            **overrides,
         )
 
     def create_full_phone(self, **overrides):
@@ -1062,6 +1063,9 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
 
     def test_valid_phone_can_be_added_to_route(self):
         phone_id = self.create_phone()
+        before_history = self.conn.execute(
+            "SELECT COUNT(*) FROM phone_number_history WHERE phone_number_id = %s AND action = 'updated'", (phone_id,),
+        ).fetchone()[0]
         result = self.repo.add_phone_to_route(
             route_id=self.route_id,
             phone_number_id=phone_id,
@@ -1069,28 +1073,87 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
             added_by=self.admin_id,
         )
         self.assertGreater(result.route_phone_number_id, 0)
+        self.assertEqual(self.conn.execute("SELECT status FROM phone_numbers WHERE id = %s", (phone_id,)).fetchone()["status"], "used")
+        self.assertEqual(self.conn.execute(
+            "SELECT COUNT(*) FROM phone_number_history WHERE phone_number_id = %s AND action = 'updated'", (phone_id,),
+        ).fetchone()[0], before_history)
 
-    def test_non_used_provider_active_phones_cannot_be_added_to_route(self):
-        for index, status in enumerate(("free", "problem", "unknown")):
+    def test_active_unused_and_unknown_phones_are_promoted_when_added_to_route(self):
+        expected_labels = {"unused": "Не используется", "unknown": "Не известно"}
+        for index, status in enumerate(("unused", "unknown")):
             with self.subTest(status=status):
                 phone_id = self.create_phone(status=status, number=f"39333123457{index}")
-                with self.assertRaisesRegex(BusinessRuleError, "рабочий статус номера должен быть ‘Используется’"):
-                    self.repo.add_phone_to_route(
-                        route_id=self.route_id,
-                        phone_number_id=phone_id,
-                        usage_type="pool_member",
-                        added_by=self.admin_id,
-                    )
+                result = self.repo.add_phone_to_route(
+                    route_id=self.route_id, phone_number_id=phone_id,
+                    usage_type="pool_member", added_by=self.admin_id,
+                )
+                phone = self.conn.execute("SELECT status FROM phone_numbers WHERE id = %s", (phone_id,)).fetchone()
+                link = self.conn.execute("SELECT is_active FROM route_phone_numbers WHERE id = %s", (result.route_phone_number_id,)).fetchone()
+                history = self.conn.execute(
+                    "SELECT changed_by, new_value FROM phone_number_history WHERE phone_number_id = %s AND action = 'updated' ORDER BY id DESC LIMIT 1",
+                    (phone_id,),
+                ).fetchone()
+                audit = self.conn.execute(
+                    "SELECT changed_by FROM change_log WHERE entity_type = 'phone_number' AND entity_id = %s AND change_type = 'phone_number.updated' ORDER BY id DESC LIMIT 1",
+                    (phone_id,),
+                ).fetchone()
+                self.assertEqual(phone["status"], "used")
+                self.assertTrue(bool(link["is_active"]))
+                self.assertIn(f"Рабочий статус: {expected_labels[status]} → Используется", _json_text(history["new_value"]))
+                self.assertEqual((history["changed_by"], audit["changed_by"]), (self.admin_id, self.admin_id))
+
+    def test_route_add_preserves_problematic_and_review_flags(self):
+        cases = ((True, True), (False, True), (False, False))
+        for index, (problematic, review_required) in enumerate(cases):
+            with self.subTest(problematic=problematic, review_required=review_required):
+                phone_id = self.create_phone(
+                    status="unused", number=f"39333123458{index}",
+                    is_problematic=problematic, review_required=review_required,
+                )
+                self.repo.add_phone_to_route(
+                    route_id=self.route_id, phone_number_id=phone_id,
+                    usage_type="pool_member", added_by=self.admin_id,
+                )
+                phone = self.conn.execute(
+                    "SELECT status, is_problematic, review_required FROM phone_numbers WHERE id = %s", (phone_id,),
+                ).fetchone()
+                self.assertEqual(
+                    (phone["status"], bool(phone["is_problematic"]), bool(phone["review_required"])),
+                    ("used", problematic, review_required),
+                )
 
     def test_inactive_phone_cannot_be_added_to_route(self):
-        phone_id = self.create_phone(is_active=False)
-        with self.assertRaisesRegex(BusinessRuleError, "не активен у провайдера"):
-            self.repo.add_phone_to_route(
-                route_id=self.route_id,
-                phone_number_id=phone_id,
-                usage_type="pool_member",
-                added_by=self.admin_id,
-            )
+        for index, status in enumerate(("unused", "unknown")):
+            with self.subTest(status=status):
+                phone_id = self.create_phone(status=status, is_active=False, number=f"39333123459{index}")
+                with self.assertRaisesRegex(BusinessRuleError, "не активен у провайдера"):
+                    self.repo.add_phone_to_route(
+                        route_id=self.route_id, phone_number_id=phone_id,
+                        usage_type="pool_member", added_by=self.admin_id,
+                    )
+                self.assertEqual(self.conn.execute("SELECT status FROM phone_numbers WHERE id = %s", (phone_id,)).fetchone()["status"], "unused")
+                self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM route_phone_numbers WHERE phone_number_id = %s", (phone_id,)).fetchone()[0], 0)
+
+    def test_duplicate_route_add_does_not_promote_or_add_history(self):
+        phone_id = self.create_phone(status="used")
+        self.repo.add_phone_to_route(route_id=self.route_id, phone_number_id=phone_id, usage_type="pool_member", added_by=self.admin_id)
+        self.conn.execute("UPDATE phone_numbers SET status = 'unused' WHERE id = %s", (phone_id,))
+        self.conn.commit()
+        before = self.conn.execute("SELECT COUNT(*) FROM phone_number_history WHERE phone_number_id = %s", (phone_id,)).fetchone()[0]
+        with self.assertRaisesRegex(BusinessRuleError, "уже добавлен"):
+            self.repo.add_phone_to_route(route_id=self.route_id, phone_number_id=phone_id, usage_type="pool_member", added_by=self.admin_id)
+        self.assertEqual(self.conn.execute("SELECT status FROM phone_numbers WHERE id = %s", (phone_id,)).fetchone()["status"], "unused")
+        self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM phone_number_history WHERE phone_number_id = %s", (phone_id,)).fetchone()[0], before)
+
+    def test_route_link_failure_rolls_back_status_and_phone_audit(self):
+        phone_id = self.create_phone(status="unknown")
+        before_history = self.conn.execute("SELECT COUNT(*) FROM phone_number_history WHERE phone_number_id = %s", (phone_id,)).fetchone()[0]
+        before_audit = self.conn.execute("SELECT COUNT(*) FROM change_log WHERE entity_type = 'phone_number' AND entity_id = %s", (phone_id,)).fetchone()[0]
+        with self.assertRaises(IntegrityError):
+            self.repo.add_phone_to_route(route_id=999999, phone_number_id=phone_id, usage_type="pool_member", added_by=self.admin_id)
+        self.assertEqual(self.conn.execute("SELECT status FROM phone_numbers WHERE id = %s", (phone_id,)).fetchone()["status"], "unknown")
+        self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM phone_number_history WHERE phone_number_id = %s", (phone_id,)).fetchone()[0], before_history)
+        self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM change_log WHERE entity_type = 'phone_number' AND entity_id = %s", (phone_id,)).fetchone()[0], before_audit)
 
     def test_route_numbers_only_lists_currently_usable_provider_active_numbers(self):
         visible_statuses = ["used", "free", "problem", "unknown"]
@@ -1562,21 +1625,9 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
             currency_id=self.currency_id,
             review_required=True,
         )
-        with self.assertRaisesRegex(BusinessRuleError, "рабочий статус номера должен быть ‘Используется’"):
-            self.repo.add_phone_to_route(route_id=self.route_id, phone_number_id=phone_id, usage_type="pool_member", added_by=self.admin_id)
-        self.repo.update_phone_number(
-            phone_id,
-            country_id=self.country_id,
-            provider_id=self.provider_id,
-            number="393331234592",
-            assignment_type="gl",
-            status="used",
-            is_active=True,
-            updated_by=self.admin_id,
-            currency_id=self.currency_id,
-            review_required=True,
-        )
         result = self.repo.add_phone_to_route(route_id=self.route_id, phone_number_id=phone_id, usage_type="pool_member", added_by=self.admin_id)
+        phone = self.conn.execute("SELECT status, review_required FROM phone_numbers WHERE id = %s", (phone_id,)).fetchone()
+        self.assertEqual((phone["status"], bool(phone["review_required"])), ("used", True))
         self.assertGreater(result.route_phone_number_id, 0)
 
     def test_phone_number_must_use_strict_international_format(self):
