@@ -43,6 +43,8 @@ SMOKE_METHODS = (
     "list_phone_history", "list_route_history", "list_tariff_history",
     "list_company_routing_setting_history", "list_calling_company_history",
     "list_calling_company_events", "count_calling_company_events",
+    "spam_phone_candidates", "spam_eligible_routes", "spam_route_number_union",
+    "spam_states", "spam_checked_numbers", "spam_phone_history",
 )
 
 STAGE_34_METHODS = (

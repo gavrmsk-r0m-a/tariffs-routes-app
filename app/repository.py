@@ -26,6 +26,11 @@ PHONE_RE = re.compile(r"^[1-9][0-9]{6,20}$")
 VALID_PHONE_STATUSES = {"used", "unused", "unknown"}
 
 
+def route_uses_purchased_number_pool(aon_pool: object) -> bool:
+    value = str(aon_pool or "").strip()
+    return value == "Пул купленных номеров" or value.startswith("Пул купленных номеров:")
+
+
 def _normalize_required_company_name(company_name: str) -> str:
     normalized_company_name = company_name.strip()
     if not normalized_company_name:
@@ -1443,6 +1448,11 @@ class Repository:
 
     def list_phone_numbers(self, filters: dict | None = None) -> list[dict]:
         phone_filters = dict(filters or {})
+        supported, normalized_active = self._normalize_optional_bool_filter(phone_filters.get("is_active"))
+        if not supported:
+            return []
+        if normalized_active is None: phone_filters.pop("is_active", None)
+        else: phone_filters["is_active"] = normalized_active
         supported, normalized_review = self._normalize_optional_bool_filter(phone_filters.get("review_required"))
         if not supported:
             return []
@@ -1467,6 +1477,8 @@ class Repository:
                 "project_like": "pn.project_label",
                 "assignment_type": "pn.assignment_type",
                 "status": "pn.status",
+                "phone_type": "pn.phone_type",
+                "is_active": "pn.is_active",
                 "number_like": "pn.number",
                 "review_required": "pn.review_required",
                 "is_problematic": "pn.is_problematic",
@@ -4619,3 +4631,114 @@ class Repository:
                 source,
             ),
         )
+
+    def spam_phone_candidates(self, filters: dict | None = None) -> list[dict]:
+        """Purchased-number candidates; deliberately does not restrict assignment."""
+        return self.list_phone_numbers(filters)
+
+    def spam_eligible_routes(self, country_id: int | None, source_type: str) -> list[dict]:
+        if source_type not in {"pool", "sim"}:
+            return []
+        p = placeholder(self.backend)
+        params: list[object] = [to_db_bool(True, self.backend)]
+        country_clause = ""
+        if country_id:
+            country_clause, params = f" AND r.country_id = {p}", [*params, country_id]
+        rows = rows_to_dicts(self.conn.execute(f"""
+            SELECT r.id, r.name, r.country_id, r.provider_id, r.aon_pool, pr.name AS provider_name,
+                   COUNT(rpn.id) AS phone_count
+            FROM routes r JOIN providers pr ON pr.id=r.provider_id
+            LEFT JOIN route_phone_numbers rpn ON rpn.route_id=r.id AND rpn.is_active={p}
+            WHERE r.cli_source_type={p}{country_clause}
+            GROUP BY r.id, r.name, r.country_id, r.provider_id, r.aon_pool, pr.name ORDER BY r.name
+        """, [params[0], source_type, *params[1:]]))
+        return [row for row in rows if source_type == "sim" or route_uses_purchased_number_pool(row.get("aon_pool"))]
+
+    def spam_route_number_union(self, route_ids: list[int]) -> list[dict]:
+        if not route_ids:
+            return []
+        clause, params = build_in_clause("rpn.route_id", route_ids, self.backend)
+        p = placeholder(self.backend)
+        rows = rows_to_dicts(self.conn.execute(f"""
+            SELECT pn.id phone_number_id, pn.number, r.id route_id, r.name route_name
+            FROM route_phone_numbers rpn JOIN phone_numbers pn ON pn.id=rpn.phone_number_id
+            JOIN routes r ON r.id=rpn.route_id
+            WHERE {clause} AND rpn.is_active={p} AND pn.is_active={p}
+            ORDER BY pn.number, r.name
+        """, [*params, to_db_bool(True, self.backend), to_db_bool(True, self.backend)]))
+        grouped: dict[int, dict] = {}
+        for row in rows:
+            item = grouped.setdefault(int(row["phone_number_id"]), {"phone_number_id": int(row["phone_number_id"]), "number": row["number"], "routes": []})
+            item["routes"].append({"id": int(row["route_id"]), "name": row["route_name"]})
+        return list(grouped.values())
+
+    def spam_states(self, numbers: list[str]) -> dict[str, int]:
+        if not numbers:
+            return {}
+        clause, params = build_in_clause("pn.number", numbers, self.backend)
+        rows = self.conn.execute(f"SELECT pn.number, COALESCE(ps.score,0) score FROM phone_numbers pn LEFT JOIN phone_spam_state ps ON ps.phone_number_id=pn.id WHERE {clause}", params)
+        return {str(row["number"]): int(row["score"]) for row in rows}
+
+    def save_spam_check_batch(self, *, request_token: str, selection_mode: str, raw_response: str,
+                              expected_numbers: list[str], results: list[dict], route_map: dict[str, list[dict]], checked_by: int,
+                              parser_version: str = "1") -> dict:
+        """Atomically persist one idempotent, server-revalidated batch."""
+        from app.spam_checker import score_change
+        p = placeholder(self.backend)
+        with self.transaction():
+            prior = self.conn.execute(f"SELECT id FROM spam_check_batches WHERE request_token={p}", (request_token,)).fetchone()
+            if prior:
+                return {"batch_id": int(prior["id"]), "saved": 0, "duplicate": True}
+            clause, params = build_in_clause("number", expected_numbers, self.backend)
+            phones = {row["number"]: row_to_dict(row) for row in self.conn.execute(f"SELECT id, number, is_problematic FROM phone_numbers WHERE {clause} FOR UPDATE", params)} if expected_numbers else {}
+            invalid = set(expected_numbers) - set(phones)
+            if invalid:
+                raise BusinessRuleError("Номера не найдены в «Купленных номерах»: " + ", ".join(sorted(invalid)))
+            sql = prepare_insert_returning_id(f"INSERT INTO spam_check_batches(request_token,source,selection_mode,raw_response,checked_by,parser_version,requested_count) VALUES ({','.join([p]*7)})", self.backend)
+            batch_id = extract_inserted_id(self.conn.execute(sql, (request_token,"telegram_manual",selection_mode,raw_response,checked_by,parser_version,len(expected_numbers))), self.backend)
+            saved = 0
+            for result in results:
+                if result.get("status") != "ready" or result.get("verdict") not in {"spam", "clear"} or result.get("number") not in phones:
+                    continue
+                phone = phones[result["number"]]; phone_id = int(phone["id"])
+                state = self.conn.execute(f"SELECT score FROM phone_spam_state WHERE phone_number_id={p} FOR UPDATE", (phone_id,)).fetchone()
+                before = int(state["score"]) if state else 0
+                sources = list(result.get("sources") or [])
+                delta, after, severity = score_change(before, result["verdict"], sources)
+                source = result.get("source")
+                result_sql = prepare_insert_returning_id(f"INSERT INTO spam_check_results(batch_id,phone_number_id,verdict,source,severity,sources_json,score_before,score_delta,score_after) VALUES ({','.join([p]*9)})", self.backend)
+                result_id = extract_inserted_id(self.conn.execute(result_sql,(batch_id,phone_id,result["verdict"],source,severity,json.dumps(sources),before,delta,after)),self.backend)
+                self.conn.execute(f"INSERT INTO phone_spam_state(phone_number_id,score,last_checked_at,last_verdict,last_source,updated_at) VALUES ({p},{p},CURRENT_TIMESTAMP,{p},{p},CURRENT_TIMESTAMP) ON CONFLICT(phone_number_id) DO UPDATE SET score=excluded.score,last_checked_at=excluded.last_checked_at,last_verdict=excluded.last_verdict,last_source=excluded.last_source,updated_at=excluded.updated_at",(phone_id,after,result["verdict"],source))
+                for route in route_map.get(result["number"], []):
+                    exists = self.conn.execute(f"SELECT id,name FROM routes WHERE id={p}",(int(route["id"]),)).fetchone()
+                    if not exists: raise BusinessRuleError("Выбранный маршрут больше не существует")
+                    membership = self.conn.execute(f"SELECT id FROM route_phone_numbers WHERE route_id={p} AND phone_number_id={p} AND is_active={p}", (int(route["id"]), phone_id, to_db_bool(True, self.backend))).fetchone()
+                    if not membership: raise BusinessRuleError("Номер больше не состоит в выбранном маршруте")
+                    self.conn.execute(f"INSERT INTO spam_check_result_routes(result_id,route_id,route_name_snapshot) VALUES ({p},{p},{p})",(result_id,int(exists["id"]),str(route.get("name") or exists["name"])))
+                if before < 5 and after == 5 and not bool(phone["is_problematic"]):
+                    self.conn.execute(f"UPDATE phone_numbers SET is_problematic={p},review_required={p},updated_by={p},updated_at=CURRENT_TIMESTAMP WHERE id={p}",(to_db_bool(True,self.backend),to_db_bool(True,self.backend),checked_by,phone_id))
+                    self.conn.execute(f"INSERT INTO phone_number_history(phone_number_id,action,changed_by,field_name,old_value,new_value,reason) VALUES ({p},'updated',{p},'is_problematic','false','true',{p})",(phone_id,checked_by,"SPAM Checker: рейтинг достиг 5/5"))
+                saved += 1
+        return {"batch_id": batch_id, "saved": saved, "duplicate": False}
+
+    def spam_checked_numbers(self, filters: dict | None = None) -> list[dict]:
+        filters = filters or {}; p=placeholder(self.backend); clauses=[]; params=[]
+        mapping={"country_id":"pn.country_id","provider_id":"pn.provider_id","score":"ps.score","source":"ps.last_source"}
+        for key,col in mapping.items():
+            if filters.get(key) not in (None,"","all"): clauses.append(f"{col}={p}"); params.append(filters[key])
+        if filters.get("number"): clauses.append(f"pn.number LIKE {p}"); params.append(f"%{filters['number']}%")
+        if filters.get("spam_only"): clauses.append("ps.score=5")
+        if filters.get("last_date"): clauses.append(f"CAST(ps.last_checked_at AS DATE)={p}"); params.append(filters["last_date"])
+        where=" WHERE "+" AND ".join(clauses) if clauses else ""
+        return rows_to_dicts(self.conn.execute(f"""SELECT pn.id, pn.number, COALESCE(pn.country_label,c.name) country_name,
+          COALESCE(pn.provider_label,pr.name) provider_name,pn.project_label,pn.assignment_label,ps.*,
+          (SELECT COUNT(*) FROM spam_check_results sr WHERE sr.phone_number_id=pn.id) checks_count,
+          (SELECT STRING_AGG(x.route_name_snapshot, ', ' ORDER BY x.route_name_snapshot) FROM spam_check_result_routes x JOIN spam_check_results sr ON sr.id=x.result_id WHERE sr.phone_number_id=pn.id) route_names
+          FROM phone_spam_state ps JOIN phone_numbers pn ON pn.id=ps.phone_number_id JOIN countries c ON c.id=pn.country_id LEFT JOIN providers pr ON pr.id=pn.provider_id{where} ORDER BY ps.last_checked_at DESC""",params))
+
+    def spam_phone_history(self, phone_id: int) -> list[dict]:
+        p=placeholder(self.backend)
+        return rows_to_dicts(self.conn.execute(f"""SELECT sr.*, b.checked_by, u.display_name checked_by_name,
+          COALESCE((SELECT STRING_AGG(rr.route_name_snapshot, ', ' ORDER BY rr.route_name_snapshot) FROM spam_check_result_routes rr WHERE rr.result_id=sr.id),'') route_names
+          FROM spam_check_results sr JOIN spam_check_batches b ON b.id=sr.batch_id JOIN users u ON u.id=b.checked_by
+          WHERE sr.phone_number_id={p} ORDER BY sr.checked_at DESC""",(phone_id,)))

@@ -6172,8 +6172,8 @@ class RolePermissionTest(ServerSmokeTest):
             "Администрирование",
         ]:
             self.assertIn(label, content)
-        self.assertIn("side-link-disabled", content)
-        self.assertIn("title='Скоро'", content)
+        self.assertIn("href='/spam-checker'", content)
+        self.assertNotIn("title='Скоро'", content)
         self.assertIn("fact_check", content)
         self.assertIn("report", content)
         self.assertIn("href='/admin/users'", content)

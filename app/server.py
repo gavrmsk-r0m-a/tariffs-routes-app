@@ -41,6 +41,7 @@ from app.security import (
     render_cookie_attributes,
 )
 from app.telegram import notify_provider_change_created
+from app.spam_checker import PARSER_VERSION, parse_response, score_change
 
 logger = logging.getLogger(__name__)
 
@@ -527,6 +528,8 @@ ADMIN_NAV_ITEMS = [
 
 
 def active_nav(title: str) -> tuple[str, str | None]:
+    if title == "Spam Checker":
+        return "admin_spam_checker", None
     for key, _, _, titles in NAV_ITEMS:
         if title in titles:
             return key, None
@@ -561,7 +564,7 @@ def sidebar(title: str) -> str:
 
     main_links = "".join(nav_link(key, href, label) for key, href, label, _ in NAV_ITEMS if can_read(key))
     if current_role_key() == "admin":
-        main_links += disabled_nav_item("admin_spam_checker", "Spam Checker")
+        main_links += nav_link("admin_spam_checker", "/spam-checker", "Spam Checker")
     admin_links = "".join(
         f"<a class='admin-link {'active' if active_admin_href == href else ''}' href='{href}'>{nav_icon_span(key)}<span>{esc(label)}</span></a>"
         for key, href, label, _ in ADMIN_NAV_ITEMS
@@ -4230,6 +4233,72 @@ def no_store_headers() -> list[tuple[str, str]]:
     ]
 
 
+def _spam_numbers(text: str) -> tuple[list[str], list[str]]:
+    numbers, errors = [], []
+    for value in text.splitlines():
+        value = value.strip().lstrip("+")
+        if not value:
+            continue
+        if not re.fullmatch(r"[1-9][0-9]{6,20}", value): errors.append(value)
+        elif value not in numbers: numbers.append(value)
+    return sorted(numbers), errors
+
+
+def _spam_score(value: int) -> str:
+    value = max(0, min(5, int(value)))
+    return f"<span class='spam-score {'spam-score-danger' if value == 5 else ''}' title='Hiya +1 · другой spam source +2 · Clear -1'><b>{'■'*value}{'□'*(5-value)}</b> {value}/5 {'SPAM' if value == 5 else ''}</span>"
+
+
+def spam_checker_page(repo: Repository, q: dict[str, str] | None = None, *, data: dict | None = None,
+                      preview: dict | None = None, notice: str | None = None, notice_type: str = "success") -> bytes:
+    q, data = q or {}, data or {}
+    tab = data.get("selection_mode") or q.get("tab") or "phones"
+    if tab not in {"phones", "routes", "checked"}: tab = "phones"
+    tabs = "".join(f"<a class='spam-tab {'active' if tab == key else ''}' href='/spam-checker?tab={key}'>{label}</a>" for key,label in (("phones","По номерам"),("routes","По маршрутам"),("checked","Проверенные")))
+    countries, providers = repo.list_countries(), repo.list_providers()
+    opts=lambda rows, selected, label="name": "<option value=''>Все</option>"+"".join(f"<option value='{r['id']}' {'selected' if str(r['id'])==str(selected or '') else ''}>{esc(r[label])}</option>" for r in rows)
+    if tab == "checked":
+        filters={k:q.get(k,"") for k in ("number","country_id","provider_id","score","source","last_date")}; filters["spam_only"]=q.get("spam_only")
+        rows=repo.spam_checked_numbers(filters)
+        if q.get("export")=="csv":
+            return csv_response("spam_checked.csv",["Number","GEO","Provider","Project","Assignment","Last check","Last verdict","Source","Checks count","Score","SPAM"],[[r.get("number"),r.get("country_name"),r.get("provider_name"),r.get("project_label"),r.get("assignment_label"),r.get("last_checked_at"),r.get("last_verdict"),r.get("last_source"),r.get("checks_count"),r.get("score"),"yes" if r.get("score")==5 else "no"] for r in rows])
+        filters_html=f"<form class='card spam-filter' method='get'><input type='hidden' name='tab' value='checked'><label>Номер<input name='number' value='{esc(q.get('number',''))}'></label><label>ГЕО<select name='country_id'>{opts(countries,q.get('country_id'))}</select></label><label>Провайдер<select name='provider_id'>{opts(providers,q.get('provider_id'))}</select></label><label>Рейтинг<select name='score'><option value=''>Все</option>{''.join(f'<option {"selected" if q.get("score")==str(i) else ""}>{i}</option>' for i in range(6))}</select></label><label>Source<input name='source' value='{esc(q.get('source',''))}'></label><label>Последняя проверка<input type='date' name='last_date' value='{esc(q.get('last_date',''))}'></label><label><input type='checkbox' name='spam_only' value='1' {'checked' if q.get('spam_only') else ''}> Только SPAM 5/5</label><div><a class='button secondary' href='/spam-checker?tab=checked'>Сбросить</a> <button>Найти</button> <a class='button secondary' href='/spam-checker?{esc(urlencode({**q,"tab":"checked","export":"csv"}))}'>Экспорт CSV</a></div></form>"
+        body_rows="".join(f"<tr><td>{esc(r['number'])}</td><td>{esc(r.get('country_name'))}</td><td>{esc(r.get('provider_name'))}</td><td>{esc(r.get('project_label'))}</td><td>{esc(r.get('assignment_label'))}</td><td>{esc(r.get('route_names') or '—')}</td><td>{esc(r.get('last_checked_at'))}</td><td>{esc(r.get('last_verdict'))}</td><td>{esc(r.get('last_source') or '—')}</td><td>{r.get('checks_count')}</td><td>{_spam_score(r.get('score',0))}</td><td><a href='/spam-checker/{r['id']}/history'>История</a></td></tr>" for r in rows)
+        content=f"{filters_html}<div class='table-wrap'><table><tr><th>Номер</th><th>ГЕО</th><th>Провайдер</th><th>Проект</th><th>Назначение</th><th>Маршруты</th><th>Последняя проверка</th><th>Результат</th><th>Источник</th><th>Проверок</th><th>Рейтинг</th><th>История</th></tr>{body_rows}</table></div>"
+    else:
+        country=data.get("country_id",q.get("country_id","")); provider=data.get("provider_id",q.get("provider_id","")); source_type=data.get("source_type",q.get("source_type","pool"))
+        if tab=="phones":
+            left=f"<label>ГЕО<select name='country_id'>{opts(countries,country)}</select></label><label>Провайдер<select name='provider_id'>{opts(providers,provider)}</select></label><label>Проект<input name='project' value='{esc(data.get('project',''))}'></label><label>Назначение<input name='assignment_type' value='{esc(data.get('assignment_type',''))}'></label><label>Тип номера<input name='phone_type' value='{esc(data.get('phone_type',''))}'></label><label>Рабочий статус<select name='status'><option value=''>Все</option><option>used</option><option>unused</option><option>unknown</option></select></label><label>Активен у провайдера<select name='is_active'><option value=''>Все</option><option value='1'>Да</option><option value='0'>Нет</option></select></label><label>Проблемный<select name='is_problematic'><option value=''>Все</option><option value='1'>Да</option><option value='0'>Нет</option></select></label><label>Требует проверки<select name='review_required'><option value=''>Все</option><option value='1'>Да</option><option value='0'>Нет</option></select></label>"
+        else:
+            routes=repo.spam_eligible_routes(int(country) if str(country).isdigit() else None,source_type)
+            route_list="".join(f"<label class='route-choice'><input type='checkbox' name='route_{r['id']}' value='1' {'checked' if data.get('route_'+str(r['id'])) else ''} {'disabled' if int(r['phone_count'])==0 else ''}><span>{esc(r['name'])}<small>{esc(r['provider_name'])} · {r['phone_count']} номеров</small></span></label>" for r in routes)
+            left=f"<label>ГЕО<select name='country_id'>{opts(countries,country)}</select></label><label>Тип АОН<select name='source_type'><option value='pool' {'selected' if source_type=='pool' else ''}>Pool</option><option value='sim' {'selected' if source_type=='sim' else ''}>SIM</option></select></label><div class='route-list'>{route_list or '<p class="muted">Подходящих маршрутов нет</p>'}</div>"
+        numbers=data.get("numbers",""); raw=data.get("raw_response",""); token=data.get("request_token",str(uuid.uuid4())); route_map=data.get("route_map","{}")
+        errors=data.get("errors",[]); error_html=f"<div class='flash error'>{'<br>'.join(esc(x) for x in errors)}</div>" if errors else ""
+        preview_html=""
+        if preview:
+            states=repo.spam_states([r.number for r in preview["rows"] if r.status != "extra"])
+            summary=preview["summary"]
+            trs=[]
+            route_obj=json.loads(route_map or "{}")
+            for r in preview["rows"]:
+                before=states.get(r.number,0); delta,after,_=score_change(before,r.verdict,r.sources) if r.status=="ready" else (0,before,"")
+                status={"ready":"Готово","missing":"Нет результата от SPAM Checker","extra":"Лишний номер в ответе","error":"Конфликт"}[r.status]
+                if r.duplicate: status += " · Повтор в ответе"
+                trs.append(f"<tr><td>{esc(r.number)}</td><td>{esc(', '.join(x['name'] for x in route_obj.get(r.number,[])) or '—')}</td><td>{esc(r.verdict)}</td><td>{esc(', '.join(r.sources) or '—')}</td><td>{_spam_score(before)}</td><td>{delta:+d}</td><td>{_spam_score(after)}</td><td>{esc(status)}</td></tr>")
+            preview_html=f"<section class='card'><h2>Предпросмотр</h2><p>Запрошено: {summary['requested']} · Получено: {summary['received']} · Spam: {summary['spam']} · Clear: {summary['clear']} · Нет результата: {summary['missing']} · Лишних: {summary['extra']} · Ошбок: {summary['errors']}</p><div class='table-wrap'><table><tr><th>Номер</th><th>Маршрут(ы)</th><th>Результат</th><th>Источник</th><th>Текущий рейтинг</th><th>Δ</th><th>Новый рейтинг</th><th>Статус разбора</th></tr>{''.join(trs)}</table></div><button name='action' value='save'>Сохранить результаты</button></section>"
+        content=f"""<form method='post' action='/spam-checker'>{error_html}<input type='hidden' name='selection_mode' value='{tab}'><input type='hidden' name='request_token' value='{esc(token)}'><input type='hidden' name='route_map' value='{esc(route_map)}'><section class='card spam-work'><div class='spam-left'><h2>Фильтры / выбор</h2>{left}</div><div><h2>Номера для проверки</h2><textarea id='spam-numbers' name='numbers' rows='15'>{esc(numbers)}</textarea></div></section><div class='spam-actions'><button name='action' value='generate'>Сформировать список</button><button class='secondary' type='button' onclick="navigator.clipboard.writeText(document.getElementById('spam-numbers').value);this.textContent='Скопировано'">Скопировать номера</button><button class='secondary' type='button' onclick="document.getElementById('spam-numbers').value=''">Очистить</button></div><section class='card'><h2>Результат SPAM Checker</h2><p class='muted'>Вставьте полный ответ DG_spam_bot. Сначала нажмите «Разобрать результат» — это не изменит данные.</p><textarea name='raw_response' rows='10'>{esc(raw)}</textarea><button name='action' value='preview'>Разобрать результат</button></section>{preview_html}</form>"""
+    help_html="""<details class='card spam-help'><summary>Как работает SPAM Checker и рейтинг номера?</summary><ol><li>«По номерам» выбирает записи из «Купленных номеров»; «По маршрутам» собирает реальные активные номера выбранных маршрутов.</li><li>Номер из нескольких маршрутов отправляется один раз, а связи со всеми маршрутами сохраняются снимком.</li><li>Проверка ручная: скопируйте список в Telegram bot и вставьте ответ сюда.</li><li>Hiya: +1; любой другой spam source: +2; Clear: −1. Рейтинг ограничен 0..5, 5/5 означает SPAM.</li><li>При достижении 5/5 включаются «Проблемный» и «Требует проверки», но номер не отключается и не удаляется из маршрутов.</li><li>При последующем снижении рейтинга общий признак «Проблемный» автоматически не снимается.</li><li>Отсутствующий в ответе номер — не Clear, рейтинг не меняется.</li><li>Preview ничего не сохраняет. Изменения происходят только после «Сохранить результаты».</li></ol></details>"""
+    styles="""<style>.spam-tabs{display:flex;gap:8px;margin-bottom:16px}.spam-tab{padding:10px 16px;border-radius:9px;background:var(--surface-strong);font-weight:700}.spam-tab.active{background:var(--accent);color:white}.spam-work{max-width:1100px;margin:auto;display:grid;grid-template-columns:43% 57%;gap:20px}.spam-work textarea,.card textarea{width:100%}.spam-left{display:grid;gap:8px}.spam-left label,.spam-filter label{display:grid;gap:4px}.spam-actions{max-width:1100px;margin:12px auto;display:flex;gap:8px;flex-wrap:wrap}.route-list{max-height:330px;overflow:auto;border:1px solid var(--border);padding:8px}.route-choice{display:flex!important;grid-template-columns:auto 1fr!important;gap:8px!important;padding:7px}.route-choice small{display:block;color:var(--muted)}.spam-filter{display:flex;gap:10px;align-items:end;flex-wrap:wrap}.spam-score b{color:#d97706;letter-spacing:2px}.spam-score-danger,.spam-score-danger b{color:#d40000;font-weight:800}@media(max-width:760px){.spam-work{grid-template-columns:1fr}.spam-filter label{width:100%}}</style>"""
+    return page("Spam Checker",f"{styles}<h1>Spam Checker</h1><nav class='spam-tabs'>{tabs}</nav>{content}{help_html}",notice,notice_type)
+
+
+def spam_history_page(repo: Repository, phone_id: int) -> bytes:
+    rows=repo.spam_phone_history(phone_id)
+    trs="".join(f"<tr><td>{esc(r['checked_at'])}</td><td>{esc(r['verdict'])}</td><td>{esc(r.get('source') or '—')}</td><td>{r['score_before']}</td><td>{int(r['score_delta']):+d}</td><td>{r['score_after']}</td><td>{esc(r.get('route_names') or '—')}</td><td>{esc(r.get('checked_by_name'))}</td></tr>" for r in rows)
+    return page("Spam Checker",f"<h1>История SPAM-проверок</h1><div class='table-wrap'><table><tr><th>Дата</th><th>Результат</th><th>Source</th><th>До</th><th>Δ</th><th>После</th><th>Маршруты</th><th>Кто</th></tr>{trs}</table></div><p><a href='/spam-checker?tab=checked'>← Проверенные</a></p>")
+
+
 def html_headers() -> list[tuple[str, str]]:
     return [("Content-Type", "text/html; charset=utf-8"), *no_store_headers()]
 
@@ -4369,6 +4438,8 @@ def section_for_get_path(path: str) -> str | None:
         return "phones"
     if path == "/hlr":
         return "hlr"
+    if path == "/spam-checker" or (path.startswith("/spam-checker/") and path.endswith("/history")):
+        return "admin"
     if path == "/companies" or path == "/calling-companies/history" or (path.startswith("/calling-companies/") and path.endswith("/history")) or (path.startswith("/companies/") and path.endswith("/history")):
         return "companies"
     if path == "/provider-changes":
@@ -4412,6 +4483,8 @@ def section_for_write_path(path: str) -> str | None:
         return "companies"
     if path in {"/hlr/check", "/hlr/export.csv", "/hlr/balance", "/hlr/config/daily-limit", "/hlr/config/daily-limit/reset"}:
         return "hlr"
+    if path.startswith("/spam-checker"):
+        return "admin"
     if path.startswith("/admin/server-priorities/"):
         return "admin_server_priorities"
     if path.startswith("/admin/company-routing-settings/") or path == "/admin/company-routing-settings/create":
@@ -10544,6 +10617,35 @@ def app(environ, start_response):
             parsed, raw_body = parse_post_form(environ, environ["wsgi.input"].read(raw_size))
             parsed["_raw"] = raw_body
             require_permission("write", section_for_write_path(path))
+            if path == "/spam-checker":
+                if current_role_key() != "admin": raise ForbiddenError()
+                mode, action = parsed.get("selection_mode", "phones"), parsed.get("action", "")
+                numbers, invalid = _spam_numbers(parsed.get("numbers", "")); route_map = {}
+                errors = ["Некорректный номер: " + value for value in invalid]
+                if action == "generate":
+                    if mode == "phones":
+                        filters = {key: parsed.get(key) for key in ("country_id", "provider_id", "project", "assignment_type", "phone_type", "status", "is_active", "review_required", "is_problematic") if parsed.get(key)}
+                        numbers = sorted({str(x["number"]) for x in repo.spam_phone_candidates(filters)})
+                    else:
+                        route_ids = [int(key[6:]) for key, value in parsed.items() if key.startswith("route_") and value == "1" and key[6:].isdigit()]
+                        union = repo.spam_route_number_union(route_ids); numbers = [x["number"] for x in union]; route_map = {x["number"]: x["routes"] for x in union}
+                        if not route_ids: errors.append("Выберите хотя бы один маршрут.")
+                        elif not numbers: errors.append("В выбранных маршрутах нет активных купленных номеров для проверки.")
+                    parsed["numbers"] = "\n".join(numbers); parsed["route_map"] = json.dumps(route_map, ensure_ascii=False)
+                    start_response("400 Bad Request" if errors else "200 OK", html_headers()); return [spam_checker_page(repo, data={**parsed, "errors": errors})]
+                if not numbers: errors.append("Добавьте номера для проверки.")
+                result = parse_response(parsed.get("raw_response", ""), numbers) if numbers else None
+                if action == "preview":
+                    if result and result["issues"]: errors.extend(result["issues"])
+                    start_response("400 Bad Request" if errors else "200 OK", html_headers()); return [spam_checker_page(repo, data={**parsed, "numbers": "\n".join(numbers), "errors": errors}, preview=result)]
+                if action == "save" and result:
+                    try: route_map = json.loads(parsed.get("route_map") or "{}")
+                    except (ValueError, TypeError): route_map = {}
+                    prepared = [{"number": r.number, "verdict": r.verdict, "sources": r.sources, "source": r.source, "status": r.status} for r in result["rows"]]
+                    saved = repo.save_spam_check_batch(request_token=parsed.get("request_token", ""), selection_mode=mode, raw_response=parsed.get("raw_response", ""), expected_numbers=numbers, results=prepared, route_map=route_map, checked_by=current_actor_id(), parser_version=PARSER_VERSION)
+                    message = "Этот batch уже был сохранён; рейтинг не изменён." if saved["duplicate"] else f"Сохранено {saved['saved']} из {len(numbers)}."
+                    start_response("200 OK", html_headers()); return [spam_checker_page(repo, {"tab": "checked"}, notice=message)]
+                start_response("400 Bad Request", html_headers()); return [spam_checker_page(repo, data={**parsed, "errors": ["Неизвестное действие"]})]
             if path == "/phones/bulk-create":
                 try:
                     action = parsed.get("action")
@@ -10666,6 +10768,15 @@ def app(environ, start_response):
         elif path == "/calling-companies/history": response = company_events_page(repo, q)
         elif path == "/provider-changes": response = provider_changes_page(repo, q)
         elif path == "/hlr": response = hlr_page()
+        elif path == "/spam-checker":
+            if current_role_key() != "admin": raise ForbiddenError()
+            if q.get("export") == "csv":
+                require_permission("export", "admin")
+                start_response("200 OK", csv_headers("spam_checked.csv")); return [spam_checker_page(repo, q)]
+            response = spam_checker_page(repo, q)
+        elif path.startswith("/spam-checker/") and path.endswith("/history"):
+            if current_role_key() != "admin": raise ForbiddenError()
+            response = spam_history_page(repo, int(path.strip("/").split("/")[1]))
         elif path == "/admin": response = admin_page(repo)
         elif path == "/admin/server-priorities": response = server_priorities_page(repo, q)
         elif path == "/admin/company-routing-settings": response = company_routing_settings_page(repo, q)
