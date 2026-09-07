@@ -14,6 +14,8 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any, Iterable
 
+from scripts.migrate_sqlite_to_postgres import SCHEMA_ONLY_TABLES
+
 MAX_SAMPLES = 5
 SENSITIVE_RE = re.compile(r"(password|passwd|token|secret|api[_-]?key|api[_-]?secret|salt|hash)", re.I)
 PHONE_RE = re.compile(r"^\+?\d{7,21}$")
@@ -169,7 +171,9 @@ def fetch_samples(conn: sqlite3.Connection, table: str, where: str, params: tupl
 def check_inventory(conn, report, pg_tables):
     st = sqlite_tables(conn)
     missing_pg = sorted(st - pg_tables)
-    missing_sqlite = sorted(pg_tables - st)
+    # New PostgreSQL-only product tables intentionally have no legacy SQLite
+    # source and therefore are not inventory drift during a migration preflight.
+    missing_sqlite = sorted(pg_tables - st - SCHEMA_ONLY_TABLES)
     if missing_pg:
         report.add("warning", "table_inventory", "SQLite tables are not present in PostgreSQL draft", sample_rows=[{"table": t} for t in missing_pg], count=len(missing_pg))
     if missing_sqlite:
