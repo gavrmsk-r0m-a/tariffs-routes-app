@@ -114,8 +114,14 @@ class SpamCheckerUiTest(unittest.TestCase):
 
     def test_result_card_remains_below_selection_form(self):
         content = self.render()
-        self.assertLess(content.index("spam-selection"), content.index("spam-result"))
-        self.assertLess(content.index("spam-actions"), content.index("spam-result"))
+        selection_marker = "<section class='card spam-work spam-selection'>"
+        actions_marker = "<footer class='spam-actions'>"
+        result_marker = "<section class='card spam-result'>"
+        self.assertIn(selection_marker, content)
+        self.assertIn(actions_marker, content)
+        self.assertIn(result_marker, content)
+        self.assertLess(content.index(selection_marker), content.index(result_marker))
+        self.assertLess(content.index(actions_marker), content.index(result_marker))
 
 
 class HlrBalanceHelperTest(unittest.TestCase):
