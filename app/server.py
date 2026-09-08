@@ -4258,6 +4258,20 @@ def _spam_score(value: int) -> str:
     return f"<span class='spam-score spam-score-{level}' title='{label}'><b>{'■'*value}{'□'*(5-value)}</b> {value}/5 {'SPAM' if value == 5 else ''}</span>"
 
 
+def _spam_route_display_status(row: dict) -> tuple[str, str, str]:
+    """Return the display-only route pool status, respecting risk priority."""
+    if int(row["spam_count"]):
+        return "Есть SPAM", "danger", ""
+    if int(row["elevated_count"]):
+        return "Требует внимания", "elevated", ""
+    checked, total = int(row["checked_count"]), int(row["total_count"])
+    if checked == 0:
+        return "Не проверено", "unchecked", ""
+    if checked < total:
+        return "Проверено частично", "unchecked", "Критических результатов среди проверенных нет"
+    return "Нет критических результатов", "clean", ""
+
+
 def spam_checker_page(repo: Repository, q: dict[str, str] | None = None, *, data: dict | None = None,
                       preview: dict | None = None, notice: str | None = None, notice_type: str = "success") -> bytes:
     q, data = q or {}, data or {}
@@ -4277,10 +4291,11 @@ def spam_checker_page(repo: Repository, q: dict[str, str] | None = None, *, data
             filters_html=filter_card(route_filter,q,("country_id","provider_id","source_type","spam_only","unchecked_only")).replace("href='/spam-checker?reset_filters=1'", "href='/spam-checker?tab=checked&checked_view=routes'")
             body_rows=[]
             for r in route_rows:
-                status = "Есть SPAM" if int(r['spam_count']) else ("Требует внимания" if int(r['elevated_count']) else "Нет критических результатов")
+                status, status_level, status_note = _spam_route_display_status(r)
                 show=urlencode({"tab":"checked","checked_view":"numbers","route_id":r["id"]})
                 retry=urlencode({"tab":"routes","country_id":r["country_id"],"source_type":r["cli_source_type"],f"route_{r['id']}":"1"})
-                body_rows.append(f"<tr><td>{esc(r['name'])}<br><span class='risk-badge risk-{('danger' if int(r['spam_count']) else 'elevated' if int(r['elevated_count']) else 'clean')}'>{status}</span></td><td>{esc(r['country_name'])}</td><td>{esc(r['provider_name'])}</td><td>{esc(r['cli_source_type']).upper()}</td><td>{r['total_count']}</td><td>{r['checked_count']} / {r['total_count']}<small>Покрытие {r['coverage']:.1f}%</small></td><td>{r['unchecked_count']}</td><td>{r['spam_count']}</td><td>{r['elevated_count']}</td><td>{r['low_count']}</td><td>{r['clean_count']}</td><td>{esc(r.get('last_checked_at') or '—')}</td><td><a href='/spam-checker?{show}'>Показать номера</a><br><a href='/spam-checker?{retry}'>Проверить номера</a></td></tr>")
+                status_note_html = f"<small>{esc(status_note)}</small>" if status_note else ""
+                body_rows.append(f"<tr><td>{esc(r['name'])}<br><span class='risk-badge risk-{status_level}'>{status}</span>{status_note_html}</td><td>{esc(r['country_name'])}</td><td>{esc(r['provider_name'])}</td><td>{esc(r['cli_source_type']).upper()}</td><td>{r['total_count']}</td><td>{r['checked_count']} / {r['total_count']}<small>Покрытие {r['coverage']:.1f}%</small></td><td>{r['unchecked_count']}</td><td>{r['spam_count']}</td><td>{r['elevated_count']}</td><td>{r['low_count']}</td><td>{r['clean_count']}</td><td>{esc(r.get('last_checked_at') or '—')}</td><td><a href='/spam-checker?{show}'>Показать номера</a><br><a href='/spam-checker?{retry}'>Проверить номера</a></td></tr>")
             content=f"<div class='spam-content spam-checked'><nav class='spam-subtabs'>{secondary}</nav>{filters_html}<div class='table-wrap spam-checked-table'><table><tr><th>Маршрут</th><th>ГЕО</th><th>Провайдер</th><th>Тип АОН</th><th>Всего</th><th>Проверено / Покрытие</th><th>Не проверено</th><th>SPAM 5/5</th><th>Риск 3–4</th><th>1–2</th><th>Чистые</th><th>Последняя активность проверки</th><th>Действие</th></tr>{''.join(body_rows)}</table></div></div>"
         else:
             filters={k:q.get(k,"") for k in ("number","country_id","provider_id","project","assignment","route_id","score","risk_status","source","last_date","stale_days")}; filters.update(spam_only=q.get("spam_only"), elevated_only=q.get("elevated_only"))
@@ -4339,10 +4354,10 @@ def spam_checker_page(repo: Repository, q: dict[str, str] | None = None, *, data
                 status={"ready":"Готово","missing":"Нет результата от SPAM Checker","extra":"Лишний номер в ответе","error":"Конфликт"}[r.status]
                 if r.duplicate: status += " · Повтор в ответе"
                 trs.append(f"<tr><td>{esc(r.number)}</td><td>{esc(', '.join(x['name'] for x in route_obj.get(r.number,[])) or '—')}</td><td>{esc(r.verdict)}</td><td>{esc(', '.join(r.sources) or '—')}</td><td>{_spam_score(before)}</td><td>{delta:+d}</td><td>{_spam_score(after)}</td><td>{esc(status)}</td></tr>")
-            preview_html=f"<section class='card spam-preview'><h2>Предпросмотр</h2><p>Запрошено: {summary['requested']} · Получено: {summary['received']} · Spam: {summary['spam']} · Clear: {summary['clear']} · Нет результата: {summary['missing']} · Лишних: {summary['extra']} · Ошбок: {summary['errors']}</p><div class='table-wrap'><table><tr><th>Номер</th><th>Маршрут(ы)</th><th>Результат</th><th>Источник</th><th>Текущий рейтинг</th><th>Δ</th><th>Новый рейтинг</th><th>Статус разбора</th></tr>{''.join(trs)}</table></div><button type='submit' name='action' value='save'>Сохранить результаты</button></section>"
-        content=f"""<form class='spam-content' method='post' action='/spam-checker'>{error_html}<input type='hidden' name='selection_mode' value='{tab}'><input type='hidden' name='request_token' value='{esc(token)}'><input type='hidden' name='route_map' value='{esc(route_map)}'><section class='card spam-work spam-selection'><div class='spam-left'><h2>Фильтры / выбор</h2>{left}</div><div class='spam-numbers'><h2>Номера для проверки</h2><textarea id='spam-numbers' name='numbers' rows='15'>{esc(numbers)}</textarea></div><footer class='spam-actions'><button type='submit' name='action' value='generate'>Сформировать список</button><button class='secondary' type='button' onclick="navigator.clipboard.writeText(document.getElementById('spam-numbers').value);this.textContent='Скопировано'">Скопировать номера</button><button class='secondary' type='button' onclick="document.getElementById('spam-numbers').value=''">Очистить</button></footer></section><section class='card spam-result'><h2>Результат SPAM Checker</h2><p class='muted'>Для разбора вставляйте полный ответ DG_spam_bot с блоками spam и clear. Сначала нажмите «Разобрать результат» — это не изменит данные.</p><textarea name='raw_response' rows='10'>{esc(raw)}</textarea><button type='submit' name='action' value='preview'>Разобрать результат</button></section>{preview_html}</form>"""
-    help_html="""<details class='card spam-help'><summary>Как работает SPAM Checker и рейтинг номера?</summary><ol><li>Рейтинг относится к номеру; маршрутный экран только агрегирует текущие активные номера пула.</li><li>«Покрытие» — доля текущего пула, которая проверялась хотя бы раз. Это не оценка качества или здоровья маршрута.</li><li>Текущие маршруты берутся из активных связей. Старые маршруты остаются в истории проверки как снимок на тот момент.</li><li>«Проверить снова» только подготавливает номер или выбранный маршрут. Проверка в Telegram и сохранение остаются ручными.</li><li>Hiya: +1; любой другой spam source: +2; Clear: −1. Рейтинг ограничен 0..5, 5/5 означает SPAM.</li><li>Preview ничего не сохраняет. Изменения происходят только после «Сохранить результаты».</li></ol></details>"""
-    styles="""<style>.spam-tabs{display:flex;gap:8px;margin:0 auto 16px;max-width:1220px;flex-wrap:wrap}.spam-tab{padding:10px 16px;border-radius:9px;background:var(--surface-strong);color:var(--accent);font-weight:700}.spam-tab.active{background:var(--accent);color:#fff}.spam-content{width:100%;max-width:1220px;margin-inline:auto;box-sizing:border-box}.spam-work{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,3fr);gap:20px}.spam-work textarea,.spam-result textarea{width:100%;box-sizing:border-box}.spam-numbers textarea{min-height:430px;resize:vertical}.spam-left{display:grid;align-content:start;gap:10px;min-width:0}.spam-left label,.spam-filter label{display:grid;gap:4px}.spam-actions{grid-column:1/-1;display:flex;gap:8px;flex-wrap:wrap;padding-top:16px;border-top:1px solid var(--border)}.spam-result,.spam-preview{margin-top:16px}.spam-result button,.spam-preview button{margin-top:12px}.spam-route-basics{display:grid;grid-template-columns:1fr 1fr;gap:10px}.route-selector-label{margin-top:6px}.route-selector{position:relative}.route-selector>summary{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:42px;padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface);cursor:pointer;list-style:none}.route-selector>summary::-webkit-details-marker{display:none}.route-selector>summary:after{content:'▼';color:var(--muted);font-size:11px}.route-selected{margin-left:auto;color:var(--muted);white-space:nowrap}.route-panel{position:absolute;z-index:20;top:calc(100% + 6px);left:0;width:max(100%,540px);max-width:min(720px,calc(100vw - 48px));padding:10px;border:1px solid var(--border);border-radius:10px;background:var(--surface);box-shadow:0 12px 30px rgba(15,23,42,.18)}.route-tools{display:flex;gap:8px;flex-wrap:wrap;padding-bottom:8px}.route-list{max-height:330px;overflow:auto}.route-choice{display:flex!important;gap:8px!important;padding:8px 6px;white-space:normal}.route-choice span{min-width:0;overflow-wrap:anywhere}.route-choice small{display:block;color:var(--muted)}.spam-filter{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;align-items:end}.spam-filter .spam-only{display:flex;align-items:center;gap:8px;min-height:42px}.spam-filter-actions{grid-column:span 3;display:flex;gap:8px;flex-wrap:wrap;align-items:center}.spam-checked-table{width:100%;margin-top:16px;overflow-x:auto}.spam-checked-table table{width:100%;min-width:1180px}.spam-score b{color:#d97706;letter-spacing:2px}.spam-score-danger,.spam-score-danger b{color:#d40000;font-weight:800}.spam-subtabs{display:flex;gap:6px;margin-bottom:12px}.spam-subtab{padding:8px 14px;border:1px solid var(--border);border-radius:8px;font-weight:700}.spam-subtab.active{background:var(--accent-soft);color:var(--accent)}.spam-summary{display:grid;grid-template-columns:repeat(6,minmax(120px,1fr));gap:8px;margin-top:12px}.spam-summary div{padding:10px 12px;border:1px solid var(--border);border-radius:9px;background:var(--surface)}.spam-summary strong,.spam-summary span,.spam-checked-table small{display:block}.spam-summary strong{font-size:20px}.spam-summary span,.spam-checked-table small{color:var(--muted);font-size:12px}.risk-badge{display:inline-block;padding:3px 7px;border-radius:999px;font-size:12px;font-weight:800}.risk-clean{background:#dcfce7;color:#166534}.risk-low{background:#fef3c7;color:#92400e}.risk-elevated{background:#ffedd5;color:#c2410c}.risk-danger{background:#d40000;color:#fff}.spam-score-clean b{color:#16803c}.spam-score-low b{color:#ca8a04}.spam-score-elevated b{color:#ea580c}.small-action{font-size:12px}.spam-checked-table td{vertical-align:top}@media(max-width:760px){.spam-work{grid-template-columns:1fr}.spam-actions{grid-column:auto}.spam-route-basics,.spam-filter{grid-template-columns:1fr}.spam-filter-actions{grid-column:auto}.route-panel{position:static;width:auto;max-width:none;margin-top:6px}.spam-numbers textarea{min-height:320px}}</style><script>document.addEventListener('click',function(event){var button=event.target.closest('[data-route-toggle]');if(!button)return;var selector=button.closest('.route-selector');var checked=button.dataset.routeToggle==='all';selector.querySelectorAll("input[type='checkbox']:not(:disabled)").forEach(function(input){input.checked=checked;});var count=selector.querySelectorAll("input[type='checkbox']:checked").length;selector.querySelector('.route-selected').textContent='Выбрано: '+count;});document.addEventListener('change',function(event){if(!event.target.matches(".route-selector input[type='checkbox']"))return;var selector=event.target.closest('.route-selector');selector.querySelector('.route-selected').textContent='Выбрано: '+selector.querySelectorAll("input[type='checkbox']:checked").length;});document.addEventListener('click',function(event){document.querySelectorAll('.route-selector[open]').forEach(function(selector){if(!selector.contains(event.target))selector.removeAttribute('open');});});document.addEventListener('keydown',function(event){if(event.key==='Escape')document.querySelectorAll('.route-selector[open]').forEach(function(selector){selector.removeAttribute('open');});});</script>"""
+            preview_html=f"<section class='card spam-preview'><h2>Предпросмотр</h2><p>Запрошено: {summary['requested']} · Получено: {summary['received']} · Spam: {summary['spam']} · Clear: {summary['clear']} · Нет результата: {summary['missing']} · Лишних: {summary['extra']} · Ошбок: {summary['errors']}</p><div class='table-wrap'><table><tr><th>Номер</th><th>Маршрут(ы)</th><th>Результат</th><th>Источник</th><th>Текущий рейтинг</th><th>Δ</th><th>Новый рейтинг</th><th>Статус разбора</th></tr>{''.join(trs)}</table></div><button type='submit' name='action' value='save' formaction='/spam-checker/save' formmethod='post'>Сохранить результаты</button></section>"
+        content=f"""<form class='spam-content' method='post' action='/spam-checker'>{error_html}<input type='hidden' name='selection_mode' value='{tab}'><input type='hidden' name='request_token' value='{esc(token)}'><input type='hidden' name='route_map' value='{esc(route_map)}'><section class='card spam-work spam-selection'><div class='spam-left'><h2>Фильтры / выбор</h2>{left}</div><div class='spam-numbers'><h2>Номера для проверки</h2><textarea id='spam-numbers' name='numbers' rows='15'>{esc(numbers)}</textarea></div><footer class='spam-actions'><button type='submit' name='action' value='generate' formaction='/spam-checker/generate' formmethod='post'>Сформировать список</button><button class='secondary' type='button' onclick="navigator.clipboard.writeText(document.getElementById('spam-numbers').value);this.textContent='Скопировано'">Скопировать номера</button><button class='secondary' type='button' onclick="document.getElementById('spam-numbers').value=''">Очистить</button></footer></section><section class='card spam-result'><h2>Результат SPAM Checker</h2><p class='muted'>Для разбора вставляйте полный ответ DG_spam_bot с блоками spam и clear. Сначала нажмите «Разобрать результат» — это не изменит данные.</p><textarea name='raw_response' rows='10'>{esc(raw)}</textarea><button type='submit' name='action' value='preview' formaction='/spam-checker/preview' formmethod='post'>Разобрать результат</button></section>{preview_html}</form>"""
+    help_html="""<details class='card spam-help'><summary>Как работает SPAM Checker и рейтинг номера?</summary><ol><li>Рейтинг относится к номеру; маршрутный экран только агрегирует текущие активные номера пула.</li><li>Маршрут считается покрытым проверкой только в той доле, в которой проверены его текущие номера.</li><li>«Покрытие» — доля текущего пула, которая проверялась хотя бы раз. Это не оценка качества или здоровья маршрута.</li><li>Текущие маршруты берутся из активных связей. Старые маршруты остаются в истории проверки как снимок на тот момент.</li><li>«Проверить снова» только подготавливает номер или выбранный маршрут. Проверка в Telegram и сохранение остаются ручными.</li><li>Hiya: +1; любой другой spam source: +2; Clear: −1. Рейтинг ограничен 0..5, 5/5 означает SPAM.</li><li>Preview ничего не сохраняет. Изменения происходят только после «Сохранить результаты».</li></ol></details>"""
+    styles="""<style>.spam-tabs{display:flex;gap:8px;margin:0 auto 16px;max-width:1220px;flex-wrap:wrap}.spam-tab{padding:10px 16px;border-radius:9px;background:var(--surface-strong);color:var(--accent);font-weight:700}.spam-tab.active{background:var(--accent);color:#fff}.spam-content{width:100%;max-width:1220px;margin-inline:auto;box-sizing:border-box}.spam-work{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,3fr);gap:20px}.spam-work textarea,.spam-result textarea{width:100%;box-sizing:border-box}.spam-numbers textarea{min-height:430px;resize:vertical}.spam-left{display:grid;align-content:start;gap:10px;min-width:0}.spam-left label,.spam-filter label{display:grid;gap:4px}.spam-actions{grid-column:1/-1;display:flex;gap:8px;flex-wrap:wrap;padding-top:16px;border-top:1px solid var(--border)}.spam-result,.spam-preview{margin-top:16px}.spam-result button,.spam-preview button{margin-top:12px}.spam-route-basics{display:grid;grid-template-columns:1fr 1fr;gap:10px}.route-selector-label{margin-top:6px}.route-selector{position:relative}.route-selector>summary{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:42px;padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface);cursor:pointer;list-style:none}.route-selector>summary::-webkit-details-marker{display:none}.route-selector>summary:after{content:'▼';color:var(--muted);font-size:11px}.route-selected{margin-left:auto;color:var(--muted);white-space:nowrap}.route-panel{position:absolute;z-index:20;top:calc(100% + 6px);left:0;width:max(100%,540px);max-width:min(720px,calc(100vw - 48px));padding:10px;border:1px solid var(--border);border-radius:10px;background:var(--surface);box-shadow:0 12px 30px rgba(15,23,42,.18)}.route-tools{display:flex;gap:8px;flex-wrap:wrap;padding-bottom:8px}.route-list{max-height:330px;overflow:auto}.route-choice{display:flex!important;gap:8px!important;padding:8px 6px;white-space:normal}.route-choice span{min-width:0;overflow-wrap:anywhere}.route-choice small{display:block;color:var(--muted)}.spam-filter{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;align-items:end}.spam-filter .spam-only{display:flex;align-items:center;gap:8px;min-height:42px}.spam-filter-actions{grid-column:span 3;display:flex;gap:8px;flex-wrap:wrap;align-items:center}.spam-checked-table{width:100%;margin-top:16px;overflow-x:auto}.spam-checked-table table{width:100%;min-width:1180px}.spam-score b{color:#d97706;letter-spacing:2px}.spam-score-danger,.spam-score-danger b{color:#d40000;font-weight:800}.spam-subtabs{display:flex;gap:6px;margin-bottom:12px}.spam-subtab{padding:8px 14px;border:1px solid var(--border);border-radius:8px;font-weight:700}.spam-subtab.active{background:var(--accent-soft);color:var(--accent)}.spam-summary{display:grid;grid-template-columns:repeat(6,minmax(120px,1fr));gap:8px;margin-top:12px}.spam-summary div{padding:10px 12px;border:1px solid var(--border);border-radius:9px;background:var(--surface)}.spam-summary strong,.spam-summary span,.spam-checked-table small{display:block}.spam-summary strong{font-size:20px}.spam-summary span,.spam-checked-table small{color:var(--muted);font-size:12px}.risk-badge{display:inline-block;padding:3px 7px;border-radius:999px;font-size:12px;font-weight:800}.risk-clean{background:#dcfce7;color:#166534}.risk-unchecked{background:#e8eef8;color:#365274}.risk-low{background:#fef3c7;color:#92400e}.risk-elevated{background:#ffedd5;color:#c2410c}.risk-danger{background:#d40000;color:#fff}.spam-score-clean b{color:#16803c}.spam-score-low b{color:#ca8a04}.spam-score-elevated b{color:#ea580c}.small-action{font-size:12px}.spam-checked-table td{vertical-align:top}@media(max-width:760px){.spam-work{grid-template-columns:1fr}.spam-actions{grid-column:auto}.spam-route-basics,.spam-filter{grid-template-columns:1fr}.spam-filter-actions{grid-column:auto}.route-panel{position:static;width:auto;max-width:none;margin-top:6px}.spam-numbers textarea{min-height:320px}}</style><script>document.addEventListener('click',function(event){var button=event.target.closest('[data-route-toggle]');if(!button)return;var selector=button.closest('.route-selector');var checked=button.dataset.routeToggle==='all';selector.querySelectorAll("input[type='checkbox']:not(:disabled)").forEach(function(input){input.checked=checked;});var count=selector.querySelectorAll("input[type='checkbox']:checked").length;selector.querySelector('.route-selected').textContent='Выбрано: '+count;});document.addEventListener('change',function(event){if(!event.target.matches(".route-selector input[type='checkbox']"))return;var selector=event.target.closest('.route-selector');selector.querySelector('.route-selected').textContent='Выбрано: '+selector.querySelectorAll("input[type='checkbox']:checked").length;});document.addEventListener('click',function(event){document.querySelectorAll('.route-selector[open]').forEach(function(selector){if(!selector.contains(event.target))selector.removeAttribute('open');});});document.addEventListener('keydown',function(event){if(event.key==='Escape')document.querySelectorAll('.route-selector[open]').forEach(function(selector){selector.removeAttribute('open');});});</script>"""
     return page("Spam Checker",f"{styles}<h1>Spam Checker</h1><nav class='spam-tabs'>{tabs}</nav>{content}{help_html}",notice,notice_type)
 
 
@@ -4350,6 +4365,58 @@ def spam_history_page(repo: Repository, phone_id: int) -> bytes:
     rows=repo.spam_phone_history(phone_id)
     trs="".join(f"<tr><td>{esc(r['checked_at'])}</td><td>{esc(r['verdict'])}</td><td>{esc(r.get('source') or '—')}</td><td>{_spam_score(r['score_before'])} → {_spam_score(r['score_after'])}</td><td><strong>{int(r['score_delta']):+d}</strong></td><td>{esc(r.get('route_names') or '—')}</td><td>{esc(r.get('checked_by_name'))}</td></tr>" for r in rows)
     return page("Spam Checker",f"<h1>История SPAM-проверок</h1><p class='muted'>Маршруты ниже — снимок состава на момент каждой проверки.</p><div class='table-wrap'><table><tr><th>Дата</th><th>Результат</th><th>Источник</th><th>Изменение рейтинга</th><th>Δ</th><th>Маршрут(ы) на момент проверки</th><th>Кто</th></tr>{trs}</table></div><p><a href='/spam-checker?tab=checked&checked_view=numbers'>← Проверенные номера</a></p>")
+
+
+def handle_spam_checker_post(repo: Repository, parsed: dict[str, str], action: str, checked_by: int) -> tuple[str, bytes]:
+    """Handle all SPAM Checker commands with the action supplied by routing."""
+    mode = parsed.get("selection_mode", "phones")
+    numbers, invalid = _spam_numbers(parsed.get("numbers", ""))
+    errors = ["Некорректный номер: " + value for value in invalid]
+    if action not in {"generate", "preview", "save"}:
+        return "400 Bad Request", spam_checker_page(repo, data={**parsed, "errors": ["Неизвестное действие"]})
+    if action == "generate":
+        route_map = {}
+        if mode == "phones":
+            keys = ("country_id", "provider_id", "project", "assignment_type", "phone_type", "status", "is_active", "review_required", "is_problematic")
+            filters = {key: parsed.get(key) for key in keys if parsed.get(key)}
+            numbers = sorted({str(item["number"]) for item in repo.spam_phone_candidates(filters)})
+        else:
+            route_ids = [int(key[6:]) for key, value in parsed.items() if key.startswith("route_") and value == "1" and key[6:].isdigit()]
+            route_map = {}
+            for item in repo.spam_route_number_union(route_ids):
+                number = str(item["number"])
+                known_routes = {int(route["id"]) for route in route_map.setdefault(number, [])}
+                route_map[number].extend(route for route in item["routes"] if int(route["id"]) not in known_routes)
+            numbers = sorted(route_map)
+            if not route_ids:
+                errors.append("Выберите хотя бы один маршрут.")
+            elif not numbers:
+                errors.append("В выбранных маршрутах нет активных купленных номеров для проверки.")
+        data = {**parsed, "numbers": "\n".join(numbers), "route_map": json.dumps(route_map, ensure_ascii=False), "errors": errors}
+        return ("400 Bad Request" if errors else "200 OK"), spam_checker_page(repo, data=data)
+
+    if not numbers:
+        errors.append("Добавьте номера для проверки.")
+    result = parse_response(parsed.get("raw_response", ""), numbers) if numbers else None
+    data = {**parsed, "numbers": "\n".join(numbers), "errors": errors}
+    if action == "preview":
+        if result and result["issues"]:
+            errors.extend(result["issues"])
+        return ("400 Bad Request" if errors else "200 OK"), spam_checker_page(repo, data=data, preview=result)
+    if result:
+        errors.extend(result["issues"])
+        if any(row.status != "ready" for row in result["rows"]):
+            errors.append("Исправьте ошибки разбора перед сохранением.")
+        if not errors:
+            try:
+                route_map = json.loads(parsed.get("route_map") or "{}")
+            except (ValueError, TypeError):
+                route_map = {}
+            prepared = [{"number": row.number, "verdict": row.verdict, "sources": row.sources, "source": row.source, "status": row.status} for row in result["rows"]]
+            saved = repo.save_spam_check_batch(request_token=parsed.get("request_token", ""), selection_mode=mode, raw_response=parsed.get("raw_response", ""), expected_numbers=numbers, results=prepared, route_map=route_map, checked_by=checked_by, parser_version=PARSER_VERSION)
+            message = "Этот batch уже был сохранён; рейтинг не изменён." if saved["duplicate"] else f"Сохранено {saved['saved']} из {len(numbers)}."
+            return "200 OK", spam_checker_page(repo, {"tab": "checked"}, notice=message)
+    return "400 Bad Request", spam_checker_page(repo, data=data, preview=result)
 
 
 def html_headers() -> list[tuple[str, str]]:
@@ -10670,50 +10737,19 @@ def app(environ, start_response):
             parsed, raw_body = parse_post_form(environ, environ["wsgi.input"].read(raw_size))
             parsed["_raw"] = raw_body
             require_permission("write", section_for_write_path(path))
-            if path == "/spam-checker":
+            spam_actions = {
+                "/spam-checker/generate": "generate",
+                "/spam-checker/preview": "preview",
+                "/spam-checker/save": "save",
+            }
+            if path == "/spam-checker" or path in spam_actions:
                 if current_role_key() != "admin": raise ForbiddenError()
-                mode, action = parsed.get("selection_mode", "phones"), parsed.get("action", "")
-                numbers, invalid = _spam_numbers(parsed.get("numbers", "")); route_map = {}
-                errors = ["Некорректный номер: " + value for value in invalid]
-                if action not in {"generate", "preview", "save"}:
-                    start_response("400 Bad Request", html_headers())
-                    return [spam_checker_page(repo, data={**parsed, "errors": ["Неизвестное действие"]})]
-                if action == "generate":
-                    if mode == "phones":
-                        filters = {key: parsed.get(key) for key in ("country_id", "provider_id", "project", "assignment_type", "phone_type", "status", "is_active", "review_required", "is_problematic") if parsed.get(key)}
-                        numbers = sorted({str(x["number"]) for x in repo.spam_phone_candidates(filters)})
-                    else:
-                        route_ids = [int(key[6:]) for key, value in parsed.items() if key.startswith("route_") and value == "1" and key[6:].isdigit()]
-                        union = repo.spam_route_number_union(route_ids)
-                        route_map = {}
-                        for item in union:
-                            number = str(item["number"])
-                            known_routes = {int(route["id"]) for route in route_map.setdefault(number, [])}
-                            route_map[number].extend(route for route in item["routes"] if int(route["id"]) not in known_routes)
-                        numbers = sorted(route_map)
-                        if not route_ids: errors.append("Выберите хотя бы один маршрут.")
-                        elif not numbers: errors.append("В выбранных маршрутах нет активных купленных номеров для проверки.")
-                    parsed["numbers"] = "\n".join(numbers); parsed["route_map"] = json.dumps(route_map, ensure_ascii=False)
-                    start_response("400 Bad Request" if errors else "200 OK", html_headers()); return [spam_checker_page(repo, data={**parsed, "errors": errors})]
-                if not numbers: errors.append("Добавьте номера для проверки.")
-                result = parse_response(parsed.get("raw_response", ""), numbers) if numbers else None
-                if action == "preview":
-                    if result and result["issues"]: errors.extend(result["issues"])
-                    start_response("400 Bad Request" if errors else "200 OK", html_headers()); return [spam_checker_page(repo, data={**parsed, "numbers": "\n".join(numbers), "errors": errors}, preview=result)]
-                if action == "save" and result:
-                    errors.extend(result["issues"])
-                    if any(row.status != "ready" for row in result["rows"]):
-                        errors.append("Исправьте ошибки разбора перед сохранением.")
-                    if errors:
-                        start_response("400 Bad Request", html_headers())
-                        return [spam_checker_page(repo, data={**parsed, "numbers": "\n".join(numbers), "errors": errors}, preview=result)]
-                    try: route_map = json.loads(parsed.get("route_map") or "{}")
-                    except (ValueError, TypeError): route_map = {}
-                    prepared = [{"number": r.number, "verdict": r.verdict, "sources": r.sources, "source": r.source, "status": r.status} for r in result["rows"]]
-                    saved = repo.save_spam_check_batch(request_token=parsed.get("request_token", ""), selection_mode=mode, raw_response=parsed.get("raw_response", ""), expected_numbers=numbers, results=prepared, route_map=route_map, checked_by=current_actor_id(), parser_version=PARSER_VERSION)
-                    message = "Этот batch уже был сохранён; рейтинг не изменён." if saved["duplicate"] else f"Сохранено {saved['saved']} из {len(numbers)}."
-                    start_response("200 OK", html_headers()); return [spam_checker_page(repo, {"tab": "checked"}, notice=message)]
-                start_response("400 Bad Request", html_headers()); return [spam_checker_page(repo, data={**parsed, "numbers": "\n".join(numbers), "errors": errors})]
+                # Dedicated endpoints define the command. The body action remains
+                # only as a compatibility fallback for old clients.
+                action = spam_actions.get(path, parsed.get("action", ""))
+                status, response = handle_spam_checker_post(repo, parsed, action, current_actor_id())
+                start_response(status, html_headers())
+                return [response]
             if path == "/phones/bulk-create":
                 try:
                     action = parsed.get("action")
