@@ -127,6 +127,28 @@ class SpamCheckerUiTest(unittest.TestCase):
         self.assertRegex(content, r"tab=routes&country_id=1&source_type=pool&route_11=1")
         self.assertNotIn("health", content.lower())
 
+    def test_checked_route_dashboard_classifies_risk_before_coverage(self):
+        cases = [
+            (3, 0, 0, 0, "Не проверено"),
+            (3, 1, 0, 0, "Проверено частично"),
+            (3, 3, 0, 0, "Нет критических результатов"),
+            (3, 1, 1, 0, "Есть SPAM"),
+            (3, 1, 0, 1, "Требует внимания"),
+        ]
+        for total, checked, spam, elevated, expected in cases:
+            with self.subTest(expected=expected):
+                self.repo.spam_route_pool_summary.return_value = [{
+                    "id": 11, "name": "Route", "country_id": 1, "country_name": "Brazil",
+                    "provider_name": "Sancom", "cli_source_type": "pool", "total_count": total,
+                    "checked_count": checked, "unchecked_count": total - checked, "spam_count": spam,
+                    "elevated_count": elevated, "low_count": 0, "clean_count": max(0, checked - spam - elevated),
+                    "coverage": checked / total * 100, "last_checked_at": None,
+                }]
+                content = self.render({"tab": "checked", "checked_view": "routes"})
+                self.assertIn(f">{expected}</span>", content)
+
+        self.assertIn("Маршрут считается покрытым проверкой только в той доле", content)
+
     def test_checked_number_uses_current_routes_and_display_only_risk(self):
         self.repo.spam_checked_numbers.return_value = [{"id": 7, "number": "5511999999999", "country_name": "Brazil", "provider_name": "Sancom", "project_label": "P", "assignment_label": "A", "current_route_names": "Route B", "last_checked_at": "2026-09-08 10:00:00", "last_verdict": "spam", "last_source": "Hiya", "checks_count": 2, "score": 3}]
         content = self.render({"tab": "checked"})
@@ -151,11 +173,13 @@ class SpamCheckerUiTest(unittest.TestCase):
         content = self.render(data={"selection_mode": "phones", "project": "Alpha", "assignment_type": "sales", "phone_type": "mobile"})
         for action in ("generate", "preview"):
             self.assertRegex(content, rf"<button type='submit' name='action' value='{action}'")
+            self.assertIn(f"formaction='/spam-checker/{action}' formmethod='post'", content)
         for name in ("project", "assignment_type", "phone_type"):
             self.assertRegex(content, rf"<select name='{name}'>")
         preview = {"rows": [], "summary": {"requested": 0, "received": 0, "spam": 0, "clear": 0, "missing": 0, "extra": 0, "errors": 0}}
         content = server.spam_checker_page(self.repo, data={"selection_mode": "phones", "route_map": "{}"}, preview=preview).decode()
         self.assertRegex(content, r"<button type='submit' name='action' value='save'")
+        self.assertIn("formaction='/spam-checker/save' formmethod='post'", content)
 
     def test_phone_filter_selected_state_and_labels_are_preserved(self):
         self.repo.conn.execute.side_effect = [
@@ -451,16 +475,17 @@ class ServerSmokeTest(unittest.TestCase):
         finally:
             conn.close()
 
-    def spam_post(self, fields):
+    def spam_post(self, fields, action=None):
+        path = f"/spam-checker/{action}" if action else "/spam-checker"
         return self.request(
-            "/spam-checker", method="POST", body=urlencode(fields),
+            path, method="POST", body=urlencode(fields),
             headers={"CONTENT_TYPE": "application/x-www-form-urlencoded"},
         )
 
     @patch.object(Repository, "spam_phone_candidates")
     def test_spam_generate_phones_post(self, candidates):
         candidates.return_value = [{"number": number} for number in ("3939393930", "3939393938", "3939393939")]
-        captured, content = self.spam_post({"selection_mode": "phones", "action": "generate", "project": "Project A", "status": "used"})
+        captured, content = self.spam_post({"selection_mode": "phones", "project": "Project A", "status": "used"}, "generate")
         self.assertEqual("200 OK", captured["status"])
         self.assertIn("3939393930\n3939393938\n3939393939", content)
         self.assertNotIn("Неизвестное действие", content)
@@ -471,7 +496,7 @@ class ServerSmokeTest(unittest.TestCase):
     def test_spam_generate_routes_post(self, route_union, eligible):
         eligible.return_value = [{"id": 11, "name": "Route A", "provider_name": "Provider", "phone_count": 3}]
         route_union.return_value = [{"number": number, "routes": [{"id": 11, "name": "Route A"}]} for number in ("3939393930", "3939393938", "3939393939")]
-        captured, content = self.spam_post({"selection_mode": "routes", "route_11": "1", "action": "generate", "request_token": "route-token"})
+        captured, content = self.spam_post({"selection_mode": "routes", "route_11": "1", "request_token": "route-token"}, "generate")
         self.assertEqual("200 OK", captured["status"])
         self.assertIn("3939393930\n3939393938\n3939393939", content)
         self.assertRegex(content, r"name='route_11'[^>]*checked")
@@ -492,7 +517,7 @@ class ServerSmokeTest(unittest.TestCase):
             {"number": "2222222222", "routes": [{"id": 12, "name": "Route B"}]},
             {"number": "3333333333", "routes": [{"id": 12, "name": "Route B"}]},
         ]
-        captured, content = self.spam_post({"selection_mode": "routes", "route_11": "1", "route_12": "1", "action": "generate"})
+        captured, content = self.spam_post({"selection_mode": "routes", "route_11": "1", "route_12": "1"}, "generate")
         self.assertEqual("200 OK", captured["status"])
         textarea = re.search(r"<textarea id='spam-numbers'[^>]*>(.*?)</textarea>", content, re.S).group(1)
         self.assertEqual(["1111111111", "2222222222", "3333333333"], textarea.splitlines())
@@ -503,7 +528,7 @@ class ServerSmokeTest(unittest.TestCase):
     @patch.object(Repository, "spam_route_number_union", return_value=[])
     def test_spam_generate_empty_route_result_post(self, _route_union, eligible):
         eligible.return_value = [{"id": 11, "name": "Route A", "provider_name": "A", "phone_count": 1}]
-        captured, content = self.spam_post({"selection_mode": "routes", "route_11": "1", "action": "generate"})
+        captured, content = self.spam_post({"selection_mode": "routes", "route_11": "1"}, "generate")
         self.assertEqual("400 Bad Request", captured["status"])
         self.assertIn("В выбранных маршрутах нет активных купленных номеров для проверки.", content)
         self.assertNotIn("Неизвестное действие", content)
@@ -511,7 +536,7 @@ class ServerSmokeTest(unittest.TestCase):
     @patch.object(Repository, "spam_states", return_value={"3939393930": 0, "3939393938": 1})
     @patch.object(Repository, "save_spam_check_batch")
     def test_spam_preview_post(self, save_batch, _states):
-        captured, content = self.spam_post({"selection_mode": "phones", "action": "preview", "numbers": "3939393930\n3939393938", "raw_response": "spam\n3939393930 - hiya\n\nclear\n3939393938", "request_token": "preview-token"})
+        captured, content = self.spam_post({"selection_mode": "phones", "numbers": "3939393930\n3939393938", "raw_response": "spam\n3939393930 - hiya\n\nclear\n3939393938", "request_token": "preview-token"}, "preview")
         self.assertEqual("200 OK", captured["status"])
         for text in ("Предпросмотр", "3939393930", "spam", "hiya", "+1", "3939393938", "clear", "-1", "preview-token"):
             self.assertIn(text, content)
@@ -520,17 +545,29 @@ class ServerSmokeTest(unittest.TestCase):
 
     @patch.object(Repository, "save_spam_check_batch")
     def test_spam_preview_invalid_response(self, save_batch):
-        captured, content = self.spam_post({"selection_mode": "phones", "action": "preview", "numbers": "3939393930\n3939393938", "raw_response": "3939393930 - hiya\n3939393938"})
+        captured, content = self.spam_post({"selection_mode": "phones", "numbers": "3939393930\n3939393938", "raw_response": "3939393930 - hiya\n3939393938"}, "preview")
         self.assertEqual("400 Bad Request", captured["status"])
         self.assertIn("Не удалось определить блоки spam / clear", content)
         self.assertIn("3939393930 - hiya", content)
         self.assertNotIn("Неизвестное действие", content)
         save_batch.assert_not_called()
 
+    @patch.object(Repository, "spam_states", return_value={"3939393930": 0})
+    @patch.object(Repository, "save_spam_check_batch")
+    def test_spam_preview_accepts_spam_only_response(self, save_batch, _states):
+        captured, content = self.spam_post({
+            "selection_mode": "phones", "numbers": "3939393930",
+            "raw_response": "spam\n3939393930 - hiya",
+        }, "preview")
+        self.assertEqual("200 OK", captured["status"])
+        self.assertIn("Предпросмотр", content)
+        self.assertNotIn("Неизвестное действие", content)
+        save_batch.assert_not_called()
+
     @patch.object(Repository, "save_spam_check_batch", return_value={"saved": 2, "duplicate": False})
     def test_spam_save_post(self, save_batch):
-        fields = {"selection_mode": "phones", "action": "save", "numbers": "3939393930\n3939393938", "raw_response": "spam\n3939393930 - hiya\n\nclear\n3939393938", "request_token": "save-token", "route_map": "{}"}
-        captured, content = self.spam_post(fields)
+        fields = {"selection_mode": "phones", "numbers": "3939393930\n3939393938", "raw_response": "spam\n3939393930 - hiya\n\nclear\n3939393938", "request_token": "save-token", "route_map": "{}"}
+        captured, content = self.spam_post(fields, "save")
         self.assertEqual("200 OK", captured["status"])
         self.assertIn("Сохранено 2 из 2.", content)
         self.assertIn("spam-tab active' href='/spam-checker?tab=checked'", content)

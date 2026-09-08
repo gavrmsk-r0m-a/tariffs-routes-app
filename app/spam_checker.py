@@ -67,7 +67,9 @@ def parse_response(raw: str, expected_numbers: list[str]) -> dict:
         else:
             issues.append(f"Строка {line_no}: не удалось распознать результат")
 
-    if sections_seen != {"spam", "clear"}:
+    # A bot response can contain only one non-empty result block. Keep the
+    # header requirement, but do not require an empty counterpart block.
+    if not sections_seen:
         issues.insert(0, "Не удалось определить блоки spam / clear. Вставьте полный ответ DG_spam_bot.")
 
     rows: list[ParsedResult] = []

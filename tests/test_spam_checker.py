@@ -12,6 +12,11 @@ class SpamParserTest(unittest.TestCase):
         self.assertEqual(2, parsed["summary"]["missing"])
         self.assertEqual(0, parsed["summary"]["clear"])
 
+    def test_spam_only_response_with_header_is_valid(self):
+        parsed = parse_response("spam\n3939393930 - hiya", ["3939393930"])
+        self.assertEqual([], parsed["issues"])
+        self.assertEqual(1, parsed["summary"]["spam"])
+
     def test_real_telegram_and_service_prefix(self):
         parsed=parse_response('[15.06.2026 11:11] DG_spam_bot: Ваш запрос обрабатывается...\n[15.06.2026 11:13] DG_spam_bot: spam\n390250030709 - hiya\n390250030707 - callfilter\n\nclear\n390250020820', ['390250030709','390250030707','390250020820'])
         self.assertEqual(parsed['summary']['spam'],2); self.assertEqual(parsed['summary']['clear'],1)
