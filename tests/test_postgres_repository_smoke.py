@@ -15,7 +15,7 @@ from app.repository import Repository
 
 _TEST_DB = shared_database()
 
-CHECKS_COUNT = 642
+CHECKS_COUNT = 644
 
 
 class RecordingRepository:
@@ -173,6 +173,7 @@ class PostgreSQLRepositorySmokeTest(unittest.TestCase):
             "spam_route_number_union",
             "spam_states",
             "spam_checked_numbers",
+            "spam_route_pool_summary",
             "spam_phone_history",
         ), smoke.STAGE_50_METHODS)
         for method in smoke.STAGE_50_METHODS:

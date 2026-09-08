@@ -85,6 +85,7 @@ class SpamCheckerUiTest(unittest.TestCase):
         self.repo.list_countries.return_value = [{"id": 1, "name": "Brazil"}]
         self.repo.list_providers.return_value = [{"id": 2, "name": "Sancom"}]
         self.repo.spam_checked_numbers.return_value = []
+        self.repo.spam_route_pool_summary.return_value = []
         self.repo.spam_eligible_routes.return_value = [
             {"id": 11, "name": "Brazil/Sancom/RND@", "provider_name": "Sancom", "phone_count": 2},
             {"id": 12, "name": "Brazil/Miatel/Pool_B@", "provider_name": "Miatel", "phone_count": 3},
@@ -110,6 +111,29 @@ class SpamCheckerUiTest(unittest.TestCase):
         content = self.render({"tab": "checked"})
         self.assertLess(content.index("class='filter-card'"), content.index("class='table-wrap spam-checked-table'"))
         self.assertIn("class='spam-filter'", content)
+
+    def test_checked_route_dashboard_shows_factual_coverage_and_safe_actions(self):
+        self.repo.spam_route_pool_summary.return_value = [{
+            "id": 11, "name": "Brazil/Sancom/RND@", "country_id": 1,
+            "country_name": "Brazil", "provider_name": "Sancom", "cli_source_type": "pool",
+            "total_count": 5, "checked_count": 4, "unchecked_count": 1, "spam_count": 1,
+            "elevated_count": 1, "low_count": 1, "clean_count": 1, "coverage": 80.0,
+            "last_checked_at": "2026-09-08 10:00:00",
+        }]
+        content = self.render({"tab": "checked", "checked_view": "routes"})
+        self.assertIn("Покрытие 80.0%", content)
+        self.assertIn("Есть SPAM", content)
+        self.assertIn("checked_view=numbers&route_id=11", content)
+        self.assertRegex(content, r"tab=routes&country_id=1&source_type=pool&route_11=1")
+        self.assertNotIn("health", content.lower())
+
+    def test_checked_number_uses_current_routes_and_display_only_risk(self):
+        self.repo.spam_checked_numbers.return_value = [{"id": 7, "number": "5511999999999", "country_name": "Brazil", "provider_name": "Sancom", "project_label": "P", "assignment_label": "A", "current_route_names": "Route B", "last_checked_at": "2026-09-08 10:00:00", "last_verdict": "spam", "last_source": "Hiya", "checks_count": 2, "score": 3}]
+        content = self.render({"tab": "checked"})
+        self.assertIn("Route B", content)
+        self.assertIn("Повышенный риск", content)
+        self.assertIn("Проверить снова", content)
+        self.assertNotIn("spam_status", content)
 
     def test_route_multi_select_keeps_multiple_route_ids(self):
         content = self.render(data={"selection_mode": "routes", "route_11": "1", "route_12": "1"})
