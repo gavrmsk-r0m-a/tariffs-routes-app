@@ -3,10 +3,10 @@
     "deferred_read_only_count": 0,
     "infrastructure_or_mixed_count": 1,
     "read_surface_coverage_percent": 100.0,
-    "repository_public_methods_count": 117,
-    "repository_smoke_checks_count": 615,
-    "smoke_covered_read_count": 64,
-    "write_or_mutating_count": 52
+    "repository_public_methods_count": 124,
+    "repository_smoke_checks_count": 642,
+    "smoke_covered_read_count": 70,
+    "write_or_mutating_count": 53
   },
   "batches": {
     "app_settings_and_admin_low_risk": {
@@ -200,6 +200,26 @@
       "stage_hint": "subsequent write adaptation stage",
       "title": "Routing event application writes"
     },
+    "spam_checker_v1": {
+      "acceptance": [
+        "Atomic PostgreSQL integration coverage",
+        "Idempotency and rollback regression coverage"
+      ],
+      "methods": [
+        "save_spam_check_batch"
+      ],
+      "out_of_scope": [
+        "Telegram API automation"
+      ],
+      "prerequisites": [
+        "write_test_harness_and_transaction_foundation"
+      ],
+      "rationale": "One authoritative transaction owns SPAM history, score and 5/5 purchased-phone transition.",
+      "risk": "high",
+      "scope": "SPAM Checker V1 persistence",
+      "stage_hint": "0069p3",
+      "title": "SPAM Checker V1"
+    },
     "write_test_harness_and_transaction_foundation": {
       "acceptance": [
         "Rollback/SAVEPOINT leaves no writes",
@@ -275,6 +295,31 @@
       ],
       "transaction_contract": "optional_commit_parameter"
     },
+    "clear_user_permissions": {
+      "batch": "app_settings_and_admin_low_risk",
+      "current_commit_behavior": "mixed",
+      "dependencies": [],
+      "mutation_kind": "delete",
+      "notes": "Explicit user-permission deletion uses backend-aware placeholders and commit=False caller ownership in the Stage 53 rollback-only user/admin probe.",
+      "postgres_strategy": "Keep runtime disabled; use rollback-only harness and backend placeholders.",
+      "returns": "none",
+      "risk": "medium",
+      "rollback_strategy": "Caller-owned transaction supported with commit=False; rollback-only harness owns cleanup.",
+      "side_effects": [
+        "database_write"
+      ],
+      "sqlite_postgres_blockers": [
+        "needs_integration_test",
+        "postgres_transaction_aborted_behavior",
+        "sqlite_placeholder"
+      ],
+      "test_strategy": [
+        "SQL-recording test",
+        "SQLite regression test",
+        "PostgreSQL rollback-only integration test"
+      ],
+      "transaction_contract": "optional_commit_parameter"
+    },
     "create_calling_company": {
       "batch": "company_routing_setting_writes",
       "current_commit_behavior": "mixed",
@@ -323,32 +368,6 @@
       ],
       "sqlite_postgres_blockers": [
         "dynamic_sql",
-        "needs_integration_test",
-        "postgres_transaction_aborted_behavior",
-        "sqlite_placeholder"
-      ],
-      "test_strategy": [
-        "SQL-recording test",
-        "SQLite regression test",
-        "PostgreSQL rollback-only integration test"
-      ],
-      "transaction_contract": "optional_commit_parameter"
-    },
-    "update_change_reason": {
-      "batch": "dictionary_and_snapshot_writes",
-      "current_commit_behavior": "mixed",
-      "dependencies": [],
-      "mutation_kind": "write_with_history",
-      "notes": "PostgreSQL rollback probe performs the duplicate SELECT, UPDATE, boolean conversion, and change_reason.updated audit write in the caller-owned transaction.",
-      "postgres_strategy": "Use backend-aware placeholders and boolean conversion with commit=False so the caller owns PostgreSQL rollback.",
-      "returns": "None",
-      "risk": "medium",
-      "rollback_strategy": "Invoke commit=False inside an explicit PostgreSQL rollback-only transaction and verify the updated row and both audit rows are removed.",
-      "side_effects": [
-        "change_log_write",
-        "database_write"
-      ],
-      "sqlite_postgres_blockers": [
         "needs_integration_test",
         "postgres_transaction_aborted_behavior",
         "sqlite_placeholder"
@@ -1078,6 +1097,28 @@
       ],
       "transaction_contract": "optional_commit_parameter"
     },
+    "save_spam_check_batch": {
+      "batch": "spam_checker_v1",
+      "current_commit_behavior": "commits internally",
+      "dependencies": [],
+      "mutation_kind": "mixed_read_write",
+      "notes": "V1 authoritative transaction with database request-token idempotency.",
+      "postgres_strategy": "PostgreSQL row locks, constraints and one transaction.",
+      "returns": "Batch id, saved count and duplicate marker",
+      "risk": "high",
+      "rollback_strategy": "Repository transaction rolls back every batch mutation on any exception.",
+      "side_effects": [
+        "database_write"
+      ],
+      "sqlite_postgres_blockers": [
+        "needs_integration_test"
+      ],
+      "test_strategy": [
+        "pure parser tests",
+        "PostgreSQL atomicity and idempotency integration tests"
+      ],
+      "transaction_contract": "rollback_on_exception"
+    },
     "set_app_setting_value": {
       "batch": "app_settings_and_admin_low_risk",
       "current_commit_behavior": "mixed",
@@ -1146,31 +1187,6 @@
         "needs_integration_test",
         "postgres_transaction_aborted_behavior",
         "sqlite_datetime_function",
-        "sqlite_placeholder"
-      ],
-      "test_strategy": [
-        "SQL-recording test",
-        "SQLite regression test",
-        "PostgreSQL rollback-only integration test"
-      ],
-      "transaction_contract": "optional_commit_parameter"
-    },
-    "clear_user_permissions": {
-      "batch": "app_settings_and_admin_low_risk",
-      "current_commit_behavior": "mixed",
-      "dependencies": [],
-      "mutation_kind": "delete",
-      "notes": "Explicit user-permission deletion uses backend-aware placeholders and commit=False caller ownership in the Stage 53 rollback-only user/admin probe.",
-      "postgres_strategy": "Keep runtime disabled; use rollback-only harness and backend placeholders.",
-      "returns": "none",
-      "risk": "medium",
-      "rollback_strategy": "Caller-owned transaction supported with commit=False; rollback-only harness owns cleanup.",
-      "side_effects": [
-        "database_write"
-      ],
-      "sqlite_postgres_blockers": [
-        "needs_integration_test",
-        "postgres_transaction_aborted_behavior",
         "sqlite_placeholder"
       ],
       "test_strategy": [
@@ -1252,6 +1268,32 @@
         "needs_integration_test",
         "postgres_transaction_aborted_behavior",
         "sqlite_datetime_function",
+        "sqlite_placeholder"
+      ],
+      "test_strategy": [
+        "SQL-recording test",
+        "SQLite regression test",
+        "PostgreSQL rollback-only integration test"
+      ],
+      "transaction_contract": "optional_commit_parameter"
+    },
+    "update_change_reason": {
+      "batch": "dictionary_and_snapshot_writes",
+      "current_commit_behavior": "mixed",
+      "dependencies": [],
+      "mutation_kind": "write_with_history",
+      "notes": "PostgreSQL rollback probe performs the duplicate SELECT, UPDATE, boolean conversion, and change_reason.updated audit write in the caller-owned transaction.",
+      "postgres_strategy": "Use backend-aware placeholders and boolean conversion with commit=False so the caller owns PostgreSQL rollback.",
+      "returns": "None",
+      "risk": "medium",
+      "rollback_strategy": "Invoke commit=False inside an explicit PostgreSQL rollback-only transaction and verify the updated row and both audit rows are removed.",
+      "side_effects": [
+        "change_log_write",
+        "database_write"
+      ],
+      "sqlite_postgres_blockers": [
+        "needs_integration_test",
+        "postgres_transaction_aborted_behavior",
         "sqlite_placeholder"
       ],
       "test_strategy": [
@@ -1679,7 +1721,8 @@
     "create_calling_company",
     "update_calling_company",
     "update_company_routing_setting_comment",
-    "update_calling_company_import_fields"
+    "update_calling_company_import_fields",
+    "save_spam_check_batch"
   ],
   "schema_version": 1
 }

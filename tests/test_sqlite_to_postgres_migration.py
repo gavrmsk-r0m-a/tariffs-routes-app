@@ -29,6 +29,14 @@ class SqliteToPostgresMigrationTests(unittest.TestCase):
         missing = pg_tables - set(mig.MIGRATION_ORDER) - mig.SCHEMA_ONLY_TABLES
         self.assertEqual(set(), missing)
         self.assertEqual(37, len(mig.MIGRATION_ORDER))
+        spam_schema_only = {
+            "spam_check_batches",
+            "spam_check_results",
+            "spam_check_result_routes",
+            "phone_spam_state",
+        }
+        self.assertEqual(spam_schema_only, mig.SCHEMA_ONLY_TABLES)
+        self.assertTrue(spam_schema_only.isdisjoint(mig.MIGRATION_ORDER))
 
     def test_sqlite_readonly_open(self):
         db_path = self.make_db()

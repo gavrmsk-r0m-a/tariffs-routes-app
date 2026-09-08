@@ -135,6 +135,10 @@
       "mutation_kind": "mixed_read_write",
       "reason": "Audited public Repository method can mutate database/application state through direct SQL writes, commit/rollback, private change-log helpers, or public write-method calls; Stage 44 does not adapt write paths."
     },
+    "save_spam_check_batch": {
+      "mutation_kind": "mixed_read_write",
+      "reason": "Authoritative atomic SPAM batch write updates history, current score and purchased-phone flags at 5/5."
+    },
     "set_app_setting_value": {
       "mutation_kind": "update",
       "reason": "Audited public Repository method can mutate database/application state through direct SQL writes, commit/rollback, private change-log helpers, or public write-method calls; Stage 44 does not adapt write paths."

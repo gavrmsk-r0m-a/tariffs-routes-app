@@ -38,7 +38,12 @@ MIGRATION_ORDER = [
     "user_permissions", "demo_data_state",
 ]
 
-SCHEMA_ONLY_TABLES: set[str] = set()
+SCHEMA_ONLY_TABLES = {
+    "spam_check_batches",
+    "spam_check_results",
+    "spam_check_result_routes",
+    "phone_spam_state",
+}
 IGNORED_SQLITE_TABLES = {"sqlite_sequence"}
 NO_ID_TABLES = {"app_settings", "hlr_daily_usage", "demo_data_state"}
 

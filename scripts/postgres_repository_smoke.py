@@ -43,6 +43,8 @@ SMOKE_METHODS = (
     "list_phone_history", "list_route_history", "list_tariff_history",
     "list_company_routing_setting_history", "list_calling_company_history",
     "list_calling_company_events", "count_calling_company_events",
+    "spam_phone_candidates", "spam_eligible_routes", "spam_route_number_union",
+    "spam_states", "spam_checked_numbers", "spam_phone_history",
 )
 
 STAGE_34_METHODS = (
@@ -109,6 +111,15 @@ STAGE_48_METHODS = (
 STAGE_49_METHODS = (
     "list_calling_company_events",
     "count_calling_company_events",
+)
+
+STAGE_50_METHODS = (
+    "spam_phone_candidates",
+    "spam_eligible_routes",
+    "spam_route_number_union",
+    "spam_states",
+    "spam_checked_numbers",
+    "spam_phone_history",
 )
 
 EXISTS_CHECKS = (
@@ -929,6 +940,56 @@ def run_stage_49_checks(repo: Repository, check, demo_company) -> None:
     check("stage_49_manual_search_pagination", lambda: _check(repo.count_calling_company_events(search="Stage 49 manual") == 2 and [row["comment"] for row in repo.list_calling_company_events(search="Stage 49 manual", limit=1, offset=0)] == ["Stage 49 manual delta"] and [row["comment"] for row in repo.list_calling_company_events(search="Stage 49 manual", limit=1, offset=1)] == ["Stage 49 manual gamma"], "search pagination wrong"))
 
 
+def run_stage_50_checks(repo: Repository, check) -> None:
+    """Exercise every SPAM Checker read against the migrated legacy fixture."""
+    candidates = check(
+        "stage_50_phone_candidates",
+        lambda: repo.spam_phone_candidates({"number_like": "525550000001"}),
+    )
+    check("stage_50_phone_candidates_semantics", lambda: _check(
+        isinstance(candidates, list) and "525550000001" in {row["number"] for row in candidates},
+        "filtered SPAM phone candidates must contain the demo phone",
+    ))
+
+    routes = check("stage_50_routes_fixture", lambda: repo.list_routes({"search_like": "CI Phone Route"}))
+    route_by_name = {row["name"]: row for row in (routes or [])}
+    check("stage_50_routes_fixture_semantics", lambda: _check(
+        {"CI Phone Route A", "CI Phone Route B"} <= set(route_by_name),
+        "active linked route fixtures are missing",
+    ))
+    country_id = route_by_name.get("CI Phone Route A", {}).get("country_id")
+    eligible = check("stage_50_eligible_routes", lambda: repo.spam_eligible_routes(country_id, "pool"))
+    check("stage_50_eligible_routes_semantics", lambda: _check(
+        isinstance(eligible, list) and not any(row["name"].startswith("CI Phone Route") for row in eligible),
+        "legacy local pool routes must not be SPAM-eligible",
+    ))
+
+    selected_ids = [route_by_name[name]["id"] for name in ("CI Phone Route A", "CI Phone Route B") if name in route_by_name]
+    union = check("stage_50_route_number_union", lambda: repo.spam_route_number_union(selected_ids))
+    check("stage_50_route_number_union_semantics", lambda: _check(
+        isinstance(union, list)
+        and [row["number"] for row in union].count("525550000020") == 1
+        and {route["name"] for row in union if row["number"] == "525550000020" for route in row["routes"]}
+            == {"CI Phone Route A", "CI Phone Route B"},
+        "route union must deduplicate the phone, retain both active routes, and hide inactive links",
+    ))
+
+    states = check("stage_50_spam_states", lambda: repo.spam_states(["525550000001", "525550000020"]))
+    check("stage_50_spam_states_semantics", lambda: _check(
+        states == {"525550000001": 0, "525550000020": 0},
+        "empty schema-only state must expose default score zero",
+    ))
+    checked = check("stage_50_checked_numbers", lambda: repo.spam_checked_numbers())
+    check("stage_50_checked_numbers_semantics", lambda: _check(
+        isinstance(checked, list) and checked == [], "fresh SPAM checked list must be empty",
+    ))
+    routed_phone = next((row for row in (union or []) if row["number"] == "525550000020"), {})
+    history = check("stage_50_phone_history", lambda: repo.spam_phone_history(routed_phone.get("phone_number_id", -1)))
+    check("stage_50_phone_history_semantics", lambda: _check(
+        isinstance(history, list) and history == [], "fresh SPAM phone history must be empty",
+    ))
+
+
 def run_repository_checks(repo: Repository, postgres_url: str) -> dict:
     summary = empty_summary(postgres_url)
     checks: list[tuple[str, object]] = []
@@ -1001,6 +1062,7 @@ def run_repository_checks(repo: Repository, postgres_url: str) -> dict:
     run_stage_47_checks(repo, check)
     run_stage_48_checks(repo, check, company)
     run_stage_49_checks(repo, check, company)
+    run_stage_50_checks(repo, check)
 
     summary.update(status="ok" if not failures else "failed", checks_count=len(checks) + len(failures), failures=failures)
     return summary
