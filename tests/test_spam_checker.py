@@ -2,6 +2,16 @@ import unittest
 from app.spam_checker import parse_response, score_change
 
 class SpamParserTest(unittest.TestCase):
+    def test_full_response_with_spam_and_clear_sections_is_valid(self):
+        parsed = parse_response("spam\n1111111111 - hiya\n\nclear\n2222222222", ["1111111111", "2222222222"])
+        self.assertEqual([], parsed["issues"])
+
+    def test_missing_sections_are_not_inferred(self):
+        parsed = parse_response("1111111111 - hiya\n2222222222", ["1111111111", "2222222222"])
+        self.assertIn("Не удалось определить блоки spam / clear", parsed["issues"][0])
+        self.assertEqual(2, parsed["summary"]["missing"])
+        self.assertEqual(0, parsed["summary"]["clear"])
+
     def test_real_telegram_and_service_prefix(self):
         parsed=parse_response('[15.06.2026 11:11] DG_spam_bot: Ваш запрос обрабатывается...\n[15.06.2026 11:13] DG_spam_bot: spam\n390250030709 - hiya\n390250030707 - callfilter\n\nclear\n390250020820', ['390250030709','390250030707','390250020820'])
         self.assertEqual(parsed['summary']['spam'],2); self.assertEqual(parsed['summary']['clear'],1)

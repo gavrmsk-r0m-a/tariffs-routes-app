@@ -42,12 +42,14 @@ def parse_response(raw: str, expected_numbers: list[str]) -> dict:
     found: dict[str, dict[str, object]] = {}
     issues: list[str] = []
     section: str | None = None
+    sections_seen: set[str] = set()
     for line_no, original in enumerate((raw or "").splitlines(), 1):
         line = PREFIX_RE.sub("", original.strip()).strip()
         if not line or "ваш запрос обрабатывается" in line.casefold():
             continue
         if line.casefold() in {"spam", "clear"}:
             section = line.casefold()
+            sections_seen.add(section)
             continue
         if section == "spam":
             match = re.match(r"^([1-9][0-9]{6,20})\s*-\s*(.+?)\s*$", line)
@@ -64,6 +66,9 @@ def parse_response(raw: str, expected_numbers: list[str]) -> dict:
             item["count"] += 1
         else:
             issues.append(f"Строка {line_no}: не удалось распознать результат")
+
+    if sections_seen != {"spam", "clear"}:
+        issues.insert(0, "Не удалось определить блоки spam / clear. Вставьте полный ответ DG_spam_bot.")
 
     rows: list[ParsedResult] = []
     expected_set = set(expected)
