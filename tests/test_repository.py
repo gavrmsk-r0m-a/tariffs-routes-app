@@ -1,6 +1,7 @@
 import json
 import unittest
 from decimal import Decimal
+from unittest.mock import patch
 
 from psycopg import IntegrityError
 from psycopg.pq import TransactionStatus
@@ -30,6 +31,57 @@ def _timestamp_text(value, *, seconds=True):
 
 
 class RepositoryBusinessRulesTest(unittest.TestCase):
+    def test_spam_batch_rolls_back_every_ready_row_on_system_failure(self):
+        numbers = ["393339911111", "393339922222"]
+        phone_ids = [self.create_phone(number=number) for number in numbers]
+        results = [
+            {"number": number, "verdict": "spam", "source": "hiya", "sources": ["hiya"], "status": "ready"}
+            for number in numbers
+        ]
+        with patch("app.spam_checker.score_change", side_effect=[(1, 1, "soft"), RuntimeError("injected write failure")]):
+            with self.assertRaisesRegex(RuntimeError, "injected write failure"):
+                self.repo.save_spam_check_batch(
+                    request_token="spam-rollback-proof", selection_mode="phones", raw_response="raw",
+                    expected_numbers=numbers, results=results, route_map={}, checked_by=self.admin_id,
+                )
+        self.assertEqual(0, self.conn.execute("SELECT COUNT(*) count FROM spam_check_batches WHERE request_token=%s", ("spam-rollback-proof",)).fetchone()["count"])
+        self.assertEqual(0, self.conn.execute("SELECT COUNT(*) count FROM phone_spam_state WHERE phone_number_id IN (%s,%s)", phone_ids).fetchone()["count"])
+
+    def test_spam_partial_batch_is_atomic_idempotent_and_audits_flag_changes(self):
+        numbers = [f"39333990000{i}" for i in range(4)]
+        phone_ids = [self.create_phone(number=number) for number in numbers]
+        self.conn.execute(
+            "INSERT INTO phone_spam_state(phone_number_id, score, last_verdict) VALUES (%s, 4, 'spam')",
+            (phone_ids[0],),
+        )
+        self.conn.commit()
+        results = [
+            {"number": numbers[0], "verdict": "spam", "source": "hiya", "sources": ["hiya"], "status": "ready"},
+            {"number": numbers[1], "verdict": "spam", "source": "hiya", "sources": ["hiya"], "status": "ready"},
+        ]
+        saved = self.repo.save_spam_check_batch(
+            request_token="partial-postgres-proof", selection_mode="phones",
+            raw_response="\n".join([f"{number} - hiya" for number in numbers]),
+            expected_numbers=numbers, results=results, route_map={},
+            checked_by=self.admin_id, parser_version="2",
+        )
+        self.assertEqual((2, False), (saved["saved"], saved["duplicate"]))
+        batch = self.conn.execute("SELECT id, requested_count, raw_response FROM spam_check_batches WHERE request_token=%s", ("partial-postgres-proof",)).fetchone()
+        self.assertEqual(4, batch["requested_count"])
+        self.assertEqual(2, self.conn.execute("SELECT COUNT(*) count FROM spam_check_results WHERE batch_id=%s", (batch["id"],)).fetchone()["count"])
+        self.assertEqual(0, self.conn.execute("SELECT COUNT(*) count FROM phone_spam_state WHERE phone_number_id IN (%s,%s)", (phone_ids[2], phone_ids[3])).fetchone()["count"])
+        duplicate = self.repo.save_spam_check_batch(
+            request_token="partial-postgres-proof", selection_mode="phones", raw_response="changed",
+            expected_numbers=numbers, results=results, route_map={}, checked_by=self.admin_id, parser_version="2",
+        )
+        self.assertEqual((2, True), (duplicate["saved"], duplicate["duplicate"]))
+        history = self.conn.execute("SELECT new_value FROM phone_number_history WHERE phone_number_id=%s ORDER BY id DESC LIMIT 1", (phone_ids[0],)).fetchone()
+        payload = _json_value(history["new_value"])
+        self.assertEqual("Изменение по результату SPAM Checker", payload["description"])
+        self.assertIn("Рейтинг SPAM Checker: 4/5 → 5/5", payload["details"])
+        self.assertIn("Проблемный: Нет → Да", payload["details"])
+        self.assertIn("Требует проверки: Нет → Да", payload["details"])
+
     def test_change_reason_scopes_crud_filters_and_atomic_rollback(self):
         with self.assertRaisesRegex(BusinessRuleError, "минимум одну"):
             self.repo.create_change_reason("No scope", scopes=[])
