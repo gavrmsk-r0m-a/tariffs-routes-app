@@ -1102,9 +1102,9 @@
       "current_commit_behavior": "commits internally",
       "dependencies": [],
       "mutation_kind": "mixed_read_write",
-      "notes": "V1 authoritative transaction with database request-token idempotency.",
+      "notes": "Authoritative partial-business-save transaction with database request-token idempotency; invalid candidates are skipped before batch writes.",
       "postgres_strategy": "PostgreSQL row locks, constraints and one transaction.",
-      "returns": "Batch id, saved count and duplicate marker",
+      "returns": "Batch id, persisted result count and duplicate marker; duplicate submissions return the original persisted count",
       "risk": "high",
       "rollback_strategy": "Repository transaction rolls back every batch mutation on any exception.",
       "side_effects": [
@@ -1117,7 +1117,7 @@
         "pure parser tests",
         "PostgreSQL atomicity and idempotency integration tests"
       ],
-      "transaction_contract": "rollback_on_exception"
+      "transaction_contract": "Business-invalid rows are partitioned before writes; every write for the valid subset rolls back on exception"
     },
     "set_app_setting_value": {
       "batch": "app_settings_and_admin_low_risk",
