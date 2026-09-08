@@ -77,6 +77,53 @@ class _FakeBalanceResponse:
         return self.payload
 
 
+class SpamCheckerUiTest(unittest.TestCase):
+    def setUp(self):
+        self.repo = Mock()
+        self.repo.list_countries.return_value = [{"id": 1, "name": "Brazil"}]
+        self.repo.list_providers.return_value = [{"id": 2, "name": "Sancom"}]
+        self.repo.spam_checked_numbers.return_value = []
+        self.repo.spam_eligible_routes.return_value = [
+            {"id": 11, "name": "Brazil/Sancom/RND@", "provider_name": "Sancom", "phone_count": 2},
+            {"id": 12, "name": "Brazil/Miatel/Pool_B@", "provider_name": "Miatel", "phone_count": 3},
+        ]
+
+    def render(self, query=None, data=None):
+        return server.spam_checker_page(self.repo, query, data=data).decode("utf-8")
+
+    def test_tabs_have_exactly_one_active_item(self):
+        content = self.render({"tab": "routes"})
+        tabs = re.findall(r"<a class='spam-tab ([^']*)'[^>]*>([^<]+)</a>", content)
+        self.assertEqual([label for classes, label in tabs if "active" in classes.split()], ["По маршрутам"])
+        self.assertNotIn("active", next(classes for classes, label in tabs if label == "По номерам").split())
+        self.assertNotIn("active", next(classes for classes, label in tabs if label == "Проверенные").split())
+
+    def test_checked_filters_render_before_full_width_table(self):
+        content = self.render({"tab": "checked"})
+        self.assertLess(content.index("class='filter-card'"), content.index("class='table-wrap spam-checked-table'"))
+        self.assertIn("class='spam-filter'", content)
+
+    def test_route_multi_select_keeps_multiple_route_ids(self):
+        content = self.render(data={"selection_mode": "routes", "route_11": "1", "route_12": "1"})
+        self.assertIn("class='route-selector'", content)
+        self.assertRegex(content, r"name='route_11'[^>]*checked")
+        self.assertRegex(content, r"name='route_12'[^>]*checked")
+        self.assertIn("Выбрано: 2", content)
+        self.assertIn("Выбрать все", content)
+        self.assertIn("Снять все", content)
+
+    def test_result_card_remains_below_selection_form(self):
+        content = self.render()
+        selection_marker = "<section class='card spam-work spam-selection'>"
+        actions_marker = "<footer class='spam-actions'>"
+        result_marker = "<section class='card spam-result'>"
+        self.assertIn(selection_marker, content)
+        self.assertIn(actions_marker, content)
+        self.assertIn(result_marker, content)
+        self.assertLess(content.index(selection_marker), content.index(result_marker))
+        self.assertLess(content.index(actions_marker), content.index(result_marker))
+
+
 class HlrBalanceHelperTest(unittest.TestCase):
     def test_hlr_balance_url_is_derived_from_hlr_endpoint(self):
         self.assertEqual(
