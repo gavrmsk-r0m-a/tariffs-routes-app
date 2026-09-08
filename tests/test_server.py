@@ -201,6 +201,16 @@ class SpamCheckerUiTest(unittest.TestCase):
         self.assertLess(content.index(selection_marker), content.index(result_marker))
         self.assertLess(content.index(actions_marker), content.index(result_marker))
 
+    def test_phone_workflow_uses_native_clipboard_and_parser_v2_help(self):
+        content = self.render()
+        self.assertIn("Сформировать список", content)
+        self.assertIn("Очистить", content)
+        self.assertNotIn("Скопировать номера", content)
+        spam_numbers_section = content.split("<div class='spam-numbers'>", 1)[1].split("</section>", 1)[0]
+        self.assertNotIn("navigator.clipboard.writeText", spam_numbers_section)
+        self.assertIn("Строка с номером без пометки считается чистой", content)
+        self.assertIn("Заголовки spam / clear не обязательны", content)
+
 
 class HlrBalanceHelperTest(unittest.TestCase):
     def test_hlr_balance_url_is_derived_from_hlr_endpoint(self):
@@ -536,18 +546,20 @@ class ServerSmokeTest(unittest.TestCase):
     @patch.object(Repository, "spam_states", return_value={"3939393930": 0, "3939393938": 1})
     @patch.object(Repository, "save_spam_check_batch")
     def test_spam_preview_post(self, save_batch, _states):
-        captured, content = self.spam_post({"selection_mode": "phones", "numbers": "3939393930\n3939393938", "raw_response": "spam\n3939393930 - hiya\n\nclear\n3939393938", "request_token": "preview-token"}, "preview")
-        self.assertEqual("200 OK", captured["status"])
-        for text in ("Предпросмотр", "3939393930", "spam", "hiya", "+1", "3939393938", "clear", "-1", "preview-token"):
-            self.assertIn(text, content)
-        self.assertNotIn("Неизвестное действие", content)
+        for raw_response in ("3939393930 - hiya\n3939393938", "spam\n3939393930 - hiya\nclear\n3939393938"):
+            with self.subTest(raw_response=raw_response):
+                captured, content = self.spam_post({"selection_mode": "phones", "numbers": "3939393930\n3939393938", "raw_response": raw_response, "request_token": "preview-token"}, "preview")
+                self.assertEqual("200 OK", captured["status"])
+                for text in ("Предпросмотр", "Запрошено: 2", "Получено: 2", "Spam: 1", "Clear: 1", "Нет результата: 0", "Лишних: 0", "Ошибок: 0", "3939393930", "spam", "hiya", "+1", "3939393938", "clear", "-1", "preview-token"):
+                    self.assertIn(text, content)
+                self.assertNotIn("Неизвестное действие", content)
         save_batch.assert_not_called()
 
     @patch.object(Repository, "save_spam_check_batch")
-    def test_spam_preview_invalid_response(self, save_batch):
+    def test_spam_preview_headerless_response(self, save_batch):
         captured, content = self.spam_post({"selection_mode": "phones", "numbers": "3939393930\n3939393938", "raw_response": "3939393930 - hiya\n3939393938"}, "preview")
-        self.assertEqual("400 Bad Request", captured["status"])
-        self.assertIn("Не удалось определить блоки spam / clear", content)
+        self.assertEqual("200 OK", captured["status"])
+        self.assertIn("Предпросмотр", content)
         self.assertIn("3939393930 - hiya", content)
         self.assertNotIn("Неизвестное действие", content)
         save_batch.assert_not_called()
@@ -566,7 +578,7 @@ class ServerSmokeTest(unittest.TestCase):
 
     @patch.object(Repository, "save_spam_check_batch", return_value={"saved": 2, "duplicate": False})
     def test_spam_save_post(self, save_batch):
-        fields = {"selection_mode": "phones", "numbers": "3939393930\n3939393938", "raw_response": "spam\n3939393930 - hiya\n\nclear\n3939393938", "request_token": "save-token", "route_map": "{}"}
+        fields = {"selection_mode": "phones", "numbers": "3939393930\n3939393938", "raw_response": "3939393930 - hiya\n3939393938", "request_token": "save-token", "route_map": "{}"}
         captured, content = self.spam_post(fields, "save")
         self.assertEqual("200 OK", captured["status"])
         self.assertIn("Сохранено 2 из 2.", content)
@@ -577,6 +589,11 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertEqual("phones", kwargs["selection_mode"])
         self.assertEqual(["3939393930", "3939393938"], kwargs["expected_numbers"])
         self.assertEqual(fields["raw_response"], kwargs["raw_response"])
+        self.assertEqual("2", kwargs["parser_version"])
+        self.assertEqual(
+            [("3939393930", "spam", "hiya"), ("3939393938", "clear", None)],
+            [(row["number"], row["verdict"], row["source"]) for row in kwargs["results"]],
+        )
 
 
     def test_hlr_page_renders_usage_panel_after_repository_refactor(self):
