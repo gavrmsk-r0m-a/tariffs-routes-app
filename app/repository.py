@@ -4765,8 +4765,8 @@ class Repository:
         if filters.get("unchecked_only"): having.append("COUNT(DISTINCT CASE WHEN ps.phone_number_id IS NULL THEN pn.id END)>0")
         having_sql = " HAVING " + " AND ".join(having) if having else ""
         rows = rows_to_dicts(self.conn.execute(f"""
-          SELECT r.id, r.name, r.country_id, COALESCE(r.country_label,c.name) country_name,
-            COALESCE(r.provider_label,pr.name) provider_name, r.cli_source_type,
+          SELECT r.id, r.name, r.country_id, c.name country_name,
+            pr.name provider_name, r.cli_source_type,
             COUNT(DISTINCT pn.id) total_count,
             COUNT(DISTINCT CASE WHEN ps.phone_number_id IS NOT NULL THEN pn.id END) checked_count,
             COUNT(DISTINCT CASE WHEN ps.phone_number_id IS NULL THEN pn.id END) unchecked_count,
@@ -4779,7 +4779,7 @@ class Repository:
           JOIN route_phone_numbers rpn ON rpn.route_id=r.id JOIN phone_numbers pn ON pn.id=rpn.phone_number_id
           LEFT JOIN phone_spam_state ps ON ps.phone_number_id=pn.id
           WHERE {where}
-          GROUP BY r.id,r.name,r.country_id,r.country_label,c.name,r.provider_label,pr.name,r.cli_source_type{having_sql}
+          GROUP BY r.id,r.name,r.country_id,c.name,pr.name,r.cli_source_type{having_sql}
           ORDER BY r.name""", params))
         for row in rows:
             total, checked = int(row["total_count"]), int(row["checked_count"])
