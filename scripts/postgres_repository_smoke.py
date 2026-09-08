@@ -44,7 +44,7 @@ SMOKE_METHODS = (
     "list_company_routing_setting_history", "list_calling_company_history",
     "list_calling_company_events", "count_calling_company_events",
     "spam_phone_candidates", "spam_eligible_routes", "spam_route_number_union",
-    "spam_states", "spam_checked_numbers", "spam_phone_history",
+    "spam_states", "spam_checked_numbers", "spam_route_pool_summary", "spam_phone_history",
 )
 
 STAGE_34_METHODS = (
@@ -119,6 +119,7 @@ STAGE_50_METHODS = (
     "spam_route_number_union",
     "spam_states",
     "spam_checked_numbers",
+    "spam_route_pool_summary",
     "spam_phone_history",
 )
 
@@ -982,6 +983,10 @@ def run_stage_50_checks(repo: Repository, check) -> None:
     checked = check("stage_50_checked_numbers", lambda: repo.spam_checked_numbers())
     check("stage_50_checked_numbers_semantics", lambda: _check(
         isinstance(checked, list) and checked == [], "fresh SPAM checked list must be empty",
+    ))
+    route_summary = check("stage_50_route_pool_summary", lambda: repo.spam_route_pool_summary())
+    check("stage_50_route_pool_summary_semantics", lambda: _check(
+        isinstance(route_summary, list), "SPAM route pool summary must be a list",
     ))
     routed_phone = next((row for row in (union or []) if row["number"] == "525550000020"), {})
     history = check("stage_50_phone_history", lambda: repo.spam_phone_history(routed_phone.get("phone_number_id", -1)))

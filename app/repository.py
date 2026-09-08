@@ -4727,14 +4727,64 @@ class Repository:
         for key,col in mapping.items():
             if filters.get(key) not in (None,"","all"): clauses.append(f"{col}={p}"); params.append(filters[key])
         if filters.get("number"): clauses.append(f"pn.number LIKE {p}"); params.append(f"%{filters['number']}%")
+        if filters.get("project"): clauses.append(f"pn.project_label LIKE {p}"); params.append(f"%{filters['project']}%")
+        if filters.get("assignment"): clauses.append(f"pn.assignment_label LIKE {p}"); params.append(f"%{filters['assignment']}%")
+        if filters.get("route_id"):
+            clauses.append(f"EXISTS (SELECT 1 FROM route_phone_numbers frpn WHERE frpn.phone_number_id=pn.id AND frpn.route_id={p} AND frpn.is_active={p})")
+            params.extend((filters["route_id"], to_db_bool(True, self.backend)))
         if filters.get("spam_only"): clauses.append("ps.score=5")
+        if filters.get("elevated_only"): clauses.append("ps.score BETWEEN 3 AND 4")
+        risk_status = filters.get("risk_status")
+        if risk_status == "clean": clauses.append("ps.score=0")
+        elif risk_status == "low": clauses.append("ps.score BETWEEN 1 AND 2")
+        elif risk_status == "elevated": clauses.append("ps.score BETWEEN 3 AND 4")
+        elif risk_status == "spam": clauses.append("ps.score=5")
         if filters.get("last_date"): clauses.append(f"CAST(ps.last_checked_at AS DATE)={p}"); params.append(filters["last_date"])
+        if str(filters.get("stale_days") or "").isdigit():
+            clauses.append(f"ps.last_checked_at < CURRENT_TIMESTAMP - ({p} * INTERVAL '1 day')")
+            params.append(int(filters["stale_days"]))
         where=" WHERE "+" AND ".join(clauses) if clauses else ""
         return rows_to_dicts(self.conn.execute(f"""SELECT pn.id, pn.number, COALESCE(pn.country_label,c.name) country_name,
           COALESCE(pn.provider_label,pr.name) provider_name,pn.project_label,pn.assignment_label,ps.*,
           (SELECT COUNT(*) FROM spam_check_results sr WHERE sr.phone_number_id=pn.id) checks_count,
-          (SELECT STRING_AGG(x.route_name_snapshot, ', ' ORDER BY x.route_name_snapshot) FROM spam_check_result_routes x JOIN spam_check_results sr ON sr.id=x.result_id WHERE sr.phone_number_id=pn.id) route_names
-          FROM phone_spam_state ps JOIN phone_numbers pn ON pn.id=ps.phone_number_id JOIN countries c ON c.id=pn.country_id LEFT JOIN providers pr ON pr.id=pn.provider_id{where} ORDER BY ps.last_checked_at DESC""",params))
+          COALESCE((SELECT STRING_AGG(DISTINCT cr.name, ', ' ORDER BY cr.name) FROM route_phone_numbers crpn JOIN routes cr ON cr.id=crpn.route_id WHERE crpn.phone_number_id=pn.id AND crpn.is_active={p} AND pn.is_active={p}), '') current_route_names
+          FROM phone_spam_state ps JOIN phone_numbers pn ON pn.id=ps.phone_number_id JOIN countries c ON c.id=pn.country_id LEFT JOIN providers pr ON pr.id=pn.provider_id{where} ORDER BY ps.last_checked_at DESC""",
+          [to_db_bool(True, self.backend), to_db_bool(True, self.backend), *params]))
+
+    def spam_route_pool_summary(self, filters: dict | None = None) -> list[dict]:
+        """Aggregate current active route pools without consulting history snapshots."""
+        filters = filters or {}; p = placeholder(self.backend)
+        clauses = [f"rpn.is_active={p}", f"pn.is_active={p}", "r.cli_source_type IN ('pool','sim')"]
+        params: list[object] = [to_db_bool(True, self.backend), to_db_bool(True, self.backend)]
+        for key, column in (("country_id", "r.country_id"), ("provider_id", "r.provider_id"), ("source_type", "r.cli_source_type")):
+            if filters.get(key) not in (None, "", "all"):
+                clauses.append(f"{column}={p}"); params.append(filters[key])
+        where = " AND ".join(clauses)
+        having = []
+        if filters.get("spam_only"): having.append("COUNT(DISTINCT CASE WHEN ps.score=5 THEN pn.id END)>0")
+        if filters.get("unchecked_only"): having.append("COUNT(DISTINCT CASE WHEN ps.phone_number_id IS NULL THEN pn.id END)>0")
+        having_sql = " HAVING " + " AND ".join(having) if having else ""
+        rows = rows_to_dicts(self.conn.execute(f"""
+          SELECT r.id, r.name, r.country_id, COALESCE(r.country_label,c.name) country_name,
+            COALESCE(r.provider_label,pr.name) provider_name, r.cli_source_type,
+            COUNT(DISTINCT pn.id) total_count,
+            COUNT(DISTINCT CASE WHEN ps.phone_number_id IS NOT NULL THEN pn.id END) checked_count,
+            COUNT(DISTINCT CASE WHEN ps.phone_number_id IS NULL THEN pn.id END) unchecked_count,
+            COUNT(DISTINCT CASE WHEN ps.score=5 THEN pn.id END) spam_count,
+            COUNT(DISTINCT CASE WHEN ps.score BETWEEN 3 AND 4 THEN pn.id END) elevated_count,
+            COUNT(DISTINCT CASE WHEN ps.score BETWEEN 1 AND 2 THEN pn.id END) low_count,
+            COUNT(DISTINCT CASE WHEN ps.score=0 THEN pn.id END) clean_count,
+            MAX(ps.last_checked_at) last_checked_at
+          FROM routes r JOIN countries c ON c.id=r.country_id JOIN providers pr ON pr.id=r.provider_id
+          JOIN route_phone_numbers rpn ON rpn.route_id=r.id JOIN phone_numbers pn ON pn.id=rpn.phone_number_id
+          LEFT JOIN phone_spam_state ps ON ps.phone_number_id=pn.id
+          WHERE {where}
+          GROUP BY r.id,r.name,r.country_id,r.country_label,c.name,r.provider_label,pr.name,r.cli_source_type{having_sql}
+          ORDER BY r.name""", params))
+        for row in rows:
+            total, checked = int(row["total_count"]), int(row["checked_count"])
+            row["coverage"] = round(checked * 100 / total, 1) if total else 0.0
+        return rows
 
     def spam_phone_history(self, phone_id: int) -> list[dict]:
         p=placeholder(self.backend)
