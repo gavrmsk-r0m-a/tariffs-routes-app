@@ -4,9 +4,12 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-PARSER_VERSION = "1"
+PARSER_VERSION = "2"
 PHONE_RE = re.compile(r"^[1-9][0-9]{6,20}$")
 PREFIX_RE = re.compile(r"^\s*\[[^]]+\]\s*[^:]+:\s*", re.IGNORECASE)
+PHONE_LINE_RE = re.compile(r"^([1-9][0-9]{6,20})(?=$|[\s\-–—:;|])(.*)$")
+LEADING_SEPARATORS_RE = re.compile(r"^[\s\-–—:;|]+")
+HIYA_RE = re.compile(r"\bhiya\b", re.IGNORECASE)
 
 
 @dataclass
@@ -41,36 +44,22 @@ def parse_response(raw: str, expected_numbers: list[str]) -> dict:
     expected = list(dict.fromkeys(str(n).strip() for n in expected_numbers if str(n).strip()))
     found: dict[str, dict[str, object]] = {}
     issues: list[str] = []
-    section: str | None = None
-    sections_seen: set[str] = set()
-    for line_no, original in enumerate((raw or "").splitlines(), 1):
+    for original in (raw or "").splitlines():
         line = PREFIX_RE.sub("", original.strip()).strip()
-        if not line or "ваш запрос обрабатывается" in line.casefold():
+        if not line:
             continue
-        if line.casefold() in {"spam", "clear"}:
-            section = line.casefold()
-            sections_seen.add(section)
+        match = PHONE_LINE_RE.match(line)
+        if not match:
             continue
-        if section == "spam":
-            match = re.match(r"^([1-9][0-9]{6,20})\s*-\s*(.+?)\s*$", line)
-            if not match:
-                issues.append(f"Строка {line_no}: ожидается NUMBER - SOURCE")
-                continue
-            number, source = match.group(1), match.group(2).strip()
-            item = found.setdefault(number, {"spam": [], "clear": False, "count": 0})
+        number = match.group(1)
+        comment = LEADING_SEPARATORS_RE.sub("", match.group(2).strip()).strip()
+        item = found.setdefault(number, {"spam": [], "clear": False, "count": 0})
+        if comment:
+            source = "hiya" if HIYA_RE.search(comment) else comment
             item["spam"].append(source)
-            item["count"] += 1
-        elif section == "clear" and PHONE_RE.fullmatch(line):
-            item = found.setdefault(line, {"spam": [], "clear": False, "count": 0})
-            item["clear"] = True
-            item["count"] += 1
         else:
-            issues.append(f"Строка {line_no}: не удалось распознать результат")
-
-    # A bot response can contain only one non-empty result block. Keep the
-    # header requirement, but do not require an empty counterpart block.
-    if not sections_seen:
-        issues.insert(0, "Не удалось определить блоки spam / clear. Вставьте полный ответ DG_spam_bot.")
+            item["clear"] = True
+        item["count"] += 1
 
     rows: list[ParsedResult] = []
     expected_set = set(expected)
