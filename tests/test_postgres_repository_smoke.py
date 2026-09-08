@@ -15,7 +15,7 @@ from app.repository import Repository
 
 _TEST_DB = shared_database()
 
-CHECKS_COUNT = 628
+CHECKS_COUNT = 642
 
 
 class RecordingRepository:
@@ -165,6 +165,19 @@ class PostgreSQLRepositorySmokeTest(unittest.TestCase):
         for method in smoke.STAGE_49_METHODS:
             self.assertEqual(1, smoke.SMOKE_METHODS.count(method))
         self.assertNotIn("_calling_company_event_query_parts", smoke.SMOKE_METHODS)
+
+    def test_stage_50_methods_are_declared_once(self):
+        self.assertEqual((
+            "spam_phone_candidates",
+            "spam_eligible_routes",
+            "spam_route_number_union",
+            "spam_states",
+            "spam_checked_numbers",
+            "spam_phone_history",
+        ), smoke.STAGE_50_METHODS)
+        for method in smoke.STAGE_50_METHODS:
+            self.assertEqual(1, smoke.SMOKE_METHODS.count(method))
+        self.assertTrue(set(smoke.STAGE_50_METHODS) <= set(smoke.SMOKE_METHODS))
 
     def test_stage_49_failure_continues_checks(self):
         repository = RecordingRepository(Repository(self.conn))

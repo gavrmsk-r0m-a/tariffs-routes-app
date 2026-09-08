@@ -4,7 +4,7 @@
     "infrastructure_or_mixed_count": 1,
     "read_surface_coverage_percent": 100.0,
     "repository_public_methods_count": 124,
-    "repository_smoke_checks_count": 615,
+    "repository_smoke_checks_count": 642,
     "smoke_covered_read_count": 70,
     "write_or_mutating_count": 53
   },
