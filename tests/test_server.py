@@ -5716,12 +5716,12 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
         self.assertIn(".none-route-reason-row .multi-select { margin: 0; }", content)
         self.assertIn(".multi-select-panel { position: absolute", content)
 
-        self.assertIn("const affectedRoutes = document.getElementById('affected-routes')", create_form)
-        self.assertIn("form.addEventListener('click'", create_form)
-        self.assertIn("affectedRoutes.open && !affectedRoutes.contains(event.target)", create_form)
-        self.assertIn("affectedRoutes.open = false", create_form)
-        self.assertIn("event.key === 'Escape'", create_form)
-        close_contract = create_form.split("const affectedRoutes =", 1)[1].split("form.querySelectorAll('.provider-change-server-priority-create", 1)[0]
+        self.assertIn("const affectedRoutes = document.getElementById('affected-routes')", content)
+        self.assertIn("form.addEventListener('click'", content)
+        self.assertIn("affectedRoutes.open && !affectedRoutes.contains(event.target)", content)
+        self.assertIn("affectedRoutes.open = false", content)
+        self.assertIn("event.key === 'Escape'", content)
+        close_contract = content.split("const affectedRoutes =", 1)[1].split("form.querySelectorAll('.provider-change-server-priority-create", 1)[0]
         self.assertNotIn("checked = false", close_contract)
 
     def test_none_scope_multi_route_post_persists_all_routes_and_shows_validation_in_modal(self):
