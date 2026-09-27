@@ -1161,7 +1161,7 @@ def run_routing_event_create_campaign_probe(repo: Repository, conn) -> None:
             ("invalid_type", dict(calling_company_id=company_id, company_change_type="invalid"), "Некорректный тип изменения кампании"),
             ("already_enabled", dict(calling_company_id=company_id, company_change_type="enable_autorotation"), "В этой компании уже включена авторотация."),
             ("missing_route", dict(calling_company_id=company_id, company_change_type="set_campaign_route"), "Новый маршрут кампании обязателен"),
-            ("wrong_geo", dict(calling_company_id=company_id, company_change_type="set_campaign_route", new_company_route_id=wrong_geo["id"]), "Маршрут кампании должен относиться к выбранному GEO"),
+            ("wrong_geo", dict(calling_company_id=company_id, company_change_type="set_campaign_route", new_company_route_id=wrong_geo["id"]), "Маршрут кампании должен относиться к выбранному GEO кампании"),
             ("same_route", dict(calling_company_id=company_id, company_change_type="set_campaign_route", new_company_route_id=pair[0]["id"]), "Этот маршрут уже прописан для выбранной компании."),
         )
         for name, arguments, expected in validations:
