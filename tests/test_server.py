@@ -5673,6 +5673,57 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
     request = ServerSmokeTest.request
     user_cookie = ServerSmokeTest.user_cookie
 
+    def test_none_scope_form_uses_route_backed_dependency_chain_and_select_all(self):
+        _captured, content = self.request("/provider-changes")
+        self.assertIn("name='affected_route_ids'", content)
+        self.assertIn("id='affected-routes-select-all'", content)
+        self.assertIn("rebuildNoneRouteControls(true)", content)
+        conn = _TEST_DB.connect()
+        try:
+            country_without_routes = conn.execute("INSERT INTO countries(name, iso2, is_active) VALUES (%s, %s, TRUE) RETURNING id", ("Без маршрутов", "ZZ")).fetchone()["id"]
+        finally:
+            conn.commit()
+            conn.close()
+        _captured, content = self.request("/provider-changes")
+        self.assertNotIn(f"<option value='{country_without_routes}'", content)
+
+    def test_none_scope_multi_route_post_persists_all_routes_and_shows_validation_in_modal(self):
+        conn = _TEST_DB.connect()
+        try:
+            pair = conn.execute("""
+                SELECT country_id, provider_id
+                FROM routes WHERE is_actual IS TRUE
+                GROUP BY country_id, provider_id HAVING COUNT(*) >= 2
+                ORDER BY country_id, provider_id LIMIT 1
+            """).fetchone()
+            route_ids = [row["id"] for row in conn.execute(
+                "SELECT id FROM routes WHERE country_id = %s AND provider_id = %s AND is_actual IS TRUE ORDER BY id LIMIT 2",
+                (pair["country_id"], pair["provider_id"]),
+            )]
+        finally:
+            conn.close()
+        base = [("apply_scope", "none"), ("event_at", "2026-06-10T10:00"),
+                ("country_id", str(pair["country_id"])), ("provider_id", str(pair["provider_id"])),
+                ("reason", "Провайдер сменил маршрут"), ("comment", "multi route")]
+        captured, content = self.request("/provider-changes/create", method="POST", body=urlencode(base))
+        self.assertEqual(captured["status"], "400 Bad Request")
+        self.assertIn("Выберите хотя бы один маршрут/префикс", content)
+        self.assertIn("provider-change-create-shell' open", content)
+        body = urlencode(base + [("affected_route_ids", str(route_id)) for route_id in route_ids])
+        captured, _content = self.request("/provider-changes/create", method="POST", body=body)
+        self.assertEqual(captured["status"], "303 See Other")
+        conn = _TEST_DB.connect()
+        try:
+            event_id = conn.execute("SELECT id FROM routing_events ORDER BY id DESC LIMIT 1").fetchone()["id"]
+            saved = [row["route_id"] for row in conn.execute("SELECT route_id FROM routing_event_routes WHERE routing_event_id = %s ORDER BY position", (event_id,))]
+        finally:
+            conn.close()
+        self.assertEqual(saved, route_ids)
+        _captured, content = self.request("/provider-changes")
+        for route_id in route_ids:
+            self.assertIn(str(route_id), body)
+        self.assertIn("Маршруты/префиксы", content)
+
     def test_server_priority_event_updates_dashboard_and_change_log(self):
         self.request("/routes")
         body = urlencode({
