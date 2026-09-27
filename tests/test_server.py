@@ -2697,10 +2697,10 @@ class ServerSmokeTest(unittest.TestCase):
         captured, content = self.request("/provider-changes")
         self.assertEqual(captured["status"], "200 OK")
         self.assertIn("value='none' checked", content)
-        self.assertIn("data-scopes='none'", content)
-        self.assertIn("Маршрут/префикс", content)
-        self.assertIn("data-scopes='server_priority'", content)
-        self.assertIn("Текущий маршрут", content)
+        self.assertIn("data-scope-content='none'", content)
+        self.assertIn("Маршруты/префиксы", content)
+        self.assertIn("data-scope-content='server_priority'", content)
+        self.assertIn("Новый маршрут", content)
         self.assertIn("Тип изменения кампании", content)
         self.assertIn("id='company-change-type'", content)
         self.assertIn("Включили авторотацию", content)
@@ -2757,7 +2757,7 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertIn("Переименованная причина кампании", content)
         self.assertNotIn("Причина кампании из БД\"", content)
 
-        valid = urlencode({"apply_scope": "none", "event_at": "2026-06-10T10:00", "provider_id": "1", "reason": "Новая причина из БД"})
+        valid = urlencode({"apply_scope": "none", "event_at": "2026-06-10T10:00", "country_id": "1", "provider_id": "1", "affected_route_ids": "1", "reason": "Новая причина из БД"})
         captured, _ = self.request("/provider-changes/create", method="POST", body=valid)
         self.assertEqual(captured["status"], "303 See Other")
         conn = _TEST_DB.connect()
@@ -2801,7 +2801,7 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertIn("Причина обязательна", content)
 
     def test_provider_change_none_other_requires_comment_but_named_reason_does_not(self):
-        ok_body = urlencode({"apply_scope": "none", "event_at": "2026-06-10T10:00", "provider_id": "1", "reason": "Провайдер сменил маршрут", "comment": ""})
+        ok_body = urlencode({"apply_scope": "none", "event_at": "2026-06-10T10:00", "country_id": "1", "provider_id": "1", "affected_route_ids": "1", "reason": "Провайдер сменил маршрут", "comment": ""})
         captured, _ = self.request("/provider-changes/create", method="POST", body=ok_body)
         self.assertEqual(captured["status"], "303 See Other")
         bad_body = urlencode({"apply_scope": "none", "event_at": "2026-06-10T11:00", "provider_id": "1", "reason": "Другое", "comment": ""})
@@ -2829,12 +2829,12 @@ class ServerSmokeTest(unittest.TestCase):
         captured, content = self.request("/provider-changes")
         self.assertEqual(captured["status"], "200 OK")
         self.assertIn("const routes = [", content)
-        self.assertIn("function rebuildAffectedRouteSelect()", content)
-        self.assertIn("select.innerHTML = '<option value=\"\">—</option>';", content)
-        self.assertIn("if (providerId)", content)
-        self.assertIn("String(route.provider_id) === String(providerId)", content)
-        self.assertIn("String(route.country_id) === String(countryId)", content)
-        self.assertIn("input[name=\"apply_scope\"], #event-country, #event-provider", content)
+        self.assertIn("function rebuildNoneRouteControls(resetRoutes)", content)
+        self.assertIn("provider.innerHTML = '<option value=\"\">—</option>';", content)
+        self.assertIn("option.dataset.providerId === String(providerId)", content)
+        self.assertIn("option.dataset.countryId === String(countryId)", content)
+        self.assertIn("noneCountry.addEventListener('change'", content)
+        self.assertIn("noneProvider.addEventListener('change'", content)
 
     def _create_overflow_route(self, name="Резервный ШЛЮЗ GSM", is_actual=1, country_id=1, provider_id=1):
         conn = _TEST_DB.connect()
@@ -2865,8 +2865,8 @@ class ServerSmokeTest(unittest.TestCase):
         self.request("/routes")
         overflow_id = self._create_overflow_route()
         body = urlencode({
-            "apply_scope": "none", "event_at": "2026-06-10T10:00", "provider_id": "1",
-            "reason": "Провайдер сменил маршрут", "comment": "без применения",
+            "apply_scope": "none", "event_at": "2026-06-10T10:00", "country_id": "1", "provider_id": "1",
+            "affected_route_ids": "1", "reason": "Провайдер сменил маршрут", "comment": "без применения",
             "has_overflow": "1", "overflow_provider_id": "1", "overflow_route_id": str(overflow_id),
         })
         captured, _content = self.request("/provider-changes/create", method="POST", body=body)
@@ -5060,7 +5060,7 @@ class ServerSmokeTest(unittest.TestCase):
 
     def test_provider_change_can_create_none_scope_event(self):
         self.request("/routes")
-        body = urlencode({"apply_scope": "none", "event_at": "2026-06-10T10:00", "provider_id": "1", "reason": "Другое", "comment": "Провайдер сообщил о работах"})
+        body = urlencode({"apply_scope": "none", "event_at": "2026-06-10T10:00", "country_id": "1", "provider_id": "1", "affected_route_ids": "1", "reason": "Другое", "comment": "Провайдер сообщил о работах"})
         captured, _ = self.request("/provider-changes/create", method="POST", body=body)
         self.assertEqual(captured["status"], "303 See Other")
         captured, content = self.request("/provider-changes")
@@ -5680,7 +5680,7 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
         self.assertIn("rebuildNoneRouteControls(true)", content)
         conn = _TEST_DB.connect()
         try:
-            country_without_routes = conn.execute("INSERT INTO countries(name, iso2, is_active) VALUES (%s, %s, TRUE) RETURNING id", ("Без маршрутов", "ZZ")).fetchone()["id"]
+            country_without_routes = conn.execute("INSERT INTO countries(name, code, is_active) VALUES (%s, %s, TRUE) RETURNING id", ("Без маршрутов", "ZZ")).fetchone()["id"]
         finally:
             conn.commit()
             conn.close()
@@ -6013,9 +6013,9 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
         captured, content = self.request("/provider-changes")
         self.assertEqual(captured["status"], "200 OK")
         self.assertIn("value='none' checked", content)
-        self.assertIn("data-scopes='none'", content)
+        self.assertIn("data-scope-content='none'", content)
         self.assertIn("Настройка кампании", content)
-        self.assertIn("data-scopes='campaign_setting'", content)
+        self.assertIn("data-scope-content='campaign_setting'", content)
         self.assertIn("Событие будет сохранено в журнале и применено", content)
 
 
@@ -6464,8 +6464,8 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
 
     def test_event_list_sorted_by_event_at_desc_and_does_not_render_deactivate(self):
         self.request("/routes")
-        first = urlencode({"apply_scope": "none", "event_at": "2026-06-09T10:00", "provider_id": "1", "reason": "Другое", "comment": "старое событие"})
-        second = urlencode({"apply_scope": "none", "event_at": "2026-06-10T10:00", "provider_id": "1", "reason": "Другое", "comment": "новое событие"})
+        first = urlencode({"apply_scope": "none", "event_at": "2026-06-09T10:00", "country_id": "1", "provider_id": "1", "affected_route_ids": "1", "reason": "Другое", "comment": "старое событие"})
+        second = urlencode({"apply_scope": "none", "event_at": "2026-06-10T10:00", "country_id": "1", "provider_id": "1", "affected_route_ids": "1", "reason": "Другое", "comment": "новое событие"})
         self.request("/provider-changes/create", method="POST", body=first)
         self.request("/provider-changes/create", method="POST", body=second)
         captured, content = self.request("/provider-changes")
@@ -6827,7 +6827,9 @@ class RolePermissionTest(ServerSmokeTest):
         body = urlencode({
             "event_at": "2026-06-14T10:00",
             "apply_scope": "none",
+            "country_id": "1",
             "provider_id": "1",
+            "affected_route_ids": "1",
             "reason": "Провайдер сменил маршрут",
             "comment": "",
         })
@@ -6866,6 +6868,10 @@ class ProviderChangeTelegramServerTest(unittest.TestCase):
         self.country_id = self.repo.create_country("Телеграм GEO", "TGM")
         self.currency_id = self.conn.execute("SELECT id FROM currencies WHERE code = 'EUR'").fetchone()["id"]
         self.provider_id = self.repo.create_provider("Telegram Miatel", "voip", self.currency_id)
+        self.route_id = self.repo.create_route(
+            country_id=self.country_id, provider_id=self.provider_id, name="Телеграм GEO/Telegram Miatel/Route@",
+            cli_source_type="other", cli_source_label="Telegram", created_by=self.admin_id,
+        )
 
     def tearDown(self):
         server._REQUEST_CONTEXT.clear()
@@ -6880,7 +6886,7 @@ class ProviderChangeTelegramServerTest(unittest.TestCase):
             "comment": "Перевели трафик на Miatel",
             "country_id": str(self.country_id),
             "provider_id": str(self.provider_id),
-            "_raw": "",
+            "_raw": urlencode({"affected_route_ids": str(self.route_id)}),
         }
 
     def test_provider_change_creation_calls_telegram_when_env_config_exists(self):
@@ -6908,7 +6914,7 @@ class ProviderChangeTelegramServerTest(unittest.TestCase):
     def test_comment_edit_does_not_send_telegram_notification(self):
         event_id = self.repo.create_routing_event(
             event_at="2026-06-24 21:15", apply_scope="none", reason="Другое", comment="old",
-            country_id=self.country_id, provider_id=self.provider_id, created_by=self.admin_id,
+            country_id=self.country_id, provider_id=self.provider_id, affected_route_id=self.route_id, created_by=self.admin_id,
         )
         with patch("app.server.notify_provider_change_created") as notify:
             location = server.handle_post(self.repo, f"/provider-changes/{event_id}/update", {"_actor_id": str(self.admin_id), "comment": "new"})
