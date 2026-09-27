@@ -2606,13 +2606,13 @@ class Repository:
                        u.username AS updated_by_username
                 FROM company_routing_settings crs
                 JOIN calling_companies cc ON cc.id = crs.calling_company_id
-                JOIN countries c ON c.id = crs.country_id
+                LEFT JOIN countries c ON c.id = crs.country_id
                 JOIN servers s ON s.id = crs.server_id
                 LEFT JOIN routes r ON r.id = crs.route_id
                 LEFT JOIN providers p ON p.id = r.provider_id
                 LEFT JOIN users u ON u.id = crs.updated_by
                 {final_where}
-                ORDER BY c.name, s.name, cc.company_name, crs.valid_from DESC, crs.id DESC
+                ORDER BY c.name NULLS LAST, s.name, cc.company_name, crs.valid_from DESC, crs.id DESC
                 """,
                 params,
             )
@@ -2628,7 +2628,7 @@ class Repository:
                    r.name AS route_name, p.name AS provider_name
             FROM company_routing_settings crs
             JOIN calling_companies cc ON cc.id = crs.calling_company_id
-            JOIN countries c ON c.id = crs.country_id
+            LEFT JOIN countries c ON c.id = crs.country_id
             JOIN servers s ON s.id = crs.server_id
             LEFT JOIN routes r ON r.id = crs.route_id
             LEFT JOIN providers p ON p.id = r.provider_id
@@ -2957,9 +2957,10 @@ class Repository:
             return {
                 "routing_mode": setting["routing_mode"],
                 "route_id": setting["route_id"],
+                "country_id": setting["country_id"],
                 "has_autorotation": bool(setting["has_autorotation"]),
             }
-        return {"routing_mode": "server_priority", "route_id": None, "has_autorotation": False}
+        return {"routing_mode": "server_priority", "route_id": None, "country_id": None, "has_autorotation": False}
 
     def _routing_event_snapshot(self, values: dict) -> dict:
         p = placeholder(self.backend)
@@ -3254,7 +3255,7 @@ class Repository:
             # routing_events intentionally keeps the current display name as a
             # historical snapshot rather than a foreign key to the dictionary.
             values["reason"] = selected_reason["name"]
-            if apply_scope == "none" and values["reason"] == "Другое" and not values["comment"]:
+            if values["reason"] == "Другое" and not values["comment"]:
                 raise BusinessRuleError("Требуется понятный комментарий")
 
             if apply_scope == "none":
@@ -3345,16 +3346,24 @@ class Repository:
             else:
                 if not values["calling_company_id"] or not values["company_change_type"]:
                     raise BusinessRuleError("Кампания и тип изменения обязательны")
-                company = self.conn.execute(f"SELECT country_id, server_id FROM calling_companies WHERE id = {p}", (values["calling_company_id"],)).fetchone()
-                if not company:
+                company = self.conn.execute(
+                    f"SELECT country_id, server_id, is_active FROM calling_companies WHERE id = {p}",
+                    (values["calling_company_id"],),
+                ).fetchone()
+                if not company or not company["is_active"]:
                     raise BusinessRuleError("Кампания прозвона не найдена")
-                values["country_id"] = values["country_id"] or company["country_id"]
-                company_server_id = company["server_id"]
-                values["server_id"] = company_server_id
+                # Submitted server/GEO values are search helpers only.  Start from
+                # the company canonical values and let route-changing actions
+                # replace GEO/provider from the canonical route row below.
+                values["country_id"] = company["country_id"]
+                values["server_id"] = company["server_id"]
+                values["provider_id"] = None
                 old_state = self._company_old_state(values["calling_company_id"])
                 values["old_company_routing_mode"] = old_state["routing_mode"]
                 values["old_company_route_id"] = old_state["route_id"]
                 values["old_company_has_autorotation"] = 1 if old_state["has_autorotation"] else 0
+                if company["country_id"] is None and old_state["route_id"]:
+                    values["country_id"] = old_state["country_id"]
                 ctype = values["company_change_type"]
                 if ctype == "enable_autorotation":
                     if old_state["has_autorotation"]:
@@ -3369,17 +3378,30 @@ class Repository:
                 elif ctype == "set_campaign_route":
                     if not values["new_company_route_id"]:
                         raise BusinessRuleError("Новый маршрут кампании обязателен")
-                    route = self.conn.execute(f"SELECT country_id, provider_id FROM routes WHERE id = {p}", (values["new_company_route_id"],)).fetchone()
-                    if not route or int(route["country_id"]) != int(values["country_id"]):
-                        raise BusinessRuleError("Маршрут кампании должен относиться к выбранному GEO")
-                    if values["provider_id"] and int(route["provider_id"]) != int(values["provider_id"]):
-                        raise BusinessRuleError("Маршрут кампании должен относиться к выбранному провайдеру")
+                    route = self.conn.execute(
+                        f"SELECT country_id, provider_id, is_actual FROM routes WHERE id = {p}",
+                        (values["new_company_route_id"],),
+                    ).fetchone()
+                    if not route or not route["is_actual"]:
+                        raise BusinessRuleError("Маршрут кампании не найден или неактивен")
+                    if company["country_id"] is not None and int(route["country_id"]) != int(company["country_id"]):
+                        raise BusinessRuleError("Маршрут кампании должен относиться к выбранному GEO кампании")
                     if old_state["route_id"] and int(values["new_company_route_id"]) == int(old_state["route_id"]):
                         raise BusinessRuleError("Этот маршрут уже прописан для выбранной компании.")
-                    if not values["provider_id"]:
-                        values["provider_id"] = route["provider_id"]
+                    values["country_id"] = route["country_id"]
+                    values["provider_id"] = route["provider_id"]
                     values["new_company_has_autorotation"] = values["old_company_has_autorotation"]
                 elif ctype == "remove_campaign_route":
+                    if not old_state["route_id"]:
+                        raise BusinessRuleError("У выбранной кампании ручной маршрут не задан.")
+                    old_route = self.conn.execute(
+                        f"SELECT country_id, provider_id FROM routes WHERE id = {p}",
+                        (old_state["route_id"],),
+                    ).fetchone()
+                    if not old_route:
+                        raise BusinessRuleError("Текущий ручной маршрут выбранной кампании не найден")
+                    values["country_id"] = old_route["country_id"]
+                    values["provider_id"] = old_route["provider_id"]
                     values["new_company_route_id"] = None
                     values["new_company_has_autorotation"] = values["old_company_has_autorotation"]
                 else:
