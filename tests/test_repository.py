@@ -2601,6 +2601,59 @@ class RoutingEventsRepositoryTest(unittest.TestCase):
         self.assertEqual(setting["has_autorotation"], 1)
         self.assertIsNone(setting["route_id"])
 
+    def test_multi_geo_campaign_ignores_helper_geo_and_server_for_autorotation(self):
+        other_server_id = self.repo.create_server("EU2")
+        company_id = self.repo.create_calling_company(
+            server_id=self.server_id, country_id=None, company_name="Multi GEO",
+            company_id_external="multi-100", has_autorotation=False, created_by=self.admin_id,
+        )
+        event_id = self.create_event(
+            apply_scope="campaign_setting", calling_company_id=company_id,
+            company_change_type="enable_autorotation", country_id=self.other_country_id,
+            server_id=other_server_id, provider_id=self.alt_provider_id,
+        )
+        event = self.conn.execute("SELECT * FROM routing_events WHERE id = %s", (event_id,)).fetchone()
+        setting = self.conn.execute(
+            "SELECT * FROM company_routing_settings WHERE calling_company_id = %s AND is_active = TRUE",
+            (company_id,),
+        ).fetchone()
+        self.assertIsNone(event["country_id"])
+        self.assertIsNone(event["server_id"])
+        self.assertIsNone(event["provider_id"])
+        self.assertIsNone(setting["country_id"])
+        self.assertEqual(setting["server_id"], self.server_id)
+        listed = self.repo.list_company_routing_settings({"calling_company_id": company_id})
+        self.assertEqual(len(listed), 1)
+        self.assertIsNone(listed[0]["country_name"])
+
+    def test_multi_geo_campaign_set_route_uses_canonical_route_geo_and_provider(self):
+        company_id = self.repo.create_calling_company(
+            server_id=self.server_id, country_id=None, company_name="Multi Route",
+            company_id_external="multi-200", has_autorotation=False, created_by=self.admin_id,
+        )
+        event_id = self.create_event(
+            apply_scope="campaign_setting", calling_company_id=company_id,
+            company_change_type="set_campaign_route", country_id=self.country_id,
+            provider_id=self.alt_provider_id, new_company_route_id=self.other_route_id,
+        )
+        event = self.conn.execute("SELECT * FROM routing_events WHERE id = %s", (event_id,)).fetchone()
+        setting = self.conn.execute(
+            "SELECT * FROM company_routing_settings WHERE calling_company_id = %s AND is_active = TRUE",
+            (company_id,),
+        ).fetchone()
+        self.assertEqual(event["country_id"], self.other_country_id)
+        self.assertEqual(event["provider_id"], self.provider_id)
+        self.assertEqual(setting["country_id"], self.other_country_id)
+        self.assertEqual(setting["route_id"], self.other_route_id)
+
+    def test_campaign_setting_remove_without_manual_route_is_controlled_noop(self):
+        with self.assertRaisesRegex(BusinessRuleError, "ручной маршрут не задан"):
+            self.create_event(
+                apply_scope="campaign_setting", calling_company_id=self.company_id,
+                company_change_type="remove_campaign_route", country_id=None, provider_id=None,
+            )
+        self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM routing_events").fetchone()[0], 0)
+
     def test_campaign_setting_with_active_setting_uses_old_values(self):
         self.repo.create_company_routing_setting(calling_company_id=self.company_id, country_id=self.country_id, server_id=self.server_id, route_id=self.route_id, routing_mode="mixed", has_autorotation=True, comment="old", created_by=self.admin_id)
         event_id = self.create_event(apply_scope="campaign_setting", calling_company_id=self.company_id, company_change_type="set_campaign_route", new_company_route_id=self.alt_route_id, provider_id=None)
@@ -2747,8 +2800,8 @@ class RoutingEventsRepositoryTest(unittest.TestCase):
         old = self.conn.execute('SELECT * FROM company_routing_settings WHERE id = %s', (old_id,)).fetchone()
         self.assertEqual(old["is_active"], 0)
         self.assertEqual(self.conn.execute('SELECT COUNT(*) FROM company_routing_settings WHERE calling_company_id = %s AND is_active = TRUE AND valid_to IS NULL', (self.company_id,)).fetchone()[0], 0)
-        event_id = self.create_event(apply_scope="campaign_setting", calling_company_id=self.company_id, company_change_type="remove_campaign_route", provider_id=None)
-        self.assertIsNotNone(self.conn.execute('SELECT id FROM routing_events WHERE id = %s', (event_id,)).fetchone())
+        with self.assertRaisesRegex(BusinessRuleError, "ручной маршрут не задан"):
+            self.create_event(apply_scope="campaign_setting", calling_company_id=self.company_id, company_change_type="remove_campaign_route", provider_id=None)
 
     def test_deactivation_does_not_roll_back_server_priority(self):
         event_id = self.create_event(apply_scope="server_priority", country_id=self.country_id, server_id=self.server_id, new_route_id=self.route_id)

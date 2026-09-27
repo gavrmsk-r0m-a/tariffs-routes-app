@@ -988,6 +988,18 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     #routing-event-form .route-select-field {{ grid-column: auto; min-width: min(360px, 100%); width: clamp(360px, 38vw, 520px); }}
     #routing-event-form .routing-reason-field {{ width: 190px; }}
     #routing-event-form[data-current-scope='campaign_setting'] {{ grid-template-columns: minmax(0, 1fr); column-gap: 12px; }}
+    #routing-event-form .provider-change-campaign-create-grid {{ display: grid; gap: 14px; }}
+    #routing-event-form .campaign-step {{ padding: 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }}
+    #routing-event-form .campaign-step > h3 {{ margin: 0 0 12px; font-size: 14px; text-transform: uppercase; letter-spacing: .04em; }}
+    #routing-event-form .campaign-create-row {{ display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; align-items: end; }}
+    #routing-event-form .campaign-create-primary-row {{ grid-template-columns: minmax(190px, .8fr) minmax(300px, 1.4fr); }}
+    #routing-event-form .campaign-create-filters-row {{ grid-template-columns: minmax(160px, .8fr) minmax(160px, .8fr) minmax(220px, 1.2fr) auto; }}
+    #routing-event-form .campaign-company-field {{ margin-top: 12px; }}
+    #routing-event-form .campaign-state-summary {{ margin-top: 12px; padding: 12px; border-left: 4px solid var(--accent); border-radius: 8px; background: var(--surface-soft, var(--surface)); }}
+    #routing-event-form .campaign-state-summary dl {{ display: flex; flex-wrap: wrap; gap: 8px 20px; margin: 8px 0 0; }}
+    #routing-event-form .campaign-state-summary dl div {{ display: flex; gap: 6px; }}
+    #routing-event-form .campaign-state-summary dt {{ color: var(--muted); }}
+    #routing-event-form .campaign-state-summary dd {{ margin: 0; font-weight: 650; }}
     #routing-event-form .provider-change-campaign-grid, #routing-event-form .provider-change-campaign-lower-grid {{ display: contents; }}
     #routing-event-form[data-current-scope='campaign_setting'] .provider-change-campaign-grid {{ grid-column: 1 / -1; display: grid; grid-template-columns: minmax(170px, 190px) minmax(220px, .95fr) minmax(260px, 1fr); gap: 12px; align-items: end; }}
     #routing-event-form[data-current-scope='campaign_setting'] .provider-change-campaign-lower-grid {{ grid-column: 1 / -1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; align-items: start; }}
@@ -1014,7 +1026,7 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     #routing-event-form .multi-option input {{ width: auto; }}
     #routing-event-form .multi-option span {{ overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
     @media (max-width: 1020px) {{ #routing-event-form, #routing-event-form[data-current-scope='campaign_setting'] {{ grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }} #routing-event-form[data-current-scope='campaign_setting'] .provider-change-campaign-grid, #routing-event-form[data-current-scope='campaign_setting'] .provider-change-campaign-lower-grid {{ grid-template-columns: repeat(2, minmax(0, 1fr)); overflow: visible; }} #routing-event-form .routing-provider-field, #routing-event-form .routing-reason-field, #routing-event-form .route-select-field, #routing-event-form .campaign-server-field, #routing-event-form .campaign-id-field, #routing-event-form .campaign-id-action-field, #routing-event-form .campaign-change-type-field, #routing-event-form .campaign-company-field {{ min-width: 0; }} }}
-    @media (max-width: 720px) {{ #routing-event-form .none-route-reason-row {{ grid-template-columns: 1fr; }} }}
+    @media (max-width: 720px) {{ #routing-event-form .none-route-reason-row, #routing-event-form .campaign-create-row, #routing-event-form .campaign-create-primary-row, #routing-event-form .campaign-create-filters-row {{ grid-template-columns: 1fr; }} }}
     @media (max-width: 720px) {{ .form-grid .route-select-field {{ grid-column: 1 / -1; width: 100%; min-width: 0; }} }}
     .filter-grid .checkbox-inline, .form-grid .checkbox-inline {{ min-width: auto; display: flex; align-items: center; gap: 5px; align-self: center; font-weight: 560; }}
     .provider-changes-page .filter-grid .checkbox-inline {{ min-height: 34px; box-sizing: border-box; padding: 6px 10px; align-self: end; border: 1px solid var(--border-strong); border-radius: var(--radius-control); background: var(--input-bg, var(--surface)); white-space: nowrap; }}
@@ -7923,11 +7935,18 @@ def current_priorities_json(repo: Repository) -> str:
 
 def campaign_metadata_json(repo: Repository) -> str:
     rows = repo.conn.execute("""
-        SELECT cc.id, cc.country_id, cc.server_id, cc.company_id_external, cc.company_name, s.name AS server_name
+        SELECT cc.id, cc.country_id, cc.server_id, cc.company_id_external, cc.company_name,
+               s.name AS server_name, c.name AS country_name,
+               crs.has_autorotation, r.name AS route_name
         FROM calling_companies cc
         JOIN servers s ON s.id = cc.server_id
+        LEFT JOIN countries c ON c.id = cc.country_id
+        LEFT JOIN company_routing_settings crs ON crs.calling_company_id = cc.id
+             AND crs.is_active IS TRUE AND crs.valid_to IS NULL
+        LEFT JOIN routes r ON r.id = crs.route_id
         WHERE cc.is_active IS TRUE
-        ORDER BY cc.company_id_external
+        ORDER BY CASE WHEN NULLIF(TRIM(cc.company_name), '') IS NULL THEN 1 ELSE 0 END,
+                 cc.company_name, cc.company_id_external, s.name
         """).fetchall()
     return json.dumps([
         {
@@ -7935,8 +7954,11 @@ def campaign_metadata_json(repo: Repository) -> str:
             "country_id": row["country_id"],
             "server_id": row["server_id"],
             "server_name": row["server_name"],
+            "country_name": row["country_name"] or "Несколько GEO",
+            "has_autorotation": bool(row["has_autorotation"]),
+            "route_name": row["route_name"] or "—",
             "external_id": row["company_id_external"],
-            "label": f"{row['company_id_external']} / {row['company_name']}",
+            "label": f"{row['company_id_external']} · {row['company_name'] or '—'} · {row['country_name'] or 'Несколько GEO'}",
         }
         for row in rows
     ], ensure_ascii=False)
@@ -8049,13 +8071,16 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
             selected_company_ids = {str(event["calling_company_id"])}
     company_opts = ""
     for company in repo.conn.execute(f"""
-        SELECT cc.id, cc.country_id, cc.server_id, cc.company_id_external, cc.company_name, s.name AS server_name
+        SELECT cc.id, cc.country_id, cc.server_id, cc.company_id_external, cc.company_name,
+               s.name AS server_name, c.name AS country_name
         FROM calling_companies cc
         JOIN servers s ON s.id = cc.server_id
+        LEFT JOIN countries c ON c.id = cc.country_id
         WHERE cc.is_active IS TRUE OR cc.id = {p}
-        ORDER BY cc.company_id_external
+        ORDER BY CASE WHEN NULLIF(TRIM(cc.company_name), '') IS NULL THEN 1 ELSE 0 END,
+                 cc.company_name, cc.company_id_external, s.name
         """, (event["calling_company_id"] if event else 0,)):
-        label = f"{company['company_id_external']} / {company['company_name']}"
+        label = f"{company['company_id_external']} · {company['company_name'] or '—'} · {company['country_name'] or 'Несколько GEO'}"
         checked = "checked" if str(company["id"]) in selected_company_ids else ""
         company_opts += (
             f"<label class='multi-option' data-server-id='{company['server_id']}' data-country-id='{company['country_id'] or ''}' "
@@ -8124,18 +8149,25 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
     <label class='server-priority-create-comment'>Комментарий <span class='required comment-required' hidden>*</span><textarea name='comment' id='server-routing-comment' rows='3' cols='60' disabled>{esc(event['comment'] if event else '')}</textarea></label>
   </div>
   <div class='provider-change-campaign-create-grid' data-scope-content='campaign_setting' data-scopes='campaign_setting' hidden>
-    <div class='campaign-create-row campaign-create-primary-row'>
+    <section class='campaign-step' data-campaign-step='action'>
+      <h3>1. Что изменили</h3>
+      <div class='campaign-create-row campaign-create-primary-row'>
       <label>Дата события <span class='required'>*</span><input type='datetime-local' name='event_at' value='{esc(event_at)}' required disabled></label>
-      <label>Сервер <span class='required'>*</span><select name='server_id' id='campaign-server-filter' required disabled>{options(repo, 'servers', selected=event['server_id'] if event else None, empty='—')}</select></label>
-      <label>ГЕО <span class='required'>*</span><select name='country_id' id='campaign-country-filter' required disabled>{active_options(repo, 'countries', selected=event['country_id'] if event else None, empty='—')}</select></label>
       <label>Тип изменения кампании <span class='required'>*</span><select name='company_change_type' id='company-change-type' required disabled>
-        <option value=''>—</option>
+        <option value=''>— Выберите тип изменения —</option>
         {''.join(f"<option value='{v}' {'selected' if event and event['company_change_type'] == v else ''}>{label}</option>" for v, label in [('enable_autorotation','Включили авторотацию'),('disable_autorotation','Выключили авторотацию'),('set_campaign_route','Прописали ручной маршрут'),('remove_campaign_route','Убрали ручной маршрут')])}
       </select></label>
-    </div>
+      </div>
+    </section>
+    <section class='campaign-step' id='campaign-selection-step' data-campaign-step='campaign' hidden>
+      <h3>2. Кампания</h3>
+      <div class='campaign-create-row campaign-create-filters-row'>
+        <label>Сервер <span class='field-helper'>фильтр</span><select name='server_id' id='campaign-server-filter' disabled>{options(repo, 'servers', selected=event['server_id'] if event else None, empty='Все серверы')}</select></label>
+        <label>GEO <span class='field-helper'>фильтр</span><select name='campaign_geo_filter' id='campaign-country-filter' disabled>{active_options(repo, 'countries', selected=None, empty='Все GEO')}</select></label>
+        <div class='campaign-id-action-field'><span class='field-label'>ID кампании / Поиск</span><input name='campaign_id_search' id='campaign-id-search' value='{esc(event['campaign_id_search'] if event and 'campaign_id_search' in event.keys() else '')}' disabled></div>
+        <div class='campaign-search-button-wrapper'><button type='button' id='campaign-id-search-button' class='small-button campaign-id-action-button' disabled>Поиск</button></div>
+      </div>
     <div class='campaign-create-row campaign-create-company-row'>
-      <div class='campaign-id-action-field'><span class='field-label'>ID кампании</span><input name='campaign_id_search' id='campaign-id-search' value='{esc(event['campaign_id_search'] if event and 'campaign_id_search' in event.keys() else '')}' disabled></div>
-      <div class='campaign-search-button-wrapper'><button type='button' id='campaign-id-search-button' class='small-button campaign-id-action-button' disabled>Поиск</button></div>
       <div class='campaign-company-field'>
         <span class='field-label'>Кампания <span class='required'>*</span></span>
         <details class='company-select-control' id='event-company' data-placeholder='—'>
@@ -8148,17 +8180,28 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
             {company_opts}
           </div>
         </details>
-        <span class='field-helper' id='campaign-company-empty' hidden>Нет кампаний для выбранного ГЕО</span>
+        <span class='field-helper' id='campaign-company-empty' hidden>Нет кампаний для выбранного GEO</span>
       </div>
     </div>
     <span class='field-error' id='campaign-id-search-error' aria-live='polite'></span>
-    <div class='campaign-create-row campaign-create-change-row'>
+    <div class='campaign-state-summary' id='campaign-state-summary' hidden aria-live='polite'></div>
+    </section>
+    <section class='campaign-step' id='campaign-route-step' data-campaign-route-field='1' hidden>
+      <h3>3. Новый ручной маршрут</h3>
+      <div class='campaign-create-row campaign-create-change-row'>
+      <label>GEO маршрута <span class='required'>*</span><select id='campaign-route-country' disabled>{active_options(repo, 'countries', selected=None, empty='—')}</select></label>
+      <label>Провайдер <span class='required'>*</span><select name='campaign_provider_id' id='campaign-provider' data-selected-provider-id='{esc(provider_selected or '')}' disabled><option value=''>—</option></select><span class='field-helper' id='campaign-provider-empty' hidden>Нет активных маршрутов для выбранного GEO</span></label>
+      <label>Маршрут <span class='required'>*</span><select name='new_company_route_id' id='company-route' disabled>{company_route_opts}</select></label>
+      </div>
+      <span class='route-empty-message muted' id='company-route-empty' hidden>Нет маршрутов для выбранного провайдера и GEO</span>
+    </section>
+    <section class='campaign-step' id='campaign-reason-step' data-campaign-step='reason' hidden>
+      <h3><span data-reason-step-number>3</span>. Причина / комментарий</h3>
+      <div class='campaign-create-row campaign-create-change-row'>
       <label class='campaign-reason-field'>Причина <span class='required'>*</span><select name='reason' id='campaign-routing-reason' required disabled>{routing_reason_options(reasons_by_scope['campaign_setting'], event['reason'] if event else None)}</select></label>
-      <label data-campaign-route-field='1' hidden>Провайдер <span class='required'>*</span><select name='campaign_provider_id' id='campaign-provider' data-selected-provider-id='{esc(provider_selected or '')}' disabled><option value=''>—</option></select><span class='field-helper' id='campaign-provider-empty' hidden>Нет маршрутов для выбранного ГЕО</span></label>
-      <label data-campaign-route-field='1' hidden>Новый маршрут кампании <span class='required'>*</span><select name='new_company_route_id' id='company-route' disabled>{company_route_opts}</select></label>
-    </div>
-    <span class='route-empty-message muted' data-campaign-route-field='1' id='company-route-empty' hidden>Нет маршрутов для выбранного провайдера и ГЕО кампании</span>
-    <label class='wide'>Комментарий <textarea name='comment' id='campaign-routing-comment' rows='3' cols='60' disabled>{esc(event['comment'] if event else '')}</textarea></label>
+      </div>
+      <label class='wide'>Комментарий <span class='required campaign-comment-required' hidden>*</span><textarea name='comment' id='campaign-routing-comment' rows='3' cols='60' disabled>{esc(event['comment'] if event else '')}</textarea></label>
+    </section>
   </div>
   <p class='provider-change-shell-hint' data-scope-hint='none'>Событие без изменения настроек фиксирует внешний или ручной контекст без применения изменений в системе.</p>
   <p class='provider-change-shell-hint' data-scope-hint='server_priority' hidden>Старый маршрут подтягивается автоматически из текущего server_route_priorities при создании.</p>
@@ -8327,8 +8370,8 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
     let cleared = false;
     let visibleCount = 0;
     container.querySelectorAll('.multi-option').forEach((option) => {{
-      const matchesServer = selectedServerId && String(option.dataset.serverId) === String(selectedServerId);
-      const matchesCountry = selectedCountryId && (!option.dataset.countryId || String(option.dataset.countryId) === String(selectedCountryId));
+      const matchesServer = !selectedServerId || String(option.dataset.serverId) === String(selectedServerId);
+      const matchesCountry = !selectedCountryId || !option.dataset.countryId || String(option.dataset.countryId) === String(selectedCountryId);
       const box = option.querySelector('input');
       const isPinnedMultiGeo = pinnedMultiGeoCampaignId && !option.dataset.countryId && box &&
         String(box.value) === String(pinnedMultiGeoCampaignId);
@@ -8340,7 +8383,7 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
         if (!show && box.checked) {{ box.checked = false; cleared = true; }}
       }}
     }});
-    if (empty) empty.hidden = !(selectedServerId && selectedCountryId && visibleCount === 0);
+    if (empty) empty.hidden = visibleCount !== 0;
     if (cleared && showNotice) setCampaignSearchError('Выбор кампаний обновлён по выбранному серверу');
     updateCompanySummary();
   }}
@@ -8362,9 +8405,7 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
       return;
     }}
     const found = resolvedMatches[0];
-    const previousCountryId = country.value;
     server.value = String(found.server_id);
-    country.value = found.country_id ? String(found.country_id) : previousCountryId;
     pinnedMultiGeoCampaignId = found.country_id ? '' : String(found.id);
     const campaignProvider = document.getElementById('campaign-provider');
     const campaignRoute = document.getElementById('company-route');
@@ -8376,7 +8417,48 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
     if (box && !box.disabled) box.checked = true;
     updateCompanySummary();
     sync();
-    if (!found.country_id) setCampaignSearchError('Кампания используется для нескольких ГЕО. Выберите ГЕО.');
+    if (!found.country_id) setCampaignSearchError('Кампания использует несколько GEO. GEO маршрута потребуется только при выборе ручного маршрута.');
+  }}
+  function updateCampaignProgress() {{
+    const scope = selectedScope();
+    const ctype = document.getElementById('company-change-type');
+    const hasAction = scope === 'campaign_setting' && !!(ctype && ctype.value);
+    const selectionStep = document.getElementById('campaign-selection-step');
+    if (selectionStep) selectionStep.hidden = !hasAction;
+    const selected = selectedCampaignBoxes();
+    const hasCampaign = hasAction && selected.length > 0;
+    const summary = document.getElementById('campaign-state-summary');
+    if (summary) {{
+      summary.hidden = !hasCampaign;
+      if (selected.length === 1) {{
+        const company = campaigns.find((item) => String(item.id) === String(selected[0].value));
+        summary.textContent = company ? `Текущее состояние — Сервер: ${{company.server_name}} · GEO: ${{company.country_name}} · Авторотация: ${{company.has_autorotation ? 'Да' : 'Нет'}} · Ручной маршрут: ${{company.route_name}}` : '';
+      }} else if (selected.length > 1) summary.textContent = `Выбрано кампаний: ${{selected.length}}. Проверка совместимости выполняется для каждой кампании.`;
+    }}
+    const needsRoute = hasCampaign && ctype && ctype.value === 'set_campaign_route';
+    const routeStep = document.getElementById('campaign-route-step');
+    if (routeStep) routeStep.hidden = !needsRoute;
+    const routeCountry = document.getElementById('campaign-route-country');
+    if (routeCountry) delete routeCountry.dataset.locked;
+    if (routeCountry && needsRoute && selected.length === 1) {{
+      const company = campaigns.find((item) => String(item.id) === String(selected[0].value));
+      if (company && company.country_id) {{ routeCountry.value = String(company.country_id); routeCountry.dataset.locked = '1'; }}
+    }}
+    if (routeCountry) routeCountry.disabled = !needsRoute || routeCountry.dataset.locked === '1';
+    const route = document.getElementById('company-route');
+    const ready = hasCampaign && (!needsRoute || !!(route && route.value));
+    const reasonStep = document.getElementById('campaign-reason-step');
+    if (reasonStep) reasonStep.hidden = !ready;
+    const reason = document.getElementById('campaign-routing-reason');
+    const comment = document.getElementById('campaign-routing-comment');
+    if (reason) reason.disabled = !ready;
+    if (comment) comment.disabled = !ready;
+    const required = ready && reason && reason.value === 'Другое';
+    if (comment) comment.required = !!required;
+    const marker = form.querySelector('.campaign-comment-required');
+    if (marker) marker.hidden = !required;
+    const number = form.querySelector('[data-reason-step-number]');
+    if (number) number.textContent = needsRoute ? '4' : '3';
   }}
   function sync() {{
     const scope = selectedScope();
@@ -8411,20 +8493,22 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
     filterCompanyOptions(false);
     const campaignServer = document.getElementById('campaign-server-filter');
     const campaignCountryControl = document.getElementById('campaign-country-filter');
-    if (campaignCountryControl) campaignCountryControl.disabled = scope !== 'campaign_setting' || !(campaignServer && campaignServer.value);
+    if (campaignCountryControl) campaignCountryControl.disabled = scope !== 'campaign_setting';
     const ctype = document.getElementById('company-change-type');
     const needsRoute = scope === 'campaign_setting' && routeNeeds.has(ctype && ctype.value);
     form.querySelectorAll('[data-campaign-route-field]').forEach((el) => {{
       el.hidden = !needsRoute;
       el.querySelectorAll('select').forEach((field) => {{ field.disabled = !needsRoute; field.required = needsRoute; }});
     }});
-    const campaignCountry = document.getElementById('campaign-country-filter');
+    updateCampaignProgress();
+    const campaignCountry = document.getElementById('campaign-route-country');
     const campaignProvider = document.getElementById('campaign-provider');
     rebuildCampaignProviderSelect(campaignCountry && campaignCountry.value, needsRoute);
     const campaignRoute = document.getElementById('company-route');
     rebuildServerRouteSelect(campaignRoute, campaignCountry && campaignCountry.value, campaignProvider && campaignProvider.value, document.getElementById('company-route-empty'), true);
     if (campaignRoute) campaignRoute.disabled = !needsRoute || !(campaignCountry && campaignCountry.value) || !(campaignProvider && campaignProvider.value);
     syncCommentRequirement();
+    updateCampaignProgress();
   }}
   form.querySelectorAll('input[name="apply_scope"], #server-event-country, #server-event-provider, #server-has-overflow, #server-overflow-provider').forEach((el) => el.addEventListener('change', sync));
   const noneCountry = document.getElementById('event-country');
@@ -8453,12 +8537,20 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
   form.querySelectorAll('.provider-change-server-priority-create input[name="server_ids"]').forEach((box) => box.addEventListener('change', updateServerSelectionCount));
   const reason = document.getElementById('routing-reason');
   if (reason) reason.addEventListener('change', syncCommentRequirement);
-  form.querySelectorAll('input[name="calling_company_ids"]').forEach((el) => el.addEventListener('change', updateCompanySummary));
+  form.querySelectorAll('input[name="calling_company_ids"]').forEach((el) => el.addEventListener('change', () => {{
+    updateCompanySummary();
+    const provider = document.getElementById('campaign-provider');
+    const route = document.getElementById('company-route');
+    const country = document.getElementById('campaign-route-country');
+    if (country) country.value = '';
+    if (provider) provider.value = '';
+    if (route) route.value = '';
+    sync();
+  }}));
   const campaignServerFilter = document.getElementById('campaign-server-filter');
   const campaignCountryFilter = document.getElementById('campaign-country-filter');
   if (campaignServerFilter) campaignServerFilter.addEventListener('change', () => {{
     pinnedMultiGeoCampaignId = '';
-    if (campaignCountryFilter) campaignCountryFilter.value = '';
     const campaignProvider = document.getElementById('campaign-provider');
     const campaignRoute = document.getElementById('company-route');
     if (campaignProvider) campaignProvider.value = '';
@@ -8467,24 +8559,34 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
     filterCompanyOptions(true); sync();
   }});
   if (campaignCountryFilter) campaignCountryFilter.addEventListener('change', () => {{
-    const campaignProvider = document.getElementById('campaign-provider');
-    const campaignRoute = document.getElementById('company-route');
-    if (campaignProvider) campaignProvider.value = '';
-    if (campaignRoute) campaignRoute.value = '';
-    form.querySelectorAll('input[name="calling_company_ids"]:checked').forEach((box) => {{
-      if (!pinnedMultiGeoCampaignId || String(box.value) !== String(pinnedMultiGeoCampaignId)) box.checked = false;
-    }});
     filterCompanyOptions(true); sync();
-    if (pinnedMultiGeoCampaignId && campaignCountryFilter.value) setCampaignSearchError('');
   }});
   const companyChangeType = document.getElementById('company-change-type');
-  if (companyChangeType) companyChangeType.addEventListener('change', sync);
+  if (companyChangeType) companyChangeType.addEventListener('change', () => {{
+    const provider = document.getElementById('campaign-provider');
+    const route = document.getElementById('company-route');
+    if (provider) provider.value = '';
+    if (route) route.value = '';
+    sync();
+  }});
+  const campaignRouteCountry = document.getElementById('campaign-route-country');
+  if (campaignRouteCountry) campaignRouteCountry.addEventListener('change', () => {{
+    const provider = document.getElementById('campaign-provider');
+    const route = document.getElementById('company-route');
+    if (provider) provider.value = '';
+    if (route) route.value = '';
+    sync();
+  }});
   const campaignProvider = document.getElementById('campaign-provider');
   if (campaignProvider) campaignProvider.addEventListener('change', () => {{
     const campaignRoute = document.getElementById('company-route');
     if (campaignRoute) campaignRoute.value = '';
     sync();
   }});
+  const campaignRoute = document.getElementById('company-route');
+  if (campaignRoute) campaignRoute.addEventListener('change', sync);
+  const campaignReason = document.getElementById('campaign-routing-reason');
+  if (campaignReason) campaignReason.addEventListener('change', updateCampaignProgress);
   const campaignSearchButton = document.getElementById('campaign-id-search-button');
   if (campaignSearchButton) campaignSearchButton.addEventListener('click', findCampaignByVisibleId);
   const campaignSearchInput = document.getElementById('campaign-id-search');
@@ -8497,12 +8599,12 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
   const selectVisible = document.getElementById('campaign-select-visible');
   if (selectVisible) selectVisible.addEventListener('click', () => {{
     document.querySelectorAll('#event-company .multi-option:not([hidden]) input[name="calling_company_ids"]').forEach((box) => {{ if (!box.disabled) box.checked = true; }});
-    updateCompanySummary();
+    updateCompanySummary(); sync();
   }});
   const clearSelected = document.getElementById('campaign-clear-selected');
   if (clearSelected) clearSelected.addEventListener('click', () => {{
     form.querySelectorAll('input[name="calling_company_ids"]:checked').forEach((box) => {{ box.checked = false; }});
-    updateCompanySummary();
+    updateCompanySummary(); sync();
   }});
   const campaignDropdown = document.getElementById('event-company');
   if (campaignDropdown) {{
@@ -9377,7 +9479,7 @@ def company_routing_settings_page(repo: Repository, q: dict[str, str] | None = N
     }
     records = list(repo.list_company_routing_settings(filters))
     if q.get("export") == "csv":
-        return csv_response("company_routing_settings_export.csv", ["Кампания", "GEO", "Маршрут", "Авторотация", "Активен", "Комментарий"], [[f"{r['company_id_external']} — {r['company_name']}", r["country_name"], r["route_name"] or "—", "Да" if r["has_autorotation"] else "Нет", "Да" if r["is_active"] else "Нет", r["comment"]] for r in records])
+        return csv_response("company_routing_settings_export.csv", ["Кампания", "GEO", "Маршрут", "Авторотация", "Активен", "Комментарий"], [[f"{r['company_id_external']} — {r['company_name']}", r["country_name"] or "Несколько GEO", r["route_name"] or "—", "Да" if r["has_autorotation"] else "Нет", "Да" if r["is_active"] else "Нет", r["comment"]] for r in records])
     records, pagination_html = paginate_rows(records, q, "/admin/company-routing-settings")
     rows = []
     for setting in records:
@@ -9386,7 +9488,7 @@ def company_routing_settings_page(repo: Repository, q: dict[str, str] | None = N
         active_badge = "Да" if setting["is_active"] else "Нет"
         row = {
             "server": esc(setting["server_name"]),
-            "geo": esc(setting["country_name"]),
+            "geo": esc(setting["country_name"] or "Несколько GEO"),
             "company_id": selectable_text(esc(setting["company_id_external"]), setting["company_id_external"]),
             "company_name": selectable_text(esc(setting["company_name"]), setting["company_name"]),
             "routing_mode": esc(routing_mode_label(setting["routing_mode"])),
@@ -10237,7 +10339,7 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
         if apply_scope == "campaign_setting" and (data.get("campaign_id_search") or "").strip():
             campaign_id_search = (data.get("campaign_id_search") or "").strip()
             p = placeholder(repo.backend)
-            found_company = repo.conn.execute(
+            found_companies = repo.conn.execute(
                 f"""
                 SELECT cc.id, cc.server_id, cc.company_id_external, s.name AS server_name
                 FROM calling_companies cc
@@ -10249,17 +10351,13 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
                     campaign_id_search,
                     to_db_bool(True, repo.backend),
                 ),
-            ).fetchone()
-            if not found_company:
+            ).fetchall()
+            if not found_companies:
                 raise BusinessRuleError("Кампания с таким ID не найдена")
-            helper_server_id = parse_int(data.get("server_id"))
-            if helper_server_id and int(found_company["server_id"]) != helper_server_id:
-                selected_server = repo.conn.execute(
-                    f"SELECT name FROM servers WHERE id = {p}",
-                    (helper_server_id,),
-                ).fetchone()
-                selected_server_name = selected_server["name"] if selected_server else str(helper_server_id)
-                raise BusinessRuleError(f"Кампания с ID {campaign_id_search} находится на сервере {found_company['server_name']}, а выбран сервер {selected_server_name}")
+            if len(found_companies) > 1:
+                variants = ", ".join(row["server_name"] for row in found_companies)
+                raise BusinessRuleError(f"Найдено несколько кампаний с ID {campaign_id_search}: {variants}. Выберите нужную кампанию в списке")
+            found_company = found_companies[0]
             if int(found_company["id"]) not in calling_company_ids:
                 calling_company_ids.append(int(found_company["id"]))
         if apply_scope == "campaign_setting":
@@ -10276,52 +10374,35 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
                 )
                 send_provider_change_notification(repo, event_id)
                 return "/provider-changes"
-            helper_server_id = parse_int(data.get("server_id"))
-            helper_country_id = parse_int(data.get("country_id"))
-            if helper_server_id and helper_country_id:
-                visible_ids = {
-                    int(row["id"])
-                    for row in repo.conn.execute(
-                        f"""
-                        SELECT id
-                        FROM calling_companies
-                        WHERE server_id = {p}
-                          AND (country_id = {p} OR country_id IS NULL)
-                          AND is_active = {p}
-                        """,
-                        (
-                            helper_server_id,
-                            helper_country_id,
-                            to_db_bool(True, repo.backend),
-                        ),
-                    ).fetchall()
-                }
-                calling_company_ids = [company_id for company_id in calling_company_ids if company_id in visible_ids]
-                if not calling_company_ids:
-                    raise BusinessRuleError("Выберите хотя бы одну кампанию")
             created_count = 0
             skipped_count = 0
+            last_noop_error = None
+            created_event_ids = []
             noop_markers = ("уже включена авторотация", "авторотация уже выключена", "Этот маршрут уже прописан", "ручной маршрут не задан")
             seen_company_ids = list(dict.fromkeys(calling_company_ids))
-            for calling_company_id in seen_company_ids:
-                try:
-                    event_id = repo.create_routing_event(
-                        event_at=data.get("event_at"), apply_scope=apply_scope, reason=data.get("reason"), comment=data.get("comment"),
-                        country_id=parse_int(data.get("country_id")), server_id=parse_int(data.get("server_id")), server_ids=selected_server_ids, provider_id=provider_id,
-                        affected_route_id=parse_int(data.get("affected_route_id")), old_route_id=parse_int(data.get("old_route_id")), new_route_id=parse_int(data.get("new_route_id")),
-                        calling_company_id=calling_company_id, company_change_type=data.get("company_change_type") or None,
-                        new_company_routing_mode=data.get("new_company_routing_mode") or None, new_company_route_id=parse_int(data.get("new_company_route_id")),
-                        new_company_has_autorotation=parse_int(data.get("new_company_has_autorotation")), created_by=actor_id,
-                    )
-                    send_provider_change_notification(repo, event_id)
-                    created_count += 1
-                except BusinessRuleError as exc:
-                    if any(marker in str(exc) for marker in noop_markers):
-                        skipped_count += 1
-                        continue
-                    raise
-            if created_count == 0:
-                raise BusinessRuleError("Изменений нет: выбранные кампании уже находятся в этом состоянии")
+            with repo.transaction():
+                for calling_company_id in seen_company_ids:
+                    try:
+                        event_id = repo.create_routing_event(
+                            event_at=data.get("event_at"), apply_scope=apply_scope, reason=data.get("reason"), comment=data.get("comment"),
+                            country_id=parse_int(data.get("country_id")), server_id=parse_int(data.get("server_id")), server_ids=selected_server_ids, provider_id=provider_id,
+                            affected_route_id=parse_int(data.get("affected_route_id")), old_route_id=parse_int(data.get("old_route_id")), new_route_id=parse_int(data.get("new_route_id")),
+                            calling_company_id=calling_company_id, company_change_type=data.get("company_change_type") or None,
+                            new_company_routing_mode=data.get("new_company_routing_mode") or None, new_company_route_id=parse_int(data.get("new_company_route_id")),
+                            new_company_has_autorotation=parse_int(data.get("new_company_has_autorotation")), created_by=actor_id, commit=False,
+                        )
+                        created_event_ids.append(event_id)
+                        created_count += 1
+                    except BusinessRuleError as exc:
+                        if any(marker in str(exc) for marker in noop_markers):
+                            skipped_count += 1
+                            last_noop_error = exc
+                            continue
+                        raise
+                if created_count == 0:
+                    raise last_noop_error or BusinessRuleError("Изменений нет: выбранные кампании уже находятся в этом состоянии")
+            for event_id in created_event_ids:
+                send_provider_change_notification(repo, event_id)
             if skipped_count:
                 return f"/provider-changes?notice={quote(f'Создано событий: {created_count}. Пропущено без изменений: {skipped_count}.')}"
             return "/provider-changes"

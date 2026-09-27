@@ -6062,20 +6062,16 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
         self.assertEqual(captured["status"], "200 OK")
         create_form = _form_fragment(content, "/provider-changes/create")
         self.assertIn("id='campaign-server-filter'", create_form)
-        self.assertIn("Сервер <span class='required'>*</span><select name='server_id' id='campaign-server-filter'", create_form)
-        self.assertIn("ГЕО <span class='required'>*</span><select name='country_id' id='campaign-country-filter'", create_form)
-        self.assertIn("ID кампании", create_form)
+        self.assertIn("Сервер <span class='field-helper'>фильтр</span>", create_form)
+        self.assertIn("GEO <span class='field-helper'>фильтр</span>", create_form)
+        self.assertIn("ID кампании / Поиск", create_form)
         self.assertIn("id='campaign-id-search'", create_form)
         self.assertIn("id='campaign-id-search-button'", create_form)
         self.assertIn(">Поиск</button>", create_form)
         self.assertIn("campaign-create-primary-row", create_form)
         self.assertIn("campaign-create-company-row", create_form)
-        company_row = create_form.split("campaign-create-company-row", 1)[1].split("</div>\n    <span class='field-error'", 1)[0]
-        self.assertIn("campaign-id-action-field", company_row)
-        self.assertIn("campaign-search-button-wrapper", company_row)
-        self.assertIn("campaign-company-field", company_row)
-        self.assertLess(company_row.index("campaign-id-action-field"), company_row.index("campaign-search-button-wrapper"))
-        self.assertLess(company_row.index("campaign-search-button-wrapper"), company_row.index("campaign-company-field"))
+        self.assertIn("campaign-create-filters-row", create_form)
+        self.assertIn("campaign-company-field", create_form)
         self.assertIn("campaign-create-change-row", create_form)
         self.assertIn(">Провайдер <span class='required'>*</span>", create_form)
         self.assertIn(">Новый маршрут <span class='required'>*</span>", create_form)
@@ -6091,28 +6087,27 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
         self.assertIn("function filterCompanyOptions()", content)
         self.assertIn("data-country-id=", create_form)
         self.assertIn("matchesServer && (matchesCountry || isPinnedMultiGeo)", content)
-        self.assertIn("Нет кампаний для выбранного ГЕО", create_form)
+        self.assertIn("Нет кампаний для выбранного GEO", create_form)
         self.assertIn("Кампания с таким ID не найдена", content)
 
-    def test_provider_change_campaign_id_search_autofills_full_campaign_context(self):
+    def test_provider_change_campaign_id_search_syncs_server_without_mutating_geo_filter(self):
         self.request("/routes")
         _, content = self.request("/provider-changes")
         create_form = _form_fragment(content, "/provider-changes/create")
         self.assertIn("type='button' id='campaign-id-search-button'", create_form)
         self.assertIn("const matches = campaigns.filter", content)
         self.assertIn("server.value = String(found.server_id);", content)
-        self.assertIn("country.value = found.country_id ? String(found.country_id) : previousCountryId;", content)
+        self.assertNotIn("country.value = found.country_id", content)
         self.assertIn("const resolvedMatches = matches.length === 1 ? matches : serverMatches;", content)
         self.assertIn("Найдено несколько кампаний с таким ID. Выберите сервер.", content)
 
-    def test_provider_change_multi_geo_search_pins_campaign_until_geo_selection(self):
+    def test_provider_change_multi_geo_search_does_not_require_geo_filter(self):
         self.request("/routes")
         _, content = self.request("/provider-changes")
         self.assertIn("let pinnedMultiGeoCampaignId = '';", content)
-        self.assertIn("Кампания используется для нескольких ГЕО. Выберите ГЕО.", content)
+        self.assertIn("Кампания использует несколько GEO. GEO маршрута потребуется только при выборе ручного маршрута.", content)
         self.assertIn("matchesCountry || isPinnedMultiGeo", content)
-        self.assertIn("String(box.value) !== String(pinnedMultiGeoCampaignId)", content)
-        self.assertIn("campaignCountryFilter.value) setCampaignSearchError('')", content)
+        self.assertIn("const matchesCountry = !selectedCountryId", content)
 
     def test_provider_change_campaign_search_resets_dependencies_and_enter_does_not_submit(self):
         self.request("/routes")
@@ -6130,7 +6125,7 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
         captured, content = self.request("/provider-changes")
         self.assertEqual(captured["status"], "200 OK")
         create_form = _form_fragment(content, "/provider-changes/create")
-        self.assertIn("Новый маршрут кампании <span class='required'>*</span>", create_form)
+        self.assertIn("3. Новый ручной маршрут", create_form)
         self.assertIn("name='new_company_route_id' id='company-route'", create_form)
         self.assertIn("data-campaign-route-field='1'", create_form)
         self.assertIn("const routeNeeds = new Set(['set_campaign_route']);", content)
@@ -6146,7 +6141,7 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
         self.assertIn("function rebuildCampaignProviderSelect(countryId, enabled)", content)
         self.assertIn("routes.forEach((route)", content)
         self.assertIn("providers.set(String(route.provider_id), route.provider_name)", content)
-        self.assertIn("Нет маршрутов для выбранного ГЕО", create_form)
+        self.assertIn("Нет активных маршрутов для выбранного GEO", create_form)
         self.assertIn("select.disabled = !enabled || !countryId || providers.size === 0", content)
 
     def test_campaign_setting_geo_and_provider_changes_reset_dependent_route_fields(self):
@@ -6203,7 +6198,7 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
         self.assertEqual(captured["status"], "400 Bad Request")
         self.assertIn("Кампания с таким ID не найдена", content)
 
-    def test_provider_change_campaign_id_search_post_reports_server_conflict(self):
+    def test_provider_change_campaign_id_search_ignores_helper_server(self):
         self.request("/routes")
         conn = _TEST_DB.connect()
         try:
@@ -6223,9 +6218,22 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
             "reason": "Тест нового маршрута",
             "comment": "Конфликт сервера",
         })
-        captured, content = self.request("/provider-changes/create", method="POST", body=body)
-        self.assertEqual(captured["status"], "400 Bad Request")
-        self.assertIn("Кампания с ID eu3-conflict находится на сервере EU3, а выбран сервер EU1", content)
+        captured, _ = self.request("/provider-changes/create", method="POST", body=body)
+        self.assertEqual(captured["status"], "303 See Other")
+
+    def test_campaign_setting_form_is_progressive_and_helpers_are_optional(self):
+        self.request("/routes")
+        captured, content = self.request("/provider-changes")
+        self.assertEqual(captured["status"], "200 OK")
+        create_form = _form_fragment(content, "/provider-changes/create")
+        self.assertIn("1. Что изменили", create_form)
+        self.assertIn("— Выберите тип изменения —", create_form)
+        self.assertIn("id='campaign-selection-step' data-campaign-step='campaign' hidden", create_form)
+        self.assertIn("<option value=''>Все серверы</option>", create_form)
+        self.assertIn("<option value=''>Все GEO</option>", create_form)
+        self.assertIn("id='campaign-route-step' data-campaign-route-field='1' hidden", create_form)
+        self.assertIn("id='campaign-state-summary' hidden", create_form)
+        self.assertIn("function updateCampaignProgress()", content)
 
     def test_campaign_setting_route_is_preserved_when_toggling_autorotation(self):
         self.request("/routes")
