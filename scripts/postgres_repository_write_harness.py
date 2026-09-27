@@ -947,8 +947,9 @@ def run_routing_event_create_core_probe(repo: Repository, conn) -> None:
 
         validations = (
             ("bad_scope", dict(apply_scope="bad"), NONE_COMMENT, "Некорректная область применения"),
-            ("none_provider", dict(apply_scope="none", reason="Другое"), NONE_COMMENT, "Провайдер обязателен"),
-            ("none_comment", dict(apply_scope="none", reason="Другое", provider_id=route["provider_id"]), "", "Требуется понятный комментарий"),
+            ("none_country", dict(apply_scope="none", reason="Другое", provider_id=route["provider_id"], affected_route_ids=[route["id"]]), NONE_COMMENT, "GEO обязателен"),
+            ("none_provider", dict(apply_scope="none", reason="Другое", country_id=route["country_id"], affected_route_ids=[route["id"]]), NONE_COMMENT, "Провайдер обязателен"),
+            ("none_comment", dict(apply_scope="none", reason="Другое", country_id=route["country_id"], provider_id=route["provider_id"], affected_route_ids=[route["id"]]), "", "Требуется понятный комментарий"),
             ("missing_server", dict(apply_scope="server_priority", reason="Массовый отбои/занято", country_id=route["country_id"], new_route_id=new_route["id"]), SERVER_PRIORITY_COMMENT, "Сервер обязателен для серверного приоритета"),
             ("missing_geo_route", dict(apply_scope="server_priority", reason="Массовый отбои/занято", server_id=existing_server), SERVER_PRIORITY_COMMENT, "GEO, сервер и новый маршрут обязательны для серверного приоритета"),
             ("overflow_provider", dict(apply_scope="server_priority", reason="Массовый отбои/занято", country_id=route["country_id"], server_id=existing_server, new_route_id=old_route["id"], has_overflow=True, overflow_route_id=new_route["id"]), SERVER_PRIORITY_COMMENT, "Провайдер перелива обязателен"),

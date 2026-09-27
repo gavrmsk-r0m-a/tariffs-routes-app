@@ -199,8 +199,12 @@ class WriteHarnessTest(unittest.TestCase):
     def test_stage64_validation_cases_do_not_pop_or_default_missing_comment(self):
         source = SCRIPT.read_text(encoding="utf-8")
         self.assertNotIn('arguments.pop("comment", SERVER_PRIORITY_COMMENT)', source)
+        self.assertIn('(\"none_country\", dict(apply_scope=\"none\"', source)
+        self.assertIn('affected_route_ids=[route[\"id\"]]), NONE_COMMENT, \"GEO обязателен\")', source)
+        self.assertIn('(\"none_provider\", dict(apply_scope=\"none\"', source)
+        self.assertIn('country_id=route[\"country_id\"], affected_route_ids=[route[\"id\"]]), NONE_COMMENT, \"Провайдер обязателен\")', source)
         self.assertIn('(\"none_comment\", dict(apply_scope=\"none\"', source)
-        self.assertIn('provider_id=route[\"provider_id\"]), \"\", \"Требуется понятный комментарий\")', source)
+        self.assertIn('provider_id=route[\"provider_id\"], affected_route_ids=[route[\"id\"]]), \"\", \"Требуется понятный комментарий\")', source)
 
     def test_stage64_fixture_selects_a_country_with_two_routes_and_scopes_priority_logs_by_id(self):
         source = SCRIPT.read_text(encoding="utf-8")
