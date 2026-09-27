@@ -2352,11 +2352,11 @@ class RoutingEventsRepositoryTest(unittest.TestCase):
         self.conn.close()
 
     def create_event(self, **overrides):
-        data = dict(event_at="2026-06-10 12:00", apply_scope="none", reason="Другое", comment="Зафиксировали событие", provider_id=self.provider_id, created_by=self.admin_id)
+        data = dict(event_at="2026-06-10 12:00", apply_scope="none", reason="Другое", comment="Зафиксировали событие", country_id=self.country_id, provider_id=self.provider_id, affected_route_id=self.route_id, created_by=self.admin_id)
         data.update(overrides)
         return self.repo.create_routing_event(**data)
 
-    def test_can_create_none_without_old_or_new_route(self):
+    def test_can_create_none_without_old_or_new_route_when_affected_route_exists(self):
         event_id = self.create_event(apply_scope="none", old_route_id=None, new_route_id=None)
         row = self.conn.execute('SELECT * FROM routing_events WHERE id = %s', (event_id,)).fetchone()
         self.assertEqual(row["apply_scope"], "none")
@@ -2401,6 +2401,38 @@ class RoutingEventsRepositoryTest(unittest.TestCase):
 
         self.assertIsNone(new_values["server_ids"])
         self.assertIsNone(new_values["affected_servers"])
+
+    def test_none_scope_requires_at_least_one_real_route(self):
+        with self.assertRaisesRegex(BusinessRuleError, "хотя бы один маршрут"):
+            self.create_event(affected_route_id=None, affected_route_ids=[])
+        with self.assertRaisesRegex(BusinessRuleError, "не найден"):
+            self.create_event(affected_route_ids=[999999])
+
+    def test_none_scope_rejects_routes_from_other_geo_or_provider_and_mixed_selection(self):
+        with self.assertRaisesRegex(BusinessRuleError, "провайдеру"):
+            self.create_event(affected_route_ids=[self.alt_route_id])
+        with self.assertRaisesRegex(BusinessRuleError, "GEO"):
+            self.create_event(affected_route_ids=[self.other_route_id])
+        with self.assertRaisesRegex(BusinessRuleError, "провайдеру"):
+            self.create_event(affected_route_ids=[self.route_id, self.alt_route_id])
+
+    def test_none_scope_persists_and_reads_multiple_routes_with_snapshots(self):
+        second_route_id = self.repo.create_route(
+            country_id=self.country_id, provider_id=self.provider_id,
+            name="Мексика/Sancom/Pool2@", cli_source_type="pool", cli_source_label="Pool2",
+            created_by=self.admin_id,
+        )
+        event_id = self.create_event(affected_route_ids=[self.route_id, second_route_id])
+        links = self.conn.execute(
+            "SELECT route_id, route_name, provider_name, position FROM routing_event_routes WHERE routing_event_id = %s ORDER BY position",
+            (event_id,),
+        ).fetchall()
+        self.assertEqual([row["route_id"] for row in links], [self.route_id, second_route_id])
+        self.assertEqual([row["position"] for row in links], [0, 1])
+        self.assertEqual([row["provider_name"] for row in links], ["Sancom", "Sancom"])
+        event = self.repo.get_routing_event(event_id)
+        snapshot = _json_value(event["snapshot_json"])
+        self.assertEqual(len(snapshot["affected_route_names"]), 2)
 
     def test_campaign_setting_event_uses_company_id_server_for_journal_and_filter(self):
         event_id = self.create_event(

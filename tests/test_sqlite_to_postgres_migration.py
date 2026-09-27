@@ -28,7 +28,7 @@ class SqliteToPostgresMigrationTests(unittest.TestCase):
         pg_tables = set(mig.parse_create_table_columns(SCHEMA.read_text(encoding="utf-8")))
         missing = pg_tables - set(mig.MIGRATION_ORDER) - mig.SCHEMA_ONLY_TABLES
         self.assertEqual(set(), missing)
-        self.assertEqual(37, len(mig.MIGRATION_ORDER))
+        self.assertEqual(38, len(mig.MIGRATION_ORDER))
         spam_schema_only = {
             "spam_check_batches",
             "spam_check_results",

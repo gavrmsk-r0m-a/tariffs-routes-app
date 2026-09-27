@@ -885,13 +885,21 @@ def run_routing_event_create_core_probe(repo: Repository, conn) -> None:
         none_id = repo.create_routing_event(
             event_at=EVENT_AT, apply_scope="none", reason="Другое",
             country_id=route["country_id"], provider_id=route["provider_id"],
-            affected_route_id=route["id"], comment=NONE_COMMENT,
+            affected_route_ids=[route["id"]], comment=NONE_COMMENT,
             created_by=user_id, commit=False,
         )
         event_ids.append(none_id)
         none = conn.execute("SELECT * FROM routing_events WHERE id = %s", (none_id,)).fetchone()
-        if not none or none["apply_scope"] != "none" or none["comment"] != NONE_COMMENT or not bool(none["is_active"]):
+        if (not none or none["apply_scope"] != "none" or none["comment"] != NONE_COMMENT
+                or none["country_id"] != route["country_id"] or none["provider_id"] != route["provider_id"]
+                or none["affected_route_id"] != route["id"] or not bool(none["is_active"])):
             raise AssertionError("Stage 64 none routing event was not persisted inside the transaction")
+        none_routes = conn.execute(
+            "SELECT route_id, position FROM routing_event_routes WHERE routing_event_id = %s ORDER BY position",
+            (none_id,),
+        ).fetchall()
+        if len(none_routes) != 1 or none_routes[0]["route_id"] != route["id"] or none_routes[0]["position"] != 0:
+            raise AssertionError("Stage 64 none routing event route association is incomplete")
         if any(none[field] is not None for field in ("server_id", "old_route_id", "new_route_id", "calling_company_id")):
             raise AssertionError("Stage 64 none routing event retained scope-specific fields")
         if conn.execute("SELECT 1 FROM routing_event_servers WHERE routing_event_id = %s", (none_id,)).fetchone():
@@ -939,8 +947,9 @@ def run_routing_event_create_core_probe(repo: Repository, conn) -> None:
 
         validations = (
             ("bad_scope", dict(apply_scope="bad"), NONE_COMMENT, "Некорректная область применения"),
-            ("none_provider", dict(apply_scope="none", reason="Другое"), NONE_COMMENT, "Провайдер обязателен"),
-            ("none_comment", dict(apply_scope="none", reason="Другое", provider_id=route["provider_id"]), "", "Требуется понятный комментарий"),
+            ("none_country", dict(apply_scope="none", reason="Другое", provider_id=route["provider_id"], affected_route_ids=[route["id"]]), NONE_COMMENT, "GEO обязателен"),
+            ("none_provider", dict(apply_scope="none", reason="Другое", country_id=route["country_id"], affected_route_ids=[route["id"]]), NONE_COMMENT, "Провайдер обязателен"),
+            ("none_comment", dict(apply_scope="none", reason="Другое", country_id=route["country_id"], provider_id=route["provider_id"], affected_route_ids=[route["id"]]), "", "Требуется понятный комментарий"),
             ("missing_server", dict(apply_scope="server_priority", reason="Массовый отбои/занято", country_id=route["country_id"], new_route_id=new_route["id"]), SERVER_PRIORITY_COMMENT, "Сервер обязателен для серверного приоритета"),
             ("missing_geo_route", dict(apply_scope="server_priority", reason="Массовый отбои/занято", server_id=existing_server), SERVER_PRIORITY_COMMENT, "GEO, сервер и новый маршрут обязательны для серверного приоритета"),
             ("overflow_provider", dict(apply_scope="server_priority", reason="Массовый отбои/занято", country_id=route["country_id"], server_id=existing_server, new_route_id=old_route["id"], has_overflow=True, overflow_route_id=new_route["id"]), SERVER_PRIORITY_COMMENT, "Провайдер перелива обязателен"),
@@ -966,6 +975,8 @@ def run_routing_event_create_core_probe(repo: Repository, conn) -> None:
     try:
         if conn.execute("SELECT 1 FROM routing_events WHERE comment IN (%s, %s, %s) OR snapshot_json::text LIKE %s", (NONE_COMMENT, SERVER_PRIORITY_COMMENT, SERVER_PRIORITY_OVERFLOW_COMMENT, "%stage64%" )).fetchone():
             raise AssertionError("Stage 64 routing events remain after rollback")
+        if event_ids and conn.execute("SELECT 1 FROM routing_event_routes WHERE routing_event_id = ANY(%s)", (event_ids,)).fetchone():
+            raise AssertionError("Stage 64 routing event route links remain after rollback")
         if conn.execute("SELECT 1 FROM server_route_priorities WHERE comment LIKE %s", ("%stage64%",)).fetchone():
             raise AssertionError("Stage 64 priorities remain after rollback")
         if conn.execute("SELECT 1 FROM change_log WHERE old_values::text LIKE %s OR new_values::text LIKE %s", ("%stage64%", "%stage64%" )).fetchone():

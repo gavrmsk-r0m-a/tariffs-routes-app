@@ -7960,13 +7960,17 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
         """, (event["id"],)).fetchall()]
         if not server_names and event["server_id"]:
             server_names = [one(f"SELECT name AS value FROM servers WHERE id = {p}", event["server_id"])]
+        event_snapshot = routing_event_snapshot(event)
+        affected_route_names = event_snapshot.get("affected_route_names")
+        if not isinstance(affected_route_names, list) or not affected_route_names:
+            affected_route_names = [one(f"SELECT name AS value FROM routes WHERE id = {p}", event["affected_route_id"])] if event["affected_route_id"] else []
         readonly_rows = [
             ("Дата события", event["event_at"]),
             ("Область применения", scope_labels.get(event["apply_scope"], event["apply_scope"] or "—")),
             ("GEO", one(f"SELECT name AS value FROM countries WHERE id = {p}", event["country_id"])),
             ("Серверы", ", ".join(server_names) if server_names else "—"),
             ("Провайдер", one(f"SELECT name AS value FROM providers WHERE id = {p}", event["provider_id"])),
-            ("Маршрут/префикс", one(f"SELECT name AS value FROM routes WHERE id = {p}", event["affected_route_id"])),
+            ("Маршруты/префиксы", ", ".join(str(name) for name in affected_route_names) or "—"),
             ("Старый маршрут", one(f"SELECT name AS value FROM routes WHERE id = {p}", event["old_route_id"])),
             ("Новый маршрут", one(f"SELECT name AS value FROM routes WHERE id = {p}", event["new_route_id"])),
             ("Перелив", one(f"SELECT name AS value FROM routes WHERE id = {p}", event["overflow_route_id"]) if event["apply_scope"] == "server_priority" and event["has_overflow"] else "—"),
@@ -7993,6 +7997,32 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
 """
     event_at = (event["event_at"] if event else datetime.now().strftime("%Y-%m-%d %H:%M")).replace(" ", "T")[:16]
     scope = event["apply_scope"] if event else "none"
+    selected_affected_route_ids = set()
+    if isinstance(event, dict):
+        selected_affected_route_ids = {str(value) for value in event.get("affected_route_ids", []) if value}
+    elif event and event["affected_route_id"]:
+        selected_affected_route_ids = {str(event["affected_route_id"])}
+    none_route_rows = repo.conn.execute("""
+        SELECT r.id, r.name, r.country_id, r.provider_id, c.name AS country_name, p.name AS provider_name
+        FROM routes r
+        JOIN countries c ON c.id = r.country_id
+        JOIN providers p ON p.id = r.provider_id
+        WHERE r.is_actual IS TRUE
+        ORDER BY c.name, p.name, r.name
+    """).fetchall()
+    eligible_country_ids = {str(row["country_id"]) for row in none_route_rows}
+    selected_country_id = event["country_id"] if event else None
+    none_country_options = "<option value=''>—</option>" + "".join(
+        f"<option value='{row['id']}' {'selected' if str(row['id']) == str(selected_country_id) else ''}>{esc(row['name'])}</option>"
+        for row in repo.conn.execute("SELECT id, name FROM countries WHERE is_active IS TRUE ORDER BY name")
+        if str(row["id"]) in eligible_country_ids
+    )
+    none_route_options = "".join(
+        f"<label class='multi-option none-route-option' data-country-id='{row['country_id']}' data-provider-id='{row['provider_id']}' hidden>"
+        f"<input type='checkbox' name='affected_route_ids' value='{row['id']}' {'checked' if str(row['id']) in selected_affected_route_ids else ''}>"
+        f"<span>{esc(row['name'])}</span></label>"
+        for row in none_route_rows
+    )
     route_opts = route_options_for_dynamic_form(repo, selected=event["affected_route_id"] if event else None, empty="—")
     new_route_opts = route_options_for_dynamic_form(repo, selected=event["new_route_id"] if event else None, empty="—")
     company_route_opts = route_options_for_dynamic_form(repo, selected=event["new_company_route_id"] if event else None, empty="—")
@@ -8049,9 +8079,14 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
   </fieldset>
   <div class='provider-change-content-grid' data-scope-content='none' data-scopes='none'>
     <label>Дата события <span class='required'>*</span><input type='datetime-local' name='event_at' value='{esc(event_at)}' required></label>
-    <label>GEO <span class='required'>*</span><select name='country_id' id='event-country'>{active_options(repo, 'countries', selected=event['country_id'] if event else None, empty='—')}</select></label>
-    <label>Провайдер <span class='required'>*</span><select name='provider_id' id='event-provider'>{active_options(repo, 'providers', selected=provider_selected, empty='—')}</select></label>
-    <label>Маршрут/префикс <select name='affected_route_id' id='affected-route'>{route_opts}</select></label>
+    <label>GEO <span class='required'>*</span><select name='country_id' id='event-country'>{none_country_options}</select></label>
+    <label>Провайдер <span class='required'>*</span><select name='provider_id' id='event-provider' data-selected-provider-id='{esc(provider_selected or '')}' disabled><option value=''>—</option></select></label>
+    <div class='none-route-field'><span class='field-label'>Маршруты/префиксы <span class='required'>*</span></span>
+      <details class='multi-select' id='affected-routes' data-placeholder='—'>
+        <summary id='affected-routes-summary'>—</summary>
+        <div class='multi-select-panel'><div class='multi-select-actions'><button type='button' class='small-button' id='affected-routes-select-all'>Выбрать все</button><button type='button' class='small-button' id='affected-routes-clear'>Очистить</button></div>{none_route_options}</div>
+      </details>
+    </div>
     <label class='span-2'>Причина <span class='required'>*</span><select name='reason' id='routing-reason' required>{routing_reason_options(reasons_by_scope['none'], event['reason'] if event else None)}</select></label>
     <label class='wide'>Комментарий <span class='required comment-required' hidden>*</span><textarea name='comment' id='routing-comment' rows='3' cols='60'>{esc(event['comment'] if event else '')}</textarea></label>
   </div>
@@ -8136,28 +8171,36 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
     const selected = select.options[select.selectedIndex];
     select.title = selected ? selected.textContent : '';
   }}
-  function rebuildAffectedRouteSelect() {{
-    const select = document.getElementById('affected-route');
+  function rebuildNoneRouteControls(resetRoutes) {{
     const country = document.getElementById('event-country');
     const provider = document.getElementById('event-provider');
-    if (!select) return;
-    const current = select.value;
     const countryId = country ? country.value : '';
-    const providerId = provider ? provider.value : '';
-    select.innerHTML = '<option value="">—</option>';
-    if (providerId) {{
-      routes.forEach((route) => {{
-        if ((!countryId || String(route.country_id) === String(countryId)) && String(route.provider_id) === String(providerId)) {{
-          const opt = document.createElement('option');
-          opt.value = route.id;
-          opt.textContent = route.label;
-          opt.title = route.label;
-          if (String(route.id) === String(current)) opt.selected = true;
-          select.appendChild(opt);
-        }}
-      }});
-    }}
-    updateSelectTitle(select);
+    if (!provider) return;
+    const previousProvider = provider.value || provider.dataset.selectedProviderId || '';
+    const providers = new Map();
+    routes.filter((route) => String(route.country_id) === String(countryId)).forEach((route) => providers.set(String(route.provider_id), route.provider_name));
+    provider.innerHTML = '<option value="">—</option>';
+    Array.from(providers.entries()).sort((a, b) => a[1].localeCompare(b[1])).forEach(([id, name]) => {{
+      const option = document.createElement('option'); option.value = id; option.textContent = name;
+      if (id === String(previousProvider)) option.selected = true;
+      provider.appendChild(option);
+    }});
+    provider.disabled = !countryId;
+    delete provider.dataset.selectedProviderId;
+    const providerId = provider.value;
+    form.querySelectorAll('.none-route-option').forEach((option) => {{
+      const visible = !!providerId && option.dataset.countryId === String(countryId) && option.dataset.providerId === String(providerId);
+      option.hidden = !visible;
+      const box = option.querySelector('input'); box.disabled = !visible;
+      if ((!visible || resetRoutes) && box.checked) box.checked = false;
+    }});
+    updateAffectedRoutesSummary();
+  }}
+  function updateAffectedRoutesSummary() {{
+    const checked = Array.from(form.querySelectorAll('.none-route-option:not([hidden]) input:checked'));
+    const summary = document.getElementById('affected-routes-summary');
+    if (!summary) return;
+    summary.textContent = checked.length === 0 ? '—' : checked.length === 1 ? checked[0].closest('label').textContent.trim() : `Выбрано: ${{checked.length}}`;
   }}
 
   function rebuildServerRouteSelect(select, countryId, providerId, emptyEl, requireProvider) {{
@@ -8346,7 +8389,7 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
       const hint = chip.querySelector('[data-current-route-hint]');
       if (hint) {{ hint.textContent = route; hint.title = route; }}
     }});
-    rebuildAffectedRouteSelect();
+    rebuildNoneRouteControls(false);
     rebuildServerRouteSelect(document.getElementById('server-new-route'), serverCountry && serverCountry.value, serverProvider && serverProvider.value, document.getElementById('server-new-route-empty'), true);
     const serverOverflowEnabled = scope === 'server_priority' && document.getElementById('server-has-overflow') && document.getElementById('server-has-overflow').checked;
     const serverOverflowBlock = document.getElementById('server-overflow-block');
@@ -8375,15 +8418,22 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
     if (campaignRoute) campaignRoute.disabled = !needsRoute || !(campaignCountry && campaignCountry.value) || !(campaignProvider && campaignProvider.value);
     syncCommentRequirement();
   }}
-  form.querySelectorAll('input[name="apply_scope"], #event-country, #event-provider, #server-event-country, #server-event-provider, #server-has-overflow, #server-overflow-provider').forEach((el) => el.addEventListener('change', sync));
+  form.querySelectorAll('input[name="apply_scope"], #server-event-country, #server-event-provider, #server-has-overflow, #server-overflow-provider').forEach((el) => el.addEventListener('change', sync));
+  const noneCountry = document.getElementById('event-country');
+  const noneProvider = document.getElementById('event-provider');
+  if (noneCountry) noneCountry.addEventListener('change', () => {{ if (noneProvider) noneProvider.value = ''; rebuildNoneRouteControls(true); }});
+  if (noneProvider) noneProvider.addEventListener('change', () => rebuildNoneRouteControls(true));
+  form.querySelectorAll('.none-route-option input').forEach((box) => box.addEventListener('change', updateAffectedRoutesSummary));
+  const selectAllRoutes = document.getElementById('affected-routes-select-all');
+  if (selectAllRoutes) selectAllRoutes.addEventListener('click', () => {{ form.querySelectorAll('.none-route-option:not([hidden]) input').forEach((box) => box.checked = true); updateAffectedRoutesSummary(); }});
+  const clearRoutes = document.getElementById('affected-routes-clear');
+  if (clearRoutes) clearRoutes.addEventListener('click', () => {{ form.querySelectorAll('.none-route-option input:checked').forEach((box) => box.checked = false); updateAffectedRoutesSummary(); }});
   form.querySelectorAll('.provider-change-server-priority-create [data-server-select]').forEach((button) => button.addEventListener('click', () => {{
     const checked = button.dataset.serverSelect === 'all';
     form.querySelectorAll('.provider-change-server-priority-create input[name="server_ids"]').forEach((box) => {{ box.checked = checked; }});
     updateServerSelectionCount();
   }}));
   form.querySelectorAll('.provider-change-server-priority-create input[name="server_ids"]').forEach((box) => box.addEventListener('change', updateServerSelectionCount));
-  const affectedRoute = document.getElementById('affected-route');
-  if (affectedRoute) affectedRoute.addEventListener('change', () => updateSelectTitle(affectedRoute));
   const reason = document.getElementById('routing-reason');
   if (reason) reason.addEventListener('change', syncCommentRequirement);
   form.querySelectorAll('input[name="calling_company_ids"]').forEach((el) => el.addEventListener('change', updateCompanySummary));
@@ -8799,10 +8849,14 @@ def provider_event_details(ev) -> tuple[str, str, str]:
     """Return server, campaign and route/provider details appropriate for a routing event scope."""
     scope = ev["apply_scope"]
     if scope == "none":
+        snapshot = routing_event_snapshot(ev)
         route_parts = []
         if ev["provider_name"]:
             route_parts.append(f"Провайдер: {esc(ev['provider_name'])}")
-        if ev["affected_route_name"]:
+        affected_route_names = snapshot.get("affected_route_names")
+        if isinstance(affected_route_names, list) and affected_route_names:
+            route_parts.append("Маршруты/префиксы: " + "; ".join(esc(name) for name in affected_route_names))
+        elif ev["affected_route_name"]:
             route_parts.append(f"Маршрут/префикс: {esc(ev['affected_route_name'])}")
         return "—", "—", "; ".join(route_parts) or "—"
     if scope == "server_priority":
@@ -10154,9 +10208,10 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
         return "/companies"
     if path == "/provider-changes/create":
         apply_scope = data.get("apply_scope")
+        raw_values = parse_qs(data.get("_raw", ""), keep_blank_values=True)
         provider_id = parse_int(data.get("campaign_provider_id")) if apply_scope == "campaign_setting" else parse_int(data.get("provider_id"))
         selected_server_ids = parse_qs(data.get("_raw", ""), keep_blank_values=True).get("server_ids") if apply_scope == "server_priority" else None
-        raw_values = parse_qs(data.get("_raw", ""), keep_blank_values=True)
+        affected_route_ids = raw_values.get("affected_route_ids", []) if apply_scope == "none" else None
         calling_company_ids = [parse_int(value) for value in raw_values.get("calling_company_ids", [])]
         calling_company_ids = [value for value in calling_company_ids if value]
         legacy_calling_company_id = parse_int(data.get("calling_company_id"))
@@ -10256,7 +10311,7 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
         event_id = repo.create_routing_event(
             event_at=data.get("event_at"), apply_scope=apply_scope, reason=data.get("reason"), comment=data.get("comment"),
             country_id=parse_int(data.get("country_id")), server_id=parse_int(data.get("server_id")), server_ids=selected_server_ids, provider_id=provider_id,
-            affected_route_id=parse_int(data.get("affected_route_id")), old_route_id=parse_int(data.get("old_route_id")), new_route_id=parse_int(data.get("new_route_id")),
+            affected_route_id=parse_int(data.get("affected_route_id")), affected_route_ids=affected_route_ids, old_route_id=parse_int(data.get("old_route_id")), new_route_id=parse_int(data.get("new_route_id")),
             calling_company_id=legacy_calling_company_id, company_change_type=data.get("company_change_type") or None,
             new_company_routing_mode=data.get("new_company_routing_mode") or None, new_company_route_id=parse_int(data.get("new_company_route_id")),
             new_company_has_autorotation=parse_int(data.get("new_company_has_autorotation")),
@@ -11019,6 +11074,7 @@ def app(environ, start_response):
                 "server_id": parse_int(parsed.get("server_id")),
                 "provider_id": parse_int(parsed.get("campaign_provider_id")) if parsed.get("apply_scope") == "campaign_setting" else parse_int(parsed.get("provider_id")),
                 "affected_route_id": parse_int(parsed.get("affected_route_id")),
+                "affected_route_ids": [value for value in parse_qs(parsed.get("_raw", ""), keep_blank_values=True).get("affected_route_ids", []) if value],
                 "old_route_id": parse_int(parsed.get("old_route_id")),
                 "new_route_id": parse_int(parsed.get("new_route_id")),
                 "calling_company_id": parse_int(parsed.get("calling_company_id")),

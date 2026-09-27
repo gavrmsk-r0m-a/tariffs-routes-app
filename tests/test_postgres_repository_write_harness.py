@@ -199,12 +199,20 @@ class WriteHarnessTest(unittest.TestCase):
     def test_stage64_validation_cases_do_not_pop_or_default_missing_comment(self):
         source = SCRIPT.read_text(encoding="utf-8")
         self.assertNotIn('arguments.pop("comment", SERVER_PRIORITY_COMMENT)', source)
+        self.assertIn('(\"none_country\", dict(apply_scope=\"none\"', source)
+        self.assertIn('affected_route_ids=[route[\"id\"]]), NONE_COMMENT, \"GEO обязателен\")', source)
+        self.assertIn('(\"none_provider\", dict(apply_scope=\"none\"', source)
+        self.assertIn('country_id=route[\"country_id\"], affected_route_ids=[route[\"id\"]]), NONE_COMMENT, \"Провайдер обязателен\")', source)
         self.assertIn('(\"none_comment\", dict(apply_scope=\"none\"', source)
-        self.assertIn('provider_id=route[\"provider_id\"]), \"\", \"Требуется понятный комментарий\")', source)
+        self.assertIn('provider_id=route[\"provider_id\"], affected_route_ids=[route[\"id\"]]), \"\", \"Требуется понятный комментарий\")', source)
 
     def test_stage64_fixture_selects_a_country_with_two_routes_and_scopes_priority_logs_by_id(self):
         source = SCRIPT.read_text(encoding="utf-8")
         self.assertIn('if len(items) >= 2', source)
+        self.assertIn('affected_route_ids=[route["id"]]', source)
+        self.assertIn('SELECT route_id, position FROM routing_event_routes', source)
+        self.assertIn('none_routes[0]["route_id"] != route["id"]', source)
+        self.assertIn('SELECT 1 FROM routing_event_routes WHERE routing_event_id = ANY(%s)', source)
         self.assertIn('entity_id = ANY(%s)', source)
         self.assertNotIn('change_type = %s AND new_values::text LIKE %s", ("server_route_priority"', source)
 
