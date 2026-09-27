@@ -137,7 +137,7 @@ def auth_cookie_header(user_id: int) -> tuple[str, str]:
 FILTER_SECTIONS = {
     "/routes": ("routes", ("country_id", "provider_id", "prefix_id", "is_actual", "search")),
     "/tariffs": ("tariffs", ("country_id", "provider_id", "priority_status", "status")),
-    "/phones": ("phones", ("country_id", "provider_id", "project", "assignment_type", "status", "number", "review_required", "is_problematic")),
+    "/phones": ("phones", ("country_id", "provider_id", "project", "assignment_type", "status", "is_active", "number", "review_required", "is_problematic")),
     "/companies": ("companies", ("server_id", "country_id", "company", "external_id", "has_autorotation", "is_active")),
     "/provider-changes": ("provider_changes", ("date_from", "date_to", "country_id", "apply_scope", "server_id", "campaign_id", "provider_id", "include_inactive")),
     "/admin/server-priorities": ("admin_server_priorities", ("country_id", "server_id")),
@@ -3379,6 +3379,13 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .phones-page .filter-card .filter-grid > button {{ border-color: #2563eb; background: #2563eb; color: #fff; }}
     .phones-page .filter-card .filter-grid > button:hover {{ border-color: #1d4ed8; background: #1d4ed8; color: #fff; }}
     .phones-page .filter-card .reset-filters {{ border-color: var(--border-strong); background: var(--surface-muted); color: var(--text); }}
+    .phones-page .phones-filter-primary, .phones-page .phones-filter-secondary {{ display: grid; grid-column: 1 / -1; gap: 10px; align-items: end; min-width: 0; }}
+    .phones-page .phones-filter-primary {{ grid-template-columns: repeat(6, minmax(0, 1fr)); }}
+    .phones-page .phones-filter-secondary {{ grid-template-columns: repeat(5, minmax(0, 1fr)); }}
+    .phones-page .phones-filter-primary > label, .phones-page .phones-filter-secondary > label {{ min-width: 0; }}
+    @media (max-width: 1100px) {{
+      .phones-page .phones-filter-primary, .phones-page .phones-filter-secondary {{ grid-template-columns: repeat(auto-fit, minmax(min(170px, 100%), 1fr)); }}
+    }}
 
     @media (max-width: 1020px) {{
       html[data-theme="light-v2"] #routing-event-form,
@@ -7542,7 +7549,7 @@ def phones_page(repo: Repository, q: dict[str, str] | None = None, *, form_error
     q = q or {}
     form_data = form_data or {}
     submitted = lambda name, default="": form_data.get(name, default)
-    filters = {"country_id": q.get("country_id"), "provider_id": q.get("provider_id"), "project": q.get("project"), "assignment_type": q.get("assignment_type"), "status": q.get("status"), "number_like": q.get("number"), "review_required": q.get("review_required"), "is_problematic": q.get("is_problematic")}
+    filters = {"country_id": q.get("country_id"), "provider_id": q.get("provider_id"), "project": q.get("project"), "assignment_type": q.get("assignment_type"), "status": q.get("status"), "is_active": q.get("is_active"), "number_like": q.get("number"), "review_required": q.get("review_required"), "is_problematic": q.get("is_problematic")}
     records = list(repo.list_phone_numbers(filters))
     if q.get("export") == "csv":
         return csv_response("phones_export.csv", ["Номер", "GEO", "Провайдер", "Тип номера", "Кампания", "Рабочий статус", "Активен у провайдера", "Маршруты", "Требует проверки", "Проблемный", "Комментарий"], [[p["number"], p["country_name"], p["provider_name"], p["phone_type"], p["project_label"], STATUS_LABELS.get(p["status"], p["status"]), "Да" if p["is_active"] else "Нет", p["route_names"] or "—", "Да" if p["review_required"] else "Нет", "Да" if p["is_problematic"] else "Нет", p["comment"]] for p in records])
@@ -7556,14 +7563,19 @@ def phones_page(repo: Repository, q: dict[str, str] | None = None, *, form_error
         problem_marker = problematic_icon() if phone["is_problematic"] else ""
         rows.append(f"""<tr><td data-col='number' class='selectable-cell' data-copy-column='phone-number'>{selectable_text(f"{esc(phone['number'])}{review_marker}{problem_marker}", phone['number'], classes='phone-number-cell compound-value-cell')}</td><td data-col='geo'>{esc(phone['country_name'])}</td><td data-col='provider'>{esc(phone['provider_name'])}</td><td data-col='project'>{esc(phone['project_label'])}</td><td data-col='assignment'>{esc(assignment_label)}</td><td data-col='status'>{dot_status(STATUS_LABELS.get(phone['status'], phone['status']), 'warning' if phone['status'] == 'unknown' else ('neutral' if phone['status'] == 'unused' else 'ok'))}</td><td data-col='active'>{dot_status('Да' if phone['is_active'] else 'Нет', 'ok' if phone['is_active'] else 'danger')}</td>{clamp_cell('routes', esc(phone['route_names']), phone['route_names'], selectable=True) if phone['route_names'] else "<td data-col='routes'>—</td>"}<td data-col='connection'>{esc(phone['connection_cost'])}</td><td data-col='monthly'>{esc(display_monthly_fee(phone['monthly_fee']))}</td><td data-col='currency'>{esc(phone['currency_code'])}</td><td data-col='phone_type'>{esc(phone['phone_type'])}</td><td data-col='tariff'>{esc(phone['tariff_label'])}</td><td data-col='created'>{esc(phone['created_at'])}</td><td data-col='updated'>{esc(phone['updated_at'])}</td><td data-col='deactivated'>{esc(phone['deactivated_at'])}</td>{clamp_cell('comment', esc(phone['comment'] or '—'), phone['comment'] or '—', classes='comment-cell')}<td data-col='history' class='history-cell'>{history}</td><td data-col='actions'>{actions}</td></tr>""")
     filters_html = f"""<form class="filter-grid" method="get" action="/phones">
+<div class="phones-filter-primary">
 <label>ГЕО <select name="country_id">{options(repo, 'countries', selected=q.get('country_id'), empty='Все')}</select></label>
 <label>Провайдер <select name="provider_id">{options(repo, 'providers', selected=q.get('provider_id'), empty='Все')}</select></label>
     <label>Проект <select name="project">{project_options(repo, selected=q.get('project'), empty='Все')}</select></label>
     <label>Назначение <select name="assignment_type">{assignment_options(repo, selected=q.get('assignment_type'), empty='Все')}</select></label>
 <label>Рабочий статус <select name="status">{phone_status_options(q.get('status'), empty='Все')}</select></label>
+<label>Активен у провайдера <select name="is_active"><option value="" {'selected' if q.get('is_active') in (None, '') else ''}>Все</option><option value="1" {'selected' if q.get('is_active') == '1' else ''}>Да</option><option value="0" {'selected' if q.get('is_active') == '0' else ''}>Нет</option></select></label>
+</div>
+<div class="phones-filter-secondary">
 <label>Поиск по номеру <input name="number" value="{esc(q.get('number'))}"></label>
 <div class="filter-review-control"><label class="checkbox-inline filter-review-checkbox"><input type="checkbox" name="is_problematic" value="1" {'checked' if q.get('is_problematic') == '1' else ''}> <span>Проблемный</span></label></div>
-<div class="filter-review-control" aria-label="Фильтр: Требует проверки"><span class="filter-review-spacer" aria-hidden="true">Требует проверки</span><label class="checkbox-inline filter-review-checkbox"><input type="checkbox" name="review_required" value="1" {'checked' if q.get('review_required') == '1' else ''}> <span>Требует проверки</span></label></div><!-- filter-reset-action --><button>Найти</button></form>"""
+<div class="filter-review-control" aria-label="Фильтр: Требует проверки"><span class="filter-review-spacer" aria-hidden="true">Требует проверки</span><label class="checkbox-inline filter-review-checkbox"><input type="checkbox" name="review_required" value="1" {'checked' if q.get('review_required') == '1' else ''}> <span>Требует проверки</span></label></div><!-- filter-reset-action --><button>Найти</button>
+</div></form>"""
     create_html = f"""<form class="phone-dialog phone-dialog-form" method="post" action="/phones/create">
   <header class="phone-dialog-header"><h2>Добавить номер</h2></header>
   <div class="phone-dialog-body">
@@ -7595,7 +7607,7 @@ def phones_page(repo: Repository, q: dict[str, str] | None = None, *, form_error
     create_action = form_card('+ Добавить номер', create_html, extra_class='phone-create-shell', summary_class='phone-primary-summary phone-create-action', open_by_default=bool(form_error)) if can_write("phones") else ""
     actions_html = f"<div class='phones-create-actions'>{create_action}<div class='phones-bulk-entry'>{bulk_create_link}</div></div>" if bulk_create_link else create_action
     body = f"""
-{filter_card(filters_html, q, ('country_id', 'provider_id', 'project', 'assignment_type', 'status', 'number', 'review_required', 'is_problematic'))}
+{filter_card(filters_html, q, ('country_id', 'provider_id', 'project', 'assignment_type', 'status', 'is_active', 'number', 'review_required', 'is_problematic'))}
 {actions_html}
 {table_card(table_html)}
 {table_footer(pagination_html, column_settings('phones', [('number', 'Номер'), ('geo', 'ГЕО'), ('provider', 'Провайдер'), ('project', 'Проект'), ('assignment', 'Назначение'), ('status', 'Рабочий статус'), ('active', 'Активен у провайдера'), ('routes', 'Маршруты'), ('connection', 'Подключение'), ('monthly', 'Абонплата'), ('currency', 'Валюта'), ('phone_type', 'Тип номера'), ('tariff', 'Тариф'), ('created', 'Дата создания'), ('updated', 'Дата изменения'), ('deactivated', 'Дата отключения'), ('comment', 'Комментарий'), ('actions', 'Действия')], hlr_style=True) + export_link('/phones', q, text=True))}"""
