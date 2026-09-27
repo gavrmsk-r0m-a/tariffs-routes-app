@@ -645,6 +645,7 @@ class RepositoryAdapterReadMethodsTest(unittest.TestCase):
 
         conn = CaptureConnection()
         filters = {
+            "is_active": "0",
             "review_required": "0",
             "number_like": "  525550000020  ",
             "status": "free",
@@ -665,11 +666,12 @@ class RepositoryAdapterReadMethodsTest(unittest.TestCase):
         self.assertEqual(2, sql.count("POSITION(LOWER(CAST(%s AS TEXT)) IN LOWER(COALESCE(CAST("))
         self.assertIn("pn.assignment_type = %s", sql)
         self.assertIn("pn.status = %s", sql)
+        self.assertIn("pn.is_active = %s", sql)
         self.assertIn("pn.review_required = %s", sql)
         self.assertIn("ORDER BY pn.number", sql)
         for forbidden in ("GROUP_CONCAT", "rpn.is_active = 1", "search_text_matches", "?", "LIKE", "ILIKE", "CI PHONE PROJECT", "525550000020", " = 4", " = 5"):
             self.assertNotIn(forbidden, sql)
-        self.assertEqual([True, 4, 5, "CI Phone Project", "CI PHONE PROJECT", "ivr", "free", "525550000020", False], conn.params)
+        self.assertEqual([True, 4, 5, "CI Phone Project", "CI PHONE PROJECT", "ivr", "free", False, "525550000020", False], conn.params)
         self.assertEqual(original, filters)
 
         no_filter_conn = CaptureConnection()
@@ -689,7 +691,7 @@ class RepositoryAdapterReadMethodsTest(unittest.TestCase):
                 return []
 
         capture = CaptureConnection()
-        filters = {"review_required": "0", "number_like": "  525550000020  ", "status": "free", "assignment_type": "ivr", "project_like": "  CI PHONE PROJECT  ", "project": "CI Phone Project", "provider_id": 5, "country_id": 4}
+        filters = {"is_active": "0", "review_required": "0", "number_like": "  525550000020  ", "status": "free", "assignment_type": "ivr", "project_like": "  CI PHONE PROJECT  ", "project": "CI Phone Project", "provider_id": 5, "country_id": 4}
         original = dict(filters)
         self.assertEqual([], Repository(capture).list_phone_numbers(filters))
         sql = " ".join(capture.sql.split())
@@ -699,7 +701,8 @@ class RepositoryAdapterReadMethodsTest(unittest.TestCase):
         self.assertIn("COALESCE(pn.provider_id, 0) = ?", sql)
         self.assertIn("search_text_matches(pn.project_label, ?) = 1", sql)
         self.assertIn("search_text_matches(pn.number, ?) = 1", sql)
-        self.assertEqual([1, 4, 5, "CI Phone Project", "ci phone project", "ivr", "free", "525550000020", 0], capture.params)
+        self.assertIn("pn.is_active = ?", sql)
+        self.assertEqual([1, 4, 5, "CI Phone Project", "ci phone project", "ivr", "free", 0, "525550000020", 0], capture.params)
         self.assertEqual(original, filters)
         no_filter_capture = CaptureConnection()
         Repository(no_filter_capture).list_phone_numbers()

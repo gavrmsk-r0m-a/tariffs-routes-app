@@ -3606,6 +3606,60 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertIn("525550009911", content)
         self.assertNotIn('name="review_required" value="1" checked', content)
 
+    def test_phones_provider_active_filter_ui_results_reset_and_csv(self):
+        self.request("/routes")
+        conn = _TEST_DB.connect()
+        try:
+            conn.execute("""
+                INSERT INTO phone_numbers(country_id, provider_id, number, normalized_number, project_label, assignment_type, status, is_active, created_by)
+                VALUES
+                    (1, 1, '525550009921', '525550009921', 'Active Filter A', 'gl', 'used', TRUE, 1),
+                    (1, 1, '525550009922', '525550009922', 'Active Filter B', 'gl', 'used', TRUE, 1),
+                    (1, 1, '525550009923', '525550009923', 'Active Filter A', 'gl', 'used', FALSE, 1)
+            """)
+            conn.commit()
+        finally:
+            conn.close()
+
+        captured, content = self.request("/phones")
+        self.assertEqual(captured["status"], "200 OK")
+        active_select = re.search(r'<select name="is_active">(.*?)</select>', content, re.S).group(1)
+        self.assertRegex(active_select, r'<option value="" selected>Все</option>')
+        primary = content.split('<div class="phones-filter-primary">', 1)[1].split('</div>', 1)[0]
+        secondary = content.split('<div class="phones-filter-secondary">', 1)[1].split('</div>', 1)[0]
+        self.assertEqual(primary.count('<select '), 6)
+        for name in ("country_id", "provider_id", "project", "assignment_type", "status", "is_active"):
+            self.assertIn(f'name="{name}"', primary)
+            self.assertNotIn(f'name="{name}"', secondary)
+
+        _, content = self.request("/phones?is_active=1")
+        self.assertIn('value="1" selected>Да</option>', content)
+        self.assertIn("525550009921", content)
+        self.assertIn("525550009922", content)
+        self.assertNotIn("525550009923", content)
+
+        _, content = self.request("/phones?is_active=0")
+        self.assertIn('value="0" selected>Нет</option>', content)
+        self.assertNotIn("525550009921", content)
+        self.assertNotIn("525550009922", content)
+        self.assertIn("525550009923", content)
+
+        _, content = self.request("/phones?is_active=1&project=Active%20Filter%20A")
+        self.assertIn("525550009921", content)
+        self.assertNotIn("525550009922", content)
+        self.assertNotIn("525550009923", content)
+
+        captured, content = self.request("/phones?is_active=0&export=csv")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertNotIn("525550009921", content)
+        self.assertIn("525550009923", content)
+
+        _, content = self.request("/phones?reset_filters=1")
+        active_select = re.search(r'<select name="is_active">(.*?)</select>', content, re.S).group(1)
+        self.assertRegex(active_select, r'<option value="" selected>Все</option>')
+        self.assertIn("525550009921", content)
+        self.assertIn("525550009923", content)
+
     def test_phone_csv_export_includes_review_required(self):
         self.request("/routes")
         conn = _TEST_DB.connect()
