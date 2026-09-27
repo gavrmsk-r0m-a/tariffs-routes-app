@@ -2855,11 +2855,13 @@ class ServerSmokeTest(unittest.TestCase):
         self.request("/routes")
         overflow_id = self._create_overflow_route()
         _captured, content = self.request("/provider-changes")
-        self.assertIn("data-scopes='server_priority'", content)
-        self.assertIn("name='has_overflow'", content)
-        self.assertIn("Маршрут перелива", content)
-        self.assertIn("id='server-overflow-route'", content)
-        self.assertIn(f"<option value='{overflow_id}'", content)
+        server_priority_content = content.split("data-scope-content='server_priority'", 1)[1].split("data-scope-content='campaign_setting'", 1)[0]
+        none_content = content.split("data-scope-content='none'", 1)[1].split("data-scope-content='server_priority'", 1)[0]
+        self.assertIn("name='has_overflow'", server_priority_content)
+        self.assertIn("Маршрут перелива", server_priority_content)
+        self.assertIn("id='server-overflow-route'", server_priority_content)
+        self.assertIn(f"<option value='{overflow_id}'", server_priority_content)
+        self.assertNotIn("name='has_overflow'", none_content)
 
     def test_provider_change_non_server_priority_does_not_save_overflow(self):
         self.request("/routes")
@@ -5680,9 +5682,8 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
         self.assertIn("rebuildNoneRouteControls(true)", content)
         conn = _TEST_DB.connect()
         try:
-            country_without_routes = conn.execute("INSERT INTO countries(name, code, is_active) VALUES (%s, %s, TRUE) RETURNING id", ("Без маршрутов", "ZZ")).fetchone()["id"]
+            country_without_routes = Repository(conn).create_country("Без маршрутов", "ZZ")
         finally:
-            conn.commit()
             conn.close()
         _captured, content = self.request("/provider-changes")
         self.assertNotIn(f"<option value='{country_without_routes}'", content)
