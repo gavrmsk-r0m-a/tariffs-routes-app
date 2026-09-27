@@ -6069,10 +6069,25 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
             self.assertTrue(scroll_start < create_form.index(f"data-scope-hint='{scope}'") < scroll_end)
         self.assertLess(scroll_end, create_form.index("type='submit'", scroll_end))
         self.assertIn("data-modal-close>Отмена", create_form[scroll_end:])
-        self.assertIn(".provider-change-scroll-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden;", content)
+        self.assertIn(".provider-change-scroll-body { flex: 1 1 auto; min-height: 0; min-width: 0; width: 100%; max-width: 100%; box-sizing: border-box; overflow-y: auto; overflow-x: clip;", content)
         self.assertIn("#routing-event-form { display: flex; flex-direction: column;", content)
         self.assertIn("height: min(740px, calc(100vh - 48px));", content)
         self.assertIn("overflow: hidden;", content)
+
+    def test_provider_change_campaign_layout_cannot_expand_scroll_body(self):
+        self.request("/routes")
+        _, content = self.request("/provider-changes")
+        self.assertIn(".provider-change-campaign-create-grid { flex: 1 1 0; display: flex; flex-direction: column; gap: 12px; min-height: 0; min-width: 0; width: 100%; max-width: 100%; box-sizing: border-box;", content)
+        self.assertIn(".campaign-create-change-row { min-width: 0; width: 100%; max-width: 100%; box-sizing: border-box;", content)
+        self.assertIn(".company-select-panel { position: absolute; z-index: 20; inset-inline: 0; top: calc(100% + 4px); width: 100%; min-width: 0; max-width: 100%;", content)
+
+    def test_provider_change_campaign_transitions_normalize_only_horizontal_scroll(self):
+        self.request("/routes")
+        _, content = self.request("/provider-changes")
+        self.assertIn("const body = form.querySelector('.provider-change-scroll-body');", content)
+        self.assertIn("if (body && body.scrollLeft !== 0) body.scrollLeft = 0;", content)
+        self.assertNotIn("body.scrollTop =", content)
+        self.assertIn("updateCampaignProgress();\n    normalizeProviderChangeScrollX();\n    requestAnimationFrame(normalizeProviderChangeScrollX);", content)
 
 
     def test_provider_change_company_setting_form_renders_campaign_helper_filters(self):
