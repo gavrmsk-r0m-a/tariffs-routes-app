@@ -1418,7 +1418,7 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .modal-cancel, .admin-edit-cancel {{ background: var(--surface); color: var(--text); border-color: var(--border-strong); }}
     .provider-change-create-shell[open] > #routing-event-form {{ min-height: min(740px, calc(100vh - 48px)); align-content: start; }}
     .provider-change-create-shell .provider-change-shell-scope, .provider-change-create-shell #routing-event-form > .modal-actions {{ flex: 0 0 auto; }}
-    .provider-change-create-shell .provider-change-scroll-body {{ flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; scrollbar-gutter: stable; padding-right: 8px; scrollbar-width: thin; scrollbar-color: var(--border-ink, #8293a6) transparent; }}
+    .provider-change-create-shell .provider-change-scroll-body {{ flex: 1 1 auto; min-height: 0; min-width: 0; width: 100%; max-width: 100%; box-sizing: border-box; overflow-y: auto; overflow-x: clip; scrollbar-gutter: stable; padding-right: 8px; scrollbar-width: thin; scrollbar-color: var(--border-ink, #8293a6) transparent; }}
     .provider-change-create-shell .provider-change-scroll-body::-webkit-scrollbar {{ width: 8px; }}
     .provider-change-create-shell .provider-change-scroll-body::-webkit-scrollbar-track {{ background: transparent; }}
     .provider-change-create-shell .provider-change-scroll-body::-webkit-scrollbar-thumb {{ border-radius: 999px; background: var(--border-ink, #8293a6); }}
@@ -2924,8 +2924,13 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-content-grid .span-2 {{ grid-column: span 2; }}
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-content-grid .wide {{ grid-column: 1 / -1; }}
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-content-grid textarea {{ width: 100%; min-height: 170px; height: 100%; resize: vertical; }}
-    html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid {{ flex: 1 1 0; display: flex; flex-direction: column; gap: 12px; min-height: 0; padding: 0; }}
-    html[data-theme="light-v2"] .provider-change-create-shell .campaign-create-row {{ display: grid; gap: 12px; align-items: end; min-width: 0; }}
+    html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid {{ flex: 1 1 0; display: flex; flex-direction: column; gap: 12px; min-height: 0; min-width: 0; width: 100%; max-width: 100%; box-sizing: border-box; padding: 0; }}
+    html[data-theme="light-v2"] .provider-change-create-shell .campaign-step,
+    html[data-theme="light-v2"] .provider-change-create-shell .campaign-create-row,
+    html[data-theme="light-v2"] .provider-change-create-shell .campaign-create-filters-row,
+    html[data-theme="light-v2"] .provider-change-create-shell .campaign-create-company-row,
+    html[data-theme="light-v2"] .provider-change-create-shell .campaign-create-change-row {{ min-width: 0; width: 100%; max-width: 100%; box-sizing: border-box; }}
+    html[data-theme="light-v2"] .provider-change-create-shell .campaign-create-row {{ display: grid; gap: 12px; align-items: end; }}
     html[data-theme="light-v2"] .provider-change-create-shell .campaign-create-primary-row {{ grid-template-columns: repeat(4, minmax(0, 1fr)); }}
     html[data-theme="light-v2"] .provider-change-create-shell .campaign-create-company-row {{ grid-template-columns: minmax(160px, .8fr) auto minmax(320px, 2.6fr); align-items: end; }}
     html[data-theme="light-v2"] .provider-change-create-shell .campaign-create-change-row {{ grid-template-columns: minmax(220px, 1.25fr) minmax(180px, 1fr) minmax(220px, 1.25fr); }}
@@ -2952,7 +2957,7 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .campaign-company-field .company-select-control:hover > summary {{ border-color: var(--border-ink); }}
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .campaign-company-field .company-select-control:focus-within > summary {{ border-color: var(--accent); box-shadow: 0 0 0 3px rgba(37, 99, 235, .16); outline: 0; }}
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .campaign-company-field .company-select-control[open] > summary {{ border-bottom-color: var(--border-strong); border-radius: var(--radius-control); background: var(--input-bg); }}
-    html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .campaign-company-field .company-select-panel {{ position: absolute; z-index: 20; inset-inline: 0; top: calc(100% + 4px); max-height: 280px; overflow: auto; padding: 8px; border: 1px solid var(--border-strong); border-radius: var(--radius-control); background: #fff; box-shadow: var(--shadow-soft); }}
+    html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .campaign-company-field .company-select-panel {{ position: absolute; z-index: 20; inset-inline: 0; top: calc(100% + 4px); width: 100%; min-width: 0; max-width: 100%; max-height: 280px; box-sizing: border-box; overflow-y: auto; overflow-x: hidden; padding: 8px; border: 1px solid var(--border-strong); border-radius: var(--radius-control); background: #fff; box-shadow: var(--shadow-soft); }}
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .span-2 {{ grid-column: span 2; }}
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .wide {{ grid-column: 1 / -1; display: flex; flex-direction: column; min-height: 0; }}
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid textarea {{ width: 100%; min-height: 180px; height: 100%; resize: vertical; }}
@@ -8465,6 +8470,10 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
     const number = form.querySelector('[data-reason-step-number]');
     if (number) number.textContent = needsRoute ? '4' : '3';
   }}
+  function normalizeProviderChangeScrollX() {{
+    const body = form.querySelector('.provider-change-scroll-body');
+    if (body && body.scrollLeft !== 0) body.scrollLeft = 0;
+  }}
   function sync() {{
     const scope = selectedScope();
     form.dataset.currentScope = scope;
@@ -8514,6 +8523,8 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
     if (campaignRoute) campaignRoute.disabled = !needsRoute || !(campaignCountry && campaignCountry.value) || !(campaignProvider && campaignProvider.value);
     syncCommentRequirement();
     updateCampaignProgress();
+    normalizeProviderChangeScrollX();
+    requestAnimationFrame(normalizeProviderChangeScrollX);
   }}
   form.querySelectorAll('input[name="apply_scope"], #server-event-country, #server-event-provider, #server-has-overflow, #server-overflow-provider').forEach((el) => el.addEventListener('change', sync));
   const noneCountry = document.getElementById('event-country');
