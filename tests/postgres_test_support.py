@@ -117,14 +117,19 @@ class TemporaryPostgresDatabase:
             raise RuntimeError("Refusing PostgreSQL test URL/name mismatch")
 
     def create(self):
-        self._assert_safe_name()
-        with psycopg.connect(self.admin_url, autocommit=True) as conn:
-            conn.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(self.name)))
+        self.create_empty()
         try:
             self.reset()
         except Exception:
             self.drop()
             raise
+        return self
+
+    def create_empty(self):
+        """Create an isolated database without installing the canonical schema."""
+        self._assert_safe_name()
+        with psycopg.connect(self.admin_url, autocommit=True) as conn:
+            conn.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(self.name)))
         return self
 
     def connect(self):
