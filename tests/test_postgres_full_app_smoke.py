@@ -216,8 +216,10 @@ class FullAppSmokeHarnessTests(unittest.TestCase):
         cleanup_calls = [call.args for call in cleanup_conn.execute.call_args_list]
         self.assertIn("DELETE FROM change_log", cleanup_calls[0][0])
         self.assertEqual(cleanup_calls[0][1], (902,))
-        self.assertEqual(cleanup_calls[1][0], "DELETE FROM routing_events WHERE reason = %s")
-        self.assertEqual(cleanup_calls[2], ("DELETE FROM change_reasons WHERE id = %s", (902,)))
+        self.assertIn("DELETE FROM routing_event_routes", cleanup_calls[1][0])
+        self.assertEqual(cleanup_calls[1][1], (reason["name"],))
+        self.assertEqual(cleanup_calls[2][0], "DELETE FROM routing_events WHERE reason = %s")
+        self.assertEqual(cleanup_calls[3], ("DELETE FROM change_reasons WHERE id = %s", (902,)))
         cleanup_conn.commit.assert_called_once_with()
 
     def test_pages_cover_dashboard_and_admin_routing_views(self):

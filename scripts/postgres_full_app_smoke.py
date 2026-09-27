@@ -139,6 +139,11 @@ def _isolated_smoke_change_reason(database_url: str):
                 "DELETE FROM change_log WHERE entity_type = 'change_reason' AND entity_id = %s",
                 (reason_id,),
             )
+            cleanup.execute(
+                "DELETE FROM routing_event_routes WHERE routing_event_id IN "
+                "(SELECT id FROM routing_events WHERE reason = %s)",
+                (original_name,),
+            )
             cleanup.execute("DELETE FROM routing_events WHERE reason = %s", (original_name,))
             cleanup.execute("DELETE FROM change_reasons WHERE id = %s", (reason_id,))
             cleanup.commit()
@@ -824,18 +829,29 @@ def run_smoke(database_url: str, auth_secret: str) -> dict[str, object]:
     with _isolated_smoke_change_reason(database_url) as reason:
         probe = connect_postgres(database_url)
         try:
-            provider_id = int(probe.execute("SELECT id FROM providers WHERE is_active IS TRUE ORDER BY id LIMIT 1").fetchone()["id"])
+            route = probe.execute(
+                """
+                SELECT r.id AS route_id, r.country_id, r.provider_id
+                FROM routes r
+                WHERE r.is_actual IS TRUE
+                ORDER BY r.id
+                LIMIT 1
+                """
+            ).fetchone()
         finally:
             probe.close()
+        if not route:
+            raise SmokeFailure("/provider-changes/create", "no active route fixture is available")
         event_path = "/provider-changes/create"
         status, headers, _ = wsgi_request(
             app,
             event_path,
             method="POST",
-            data={
-                "apply_scope": "none", "event_at": "2026-08-26T12:00",
-                "provider_id": str(provider_id), "reason": reason["name"],
-            },
+            data=[
+                ("apply_scope", "none"), ("event_at", "2026-08-26T12:00"),
+                ("country_id", str(route["country_id"])), ("provider_id", str(route["provider_id"])),
+                ("affected_route_ids", str(route["route_id"])), ("reason", reason["name"]),
+            ],
             cookie=cookie,
         )
         if status != "303 See Other" or _header(headers, "Location") != "/provider-changes":
@@ -843,12 +859,20 @@ def run_smoke(database_url: str, auth_secret: str) -> dict[str, object]:
         verify = connect_postgres(database_url)
         try:
             event = verify.execute(
-                "SELECT id, reason FROM routing_events WHERE reason = %s ORDER BY id DESC LIMIT 1", (reason["name"],)
+                """
+                SELECT re.id, re.reason, rer.route_id
+                FROM routing_events re
+                JOIN routing_event_routes rer ON rer.routing_event_id = re.id
+                WHERE re.reason = %s
+                ORDER BY re.id DESC, rer.position
+                LIMIT 1
+                """,
+                (reason["name"],),
             ).fetchone()
         finally:
             verify.close()
-        if not event or event["reason"] != reason["name"]:
-            raise SmokeFailure(event_path, "routing event did not preserve the reason snapshot", status)
+        if not event or event["reason"] != reason["name"] or int(event["route_id"]) != int(route["route_id"]):
+            raise SmokeFailure(event_path, "routing event did not preserve its reason and route link", status)
 
         update_path = f"/admin/change-reasons/{reason['id']}/update"
         status, headers, _ = wsgi_request(
