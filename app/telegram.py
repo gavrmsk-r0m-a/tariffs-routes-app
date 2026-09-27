@@ -9,8 +9,6 @@ from decimal import Decimal, InvalidOperation
 from html import escape
 from urllib.parse import urljoin
 
-from app.repository import COMPANY_CHANGE_LABELS
-
 logger = logging.getLogger(__name__)
 
 TELEGRAM_API_TIMEOUT_SECONDS = 5
@@ -53,7 +51,7 @@ def _price_difference_block(event: dict) -> list[str]:
         if old_price is not None and new_price is not None:
             delta = new_price - old_price
     if delta is None:
-        return ["⚪ Разница:", "—"]
+        return []
     if delta < 0:
         indicator = "🟢"
         value = f"{delta:.2f} EUR"
@@ -63,7 +61,7 @@ def _price_difference_block(event: dict) -> list[str]:
     else:
         indicator = "⚪"
         value = "0.00 EUR"
-    return [f"{indicator} Разница:", value]
+    return [f"{indicator} Разница: {value}"]
 
 def app_base_url() -> str:
     return os.environ.get("APP_BASE_URL", "").strip() or DEFAULT_APP_BASE_URL
@@ -75,11 +73,10 @@ def provider_change_url(base_url: str | None = None) -> str:
 
 
 def _reason_comment_block(event: dict) -> list[str]:
-    return [
-        "📝 Причина / Комментарий:",
-        _html(event.get("reason")),
-        _html(event.get("comment")),
-    ]
+    lines = [f"📝 <b>Причина:</b> {_html(event.get('reason'))}"]
+    if _text(event.get("comment")) != "—":
+        lines.append(f"💬 {_html(event.get('comment'))}")
+    return lines
 
 
 def _footer_block(event: dict) -> list[str]:
@@ -96,30 +93,25 @@ def _footer_block(event: dict) -> list[str]:
 def _server_priority_route_block(event: dict) -> list[str]:
     old_route = event.get("old_route_name") or event.get("affected_route_name")
     return [
-        "🔄 Маршрут:",
-        "",
-        "Было:",
-        _html(old_route),
-        "",
-        "✅ Стало:",
-        _bold(event.get("new_route_name")),
+        "🛣 <b>Основной маршрут</b>",
+        f"Было: {_html(old_route)}",
+        f"Стало: {_bold(event.get('new_route_name'))}",
     ]
 
 
 def _server_priority_overflow_block(event: dict) -> list[str]:
-    return [
-        "🌊 Перелив:",
-        _html(event.get("overflow_route_name")),
-    ]
+    if _text(event.get("overflow_route_name")) == "—":
+        return []
+    return [f"🌊 <b>Перелив:</b> {_html(event.get('overflow_route_name'))}"]
 
 
 def _server_priority_message(event: dict) -> str:
     server = event.get("affected_server_names") or event.get("server_name")
     lines = [
-        "🚨 <b>Смена провайдера</b>",
+        "⚙️ <b>Серверный приоритет</b>",
         "",
-        f"📍 {_bold(event.get('country_name'))} | {_bold(server)}",
-        "⚙️ Серверный приоритет",
+        f"📍 {_bold(event.get('country_name'))}",
+        f"🖥 <b>Серверы:</b> {_html(server)}",
         "",
         *_server_priority_route_block(event),
         "",
@@ -135,47 +127,49 @@ def _server_priority_message(event: dict) -> str:
 
 def _campaign_setting_message(event: dict) -> str:
     server = event.get("company_server_name") or event.get("server_name")
-    campaign = f"{_text(event.get('company_id_external'))} / {_text(event.get('company_name'))}"
-    old_mode = event.get("old_company_routing_mode")
-    new_mode = event.get("new_company_routing_mode")
-    if old_mode is None and new_mode is None:
-        change_type = event.get("company_change_type")
-        new_mode = COMPANY_CHANGE_LABELS.get(change_type, change_type) if change_type else None
+    campaign = f"{_text(event.get('company_id_external'))} · {_text(event.get('company_name'))}"
+    if "company_country_id" in event:
+        campaign_geo = event.get("company_country_name") if event.get("company_country_id") is not None else "Несколько GEO"
+    else:
+        campaign_geo = None
+    change_type = event.get("company_change_type")
     lines = [
-        "🚨 <b>Смена провайдера</b>",
+        "🔧 <b>Настройка кампании</b>",
         "",
-        f"📍 {_bold(event.get('country_name'))} | {_bold(server)}",
-        "📦 Настройка кампании",
-        f"🎯 {_html(campaign)}",
+        f"📍 {_bold(campaign_geo)}",
+        f"🎯 {_bold(campaign)}",
+        f"🖥 {_html(server)}",
         "",
-        "🔄 Изменение:",
-        f"{_html(old_mode)} → {_bold(new_mode)}",
-        "",
-        "📞 Маршрут:",
-        _html(event.get("old_company_route_name")),
-        f"→ {_bold(event.get('new_company_route_name'))}",
-        "",
-        *_price_difference_block(event),
-        "",
-        "🔁 Авторотация:",
-        f"{_html(_bool_text(event.get('old_company_has_autorotation')))} → {_bold(_bool_text(event.get('new_company_has_autorotation')))}",
-        "",
-        *_reason_comment_block(event),
-        *_footer_block(event),
     ]
+    if change_type in {"enable_autorotation", "disable_autorotation"}:
+        lines.append(f"🔄 <b>Авторотация:</b> {_html(_bool_text(event.get('old_company_has_autorotation')))} → {_bold(_bool_text(event.get('new_company_has_autorotation')))}")
+    elif change_type in {"set_campaign_route", "remove_campaign_route"}:
+        lines.append("🛣 <b>Ручной маршрут</b>")
+        if change_type == "remove_campaign_route":
+            lines.extend([
+                f"Было: {_bold(event.get('old_company_route_name'))}",
+                f"Стало: {_html(event.get('new_company_route_name'))}",
+            ])
+        else:
+            lines.extend([
+                f"Было: {_html(event.get('old_company_route_name'))}",
+                f"Стало: {_bold(event.get('new_company_route_name'))}",
+            ])
+        difference = _price_difference_block(event)
+        if difference:
+            lines.extend(["", *difference])
+    lines.extend(["", *_reason_comment_block(event), *_footer_block(event)])
     return "\n".join(lines)
 
 
 def _none_scope_message(event: dict) -> str:
     route = event.get("affected_route_name") or event.get("new_route_name") or event.get("old_route_name")
     lines = [
-        "🚨 <b>Смена провайдера</b>",
+        "📡 <b>Событие у провайдера</b>",
         "",
         f"📍 {_bold(event.get('country_name'))}",
-        "",
-        "📡 Провайдер / Маршрут:",
-        _bold(event.get("provider_name")),
-        _bold(route),
+        f"🏢 <b>Провайдер:</b> {_html(event.get('provider_name'))}",
+        f"🛣 <b>Маршрут:</b> {_html(route)}",
         "",
         *_reason_comment_block(event),
         *_footer_block(event),

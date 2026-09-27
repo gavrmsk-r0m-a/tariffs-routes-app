@@ -1416,10 +1416,13 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .modal-save, .admin-edit-save {{ background: var(--accent-strong); border-color: var(--accent-strong); color: #fff; font-weight: 780; }}
     .modal-save:hover, .admin-edit-save:hover {{ background: var(--accent); border-color: var(--accent); color: #fff; }}
     .modal-cancel, .admin-edit-cancel {{ background: var(--surface); color: var(--text); border-color: var(--border-strong); }}
-    .provider-change-create-shell[open] > #routing-event-form {{ min-height: min(740px, calc(100vh - 48px)); grid-template-rows: auto auto minmax(0, 1fr) auto auto; align-content: start; }}
-    .provider-change-create-shell[open] > #routing-event-form [data-scope-content]:not([hidden]) {{ align-self: stretch; }}
-    .provider-change-create-shell[open] > #routing-event-form .provider-change-shell-hint {{ align-self: end; }}
-    .provider-change-create-shell[open] > #routing-event-form > button[type='submit'] {{ align-self: end; justify-self: end; }}
+    .provider-change-create-shell[open] > #routing-event-form {{ min-height: min(740px, calc(100vh - 48px)); align-content: start; }}
+    .provider-change-create-shell .provider-change-shell-scope, .provider-change-create-shell #routing-event-form > .modal-actions {{ flex: 0 0 auto; }}
+    .provider-change-create-shell .provider-change-scroll-body {{ flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; scrollbar-gutter: stable; padding-right: 8px; scrollbar-width: thin; scrollbar-color: var(--border-ink, #8293a6) transparent; }}
+    .provider-change-create-shell .provider-change-scroll-body::-webkit-scrollbar {{ width: 8px; }}
+    .provider-change-create-shell .provider-change-scroll-body::-webkit-scrollbar-track {{ background: transparent; }}
+    .provider-change-create-shell .provider-change-scroll-body::-webkit-scrollbar-thumb {{ border-radius: 999px; background: var(--border-ink, #8293a6); }}
+    .provider-change-create-shell .provider-change-scroll-body::-webkit-scrollbar-thumb:hover {{ background: var(--muted, #64748b); }}
     .modal-cancel:hover, .admin-edit-cancel:hover {{ background: var(--warning-soft); color: var(--accent-strong); border-color: var(--warning-border); }}
     .modal-card input, .modal-card select, .modal-card textarea, .modal-form-card[open] input, .modal-form-card[open] select, .modal-form-card[open] textarea, .remote-edit-card input, .remote-edit-card select, .remote-edit-card textarea {{ width: 100%; box-sizing: border-box; background: var(--input-bg, var(--surface)); color: var(--text); border-color: var(--border-strong); }}
     html[data-theme="dark"] .modal-card, html[data-theme="dark"] .modal-form-card[open] > form, html[data-theme="dark"] .modal-form-card[open] > .modal-body {{ background: var(--surface); border-color: var(--border-strong); color: var(--text); }}
@@ -8108,6 +8111,7 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
       <label class='card scope-card'><input type='radio' name='apply_scope' value='campaign_setting' {'checked' if scope == 'campaign_setting' else ''}><span class='scope-card-indicator' aria-hidden='true'></span><span class='scope-card-text'>Настройка кампании</span></label>
     </div>
   </fieldset>
+  <div class='provider-change-scroll-body'>
   <div class='provider-change-content-grid' data-scope-content='none' data-scopes='none'>
     <label>Дата события <span class='required'>*</span><input type='datetime-local' name='event_at' value='{esc(event_at)}' required></label>
     <label>GEO <span class='required'>*</span><select name='country_id' id='event-country'>{none_country_options}</select></label>
@@ -8206,7 +8210,8 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
   <p class='provider-change-shell-hint' data-scope-hint='none'>Событие без изменения настроек фиксирует внешний или ручной контекст без применения изменений в системе.</p>
   <p class='provider-change-shell-hint' data-scope-hint='server_priority' hidden>Старый маршрут подтягивается автоматически из текущего server_route_priorities при создании.</p>
   <p class='provider-change-shell-hint' data-scope-hint='campaign_setting' hidden>Событие будет сохранено в журнале и применено к Схеме маршрутизации кампаний.</p>
-  <button type='submit'>{submit}</button>
+  </div>
+  <div class='modal-actions'><button type='submit'>{submit}</button><button type='button' class='modal-cancel' data-modal-close>Отмена</button></div>
 </form>
 <script>
 (function() {{

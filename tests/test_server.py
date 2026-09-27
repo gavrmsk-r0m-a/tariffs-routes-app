@@ -6055,6 +6055,25 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
         self.assertIn("data-scope-content='campaign_setting'", content)
         self.assertIn("Событие будет сохранено в журнале и применено", content)
 
+    def test_provider_change_create_modal_has_scoped_internal_scroll_body(self):
+        self.request("/routes")
+        captured, content = self.request("/provider-changes")
+        self.assertEqual(captured["status"], "200 OK")
+        create_form = _form_fragment(content, "/provider-changes/create")
+        scroll_start = create_form.index("<div class='provider-change-scroll-body'>")
+        scroll_end = create_form.index("<div class='modal-actions'>", scroll_start)
+        scope_selector = create_form.index("class='provider-change-shell-scope'")
+        self.assertLess(scope_selector, scroll_start)
+        for scope in ("none", "server_priority", "campaign_setting"):
+            self.assertTrue(scroll_start < create_form.index(f"data-scope-content='{scope}'") < scroll_end)
+            self.assertTrue(scroll_start < create_form.index(f"data-scope-hint='{scope}'") < scroll_end)
+        self.assertLess(scroll_end, create_form.index("type='submit'", scroll_end))
+        self.assertIn("data-modal-close>Отмена", create_form[scroll_end:])
+        self.assertIn(".provider-change-scroll-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden;", content)
+        self.assertIn("#routing-event-form { display: flex; flex-direction: column;", content)
+        self.assertIn("height: min(740px, calc(100vh - 48px));", content)
+        self.assertIn("overflow: hidden;", content)
+
 
     def test_provider_change_company_setting_form_renders_campaign_helper_filters(self):
         self.request("/routes")

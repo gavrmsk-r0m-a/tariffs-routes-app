@@ -3603,6 +3603,7 @@ class Repository:
                           - (CASE re.apply_scope WHEN 'campaign_setting' THEN old_company_tariff.eur_price ELSE old_route_tariff.eur_price END)
                    END AS price_delta_eur,
                    cc.company_id_external, cc.company_name, cs.name AS company_server_name,
+                   cc.country_id AS company_country_id, company_country.name AS company_country_name,
                    COALESCE(u.display_name, u.username) AS author_name
             FROM routing_events re
             LEFT JOIN countries c ON c.id = re.country_id
@@ -3645,6 +3646,7 @@ class Repository:
             LEFT JOIN providers oldcp ON oldcp.id = oldcr.provider_id
             LEFT JOIN providers newcp ON newcp.id = newcr.provider_id
             LEFT JOIN calling_companies cc ON cc.id = re.calling_company_id
+            LEFT JOIN countries company_country ON company_country.id = cc.country_id
             LEFT JOIN servers cs ON cs.id = cc.server_id
             LEFT JOIN users u ON u.id = re.created_by
             {where}

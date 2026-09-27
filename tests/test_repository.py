@@ -2449,6 +2449,8 @@ class RoutingEventsRepositoryTest(unittest.TestCase):
         rows = self.repo.list_routing_events({"server_id": self.server_id})
         self.assertEqual([row["id"] for row in rows], [event_id])
         self.assertEqual(rows[0]["company_server_name"], "EU1")
+        self.assertEqual(rows[0]["company_country_id"], self.country_id)
+        self.assertEqual(rows[0]["company_country_name"], "Мексика")
 
         other_server_id = self.repo.create_server("EU3")
         self.repo.create_calling_company(
@@ -2463,6 +2465,26 @@ class RoutingEventsRepositoryTest(unittest.TestCase):
         self.assertEqual([row["id"] for row in rows], [event_id])
         self.assertEqual(rows[0]["company_server_name"], "EU1")
         self.assertEqual(self.repo.list_routing_events({"server_id": other_server_id}), [])
+
+    def test_campaign_event_read_path_preserves_multi_geo_company_semantics(self):
+        multi_geo_company_id = self.repo.create_calling_company(
+            server_id=self.server_id,
+            country_id=None,
+            company_name="CC Multi GEO",
+            company_id_external="100500",
+            has_autorotation=True,
+            created_by=self.admin_id,
+        )
+        event_id = self.create_event(
+            apply_scope="campaign_setting",
+            calling_company_id=multi_geo_company_id,
+            company_change_type="disable_autorotation",
+            provider_id=self.provider_id,
+            server_id=None,
+        )
+        event = self.repo.get_routing_event(event_id)
+        self.assertIsNone(event["company_country_id"])
+        self.assertIsNone(event["company_country_name"])
 
     def test_calling_company_server_can_be_changed_on_edit(self):
         other_server_id = self.repo.create_server("EU3")

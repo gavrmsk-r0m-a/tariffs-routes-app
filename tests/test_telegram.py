@@ -9,144 +9,90 @@ from app.telegram import build_provider_change_message, provider_change_url, sen
 
 
 class TelegramMessageTest(unittest.TestCase):
-    def test_server_priority_bolds_new_route_and_uses_app_base_url(self):
-        event = {
-            "apply_scope": "server_priority",
-            "country_name": "Мексика",
-            "affected_server_names": "EU1",
-            "old_route_name": "Мексика/Sancom/Old@",
-            "new_route_name": "Мексика/Miatel/RND@",
-            "overflow_route_name": "Мексика/Overflow@",
-            "reason": "Плохие показатели",
-            "comment": "Перевели трафик на Miatel",
-            "author_name": "Admin",
-            "event_at": "2026-06-24 21:15",
-        }
-        with patch.dict(os.environ, {"APP_BASE_URL": "https://teleroute.example"}, clear=True):
-            message = build_provider_change_message(event)
-        self.assertIn("🚨 <b>Смена провайдера</b>", message)
-        self.assertIn("📍 <b>Мексика</b> | <b>EU1</b>", message)
-        self.assertIn("🔄 Маршрут:\n\nБыло:\nМексика/Sancom/Old@\n\n✅ Стало:\n<b>Мексика/Miatel/RND@</b>", message)
-        self.assertIn("🌊 Перелив:\nМексика/Overflow@", message)
-        self.assertLess(message.index("🔄 Маршрут:"), message.index("🌊 Перелив:"))
-        self.assertLess(message.index("🌊 Перелив:"), message.index("⚪ Разница:"))
-        self.assertLess(message.index("⚪ Разница:"), message.index("📝 Причина / Комментарий:"))
-        self.assertIn("https://teleroute.example/provider-changes", message)
-
-    def test_server_priority_shows_route_before_after_even_when_same(self):
-        event = {
-            "apply_scope": "server_priority",
-            "old_route_name": "Мексика/Miatel/RND@",
-            "new_route_name": "Мексика/Miatel/RND@",
-        }
+    def build(self, event):
         with patch.dict(os.environ, {}, clear=True):
-            message = build_provider_change_message(event)
-        self.assertIn("🔄 Маршрут:\n\nБыло:\nМексика/Miatel/RND@\n\n✅ Стало:\n<b>Мексика/Miatel/RND@</b>", message)
+            return build_provider_change_message(event)
 
-    def test_server_priority_formats_cheaper_price_difference_with_green_indicator(self):
-        event = {
-            "apply_scope": "server_priority",
-            "old_price_eur": "1.20",
-            "new_price_eur": "1.12",
-        }
-        with patch.dict(os.environ, {}, clear=True):
-            message = build_provider_change_message(event)
-        self.assertIn("🟢 Разница:\n-0.08 EUR", message)
+    def test_none_scope_is_provider_focused_and_omits_empty_optional_blocks(self):
+        message = self.build({
+            "apply_scope": "none", "country_name": "Мексика", "provider_name": "DemoTel",
+            "affected_route_name": "Мексика/DemoTel/RND@", "reason": "Провайдер сменил маршрут",
+            "comment": "", "author_name": "Admin", "event_at": "2026-09-27 20:20",
+        })
+        self.assertIn("📡 <b>Событие у провайдера</b>", message)
+        self.assertIn("📍 <b>Мексика</b>", message)
+        self.assertIn("🏢 <b>Провайдер:</b> DemoTel", message)
+        self.assertIn("🛣 <b>Маршрут:</b> Мексика/DemoTel/RND@", message)
+        self.assertNotIn("Смена провайдера", message)
+        self.assertNotIn("Разница", message)
+        self.assertNotIn("💬", message)
 
-    def test_server_priority_formats_more_expensive_price_difference_with_red_indicator(self):
-        event = {
-            "apply_scope": "server_priority",
-            "price_delta_eur": "0.12",
-        }
-        with patch.dict(os.environ, {}, clear=True):
-            message = build_provider_change_message(event)
-        self.assertIn("🔴 Разница:\n+0.12 EUR", message)
+    def test_server_priority_has_separate_geo_servers_and_only_real_optional_blocks(self):
+        message = self.build({
+            "apply_scope": "server_priority", "country_name": "Чехия",
+            "affected_server_names": "1234544, EU1", "old_route_name": None,
+            "new_route_name": "Чехия/Sancom/Pool_A/0827pfx@", "reason": "Массовый отбой",
+        })
+        self.assertIn("⚙️ <b>Серверный приоритет</b>", message)
+        self.assertIn("📍 <b>Чехия</b>\n🖥 <b>Серверы:</b> 1234544, EU1", message)
+        self.assertIn("🛣 <b>Основной маршрут</b>\nБыло: —\nСтало: <b>Чехия/Sancom/Pool_A/0827pfx@</b>", message)
+        self.assertNotIn("Перелив", message)
+        self.assertNotIn("Разница", message)
 
-    def test_server_priority_formats_equal_and_unknown_price_difference_neutrally(self):
-        with patch.dict(os.environ, {}, clear=True):
-            equal_message = build_provider_change_message({"apply_scope": "server_priority", "price_delta_eur": "0"})
-            unknown_message = build_provider_change_message({"apply_scope": "server_priority"})
-        self.assertIn("⚪ Разница:\n0.00 EUR", equal_message)
-        self.assertIn("⚪ Разница:\n—", unknown_message)
+    def test_server_priority_preserves_overflow_and_numeric_difference(self):
+        message = self.build({"apply_scope": "server_priority", "overflow_route_name": "CZ/Overflow@", "price_delta_eur": "-0.08"})
+        self.assertIn("🌊 <b>Перелив:</b> CZ/Overflow@", message)
+        self.assertIn("🟢 Разница: -0.08 EUR", message)
+
+    def test_fixed_geo_campaign_autorotation_is_action_aware(self):
+        message = self.build({
+            "apply_scope": "campaign_setting", "company_country_id": 7, "company_country_name": "Бразилия",
+            "company_id_external": "1001", "company_name": "CC Mexico Demo 1", "company_server_name": "EU2",
+            "company_change_type": "disable_autorotation", "old_company_has_autorotation": 1,
+            "new_company_has_autorotation": 0, "old_company_routing_mode": "autorotation",
+            "new_company_routing_mode": "server_priority", "reason": "Другое", "comment": "тест на гео",
+        })
+        self.assertIn("🔧 <b>Настройка кампании</b>", message)
+        self.assertIn("📍 <b>Бразилия</b>\n🎯 <b>1001 · CC Mexico Demo 1</b>\n🖥 EU2", message)
+        self.assertIn("🔄 <b>Авторотация:</b> Да → <b>Нет</b>", message)
+        for technical in ("autorotation", "server_priority", "Маршрут", "Разница"):
+            self.assertNotIn(technical, message)
+
+    def test_multi_geo_campaign_does_not_use_event_geo(self):
+        message = self.build({
+            "apply_scope": "campaign_setting", "company_country_id": None, "company_country_name": None,
+            "country_name": "Мексика", "company_change_type": "enable_autorotation",
+            "old_company_has_autorotation": 0, "new_company_has_autorotation": 1,
+        })
+        self.assertIn("📍 <b>Несколько GEO</b>", message)
+        self.assertNotIn("📍 <b>Мексика</b>", message)
+
+    def test_set_and_remove_manual_route_show_only_route_state(self):
+        base = {"apply_scope": "campaign_setting", "company_country_id": None, "reason": "Другое"}
+        set_message = self.build({**base, "company_change_type": "set_campaign_route", "old_company_route_name": None, "new_company_route_name": "MX/New@"})
+        remove_message = self.build({**base, "company_change_type": "remove_campaign_route", "old_company_route_name": "MX/Old@", "new_company_route_name": None})
+        self.assertIn("🛣 <b>Ручной маршрут</b>\nБыло: —\nСтало: <b>MX/New@</b>", set_message)
+        self.assertIn("🛣 <b>Ручной маршрут</b>\nБыло: <b>MX/Old@</b>\nСтало: —", remove_message)
+        self.assertNotIn("set_campaign_route", set_message)
+        self.assertNotIn("remove_campaign_route", remove_message)
+
+    def test_dynamic_values_are_html_escaped(self):
+        message = self.build({
+            "apply_scope": "campaign_setting", "company_country_id": 1, "company_country_name": "Braz<il>",
+            "company_id_external": "1&2", "company_name": "C<co>", "company_server_name": "EU&2",
+            "company_change_type": "set_campaign_route", "old_company_route_name": "Old<a>",
+            "new_company_route_name": "New&b", "reason": "A < B", "comment": "Use <safe>",
+            "author_name": "Admin <root>",
+        })
+        for escaped in ("Braz&lt;il&gt;", "1&amp;2 · C&lt;co&gt;", "EU&amp;2", "Old&lt;a&gt;", "New&amp;b", "A &lt; B", "Use &lt;safe&gt;", "Admin &lt;root&gt;"):
+            self.assertIn(escaped, message)
 
     def test_message_builder_uses_127_fallback_when_app_base_url_missing(self):
-        with patch.dict(os.environ, {}, clear=True):
-            message = build_provider_change_message({})
-        self.assertIn("http://127.0.0.1:8000/provider-changes", message)
+        self.assertIn("http://127.0.0.1:8000/provider-changes", self.build({}))
 
     def test_provider_change_url_uses_configured_app_base_url_without_duplicate_slashes(self):
         with patch.dict(os.environ, {"APP_BASE_URL": "https://routes.company.com/"}, clear=True):
             self.assertEqual(provider_change_url(), "https://routes.company.com/provider-changes")
-
-    def test_campaign_setting_bolds_new_route_and_new_states(self):
-        event = {
-            "apply_scope": "campaign_setting",
-            "country_name": "Италия",
-            "company_server_name": "Dialer 1",
-            "company_id_external": "CMP-42",
-            "company_name": "Main campaign",
-            "old_company_routing_mode": "Авторотация",
-            "new_company_routing_mode": "Ручной маршрут",
-            "old_company_route_name": "Италия/Old@",
-            "new_company_route_name": "Италия/New@",
-            "old_company_has_autorotation": 1,
-            "new_company_has_autorotation": 0,
-            "reason": "Оптимизация",
-            "comment": "Переключили",
-            "author_name": "Admin",
-            "event_at": "2026-06-24 21:15",
-        }
-        with patch.dict(os.environ, {}, clear=True):
-            message = build_provider_change_message(event)
-        self.assertIn("Авторотация → <b>Ручной маршрут</b>", message)
-        self.assertIn("Италия/Old@\n→ <b>Италия/New@</b>", message)
-        self.assertIn("Да → <b>Нет</b>", message)
-
-    def test_none_scope_bolds_provider_and_route(self):
-        event = {
-            "apply_scope": "none",
-            "country_name": "Мексика",
-            "provider_name": "Miatel",
-            "affected_route_name": "Мексика/Miatel/Route@",
-            "reason": "Другое",
-            "comment": "Внешнее изменение",
-            "author_name": "Admin",
-            "event_at": "2026-06-24 21:15",
-        }
-        with patch.dict(os.environ, {}, clear=True):
-            message = build_provider_change_message(event)
-        self.assertIn("📍 <b>Мексика</b>", message)
-        self.assertIn("📡 Провайдер / Маршрут:\n<b>Miatel</b>\n<b>Мексика/Miatel/Route@</b>", message)
-        self.assertNotIn("Сервер:", message)
-
-    def test_html_escapes_comment_and_route_name(self):
-        event = {
-            "apply_scope": "server_priority",
-            "country_name": "Мексика <MX>",
-            "affected_server_names": "EU & US",
-            "old_route_name": "Old <route> & one",
-            "new_route_name": "New <route> & two",
-            "reason": "A < B & C",
-            "comment": "Use <safe> & fast",
-            "author_name": "Admin <root>",
-            "event_at": "2026-06-24 21:15",
-        }
-        with patch.dict(os.environ, {}, clear=True):
-            message = build_provider_change_message(event)
-        self.assertIn("<b>Мексика &lt;MX&gt;</b> | <b>EU &amp; US</b>", message)
-        self.assertIn("Было:\nOld &lt;route&gt; &amp; one\n\n✅ Стало:\n<b>New &lt;route&gt; &amp; two</b>", message)
-        self.assertIn("A &lt; B &amp; C", message)
-        self.assertIn("Use &lt;safe&gt; &amp; fast", message)
-        self.assertIn("Admin &lt;root&gt;", message)
-
-    def test_empty_values_are_rendered_as_dash(self):
-        event = {"apply_scope": "campaign_setting", "country_name": "", "company_server_name": ""}
-        with patch.dict(os.environ, {}, clear=True):
-            message = build_provider_change_message(event)
-        self.assertIn("📍 <b>—</b> | <b>—</b>", message)
-        self.assertIn("🎯 — / —", message)
-        self.assertIn("— → <b>—</b>", message)
-        self.assertIn("📞 Маршрут:\n—\n→ <b>—</b>", message)
 
     def test_send_uses_html_parse_mode(self):
         response = Mock()
