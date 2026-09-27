@@ -87,6 +87,14 @@ class TelegramMessageTest(unittest.TestCase):
         for escaped in ("Braz&lt;il&gt;", "1&amp;2 · C&lt;co&gt;", "EU&amp;2", "Old&lt;a&gt;", "New&amp;b", "A &lt; B", "Use &lt;safe&gt;", "Admin &lt;root&gt;"):
             self.assertIn(escaped, message)
 
+    def test_reason_and_optional_comment_are_separate_labeled_blocks(self):
+        for scope in ("none", "server_priority", "campaign_setting"):
+            message = self.build({"apply_scope": scope, "reason": "Причина", "comment": "Детали"})
+            self.assertIn("📝 <b>Причина:</b> Причина\n\n💬 <b>Комментарий:</b> Детали", message)
+            without_comment = self.build({"apply_scope": scope, "reason": "Причина", "comment": ""})
+            self.assertNotIn("💬", without_comment)
+            self.assertNotIn("Комментарий:", without_comment)
+
     def test_message_builder_uses_127_fallback_when_app_base_url_missing(self):
         self.assertIn("http://127.0.0.1:8000/provider-changes", self.build({}))
 

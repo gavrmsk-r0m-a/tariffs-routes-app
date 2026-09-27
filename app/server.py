@@ -1416,9 +1416,8 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .modal-save, .admin-edit-save {{ background: var(--accent-strong); border-color: var(--accent-strong); color: #fff; font-weight: 780; }}
     .modal-save:hover, .admin-edit-save:hover {{ background: var(--accent); border-color: var(--accent); color: #fff; }}
     .modal-cancel, .admin-edit-cancel {{ background: var(--surface); color: var(--text); border-color: var(--border-strong); }}
-    .provider-change-create-shell[open] > #routing-event-form {{ min-height: min(740px, calc(100vh - 48px)); align-content: start; }}
-    .provider-change-create-shell .provider-change-shell-scope, .provider-change-create-shell #routing-event-form > .modal-actions {{ flex: 0 0 auto; }}
-    .provider-change-create-shell .provider-change-scroll-body {{ flex: 1 1 auto; min-height: 0; min-width: 0; width: 100%; max-width: 100%; box-sizing: border-box; overflow-y: auto; overflow-x: clip; scrollbar-gutter: stable; padding-right: 8px; scrollbar-width: thin; scrollbar-color: var(--border-ink, #8293a6) transparent; }}
+    .provider-change-create-shell[open] > .provider-change-create-form {{ min-height: min(740px, calc(100vh - 48px)); }}
+    .provider-change-create-shell .provider-change-scroll-body {{ min-height: 0; min-width: 0; width: 100%; max-width: 100%; box-sizing: border-box; overflow-y: auto; overflow-x: hidden; scrollbar-gutter: stable; padding-right: 8px; scrollbar-width: thin; scrollbar-color: var(--border-ink, #8293a6) transparent; }}
     .provider-change-create-shell .provider-change-scroll-body::-webkit-scrollbar {{ width: 8px; }}
     .provider-change-create-shell .provider-change-scroll-body::-webkit-scrollbar-track {{ background: transparent; }}
     .provider-change-create-shell .provider-change-scroll-body::-webkit-scrollbar-thumb {{ border-radius: 999px; background: var(--border-ink, #8293a6); }}
@@ -2914,7 +2913,7 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     html[data-theme="light-v2"] .admin-edit-cancel:hover,
     html[data-theme="light-v2"] .reset-filters:hover {{ background: var(--accent-soft) !important; border-color: var(--accent-border) !important; color: var(--accent-strong) !important; }}
     html[data-theme="light-v2"] .provider-changes-page .modal-form-card[open] > form {{ box-sizing: border-box; width: min(940px, calc(100vw - 32px)); max-width: calc(100vw - 32px); min-height: 560px; padding: 16px; }}
-    html[data-theme="light-v2"] .provider-change-create-shell #routing-event-form {{ display: flex; flex-direction: column; align-items: stretch; gap: 14px; width: min(940px, calc(100vw - 32px)); max-width: calc(100vw - 32px); min-width: 0; height: min(740px, calc(100vh - 48px)); min-height: min(740px, calc(100vh - 48px)); padding: 16px 16px 0; overflow: hidden; }}
+    html[data-theme="light-v2"] .provider-change-create-shell .provider-change-create-form {{ display: grid; grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr) auto; gap: 0; align-items: stretch; width: min(940px, calc(100vw - 32px)); max-width: calc(100vw - 32px); min-width: 0; height: min(740px, calc(100vh - 48px)); min-height: min(740px, calc(100vh - 48px)); padding: 16px 16px 0; overflow: hidden; }}
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-shell-scope {{ margin: 0; padding: 0; border: 0; min-inline-size: 0; }}
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-shell-scope > legend {{ margin: 0 0 10px; padding: 0; font-weight: 700; color: var(--text-strong); }}
     html[data-theme="light-v2"] .provider-change-create-shell .scope-cards {{ display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; width: 100%; }}
@@ -2987,7 +2986,7 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     html[data-theme="light-v2"] .provider-change-create-shell .server-priority-create-right .server-current-route-text {{ color: var(--muted); }}
     html[data-theme="light-v2"] .provider-change-create-shell .server-priority-create-right .server-current-route-text.has-route {{ color: #C2410C; }}
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-shell-hint {{ flex: 0 0 24px; min-height: 24px; margin: 0; color: var(--muted); }}
-    html[data-theme="light-v2"] .provider-change-create-shell #routing-event-form .modal-actions {{ flex: 0 0 auto; width: calc(100% + 32px); box-sizing: border-box; margin: 0 -16px; padding: 14px 16px; }}
+    html[data-theme="light-v2"] .provider-change-create-shell .provider-change-create-actions {{ width: calc(100% + 32px); box-sizing: border-box; margin: 0 -16px; padding: 14px 16px; }}
     html[data-theme="light-v2"] .scope-cards {{ grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); width: 100%; gap: 10px; }}
     html[data-theme="light-v2"] .scope-card {{ position: relative; display: flex; align-items: stretch; min-height: 58px; padding: 10px 12px 10px 14px; border: 1px solid var(--border-strong); border-left: 3px solid var(--border-strong); background: #fff; box-shadow: none; cursor: pointer; }}
     html[data-theme="light-v2"] .scope-card input[type="radio"] {{ position: absolute; opacity: 0; pointer-events: none; }}
@@ -3027,8 +3026,8 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     html[data-theme="light-v2"] #routing-event-form[data-current-scope='campaign_setting'] .provider-change-campaign-grid {{ grid-template-columns: minmax(145px, .85fr) minmax(145px, .85fr) minmax(205px, 1.05fr) minmax(260px, 1.35fr); gap: 12px; align-items: end; }}
     html[data-theme="light-v2"] #routing-event-form[data-current-scope='campaign_setting'] .provider-change-campaign-lower-grid {{ grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 12px; }}
     html[data-theme="light-v2"] #routing-event-form .campaign-id-inline-action {{ grid-template-columns: minmax(0, 1fr) auto; align-items: end; }}
-    html[data-theme="light-v2"] .provider-change-create-shell #routing-event-form,
-    html[data-theme="light-v2"] .provider-change-create-shell #routing-event-form > *,
+    html[data-theme="light-v2"] .provider-change-create-shell .provider-change-create-form,
+    html[data-theme="light-v2"] .provider-change-create-shell .provider-change-create-form > *,
     html[data-theme="light-v2"] .provider-change-create-shell .scope-cards,
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-placeholder,
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-content-grid,
@@ -8098,18 +8097,14 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
         )
     selected_server_ids = {str(event["server_id"])} if event and event["server_id"] else set()
     server_priority_server_boxes = active_server_priority_checkboxes(repo, selected_server_ids, event["country_id"] if event else None)
-    action = f"/provider-changes/{event['id']}/update" if is_existing_event else "/provider-changes/create"
-    submit = "Сохранить изменения" if is_existing_event else "Создать событие"
-    inactive_note = "<p class='muted'>Редактирование события не применяет повторно server_route_priorities. Для исправления текущего приоритета создайте новое событие.</p>" if is_existing_event else ""
-    old_route_field = f"<label class='scope-field' data-scopes='server_priority'>Старый маршрут (только описание при редактировании) <select name='old_route_id'>{route_options_for_dynamic_form(repo, selected=event['old_route_id'] if event else None, empty='—')}</select></label>" if is_existing_event else ""
     provider_selected = event["provider_id"] if event else None
     error_html = f"<div class='error wide'>{esc(error_message)}</div>" if error_message else ""
     if not is_existing_event:
         return f"""
 <details class='form-card modal-form-card provider-change-create-shell' {'open' if error_message else ''} data-modal-details><summary class='form-summary provider-change-primary-summary'>+ Добавить событие</summary>
-<form method='post' action='{action}' class='form-grid' id='routing-event-form' data-current-scope='{esc(scope)}'>
-  {error_html}
+<form method='post' action='/provider-changes/create' class='provider-change-create-form' id='provider-change-create-form' data-current-scope='{esc(scope)}'>
   <fieldset class='provider-change-shell-scope'><legend>Область применения</legend>
+    {error_html}
     <div class='scope-cards'>
       <label class='card scope-card'><input type='radio' name='apply_scope' value='none' {'checked' if scope == 'none' else ''}><span class='scope-card-indicator' aria-hidden='true'></span><span class='scope-card-text'>Не меняли настройки в нашей системе</span></label>
       <label class='card scope-card'><input type='radio' name='apply_scope' value='server_priority' {'checked' if scope == 'server_priority' else ''}><span class='scope-card-indicator' aria-hidden='true'></span><span class='scope-card-text'>Серверный приоритет</span></label>
@@ -8216,12 +8211,12 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
   <p class='provider-change-shell-hint' data-scope-hint='server_priority' hidden>Старый маршрут подтягивается автоматически из текущего server_route_priorities при создании.</p>
   <p class='provider-change-shell-hint' data-scope-hint='campaign_setting' hidden>Событие будет сохранено в журнале и применено к Схеме маршрутизации кампаний.</p>
   </div>
-  <div class='modal-actions'><button type='submit'>{submit}</button><button type='button' class='modal-cancel' data-modal-close>Отмена</button></div>
+  <div class='modal-actions provider-change-create-actions'><button type='submit'>Создать событие</button><button type='button' class='modal-cancel' data-modal-close>Отмена</button></div>
 </form>
 <script>
 (function() {{
-  const form = document.getElementById('routing-event-form');
-  if (!form || !form.closest('.provider-change-create-shell')) return;
+  const form = document.getElementById('provider-change-create-form');
+  if (!form) return;
   const routes = {route_metadata_json(repo)};
   const priorities = {current_priorities_json(repo)};
   const campaigns = {campaign_metadata_json(repo)};
@@ -8233,8 +8228,8 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
     select.title = selected ? selected.textContent : '';
   }}
   function rebuildNoneRouteControls(resetRoutes) {{
-    const country = document.getElementById('event-country');
-    const provider = document.getElementById('event-provider');
+    const country = form.querySelector('#event-country');
+    const provider = form.querySelector('#event-provider');
     const countryId = country ? country.value : '';
     if (!provider) return;
     const previousProvider = provider.value || provider.dataset.selectedProviderId || '';
@@ -8259,7 +8254,7 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
   }}
   function updateAffectedRoutesSummary() {{
     const checked = Array.from(form.querySelectorAll('.none-route-option:not([hidden]) input:checked'));
-    const summary = document.getElementById('affected-routes-summary');
+    const summary = form.querySelector('#affected-routes-summary');
     if (!summary) return;
     summary.textContent = checked.length === 0 ? '—' : checked.length === 1 ? checked[0].closest('label').textContent.trim() : `Выбрано: ${{checked.length}}`;
   }}
@@ -8286,8 +8281,8 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
     updateSelectTitle(select);
   }}
   function rebuildCampaignProviderSelect(countryId, enabled) {{
-    const select = document.getElementById('campaign-provider');
-    const empty = document.getElementById('campaign-provider-empty');
+    const select = form.querySelector('#campaign-provider');
+    const empty = form.querySelector('#campaign-provider-empty');
     if (!select) return;
     const current = select.value || select.dataset.selectedProviderId || '';
     const providers = new Map();
@@ -8343,20 +8338,20 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
   }}
 
   function syncCommentRequirement() {{
-    const reason = document.getElementById('routing-reason');
-    const comment = document.getElementById('routing-comment');
+    const reason = form.querySelector('#routing-reason');
+    const comment = form.querySelector('#routing-comment');
     const marker = form.querySelector('.comment-required');
     const required = selectedScope() === 'none' && reason && reason.value === 'Другое';
     if (comment) comment.required = !!required;
     if (marker) marker.hidden = !required;
   }}
   function setCampaignSearchError(message) {{
-    const error = document.getElementById('campaign-id-search-error');
+    const error = form.querySelector('#campaign-id-search-error');
     if (error) error.textContent = message || '';
   }}
   function selectedCampaignBoxes() {{ return Array.from(form.querySelectorAll('input[name="calling_company_ids"]:checked')); }}
   function updateCompanySummary() {{
-    const summary = document.getElementById('event-company-summary');
+    const summary = form.querySelector('#event-company-summary');
     if (!summary) return;
     const checked = selectedCampaignBoxes();
     if (checked.length === 0) {{ summary.textContent = '—'; return; }}
@@ -8370,10 +8365,10 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
   let pinnedMultiGeoCampaignId = '';
   function filterCompanyOptions() {{
     const showNotice = arguments.length > 0 ? arguments[0] : false;
-    const container = document.getElementById('event-company');
-    const server = document.getElementById('campaign-server-filter');
-    const country = document.getElementById('campaign-country-filter');
-    const empty = document.getElementById('campaign-company-empty');
+    const container = form.querySelector('#event-company');
+    const server = form.querySelector('#campaign-server-filter');
+    const country = form.querySelector('#campaign-country-filter');
+    const empty = form.querySelector('#campaign-company-empty');
     if (!container || !server || !country) return;
     const selectedServerId = server.value;
     const selectedCountryId = country.value;
@@ -8398,10 +8393,10 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
     updateCompanySummary();
   }}
   function findCampaignByVisibleId() {{
-    const input = document.getElementById('campaign-id-search');
-    const container = document.getElementById('event-company');
-    const server = document.getElementById('campaign-server-filter');
-    const country = document.getElementById('campaign-country-filter');
+    const input = form.querySelector('#campaign-id-search');
+    const container = form.querySelector('#event-company');
+    const server = form.querySelector('#campaign-server-filter');
+    const country = form.querySelector('#campaign-country-filter');
     if (!input || !container || !server || !country) return;
     const campaignId = input.value.trim();
     setCampaignSearchError('');
@@ -8417,8 +8412,8 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
     const found = resolvedMatches[0];
     server.value = String(found.server_id);
     pinnedMultiGeoCampaignId = found.country_id ? '' : String(found.id);
-    const campaignProvider = document.getElementById('campaign-provider');
-    const campaignRoute = document.getElementById('company-route');
+    const campaignProvider = form.querySelector('#campaign-provider');
+    const campaignRoute = form.querySelector('#company-route');
     if (campaignProvider) {{ campaignProvider.value = ''; delete campaignProvider.dataset.selectedProviderId; }}
     if (campaignRoute) campaignRoute.value = '';
     form.querySelectorAll('input[name="calling_company_ids"]:checked').forEach((box) => {{ box.checked = false; }});
@@ -8431,13 +8426,13 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
   }}
   function updateCampaignProgress() {{
     const scope = selectedScope();
-    const ctype = document.getElementById('company-change-type');
+    const ctype = form.querySelector('#company-change-type');
     const hasAction = scope === 'campaign_setting' && !!(ctype && ctype.value);
-    const selectionStep = document.getElementById('campaign-selection-step');
+    const selectionStep = form.querySelector('#campaign-selection-step');
     if (selectionStep) selectionStep.hidden = !hasAction;
     const selected = selectedCampaignBoxes();
     const hasCampaign = hasAction && selected.length > 0;
-    const summary = document.getElementById('campaign-state-summary');
+    const summary = form.querySelector('#campaign-state-summary');
     if (summary) {{
       summary.hidden = !hasCampaign;
       if (selected.length === 1) {{
@@ -8446,21 +8441,21 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
       }} else if (selected.length > 1) summary.textContent = `Выбрано кампаний: ${{selected.length}}. Проверка совместимости выполняется для каждой кампании.`;
     }}
     const needsRoute = hasCampaign && ctype && ctype.value === 'set_campaign_route';
-    const routeStep = document.getElementById('campaign-route-step');
+    const routeStep = form.querySelector('#campaign-route-step');
     if (routeStep) routeStep.hidden = !needsRoute;
-    const routeCountry = document.getElementById('campaign-route-country');
+    const routeCountry = form.querySelector('#campaign-route-country');
     if (routeCountry) delete routeCountry.dataset.locked;
     if (routeCountry && needsRoute && selected.length === 1) {{
       const company = campaigns.find((item) => String(item.id) === String(selected[0].value));
       if (company && company.country_id) {{ routeCountry.value = String(company.country_id); routeCountry.dataset.locked = '1'; }}
     }}
     if (routeCountry) routeCountry.disabled = !needsRoute || routeCountry.dataset.locked === '1';
-    const route = document.getElementById('company-route');
+    const route = form.querySelector('#company-route');
     const ready = hasCampaign && (!needsRoute || !!(route && route.value));
-    const reasonStep = document.getElementById('campaign-reason-step');
+    const reasonStep = form.querySelector('#campaign-reason-step');
     if (reasonStep) reasonStep.hidden = !ready;
-    const reason = document.getElementById('campaign-routing-reason');
-    const comment = document.getElementById('campaign-routing-comment');
+    const reason = form.querySelector('#campaign-routing-reason');
+    const comment = form.querySelector('#campaign-routing-comment');
     if (reason) reason.disabled = !ready;
     if (comment) comment.disabled = !ready;
     const required = ready && reason && reason.value === 'Другое';
@@ -8469,10 +8464,6 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
     if (marker) marker.hidden = !required;
     const number = form.querySelector('[data-reason-step-number]');
     if (number) number.textContent = needsRoute ? '4' : '3';
-  }}
-  function normalizeProviderChangeScrollX() {{
-    const body = form.querySelector('.provider-change-scroll-body');
-    if (body && body.scrollLeft !== 0) body.scrollLeft = 0;
   }}
   function sync() {{
     const scope = selectedScope();
@@ -8484,8 +8475,8 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
       content.querySelectorAll('input, select, textarea, button').forEach((field) => {{ field.disabled = !show; }});
     }});
     form.querySelectorAll('[data-scope-hint]').forEach((hint) => {{ hint.hidden = hint.dataset.scopeHint !== scope; }});
-    const serverCountry = document.getElementById('server-event-country');
-    const serverProvider = document.getElementById('server-event-provider');
+    const serverCountry = form.querySelector('#server-event-country');
+    const serverProvider = form.querySelector('#server-event-provider');
     const hintCountryId = (serverCountry && serverCountry.value) || '';
     form.querySelectorAll('[data-server-chip]').forEach((chip) => {{
       const route = hintCountryId ? (priorities[`${{hintCountryId}}:${{chip.dataset.serverId}}`] || '—') : '—';
@@ -8494,49 +8485,47 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
       if (hint) {{ hint.textContent = route; hint.title = route; }}
     }});
     rebuildNoneRouteControls(false);
-    rebuildServerRouteSelect(document.getElementById('server-new-route'), serverCountry && serverCountry.value, serverProvider && serverProvider.value, document.getElementById('server-new-route-empty'), true);
-    const serverOverflowEnabled = scope === 'server_priority' && document.getElementById('server-has-overflow') && document.getElementById('server-has-overflow').checked;
-    const serverOverflowBlock = document.getElementById('server-overflow-block');
-    const serverOverflowProvider = document.getElementById('server-overflow-provider');
-    const serverOverflowRoute = document.getElementById('server-overflow-route');
+    rebuildServerRouteSelect(form.querySelector('#server-new-route'), serverCountry && serverCountry.value, serverProvider && serverProvider.value, form.querySelector('#server-new-route-empty'), true);
+    const serverOverflowEnabled = scope === 'server_priority' && form.querySelector('#server-has-overflow') && form.querySelector('#server-has-overflow').checked;
+    const serverOverflowBlock = form.querySelector('#server-overflow-block');
+    const serverOverflowProvider = form.querySelector('#server-overflow-provider');
+    const serverOverflowRoute = form.querySelector('#server-overflow-route');
     if (serverOverflowBlock) serverOverflowBlock.hidden = !serverOverflowEnabled;
     if (serverOverflowProvider) {{ serverOverflowProvider.disabled = !serverOverflowEnabled; serverOverflowProvider.required = !!serverOverflowEnabled; if (!serverOverflowEnabled) serverOverflowProvider.value = ''; }}
     rebuildServerRouteSelect(serverOverflowRoute, serverCountry && serverCountry.value, serverOverflowProvider && serverOverflowProvider.value, null, true);
     if (serverOverflowRoute) {{ serverOverflowRoute.disabled = !serverOverflowEnabled || !(serverCountry && serverCountry.value) || !(serverOverflowProvider && serverOverflowProvider.value); serverOverflowRoute.required = !!serverOverflowEnabled; if (!serverOverflowEnabled) serverOverflowRoute.value = ''; }}
     updateServerSelectionCount();
     filterCompanyOptions(false);
-    const campaignServer = document.getElementById('campaign-server-filter');
-    const campaignCountryControl = document.getElementById('campaign-country-filter');
+    const campaignServer = form.querySelector('#campaign-server-filter');
+    const campaignCountryControl = form.querySelector('#campaign-country-filter');
     if (campaignCountryControl) campaignCountryControl.disabled = scope !== 'campaign_setting';
-    const ctype = document.getElementById('company-change-type');
+    const ctype = form.querySelector('#company-change-type');
     const needsRoute = scope === 'campaign_setting' && routeNeeds.has(ctype && ctype.value);
     form.querySelectorAll('[data-campaign-route-field]').forEach((el) => {{
       el.hidden = !needsRoute;
       el.querySelectorAll('select').forEach((field) => {{ field.disabled = !needsRoute; field.required = needsRoute; }});
     }});
     updateCampaignProgress();
-    const campaignCountry = document.getElementById('campaign-route-country');
-    const campaignProvider = document.getElementById('campaign-provider');
+    const campaignCountry = form.querySelector('#campaign-route-country');
+    const campaignProvider = form.querySelector('#campaign-provider');
     rebuildCampaignProviderSelect(campaignCountry && campaignCountry.value, needsRoute);
-    const campaignRoute = document.getElementById('company-route');
-    rebuildServerRouteSelect(campaignRoute, campaignCountry && campaignCountry.value, campaignProvider && campaignProvider.value, document.getElementById('company-route-empty'), true);
+    const campaignRoute = form.querySelector('#company-route');
+    rebuildServerRouteSelect(campaignRoute, campaignCountry && campaignCountry.value, campaignProvider && campaignProvider.value, form.querySelector('#company-route-empty'), true);
     if (campaignRoute) campaignRoute.disabled = !needsRoute || !(campaignCountry && campaignCountry.value) || !(campaignProvider && campaignProvider.value);
     syncCommentRequirement();
     updateCampaignProgress();
-    normalizeProviderChangeScrollX();
-    requestAnimationFrame(normalizeProviderChangeScrollX);
   }}
   form.querySelectorAll('input[name="apply_scope"], #server-event-country, #server-event-provider, #server-has-overflow, #server-overflow-provider').forEach((el) => el.addEventListener('change', sync));
-  const noneCountry = document.getElementById('event-country');
-  const noneProvider = document.getElementById('event-provider');
+  const noneCountry = form.querySelector('#event-country');
+  const noneProvider = form.querySelector('#event-provider');
   if (noneCountry) noneCountry.addEventListener('change', () => {{ if (noneProvider) noneProvider.value = ''; rebuildNoneRouteControls(true); }});
   if (noneProvider) noneProvider.addEventListener('change', () => rebuildNoneRouteControls(true));
   form.querySelectorAll('.none-route-option input').forEach((box) => box.addEventListener('change', updateAffectedRoutesSummary));
-  const selectAllRoutes = document.getElementById('affected-routes-select-all');
+  const selectAllRoutes = form.querySelector('#affected-routes-select-all');
   if (selectAllRoutes) selectAllRoutes.addEventListener('click', () => {{ form.querySelectorAll('.none-route-option:not([hidden]) input').forEach((box) => box.checked = true); updateAffectedRoutesSummary(); }});
-  const clearRoutes = document.getElementById('affected-routes-clear');
+  const clearRoutes = form.querySelector('#affected-routes-clear');
   if (clearRoutes) clearRoutes.addEventListener('click', () => {{ form.querySelectorAll('.none-route-option input:checked').forEach((box) => box.checked = false); updateAffectedRoutesSummary(); }});
-  const affectedRoutes = document.getElementById('affected-routes');
+  const affectedRoutes = form.querySelector('#affected-routes');
   if (affectedRoutes) {{
     form.addEventListener('click', (event) => {{
       if (affectedRoutes.open && !affectedRoutes.contains(event.target)) affectedRoutes.open = false;
@@ -8551,24 +8540,24 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
     updateServerSelectionCount();
   }}));
   form.querySelectorAll('.provider-change-server-priority-create input[name="server_ids"]').forEach((box) => box.addEventListener('change', updateServerSelectionCount));
-  const reason = document.getElementById('routing-reason');
+  const reason = form.querySelector('#routing-reason');
   if (reason) reason.addEventListener('change', syncCommentRequirement);
   form.querySelectorAll('input[name="calling_company_ids"]').forEach((el) => el.addEventListener('change', () => {{
     updateCompanySummary();
-    const provider = document.getElementById('campaign-provider');
-    const route = document.getElementById('company-route');
-    const country = document.getElementById('campaign-route-country');
+    const provider = form.querySelector('#campaign-provider');
+    const route = form.querySelector('#company-route');
+    const country = form.querySelector('#campaign-route-country');
     if (country) country.value = '';
     if (provider) provider.value = '';
     if (route) route.value = '';
     sync();
   }}));
-  const campaignServerFilter = document.getElementById('campaign-server-filter');
-  const campaignCountryFilter = document.getElementById('campaign-country-filter');
+  const campaignServerFilter = form.querySelector('#campaign-server-filter');
+  const campaignCountryFilter = form.querySelector('#campaign-country-filter');
   if (campaignServerFilter) campaignServerFilter.addEventListener('change', () => {{
     pinnedMultiGeoCampaignId = '';
-    const campaignProvider = document.getElementById('campaign-provider');
-    const campaignRoute = document.getElementById('company-route');
+    const campaignProvider = form.querySelector('#campaign-provider');
+    const campaignRoute = form.querySelector('#company-route');
     if (campaignProvider) campaignProvider.value = '';
     if (campaignRoute) campaignRoute.value = '';
     form.querySelectorAll('input[name="calling_company_ids"]:checked').forEach((box) => {{ box.checked = false; }});
@@ -8577,52 +8566,52 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
   if (campaignCountryFilter) campaignCountryFilter.addEventListener('change', () => {{
     filterCompanyOptions(true); sync();
   }});
-  const companyChangeType = document.getElementById('company-change-type');
+  const companyChangeType = form.querySelector('#company-change-type');
   if (companyChangeType) companyChangeType.addEventListener('change', () => {{
-    const provider = document.getElementById('campaign-provider');
-    const route = document.getElementById('company-route');
+    const provider = form.querySelector('#campaign-provider');
+    const route = form.querySelector('#company-route');
     if (provider) provider.value = '';
     if (route) route.value = '';
     sync();
   }});
-  const campaignRouteCountry = document.getElementById('campaign-route-country');
+  const campaignRouteCountry = form.querySelector('#campaign-route-country');
   if (campaignRouteCountry) campaignRouteCountry.addEventListener('change', () => {{
-    const provider = document.getElementById('campaign-provider');
-    const route = document.getElementById('company-route');
+    const provider = form.querySelector('#campaign-provider');
+    const route = form.querySelector('#company-route');
     if (provider) provider.value = '';
     if (route) route.value = '';
     sync();
   }});
-  const campaignProvider = document.getElementById('campaign-provider');
+  const campaignProvider = form.querySelector('#campaign-provider');
   if (campaignProvider) campaignProvider.addEventListener('change', () => {{
-    const campaignRoute = document.getElementById('company-route');
+    const campaignRoute = form.querySelector('#company-route');
     if (campaignRoute) campaignRoute.value = '';
     sync();
   }});
-  const campaignRoute = document.getElementById('company-route');
+  const campaignRoute = form.querySelector('#company-route');
   if (campaignRoute) campaignRoute.addEventListener('change', sync);
-  const campaignReason = document.getElementById('campaign-routing-reason');
+  const campaignReason = form.querySelector('#campaign-routing-reason');
   if (campaignReason) campaignReason.addEventListener('change', updateCampaignProgress);
-  const campaignSearchButton = document.getElementById('campaign-id-search-button');
+  const campaignSearchButton = form.querySelector('#campaign-id-search-button');
   if (campaignSearchButton) campaignSearchButton.addEventListener('click', findCampaignByVisibleId);
-  const campaignSearchInput = document.getElementById('campaign-id-search');
+  const campaignSearchInput = form.querySelector('#campaign-id-search');
   if (campaignSearchInput) campaignSearchInput.addEventListener('keydown', (event) => {{
     if (event.key !== 'Enter') return;
     event.preventDefault();
     event.stopPropagation();
     findCampaignByVisibleId();
   }});
-  const selectVisible = document.getElementById('campaign-select-visible');
+  const selectVisible = form.querySelector('#campaign-select-visible');
   if (selectVisible) selectVisible.addEventListener('click', () => {{
-    document.querySelectorAll('#event-company .multi-option:not([hidden]) input[name="calling_company_ids"]').forEach((box) => {{ if (!box.disabled) box.checked = true; }});
+    form.querySelectorAll('#event-company .multi-option:not([hidden]) input[name="calling_company_ids"]').forEach((box) => {{ if (!box.disabled) box.checked = true; }});
     updateCompanySummary(); sync();
   }});
-  const clearSelected = document.getElementById('campaign-clear-selected');
+  const clearSelected = form.querySelector('#campaign-clear-selected');
   if (clearSelected) clearSelected.addEventListener('click', () => {{
     form.querySelectorAll('input[name="calling_company_ids"]:checked').forEach((box) => {{ box.checked = false; }});
     updateCompanySummary(); sync();
   }});
-  const campaignDropdown = document.getElementById('event-company');
+  const campaignDropdown = form.querySelector('#event-company');
   if (campaignDropdown) {{
     document.addEventListener('click', (event) => {{
       if (campaignDropdown.open && !campaignDropdown.contains(event.target)) campaignDropdown.open = false;
@@ -8636,323 +8625,6 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
 </script>
 </details>
 """
-    return f"""
-<details class='form-card modal-form-card' {'open' if is_existing_event or error_message else ''} data-modal-details><summary class='form-summary'>{'Редактировать событие' if is_existing_event else '+ Добавить событие'}</summary>
-<form method='post' action='{action}' class='form-grid' id='routing-event-form' data-current-scope='{esc(scope)}' data-default-country-id='{esc(active_country_id_if_single(repo) or '')}'>
-  {error_html}
-  <fieldset><legend>Область применения</legend>
-    <div class='scope-cards'>
-      <label class='card scope-card'><input type='radio' name='apply_scope' value='none' {'checked' if scope == 'none' else ''}><span class='scope-card-indicator' aria-hidden='true'></span><span class='scope-card-text'>Не меняли настройки в нашей системе</span></label>
-      <label class='card scope-card'><input type='radio' name='apply_scope' value='server_priority' {'checked' if scope == 'server_priority' else ''}><span class='scope-card-indicator' aria-hidden='true'></span><span class='scope-card-text'>Серверный приоритет</span></label>
-      <label class='card scope-card'><input type='radio' name='apply_scope' value='campaign_setting' {'checked' if scope == 'campaign_setting' else ''}><span class='scope-card-indicator' aria-hidden='true'></span><span class='scope-card-text'>Настройка кампании</span></label>
-    </div>
-  </fieldset>
-  {inactive_note}
-  <div class='provider-change-campaign-grid'>
-    <label class='provider-change-date-field'>Дата события <span class='required'>*</span><input type='datetime-local' name='event_at' value='{esc(event_at)}' required></label>
-    <label class='scope-field campaign-helper-field campaign-server-field' data-scopes='campaign_setting'>Сервер <select name='server_id' id='campaign-server-filter'>{options(repo, 'servers', selected=event['server_id'] if event else None, empty='—')}</select></label>
-    <label class='scope-field campaign-change-type-field' data-scopes='campaign_setting'>Тип изменения кампании <span class='required'>*</span><select name='company_change_type' id='company-change-type'>
-      <option value=''>—</option>
-      {''.join(f"<option value='{v}' {'selected' if event and event['company_change_type'] == v else ''}>{label}</option>" for v, label in [('enable_autorotation','Включили авторотацию'),('disable_autorotation','Выключили авторотацию'),('set_campaign_route','Прописали ручной маршрут'),('remove_campaign_route','Убрали ручной маршрут')])}
-    </select></label>
-    <div class='scope-field campaign-helper-field campaign-id-action-field' data-scopes='campaign_setting'><span class='field-label'>ID кампании</span><div class='campaign-id-inline-action'><input name='campaign_id_search' id='campaign-id-search' value='{esc(event['campaign_id_search'] if event and 'campaign_id_search' in event.keys() else '')}'><button type='button' id='campaign-id-search-button' class='small-button'>Поиск</button></div><span class='field-error' id='campaign-id-search-error' aria-live='polite'></span></div>
-  </div>
-  <label class='scope-field routing-geo-field' data-scopes='none server_priority'>GEO <span class='required'>*</span><select name='country_id' id='event-country'>{active_options(repo, 'countries', selected=event['country_id'] if event else None, empty='—')}</select></label>
-  <fieldset class='scope-field' data-scopes='server_priority'><legend>Серверы <span class='required'>*</span></legend>{server_priority_server_boxes}</fieldset>
-  <label class='scope-field routing-provider-field' data-scopes='none server_priority'>Провайдер <span class='required provider-required'>*</span><select name='provider_id' id='event-provider'>{active_options(repo, 'providers', selected=provider_selected, empty='—')}</select></label>
-  <label class='scope-field' data-scopes='none'>Маршрут/префикс <select name='affected_route_id' id='affected-route'>{route_opts}</select></label>
-  {old_route_field}
-  <label class='scope-field route-select-field' data-scopes='server_priority'>Новый маршрут <span class='required'>*</span><select name='new_route_id' id='new-route' class='route-select'>{new_route_opts}</select></label>
-  <span class='scope-field route-empty-message muted' data-scopes='server_priority' id='new-route-empty' hidden>Нет маршрутов для выбранного провайдера и GEO</span>
-  <label class='scope-field spillover-checkbox important-checkbox' data-scopes='server_priority'><input type='checkbox' name='has_overflow' id='has-overflow' value='1' {has_overflow_checked}> <span>Есть перелив</span></label>
-  <div class='scope-field server-priority-overflow-block' data-scopes='server_priority' id='overflow-block' hidden>
-    <strong>Перелив</strong>
-    <label>Провайдер перелива <span class='required'>*</span><select name='overflow_provider_id' id='overflow-provider'>{active_options(repo, 'providers', selected=overflow_provider_selected, empty='—')}</select></label>
-    <label id='overflow-route-field'>Маршрут перелива <span class='required'>*</span><select name='overflow_route_id' id='overflow-route'>{overflow_opts}</select></label>
-  </div>
-  <div class='provider-change-campaign-lower-grid'>
-    <label class='routing-reason-field'>Причина <span class='required'>*</span><select name='reason' id='routing-reason' required>{routing_reason_options(reasons_by_scope[scope], event['reason'] if event else None)}</select><span class='field-helper' id='routing-reason-helper'></span></label>
-    <div class='scope-field campaign-company-field' data-scopes='campaign_setting'>
-      <span class='field-label'>Кампания <span class='required'>*</span></span>
-      <details class='multi-select' id='event-company' data-placeholder='—'>
-        <summary id='event-company-summary'>—</summary>
-        <div class='multi-select-panel'>
-          <div class='multi-select-actions'>
-            <button type='button' class='small-button' id='campaign-select-visible'>Выбрать все найденные</button>
-            <button type='button' class='small-button' id='campaign-clear-selected'>Отменить выбранные</button>
-          </div>
-          {company_opts}
-        </div>
-      </details>
-    </div>
-  </div>
-  <label class='scope-field conditional-field' data-scopes='campaign_setting' data-campaign-route-field='1'>Провайдер <span class='required'>*</span><select name='campaign_provider_id' id='campaign-provider'>{active_options(repo, 'providers', selected=provider_selected, empty='—')}</select></label>
-  <label class='scope-field conditional-field' data-scopes='campaign_setting' data-campaign-route-field='1'>Новый маршрут <span class='required'>*</span><select name='new_company_route_id' id='company-route'>{company_route_opts}</select></label>
-  <span class='scope-field route-empty-message muted' data-scopes='campaign_setting' id='company-route-empty' hidden>Нет маршрутов для выбранного провайдера и GEO кампании</span>
-  <label class='wide provider-change-comment-field'>Комментарий <span class='required comment-required'>*</span><textarea name='comment' id='routing-comment' rows='3' cols='60'>{esc(event['comment'] if event else '')}</textarea></label>
-  <p class='scope-field muted wide provider-change-service-note' data-scopes='campaign_setting'>Событие будет сохранено в журнале и применено к ‘Схеме маршрутизации кампаний’.</p>
-  <p class='scope-field muted wide provider-change-service-note' data-scopes='server_priority'>Старый маршрут подтягивается автоматически из текущего server_route_priorities при создании.</p>
-  <button>{submit}</button>
-</form>
-<script>
-(function() {{
-  const form = document.getElementById('routing-event-form');
-  if (!form) return;
-  const routes = {route_metadata_json(repo)};
-  const priorities = {current_priorities_json(repo)};
-  const campaigns = {campaign_metadata_json(repo)};
-  const reasonsByScope = {json.dumps(reasons_by_scope, ensure_ascii=False)};
-  const currentReason = {json.dumps(event['reason'] if event else None, ensure_ascii=False)};
-  const campaignCountries = Object.fromEntries(campaigns.map((company) => [String(company.id), company.country_id]));
-  const routeNeeds = new Set(['set_campaign_route']);
-  function selectedScope() {{ return (form.querySelector('input[name="apply_scope"]:checked') || {{value: 'none'}}).value; }}
-  function setRequired(el, required) {{ if (el) el.required = !!required; }}
-  function rebuildReasonSelect(scope) {{
-    const reason = document.getElementById('routing-reason');
-    if (!reason) return;
-    const previous = reason.value || currentReason || '';
-    reason.innerHTML = '';
-    const availableReasons = reasonsByScope[scope] || [];
-    if (!availableReasons.length) {{
-      const opt = document.createElement('option');
-      opt.value = '';
-      opt.textContent = 'Нет доступных причин';
-      opt.disabled = true;
-      opt.selected = true;
-      reason.appendChild(opt);
-    }}
-    availableReasons.forEach((value) => {{
-      const opt = document.createElement('option');
-      opt.value = value;
-      opt.textContent = value;
-      if (value === previous) opt.selected = true;
-      reason.appendChild(opt);
-    }});
-  }}
-  function syncCommentRequirement(scope) {{
-    const reason = document.getElementById('routing-reason');
-    const comment = document.getElementById('routing-comment');
-    const marker = form.querySelector('.comment-required');
-    const helper = document.getElementById('routing-reason-helper');
-    const requireComment = scope === 'none' && reason && reason.value === 'Другое';
-    if (comment) comment.required = requireComment;
-    if (marker) marker.hidden = !requireComment;
-    if (helper) helper.textContent = requireComment ? 'Требуется понятный комментарий' : (scope === 'server_priority' && reason && reason.value === 'Обратная смена провайдера' ? 'например тех. проблемы' : '');
-  }}
-  function rebuildRouteSelect(select, countryId, providerId, emptyEl, requireProvider) {{
-    if (!select) return;
-    const current = select.value;
-    select.innerHTML = '<option value="">—</option>';
-    let count = 0;
-    if (!requireProvider || providerId) {{
-      routes.forEach((route) => {{
-        if ((!countryId || String(route.country_id) === String(countryId)) && (!providerId || String(route.provider_id) === String(providerId))) {{
-          const opt = document.createElement('option');
-          opt.value = route.id;
-          opt.textContent = route.label;
-          opt.title = route.label;
-          if (String(route.id) === String(current)) opt.selected = true;
-          select.appendChild(opt);
-          count += 1;
-        }}
-      }});
-    }}
-    updateSelectTitle(select);
-    if (emptyEl) emptyEl.hidden = !(countryId && providerId && count === 0);
-  }}
-  function updateSelectTitle(select) {{
-    if (!select) return;
-    const selected = select.options[select.selectedIndex];
-    select.title = selected ? selected.textContent : '';
-  }}
-  function setCampaignSearchError(message) {{
-    const error = document.getElementById('campaign-id-search-error');
-    if (error) error.textContent = message || '';
-  }}
-  function selectedCampaignBoxes() {{ return Array.from(form.querySelectorAll('input[name="calling_company_ids"]:checked')); }}
-  function updateCompanySummary() {{
-    const summary = document.getElementById('event-company-summary');
-    if (!summary) return;
-    const checked = selectedCampaignBoxes();
-    if (checked.length === 0) {{ summary.textContent = '—'; return; }}
-    if (checked.length === 1) {{
-      const label = checked[0].closest('.multi-option');
-      summary.textContent = label ? label.textContent.trim() : checked[0].value;
-      return;
-    }}
-    summary.textContent = `Выбрано: ${{checked.length}} кампании`;
-  }}
-  function filterCompanyOptions() {{
-    const showNotice = arguments.length > 0 ? arguments[0] : false;
-    const container = document.getElementById('event-company');
-    const server = document.getElementById('campaign-server-filter');
-    if (!container || !server) return;
-    const selectedServerId = server.value;
-    let cleared = false;
-    container.querySelectorAll('.multi-option').forEach((option) => {{
-      const show = !selectedServerId || String(option.dataset.serverId) === String(selectedServerId);
-      option.hidden = !show;
-      const box = option.querySelector('input');
-      if (box) {{
-        box.disabled = !show;
-        if (!show && box.checked) {{ box.checked = false; cleared = true; }}
-      }}
-    }});
-    if (cleared && showNotice) setCampaignSearchError('Выбор кампаний обновлён по выбранному серверу');
-    updateCompanySummary();
-  }}
-  function findCampaignByVisibleId() {{
-    const input = document.getElementById('campaign-id-search');
-    const container = document.getElementById('event-company');
-    const server = document.getElementById('campaign-server-filter');
-    if (!input || !container || !server) return;
-    const campaignId = input.value.trim();
-    setCampaignSearchError('');
-    if (!campaignId) return;
-    const found = campaigns.find((company) => String(company.external_id) === campaignId);
-    if (!found) {{
-      setCampaignSearchError('Кампания с таким ID не найдена');
-      return;
-    }}
-    if (server.value && String(found.server_id) !== String(server.value)) {{
-      const selectedServerName = (server.options[server.selectedIndex] && server.options[server.selectedIndex].textContent) || server.value;
-      setCampaignSearchError(`Кампания с ID ${{campaignId}} находится на сервере ${{found.server_name}}, а выбран сервер ${{selectedServerName}}`);
-      return;
-    }}
-    const box = container.querySelector(`input[name="calling_company_ids"][value="${{found.id}}"]`);
-    if (box && !box.disabled) box.checked = true;
-    updateCompanySummary();
-    sync();
-  }}
-  function sync() {{
-    const scope = selectedScope();
-    form.dataset.currentScope = scope;
-    rebuildReasonSelect(scope);
-    form.querySelectorAll('.scope-card').forEach((card) => card.classList.toggle('selected', card.querySelector('input').checked));
-    form.querySelectorAll('.scope-field').forEach((el) => {{
-      const show = (el.dataset.scopes || '').split(' ').includes(scope);
-      el.hidden = !show;
-      el.querySelectorAll('input, select, textarea').forEach((field) => {{ if (!show) field.required = false; }});
-    }});
-    const country = document.getElementById('event-country');
-    const provider = document.getElementById('event-provider');
-    const hintCountryId = (country && country.value) || form.dataset.defaultCountryId || '';
-    form.querySelectorAll('[data-server-chip]').forEach((chip) => {{
-      const key = `${{hintCountryId}}:${{chip.dataset.serverId}}`;
-      const route = hintCountryId ? (priorities[key] || '—') : '—';
-      chip.dataset.currentRoute = route;
-      const hint = chip.querySelector('[data-current-route-hint]');
-      if (hint) {{
-        hint.textContent = `текущий: ${{route}}`;
-        hint.title = hint.textContent;
-      }}
-    }});
-    renderCurrentRoutes();
-    rebuildRouteSelect(document.getElementById('affected-route'), country && country.value, provider && provider.value, null, true);
-    rebuildRouteSelect(document.getElementById('new-route'), country && country.value, provider && provider.value, document.getElementById('new-route-empty'));
-    const overflowProvider = document.getElementById('overflow-provider');
-    rebuildRouteSelect(document.getElementById('overflow-route'), country && country.value, overflowProvider && overflowProvider.value, null, true);
-    filterCompanyOptions(false);
-    const checkedCampaign = selectedCampaignBoxes()[0];
-    const campaignProvider = document.getElementById('campaign-provider');
-    const companyCountry = checkedCampaign ? campaignCountries[checkedCampaign.value] : '';
-    rebuildRouteSelect(document.getElementById('company-route'), companyCountry, campaignProvider && campaignProvider.value, document.getElementById('company-route-empty'));
-    const ctype = document.getElementById('company-change-type');
-    const needsRoute = scope === 'campaign_setting' && routeNeeds.has(ctype && ctype.value);
-    form.querySelectorAll('[data-campaign-route-field]').forEach((el) => {{ el.hidden = !needsRoute; el.querySelectorAll('select').forEach((f) => f.required = needsRoute); }});
-    setRequired(country, scope === 'server_priority');
-    setRequired(provider, scope === 'none' || scope === 'server_priority');
-    updateSelectTitle(document.getElementById('new-route'));
-    updateSelectTitle(document.getElementById('company-route'));
-    setRequired(document.getElementById('new-route'), scope === 'server_priority');
-    const hasOverflow = document.getElementById('has-overflow');
-    const overflowBlock = document.getElementById('overflow-block');
-    const overflowRoute = document.getElementById('overflow-route');
-    const overflowEnabled = scope === 'server_priority' && hasOverflow && hasOverflow.checked;
-    if (overflowBlock) overflowBlock.hidden = !overflowEnabled;
-    if (overflowProvider) {{ overflowProvider.disabled = !overflowEnabled; overflowProvider.required = !!overflowEnabled; if (!overflowEnabled) overflowProvider.value = ''; }}
-    if (overflowRoute) {{ overflowRoute.disabled = !overflowEnabled || !(country && country.value) || !(overflowProvider && overflowProvider.value); overflowRoute.required = !!overflowEnabled; if (!overflowEnabled) overflowRoute.value = ''; }}
-    setRequired(ctype, scope === 'campaign_setting');
-    syncCommentRequirement(scope);
-  }}
-  function renderCurrentRoutes() {{
-    const panel = form.querySelector('[data-server-current-routes]');
-    if (!panel) return;
-    const boxes = Array.from(form.querySelectorAll('input[name="server_ids"]'));
-    if (!boxes.length) {{
-      panel.innerHTML = '<span class="server-current-routes-empty">Нет активных серверов</span>';
-      return;
-    }}
-    panel.innerHTML = '';
-    boxes.forEach((box) => {{
-      const chip = box.closest('[data-server-chip]');
-      const name = chip ? chip.dataset.serverName : box.value;
-      const route = (chip && chip.dataset.currentRoute) || (chip && chip.dataset.initialRoute) || '—';
-      const row = document.createElement('div');
-      row.className = 'server-current-route-row';
-      const server = document.createElement('span');
-      server.className = 'server-current-route-name';
-      server.textContent = `${{name}} —`;
-      const text = document.createElement('span');
-      text.className = 'server-current-route-text';
-      if (route && route !== '—') text.classList.add('has-route');
-      text.textContent = route || '—';
-      text.title = route || '—';
-      row.append(server, text);
-      panel.appendChild(row);
-    }});
-  }}
-  function updateServerSelectionCount() {{
-    const boxes = Array.from(form.querySelectorAll('input[name="server_ids"]'));
-    const counter = form.querySelector('[data-server-selection-count]');
-    if (counter) {{
-      counter.textContent = `${{boxes.filter((box) => box.checked).length}} из ${{boxes.length}} выбрано`;
-    }}
-    renderCurrentRoutes();
-  }}
-  form.querySelectorAll('[data-server-select]').forEach((button) => button.addEventListener('click', () => {{
-    const checked = button.dataset.serverSelect === 'all';
-    form.querySelectorAll('input[name="server_ids"]').forEach((box) => {{ box.checked = checked; }});
-    updateServerSelectionCount();
-  }}));
-  form.querySelectorAll('input[name="server_ids"]').forEach((box) => box.addEventListener('change', updateServerSelectionCount));
-  updateServerSelectionCount();
-  form.querySelectorAll('input[name="apply_scope"], #event-country, #event-provider, #campaign-provider, #company-change-type, #has-overflow, #overflow-provider').forEach((el) => el.addEventListener('change', sync));
-  const reasonSelect = document.getElementById('routing-reason');
-  if (reasonSelect) reasonSelect.addEventListener('change', () => syncCommentRequirement(selectedScope()));
-  form.querySelectorAll('input[name="calling_company_ids"]').forEach((el) => el.addEventListener('change', sync));
-  const campaignServerFilter = document.getElementById('campaign-server-filter');
-  if (campaignServerFilter) campaignServerFilter.addEventListener('change', () => {{ filterCompanyOptions(true); sync(); }});
-  const campaignDropdown = document.getElementById('event-company');
-  const selectVisible = document.getElementById('campaign-select-visible');
-  if (selectVisible) selectVisible.addEventListener('click', () => {{
-    document.querySelectorAll('#event-company .multi-option:not([hidden]) input[name="calling_company_ids"]').forEach((box) => {{ if (!box.disabled) box.checked = true; }});
-    sync();
-  }});
-  const clearSelected = document.getElementById('campaign-clear-selected');
-  if (clearSelected) clearSelected.addEventListener('click', () => {{
-    form.querySelectorAll('input[name="calling_company_ids"]:checked').forEach((box) => {{ box.checked = false; }});
-    sync();
-  }});
-  if (campaignDropdown) {{
-    document.addEventListener('click', (event) => {{
-      if (campaignDropdown.open && !campaignDropdown.contains(event.target)) campaignDropdown.open = false;
-    }});
-    campaignDropdown.addEventListener('keydown', (event) => {{
-      if (campaignDropdown.open && (event.key === 'Enter' || event.key === 'Escape')) {{
-        event.preventDefault();
-        event.stopPropagation();
-        campaignDropdown.open = false;
-      }}
-    }});
-  }}
-  const campaignSearchButton = document.getElementById('campaign-id-search-button');
-  if (campaignSearchButton) campaignSearchButton.addEventListener('click', findCampaignByVisibleId);
-  form.querySelectorAll('.route-select').forEach((el) => el.addEventListener('change', () => updateSelectTitle(el)));
-  sync();
-}})();
-</script>
-</details>"""
 
 
 def routing_event_status_label(status: str | None) -> str:

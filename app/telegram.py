@@ -75,7 +75,7 @@ def provider_change_url(base_url: str | None = None) -> str:
 def _reason_comment_block(event: dict) -> list[str]:
     lines = [f"📝 <b>Причина:</b> {_html(event.get('reason'))}"]
     if _text(event.get("comment")) != "—":
-        lines.append(f"💬 {_html(event.get('comment'))}")
+        lines.extend(["", f"💬 <b>Комментарий:</b> {_html(event.get('comment'))}"])
     return lines
 
 
