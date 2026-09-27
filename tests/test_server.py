@@ -801,6 +801,8 @@ class ServerSmokeTest(unittest.TestCase):
         repo = Mock(backend="postgres")
         repo.list_change_reasons.return_value = []
         repo.conn.execute.side_effect = [
+            _PostgresFormCursor(many=[]),
+            _PostgresFormCursor(many=[]),
             _PostgresFormCursor(one={"provider_id": 44}),
             _PostgresFormCursor(many=[]),
         ]
@@ -826,9 +828,15 @@ class ServerSmokeTest(unittest.TestCase):
             for active_patch in reversed(patches):
                 active_patch.stop()
 
-        sql, params = repo.conn.execute.call_args_list[0].args
+        provider_lookups = [
+            call.args for call in repo.conn.execute.call_args_list
+            if "SELECT provider_id FROM routes WHERE id" in call.args[0]
+        ]
+        self.assertEqual(len(provider_lookups), 1)
+        sql, params = provider_lookups[0]
         self.assertEqual(sql, "SELECT provider_id FROM routes WHERE id = %s")
         self.assertEqual(params, (5,))
+        self.assertTrue(all("?" not in call.args[0] for call in repo.conn.execute.call_args_list))
         self.assertIn("validation", content)
 
     def test_provider_change_update_conflict_shows_error(self):
@@ -5683,10 +5691,17 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
         conn = _TEST_DB.connect()
         try:
             country_without_routes = Repository(conn).create_country("Без маршрутов", "ZZ")
+            country_with_routes = conn.execute(
+                "SELECT country_id FROM routes WHERE is_actual IS TRUE ORDER BY id LIMIT 1"
+            ).fetchone()["country_id"]
         finally:
             conn.close()
         _captured, content = self.request("/provider-changes")
-        self.assertNotIn(f"<option value='{country_without_routes}'", content)
+        create_form = _form_fragment(content, "/provider-changes/create")
+        none_scope = create_form.split("data-scope-content='none'", 1)[1].split("data-scope-content='server_priority'", 1)[0]
+        geo_select = _select_fragment(none_scope, "event-country")
+        self.assertIn(f"<option value='{country_with_routes}'", geo_select)
+        self.assertNotIn(f"<option value='{country_without_routes}'", geo_select)
 
     def test_none_scope_multi_route_post_persists_all_routes_and_shows_validation_in_modal(self):
         conn = _TEST_DB.connect()
