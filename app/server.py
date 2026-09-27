@@ -1005,10 +1005,16 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     #routing-event-form .multi-select {{ position: relative; min-width: 0; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }}
     #routing-event-form .multi-select > summary {{ min-height: 32px; padding: 6px 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 560; box-sizing: border-box; }}
     #routing-event-form .multi-select-panel {{ position: absolute; z-index: 20; inset-inline: 0; top: calc(100% + 4px); max-height: 280px; overflow: auto; padding: 8px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); box-shadow: var(--shadow-soft); }}
+    #routing-event-form .none-route-reason-row {{ grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 12px; align-items: start; min-width: 0; }}
+    #routing-event-form .none-route-reason-row > * {{ min-width: 0; }}
+    #routing-event-form .none-route-reason-row .multi-select {{ margin: 0; }}
+    #routing-event-form .none-route-reason-row .none-reason-field {{ display: block; white-space: nowrap; }}
+    #routing-event-form .none-route-reason-row .none-reason-field > select {{ display: block; min-height: 32px; margin-top: 4px; }}
     #routing-event-form .multi-option {{ display: flex; gap: 8px; align-items: center; min-width: 0; padding: 6px 4px; font-weight: 560; cursor: pointer; }}
     #routing-event-form .multi-option input {{ width: auto; }}
     #routing-event-form .multi-option span {{ overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
     @media (max-width: 1020px) {{ #routing-event-form, #routing-event-form[data-current-scope='campaign_setting'] {{ grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }} #routing-event-form[data-current-scope='campaign_setting'] .provider-change-campaign-grid, #routing-event-form[data-current-scope='campaign_setting'] .provider-change-campaign-lower-grid {{ grid-template-columns: repeat(2, minmax(0, 1fr)); overflow: visible; }} #routing-event-form .routing-provider-field, #routing-event-form .routing-reason-field, #routing-event-form .route-select-field, #routing-event-form .campaign-server-field, #routing-event-form .campaign-id-field, #routing-event-form .campaign-id-action-field, #routing-event-form .campaign-change-type-field, #routing-event-form .campaign-company-field {{ min-width: 0; }} }}
+    @media (max-width: 720px) {{ #routing-event-form .none-route-reason-row {{ grid-template-columns: 1fr; }} }}
     @media (max-width: 720px) {{ .form-grid .route-select-field {{ grid-column: 1 / -1; width: 100%; min-width: 0; }} }}
     .filter-grid .checkbox-inline, .form-grid .checkbox-inline {{ min-width: auto; display: flex; align-items: center; gap: 5px; align-self: center; font-weight: 560; }}
     .provider-changes-page .filter-grid .checkbox-inline {{ min-height: 34px; box-sizing: border-box; padding: 6px 10px; align-self: end; border: 1px solid var(--border-strong); border-radius: var(--radius-control); background: var(--input-bg, var(--surface)); white-space: nowrap; }}
@@ -8081,13 +8087,15 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
     <label>Дата события <span class='required'>*</span><input type='datetime-local' name='event_at' value='{esc(event_at)}' required></label>
     <label>GEO <span class='required'>*</span><select name='country_id' id='event-country'>{none_country_options}</select></label>
     <label>Провайдер <span class='required'>*</span><select name='provider_id' id='event-provider' data-selected-provider-id='{esc(provider_selected or '')}' disabled><option value=''>—</option></select></label>
-    <div class='none-route-field'><span class='field-label'>Маршруты/префиксы <span class='required'>*</span></span>
-      <details class='multi-select' id='affected-routes' data-placeholder='—'>
-        <summary id='affected-routes-summary'>—</summary>
-        <div class='multi-select-panel'><div class='multi-select-actions'><button type='button' class='small-button' id='affected-routes-select-all'>Выбрать все</button><button type='button' class='small-button' id='affected-routes-clear'>Очистить</button></div>{none_route_options}</div>
-      </details>
+    <div class='none-route-reason-row'>
+      <div class='none-route-field'><span class='field-label'>Маршруты/префиксы <span class='required'>*</span></span>
+        <details class='multi-select' id='affected-routes' data-placeholder='—'>
+          <summary id='affected-routes-summary'>—</summary>
+          <div class='multi-select-panel'><div class='multi-select-actions'><button type='button' class='small-button' id='affected-routes-select-all'>Выбрать все</button><button type='button' class='small-button' id='affected-routes-clear'>Очистить</button></div>{none_route_options}</div>
+        </details>
+      </div>
+      <label class='none-reason-field'>Причина <span class='required'>*</span><select name='reason' id='routing-reason' required>{routing_reason_options(reasons_by_scope['none'], event['reason'] if event else None)}</select></label>
     </div>
-    <label class='span-2'>Причина <span class='required'>*</span><select name='reason' id='routing-reason' required>{routing_reason_options(reasons_by_scope['none'], event['reason'] if event else None)}</select></label>
     <label class='wide'>Комментарий <span class='required comment-required' hidden>*</span><textarea name='comment' id='routing-comment' rows='3' cols='60'>{esc(event['comment'] if event else '')}</textarea></label>
   </div>
   <div class='provider-change-server-priority-create' data-scope-content='server_priority' data-scopes='server_priority' hidden>
@@ -8428,6 +8436,15 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
   if (selectAllRoutes) selectAllRoutes.addEventListener('click', () => {{ form.querySelectorAll('.none-route-option:not([hidden]) input').forEach((box) => box.checked = true); updateAffectedRoutesSummary(); }});
   const clearRoutes = document.getElementById('affected-routes-clear');
   if (clearRoutes) clearRoutes.addEventListener('click', () => {{ form.querySelectorAll('.none-route-option input:checked').forEach((box) => box.checked = false); updateAffectedRoutesSummary(); }});
+  const affectedRoutes = document.getElementById('affected-routes');
+  if (affectedRoutes) {{
+    form.addEventListener('click', (event) => {{
+      if (affectedRoutes.open && !affectedRoutes.contains(event.target)) affectedRoutes.open = false;
+    }});
+    form.addEventListener('keydown', (event) => {{
+      if (affectedRoutes.open && event.key === 'Escape') {{ event.preventDefault(); affectedRoutes.open = false; }}
+    }});
+  }}
   form.querySelectorAll('.provider-change-server-priority-create [data-server-select]').forEach((button) => button.addEventListener('click', () => {{
     const checked = button.dataset.serverSelect === 'all';
     form.querySelectorAll('.provider-change-server-priority-create input[name="server_ids"]').forEach((box) => {{ box.checked = checked; }});
