@@ -487,6 +487,20 @@ CREATE INDEX IF NOT EXISTS idx_routing_event_servers_event ON routing_event_serv
 CREATE INDEX IF NOT EXISTS idx_routing_event_servers_server ON routing_event_servers(server_id);
 CREATE INDEX IF NOT EXISTS idx_routing_event_servers_new_route ON routing_event_servers(new_route_id);
 
+CREATE TABLE IF NOT EXISTS routing_event_routes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    routing_event_id INTEGER NOT NULL REFERENCES routing_events(id) ON DELETE RESTRICT,
+    route_id INTEGER NOT NULL REFERENCES routes(id) ON DELETE RESTRICT,
+    route_name TEXT NOT NULL,
+    provider_name TEXT NOT NULL,
+    position INTEGER NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (routing_event_id, route_id),
+    UNIQUE (routing_event_id, position)
+);
+CREATE INDEX IF NOT EXISTS idx_routing_event_routes_event ON routing_event_routes(routing_event_id);
+CREATE INDEX IF NOT EXISTS idx_routing_event_routes_route ON routing_event_routes(route_id);
+
 CREATE TABLE IF NOT EXISTS change_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     entity_type TEXT NOT NULL,

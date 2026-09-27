@@ -31,7 +31,7 @@ MIGRATION_ORDER = [
     "provider_prefixes", "routes", "currency_rates", "phone_numbers", "tariffs",
     "calling_companies", "company_routing_settings", "route_phone_numbers",
     "route_naming_rules", "routing_events", "server_route_priorities",
-    "routing_event_servers", "route_history", "route_phone_number_history",
+    "routing_event_servers", "routing_event_routes", "route_history", "route_phone_number_history",
     "phone_number_history", "tariff_change_history", "change_log",
     "provider_change_logs", "provider_change_log_servers", "telegram_settings",
     "api_tokens", "import_jobs", "app_settings", "hlr_daily_usage",
