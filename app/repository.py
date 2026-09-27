@@ -4686,21 +4686,35 @@ class Repository:
         from app.spam_checker import score_change
         p = placeholder(self.backend)
         with self.transaction():
-            prior = self.conn.execute(f"SELECT id FROM spam_check_batches WHERE request_token={p}", (request_token,)).fetchone()
+            prior = self.conn.execute(f"SELECT id, requested_count FROM spam_check_batches WHERE request_token={p}", (request_token,)).fetchone()
             if prior:
-                return {"batch_id": int(prior["id"]), "saved": 0, "duplicate": True}
+                count = self.conn.execute(f"SELECT COUNT(*) count FROM spam_check_results WHERE batch_id={p}", (prior["id"],)).fetchone()
+                return {"batch_id": int(prior["id"]), "saved": int(count["count"]), "requested": int(prior["requested_count"]), "duplicate": True}
             clause, params = build_in_clause("number", expected_numbers, self.backend)
-            phones = {row["number"]: row_to_dict(row) for row in self.conn.execute(f"SELECT id, number, is_problematic FROM phone_numbers WHERE {clause} FOR UPDATE", params)} if expected_numbers else {}
-            invalid = set(expected_numbers) - set(phones)
-            if invalid:
-                raise BusinessRuleError("Номера не найдены в «Купленных номерах»: " + ", ".join(sorted(invalid)))
+            phones = {row["number"]: row_to_dict(row) for row in self.conn.execute(f"SELECT id, number, is_problematic, review_required FROM phone_numbers WHERE {clause} FOR UPDATE", params)} if expected_numbers else {}
+            valid_results = []
+            for result in results:
+                phone = phones.get(result.get("number"))
+                if not phone or result.get("status") != "ready" or result.get("verdict") not in {"spam", "clear"}:
+                    continue
+                valid_routes = []
+                route_valid = True
+                for route in route_map.get(result["number"], []):
+                    exists = self.conn.execute(f"SELECT id,name FROM routes WHERE id={p}",(int(route["id"]),)).fetchone()
+                    membership = self.conn.execute(f"SELECT id FROM route_phone_numbers WHERE route_id={p} AND phone_number_id={p} AND is_active={p}", (int(route["id"]), int(phone["id"]), to_db_bool(True, self.backend))).fetchone() if exists else None
+                    if not exists or not membership:
+                        route_valid = False
+                        break
+                    valid_routes.append((exists, route))
+                if route_valid:
+                    valid_results.append((result, phone, valid_routes))
+            if not valid_results:
+                raise BusinessRuleError("Нет корректных результатов для сохранения.")
             sql = prepare_insert_returning_id(f"INSERT INTO spam_check_batches(request_token,source,selection_mode,raw_response,checked_by,parser_version,requested_count) VALUES ({','.join([p]*7)})", self.backend)
             batch_id = extract_inserted_id(self.conn.execute(sql, (request_token,"telegram_manual",selection_mode,raw_response,checked_by,parser_version,len(expected_numbers))), self.backend)
             saved = 0
-            for result in results:
-                if result.get("status") != "ready" or result.get("verdict") not in {"spam", "clear"} or result.get("number") not in phones:
-                    continue
-                phone = phones[result["number"]]; phone_id = int(phone["id"])
+            for result, phone, valid_routes in valid_results:
+                phone_id = int(phone["id"])
                 state = self.conn.execute(f"SELECT score FROM phone_spam_state WHERE phone_number_id={p} FOR UPDATE", (phone_id,)).fetchone()
                 before = int(state["score"]) if state else 0
                 sources = list(result.get("sources") or [])
@@ -4709,15 +4723,20 @@ class Repository:
                 result_sql = prepare_insert_returning_id(f"INSERT INTO spam_check_results(batch_id,phone_number_id,verdict,source,severity,sources_json,score_before,score_delta,score_after) VALUES ({','.join([p]*9)})", self.backend)
                 result_id = extract_inserted_id(self.conn.execute(result_sql,(batch_id,phone_id,result["verdict"],source,severity,json.dumps(sources),before,delta,after)),self.backend)
                 self.conn.execute(f"INSERT INTO phone_spam_state(phone_number_id,score,last_checked_at,last_verdict,last_source,updated_at) VALUES ({p},{p},CURRENT_TIMESTAMP,{p},{p},CURRENT_TIMESTAMP) ON CONFLICT(phone_number_id) DO UPDATE SET score=excluded.score,last_checked_at=excluded.last_checked_at,last_verdict=excluded.last_verdict,last_source=excluded.last_source,updated_at=excluded.updated_at",(phone_id,after,result["verdict"],source))
-                for route in route_map.get(result["number"], []):
-                    exists = self.conn.execute(f"SELECT id,name FROM routes WHERE id={p}",(int(route["id"]),)).fetchone()
-                    if not exists: raise BusinessRuleError("Выбранный маршрут больше не существует")
-                    membership = self.conn.execute(f"SELECT id FROM route_phone_numbers WHERE route_id={p} AND phone_number_id={p} AND is_active={p}", (int(route["id"]), phone_id, to_db_bool(True, self.backend))).fetchone()
-                    if not membership: raise BusinessRuleError("Номер больше не состоит в выбранном маршруте")
+                for exists, route in valid_routes:
                     self.conn.execute(f"INSERT INTO spam_check_result_routes(result_id,route_id,route_name_snapshot) VALUES ({p},{p},{p})",(result_id,int(exists["id"]),str(route.get("name") or exists["name"])))
-                if before < 5 and after == 5 and not bool(phone["is_problematic"]):
+                old_problematic = bool(phone["is_problematic"])
+                old_review = bool(phone["review_required"])
+                if before < 5 and after == 5 and (not old_problematic or not old_review):
                     self.conn.execute(f"UPDATE phone_numbers SET is_problematic={p},review_required={p},updated_by={p},updated_at=CURRENT_TIMESTAMP WHERE id={p}",(to_db_bool(True,self.backend),to_db_bool(True,self.backend),checked_by,phone_id))
-                    self.conn.execute(f"INSERT INTO phone_number_history(phone_number_id,action,changed_by,field_name,old_value,new_value,reason) VALUES ({p},'updated',{p},'is_problematic','false','true',{p})",(phone_id,checked_by,"SPAM Checker: рейтинг достиг 5/5"))
+                    changes = []
+                    if not old_problematic: changes.append("Проблемный: Нет → Да")
+                    if not old_review: changes.append("Требует проверки: Нет → Да")
+                    source_label = "Hiya" if str(source or "").casefold() == "hiya" else (source or "—")
+                    details = " · ".join([f"Рейтинг SPAM Checker: {before}/5 → {after}/5", f"Источник: {source_label}", *changes])
+                    old_value = json.dumps({"is_problematic": old_problematic, "review_required": old_review}, ensure_ascii=False)
+                    new_value = json.dumps({"is_problematic": True, "review_required": True, "description": "Изменение по результату SPAM Checker", "details": details, "changes": changes}, ensure_ascii=False)
+                    self.conn.execute(f"INSERT INTO phone_number_history(phone_number_id,action,changed_by,field_name,old_value,new_value,reason) VALUES ({p},'updated',{p},'changes',{p},{p},{p})",(phone_id,checked_by,old_value,new_value,"SPAM Checker"))
                 saved += 1
         return {"batch_id": batch_id, "saved": saved, "duplicate": False}
 

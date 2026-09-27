@@ -192,7 +192,7 @@ class SpamCheckerUiTest(unittest.TestCase):
 
     def test_result_card_remains_below_selection_form(self):
         content = self.render()
-        selection_marker = "<section class='card spam-work spam-selection'>"
+        selection_marker = "<section class='card spam-work spam-selection spam-work-phones'>"
         actions_marker = "<footer class='spam-actions'>"
         result_marker = "<section class='card spam-result'>"
         self.assertIn(selection_marker, content)
@@ -210,6 +210,17 @@ class SpamCheckerUiTest(unittest.TestCase):
         self.assertNotIn("navigator.clipboard.writeText", spam_numbers_section)
         self.assertIn("Строка с номером без пометки считается чистой", content)
         self.assertIn("Заголовки spam / clear не обязательны", content)
+
+    def test_phone_layout_and_active_tab_contract(self):
+        content = self.render()
+        self.assertIn(".spam-content{width:100%;max-width:1220px", content)
+        self.assertIn(".spam-work-phones{grid-template-columns:minmax(0,2fr) minmax(300px,1fr)}", content)
+        self.assertIn("grid-template-columns:repeat(3,minmax(0,1fr))", content)
+        self.assertIn("max-height:360px;overflow-y:auto", content)
+        self.assertIn(".spam-tabs .spam-tab.active", content)
+        self.assertIn("background:var(--accent);color:#fff", content)
+        checked = self.render({"tab": "checked"})
+        self.assertIn(".spam-subtabs .spam-subtab.active", checked)
 
 
 class HlrBalanceHelperTest(unittest.TestCase):
@@ -576,8 +587,30 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertNotIn("Неизвестное действие", content)
         save_batch.assert_not_called()
 
+    @patch.object(Repository, "spam_states", return_value={"3939393938": 0})
+    def test_spam_direct_raw_preview_marks_missing_purchase(self, _states):
+        captured, content = self.spam_post({
+            "selection_mode": "phones", "numbers": "",
+            "raw_response": "3939393938 - hiya\n9999999999 - hiya",
+        }, "preview")
+        self.assertEqual("200 OK", captured["status"])
+        self.assertIn("Запрошено: 2", content)
+        self.assertIn("К сохранению: 1", content)
+        self.assertIn("Номер отсутствует в «Купленных номерах»", content)
+        self.assertNotIn("Добавьте номера для проверки", content)
+
+    @patch.object(Repository, "spam_states", return_value={"1111111111": 0, "2222222222": 0})
+    @patch.object(Repository, "save_spam_check_batch", return_value={"saved": 1, "duplicate": False})
+    def test_spam_partial_save_skips_conflict(self, save_batch, _states):
+        fields = {"selection_mode": "phones", "numbers": "1111111111\n2222222222", "raw_response": "1111111111 - hiya\n1111111111\n2222222222 - hiya", "request_token": "partial", "route_map": "{}"}
+        captured, content = self.spam_post(fields, "save")
+        self.assertEqual("200 OK", captured["status"])
+        self.assertIn("Сохранено 1 из 2. Пропущено 1.", content)
+        self.assertEqual(["2222222222"], [row["number"] for row in save_batch.call_args.kwargs["results"]])
+
+    @patch.object(Repository, "spam_states", return_value={"3939393930": 0, "3939393938": 0})
     @patch.object(Repository, "save_spam_check_batch", return_value={"saved": 2, "duplicate": False})
-    def test_spam_save_post(self, save_batch):
+    def test_spam_save_post(self, save_batch, _states):
         fields = {"selection_mode": "phones", "numbers": "3939393930\n3939393938", "raw_response": "3939393930 - hiya\n3939393938", "request_token": "save-token", "route_map": "{}"}
         captured, content = self.spam_post(fields, "save")
         self.assertEqual("200 OK", captured["status"])
@@ -594,6 +627,57 @@ class ServerSmokeTest(unittest.TestCase):
             [("3939393930", "spam", "hiya"), ("3939393938", "clear", None)],
             [(row["number"], row["verdict"], row["source"]) for row in kwargs["results"]],
         )
+
+    @patch.object(Repository, "spam_states", return_value={"3939393938": 0, "3939393939": 0})
+    @patch.object(Repository, "save_spam_check_batch", return_value={"saved": 2, "duplicate": False})
+    def test_spam_direct_raw_save_infers_candidates(self, save_batch, _states):
+        fields = {"selection_mode": "phones", "numbers": "", "raw_response": "3939393938 - hiya\n3939393939", "request_token": "direct-save", "route_map": "{}"}
+        captured, content = self.spam_post(fields, "save")
+        self.assertEqual("200 OK", captured["status"])
+        self.assertIn("Сохранено 2 из 2.", content)
+        self.assertEqual(["3939393938", "3939393939"], save_batch.call_args.kwargs["expected_numbers"])
+
+    @patch.object(Repository, "spam_states", return_value={"3939393938": 0})
+    @patch.object(Repository, "save_spam_check_batch", return_value={"saved": 1, "duplicate": False})
+    def test_spam_save_skips_not_found_but_persists_ready(self, save_batch, _states):
+        fields = {"selection_mode": "phones", "numbers": "3939393938\n9999999999", "raw_response": "3939393938 - hiya\n9999999999 - hiya", "request_token": "not-found-save", "route_map": "{}"}
+        captured, content = self.spam_post(fields, "save")
+        self.assertEqual("200 OK", captured["status"])
+        self.assertIn("Сохранено 1 из 2. Пропущено 1.", content)
+        self.assertEqual(["3939393938"], [row["number"] for row in save_batch.call_args.kwargs["results"]])
+
+    @patch.object(Repository, "spam_states", return_value={"1111111111": 0, "2222222222": 0})
+    @patch.object(Repository, "save_spam_check_batch", return_value={"saved": 1, "duplicate": False})
+    def test_spam_save_mixed_ready_not_found_and_conflict(self, save_batch, _states):
+        fields = {
+            "selection_mode": "phones", "numbers": "1111111111\n2222222222\n9999999999",
+            "raw_response": "1111111111 - hiya\n2222222222 - hiya\n2222222222\n9999999999 - hiya",
+            "request_token": "mixed-save", "route_map": "{}",
+        }
+        captured, content = self.spam_post(fields, "save")
+        self.assertEqual("200 OK", captured["status"])
+        self.assertIn("Сохранено 1 из 3. Пропущено 2.", content)
+        self.assertEqual(["1111111111"], [row["number"] for row in save_batch.call_args.kwargs["results"]])
+
+    @patch.object(Repository, "spam_states", return_value={"1111111111": 0})
+    @patch.object(Repository, "save_spam_check_batch")
+    def test_spam_save_with_zero_saveable_rows_is_validation_error(self, save_batch, _states):
+        fields = {"selection_mode": "phones", "numbers": "1111111111", "raw_response": "1111111111 - hiya\n1111111111", "request_token": "invalid-save", "route_map": "{}"}
+        captured, content = self.spam_post(fields, "save")
+        self.assertEqual("400 Bad Request", captured["status"])
+        self.assertIn("Нет корректных результатов для сохранения.", content)
+        save_batch.assert_not_called()
+
+    @patch.object(Repository, "spam_states", return_value={"3939393938": 0})
+    @patch.object(Repository, "save_spam_check_batch", return_value={"saved": 1, "duplicate": False})
+    def test_spam_preview_ready_payload_is_accepted_by_save(self, save_batch, _states):
+        fields = {"selection_mode": "phones", "numbers": "3939393938", "raw_response": "3939393938 - hiya", "request_token": "preview-save", "route_map": "{}"}
+        preview_status, preview_content = self.spam_post(fields, "preview")
+        save_status, _save_content = self.spam_post(fields, "save")
+        self.assertEqual("200 OK", preview_status["status"])
+        self.assertIn("Готово", preview_content)
+        self.assertEqual("200 OK", save_status["status"])
+        save_batch.assert_called_once()
 
 
     def test_hlr_page_renders_usage_panel_after_repository_refactor(self):

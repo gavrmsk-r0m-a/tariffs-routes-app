@@ -1102,9 +1102,9 @@
       "current_commit_behavior": "commits internally",
       "dependencies": [],
       "mutation_kind": "mixed_read_write",
-      "notes": "V1 authoritative transaction with database request-token idempotency.",
+      "notes": "Stage 67 SPAM Checker rollback probe: authoritative partial-business-save transaction with database request-token idempotency; invalid candidates are skipped before batch writes.",
       "postgres_strategy": "PostgreSQL row locks, constraints and one transaction.",
-      "returns": "Batch id, saved count and duplicate marker",
+      "returns": "Batch id, persisted result count and duplicate marker; duplicate submissions return the original persisted count",
       "risk": "high",
       "rollback_strategy": "Repository transaction rolls back every batch mutation on any exception.",
       "side_effects": [

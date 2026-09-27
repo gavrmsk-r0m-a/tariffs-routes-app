@@ -84,6 +84,7 @@ CALLING_COMPANY_MARKER = "__stage66f_calling_company__"
 CALLING_COMPANY_UPDATED_MARKER = "__stage66f_calling_company_updated__"
 CALLING_COMPANY_IMPORT_MARKER = "__stage66f_calling_company_import__"
 ROUTING_COMMENT_MARKER = "__stage66f_routing_comment__"
+SPAM_CHECKER_TOKEN = "__stage67_spam_checker_rollback__"
 
 
 def empty_summary(postgres_url: str) -> dict:
@@ -106,6 +107,7 @@ def empty_summary(postgres_url: str) -> dict:
             "tariff_lifecycle_probe",
             "currency_rate_lifecycle_probe",
             "calling_company_tail_lifecycle_probe",
+            "spam_checker_rollback_probe",
         )},
     }
 
@@ -1778,6 +1780,7 @@ def run_calling_company_tail_lifecycle_probe(repo: Repository, conn) -> None:
                 conn.execute(f"RELEASE SAVEPOINT stage66f_{name}")
     finally:
         conn.rollback()
+
     try:
         if conn.execute("SELECT 1 FROM calling_companies WHERE company_id_external = %s OR company_name IN (%s, %s)", (CALLING_COMPANY_MARKER, CALLING_COMPANY_UPDATED_MARKER, CALLING_COMPANY_IMPORT_MARKER)).fetchone():
             raise AssertionError("Stage 66F calling company remains after rollback")
@@ -1787,6 +1790,69 @@ def run_calling_company_tail_lifecycle_probe(repo: Repository, conn) -> None:
             raise AssertionError("Stage 66F change_log rows remain after rollback")
     finally:
         conn.rollback()
+
+
+def run_spam_checker_rollback_probe(repo: Repository, conn) -> None:
+    """Prove an unexpected mid-batch failure rolls back every SPAM write."""
+    conn.rollback()
+    fixtures = conn.execute(
+        """SELECT pn.id, pn.number, pn.is_problematic, pn.review_required,
+                  ps.score, ps.last_checked_at, ps.last_verdict, ps.last_source
+           FROM phone_numbers pn
+           LEFT JOIN phone_spam_state ps ON ps.phone_number_id = pn.id
+           ORDER BY pn.id LIMIT 2"""
+    ).fetchall()
+    user = conn.execute("SELECT id FROM users ORDER BY id LIMIT 1").fetchone()
+    if len(fixtures) < 2 or not user:
+        raise AssertionError("Stage 67 fixture requires two purchased numbers and one user")
+    phone_ids = [row["id"] for row in fixtures]
+    before_results = conn.execute(
+        "SELECT COUNT(*) count FROM spam_check_results WHERE phone_number_id = ANY(%s)",
+        (phone_ids,),
+    ).fetchone()["count"]
+    before_history = conn.execute(
+        "SELECT COUNT(*) count FROM phone_number_history WHERE phone_number_id = ANY(%s)",
+        (phone_ids,),
+    ).fetchone()["count"]
+    circular_sources = []
+    circular_sources.append(circular_sources)
+    results = [
+        {"number": fixtures[0]["number"], "verdict": "spam", "source": "hiya", "sources": ["hiya"], "status": "ready"},
+        {"number": fixtures[1]["number"], "verdict": "spam", "source": "invalid", "sources": circular_sources, "status": "ready"},
+    ]
+    try:
+        repo.save_spam_check_batch(
+            request_token=SPAM_CHECKER_TOKEN, selection_mode="phones", raw_response="stage67",
+            expected_numbers=[row["number"] for row in fixtures], results=results,
+            route_map={}, checked_by=user["id"], parser_version="2",
+        )
+    except (AttributeError, ValueError):
+        pass
+    else:
+        raise AssertionError("Stage 67 injected SPAM write failure did not fail")
+    if conn.execute("SELECT 1 FROM spam_check_batches WHERE request_token = %s", (SPAM_CHECKER_TOKEN,)).fetchone():
+        raise AssertionError("Stage 67 batch survived rollback")
+    after_results = conn.execute(
+        "SELECT COUNT(*) count FROM spam_check_results WHERE phone_number_id = ANY(%s)",
+        (phone_ids,),
+    ).fetchone()["count"]
+    after_history = conn.execute(
+        "SELECT COUNT(*) count FROM phone_number_history WHERE phone_number_id = ANY(%s)",
+        (phone_ids,),
+    ).fetchone()["count"]
+    if after_results != before_results or after_history != before_history:
+        raise AssertionError("Stage 67 result/history rows survived rollback")
+    after = conn.execute(
+        """SELECT pn.id, pn.is_problematic, pn.review_required,
+                  ps.score, ps.last_checked_at, ps.last_verdict, ps.last_source
+           FROM phone_numbers pn
+           LEFT JOIN phone_spam_state ps ON ps.phone_number_id = pn.id
+           WHERE pn.id = ANY(%s) ORDER BY pn.id""",
+        (phone_ids,),
+    ).fetchall()
+    tracked = ("id", "is_problematic", "review_required", "score", "last_checked_at", "last_verdict", "last_source")
+    if [{key: row[key] for key in tracked} for row in after] != [{key: row[key] for key in tracked} for row in fixtures]:
+        raise AssertionError("Stage 67 state/flags survived rollback")
 
 
 def run_harness(postgres_url: str, probe_key: str = DEFAULT_PROBE_KEY, probe_value: str = DEFAULT_PROBE_VALUE) -> dict:
@@ -1837,6 +1903,7 @@ def run_harness(postgres_url: str, probe_key: str = DEFAULT_PROBE_KEY, probe_val
         check("tariff_lifecycle_probe", lambda: run_tariff_lifecycle_probe(repo, conn))
         check("currency_rate_lifecycle_probe", lambda: run_currency_rate_lifecycle_probe(repo, conn))
         check("calling_company_tail_lifecycle_probe", lambda: run_calling_company_tail_lifecycle_probe(repo, conn))
+        check("spam_checker_rollback_probe", lambda: run_spam_checker_rollback_probe(repo, conn))
     except Exception as exc:
         summary["failures"].append({"check": "connect", "error": sanitize_error(exc, postgres_url)})
     finally:
