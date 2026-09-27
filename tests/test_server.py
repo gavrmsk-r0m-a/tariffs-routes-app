@@ -5703,6 +5703,27 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
         self.assertIn(f"<option value='{country_with_routes}'", geo_select)
         self.assertNotIn(f"<option value='{country_without_routes}'", geo_select)
 
+    def test_none_scope_route_dropdown_has_scoped_close_contract_and_aligned_row(self):
+        _captured, content = self.request("/provider-changes")
+        create_form = _form_fragment(content, "/provider-changes/create")
+
+        aligned_row = create_form.split("class='none-route-reason-row'", 1)[1].split("<label class='wide'>Комментарий", 1)[0]
+        self.assertIn("id='affected-routes'", aligned_row)
+        self.assertIn("id='routing-reason'", aligned_row)
+        self.assertIn(".none-route-reason-row {", content)
+        self.assertIn("grid-template-columns: minmax(0, 1fr) minmax(0, 2fr)", content)
+        self.assertIn("align-items: start", content)
+        self.assertIn(".none-route-reason-row .multi-select { margin: 0; }", content)
+        self.assertIn(".multi-select-panel { position: absolute", content)
+
+        self.assertIn("const affectedRoutes = document.getElementById('affected-routes')", create_form)
+        self.assertIn("form.addEventListener('click'", create_form)
+        self.assertIn("affectedRoutes.open && !affectedRoutes.contains(event.target)", create_form)
+        self.assertIn("affectedRoutes.open = false", create_form)
+        self.assertIn("event.key === 'Escape'", create_form)
+        close_contract = create_form.split("const affectedRoutes =", 1)[1].split("form.querySelectorAll('.provider-change-server-priority-create", 1)[0]
+        self.assertNotIn("checked = false", close_contract)
+
     def test_none_scope_multi_route_post_persists_all_routes_and_shows_validation_in_modal(self):
         conn = _TEST_DB.connect()
         try:
