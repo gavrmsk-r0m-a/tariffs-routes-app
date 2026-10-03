@@ -5716,7 +5716,7 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
         self.assertIn(".none-route-reason-row .multi-select { margin: 0; }", content)
         self.assertIn(".multi-select-panel { position: absolute", content)
 
-        self.assertIn("const affectedRoutes = document.getElementById('affected-routes')", content)
+        self.assertIn("const affectedRoutes = form.querySelector('#affected-routes')", content)
         self.assertIn("form.addEventListener('click'", content)
         self.assertIn("affectedRoutes.open && !affectedRoutes.contains(event.target)", content)
         self.assertIn("affectedRoutes.open = false", content)
@@ -6060,8 +6060,11 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
         captured, content = self.request("/provider-changes")
         self.assertEqual(captured["status"], "200 OK")
         create_form = _form_fragment(content, "/provider-changes/create")
+        self.assertIn("<form method='post' action='/provider-changes/create' class='provider-change-create-form' id='provider-change-create-form'", content)
+        self.assertNotIn("<form method='post' action='/provider-changes/create' class='form-grid'", content)
+        self.assertNotIn("<form method='post' action='/provider-changes/create' class='provider-change-create-form' id='routing-event-form'", content)
         scroll_start = create_form.index("<div class='provider-change-scroll-body'>")
-        scroll_end = create_form.index("<div class='modal-actions'>", scroll_start)
+        scroll_end = create_form.index("<div class='modal-actions provider-change-create-actions'>", scroll_start)
         scope_selector = create_form.index("class='provider-change-shell-scope'")
         self.assertLess(scope_selector, scroll_start)
         for scope in ("none", "server_priority", "campaign_setting"):
@@ -6069,10 +6072,28 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
             self.assertTrue(scroll_start < create_form.index(f"data-scope-hint='{scope}'") < scroll_end)
         self.assertLess(scroll_end, create_form.index("type='submit'", scroll_end))
         self.assertIn("data-modal-close>Отмена", create_form[scroll_end:])
-        self.assertIn(".provider-change-scroll-body { flex: 1 1 auto; min-height: 0; min-width: 0; width: 100%; max-width: 100%; box-sizing: border-box; overflow-y: auto; overflow-x: clip;", content)
-        self.assertIn("#routing-event-form { display: flex; flex-direction: column;", content)
+        self.assertIn(".provider-change-scroll-body { min-height: 0; min-width: 0; width: 100%; max-width: 100%; box-sizing: border-box; overflow-y: auto; overflow-x: hidden;", content)
+        self.assertIn(".provider-change-create-form { display: grid; grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr) auto; gap: 0;", content)
         self.assertIn("height: min(740px, calc(100vh - 48px));", content)
         self.assertIn("overflow: hidden;", content)
+
+    def test_provider_change_create_form_is_detached_from_legacy_contract(self):
+        self.request("/routes")
+        _, content = self.request("/provider-changes")
+        create_form = _form_fragment(content, "/provider-changes/create")
+        create_form_tag = content.split("<form method='post' action='/provider-changes/create'", 1)[1].split(">", 1)[0]
+        create_script = content.split("const form = document.getElementById('provider-change-create-form');", 1)[1].split("</script>", 1)[0]
+        self.assertEqual(1, content.count("action='/provider-changes/create'"))
+        self.assertIn("class='provider-change-create-form'", create_form_tag)
+        self.assertIn("id='provider-change-create-form'", create_form_tag)
+        self.assertNotIn("id='routing-event-form'", create_form_tag)
+        self.assertNotIn("#routing-event-form", create_form)
+        for control in ("company-change-type", "campaign-selection-step", "campaign-route-step", "event-company"):
+            self.assertIn(f"id='{control}'", create_form)
+        self.assertIn("const form = document.getElementById('provider-change-create-form');", content)
+        self.assertNotIn("document.getElementById('routing-event-form')", create_script)
+        self.assertNotIn("normalizeProviderChangeScrollX", create_script)
+        self.assertNotIn("scrollLeft", create_script)
 
     def test_provider_change_campaign_layout_cannot_expand_scroll_body(self):
         self.request("/routes")
@@ -6081,13 +6102,13 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
         self.assertIn(".campaign-create-change-row { min-width: 0; width: 100%; max-width: 100%; box-sizing: border-box;", content)
         self.assertIn(".company-select-panel { position: absolute; z-index: 20; inset-inline: 0; top: calc(100% + 4px); width: 100%; min-width: 0; max-width: 100%;", content)
 
-    def test_provider_change_campaign_transitions_normalize_only_horizontal_scroll(self):
+    def test_provider_change_campaign_transitions_do_not_use_scroll_position_workaround(self):
         self.request("/routes")
         _, content = self.request("/provider-changes")
-        self.assertIn("const body = form.querySelector('.provider-change-scroll-body');", content)
-        self.assertIn("if (body && body.scrollLeft !== 0) body.scrollLeft = 0;", content)
-        self.assertNotIn("body.scrollTop =", content)
-        self.assertIn("updateCampaignProgress();\n    normalizeProviderChangeScrollX();\n    requestAnimationFrame(normalizeProviderChangeScrollX);", content)
+        create_form = _form_fragment(content, "/provider-changes/create")
+        self.assertNotIn("scrollLeft", create_form)
+        self.assertNotIn("scrollTop", create_form)
+        self.assertNotIn("normalizeProviderChangeScrollX", create_form)
 
 
     def test_provider_change_company_setting_form_renders_campaign_helper_filters(self):
@@ -6325,9 +6346,11 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
         captured, content = self.request("/provider-changes")
         self.assertEqual(captured["status"], "200 OK")
         create_form = _form_fragment(content, "/provider-changes/create")
-        self.assertIn("const clearSelected = document.getElementById('campaign-clear-selected')", content)
+        self.assertIn("const clearSelected = form.querySelector('#campaign-clear-selected')", content)
         self.assertIn("input[name=\"calling_company_ids\"]:checked", content)
-        self.assertIn("event-company", content)
+        self.assertIn("const campaignDropdown = form.querySelector('#event-company')", content)
+        self.assertIn("campaignDropdown.open && !campaignDropdown.contains(event.target)", content)
+        self.assertIn("event.key === 'Escape'", content)
         self.assertIn("event.preventDefault()", content)
 
     def test_bulk_campaign_autorotation_creates_event_per_changed_campaign_and_skips_noop(self):
