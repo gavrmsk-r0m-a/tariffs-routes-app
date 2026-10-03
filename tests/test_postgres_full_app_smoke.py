@@ -1,4 +1,5 @@
 import unittest
+from datetime import date, timedelta
 from decimal import Decimal
 from unittest.mock import ANY, Mock, patch
 
@@ -227,42 +228,38 @@ class FullAppSmokeHarnessTests(unittest.TestCase):
             "/", "/dashboard", "/admin/company-routing-settings", "/admin/server-priorities"
         }.issubset(PAGES))
 
-    def test_dashboard_metrics_use_portable_boolean_predicates(self):
+    def test_dashboard_page_uses_repository_summary(self):
         from app import server
 
-        statements = []
-        with (
-            patch.object(server, "dashboard_metric", side_effect=lambda _repo, sql, *_args: statements.append(sql) or ""),
-            patch.object(server, "dashboard_events", return_value=""),
+        start = date(2026, 7, 1)
+        repo = Mock()
+        repo.dashboard_summary.return_value = {
+            "active_routes": 1,
+            "active_companies": 2,
+            "active_phones": 3,
+            "attention_phones": 0,
+            "review_phones": 0,
+            "problematic_phones": 0,
+            "missing_working_routes": 0,
+            "manual_campaigns": 0,
+            "provider_change_series": [
+                {"date": start + timedelta(days=offset), "value": offset}
+                for offset in range(14)
+            ],
+        }
+
+        content = server.dashboard_page(repo).decode("utf-8")
+
+        repo.dashboard_summary.assert_called_once_with()
+        for marker in (
+            "dashboard-v2",
+            "dashboard-v2-kpi-panel",
+            "dashboard-v2-chart-panel",
+            "dashboard-v2-operational",
         ):
-            server.dashboard_page(Mock())
-
-        self.assertEqual(len(statements), 4)
-        self.assertTrue(all("COUNT(*) AS value" in sql for sql in statements))
-        self.assertTrue(all("IS TRUE" in sql for sql in statements))
-        self.assertTrue(all("= 1" not in sql for sql in statements))
-
-    def test_dashboard_metric_accepts_postgres_dict_row(self):
-        from app import server
-
-        conn = Mock()
-        conn.execute.return_value.fetchone.return_value = {"value": 123}
-        content = server.dashboard_metric(
-            Mock(conn=conn), "SELECT COUNT(*) AS value FROM routes", "label", "hint", "icon", "tone", "points"
-        )
-
-        self.assertIn("<strong class='metric-value'>123</strong>", content)
-
-    def test_dashboard_metric_keeps_legacy_positional_row_fallback(self):
-        from app import server
-
-        conn = Mock()
-        conn.execute.return_value.fetchone.return_value = (7,)
-        content = server.dashboard_metric(
-            Mock(conn=conn), "SELECT COUNT(*) AS value FROM routes", "label", "hint", "icon", "tone", "points"
-        )
-
-        self.assertIn("<strong class='metric-value'>7</strong>", content)
+            self.assertIn(marker, content)
+        self.assertNotIn("sparkline", content)
+        self.assertNotIn("event-feed", content)
 
     def test_server_priorities_page_uses_postgres_sql(self):
         from app import server
