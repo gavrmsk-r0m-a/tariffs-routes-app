@@ -6240,8 +6240,21 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
     def test_campaign_setting_geo_and_provider_changes_reset_dependent_route_fields(self):
         self.request("/routes")
         _, content = self.request("/provider-changes")
-        self.assertIn("if (campaignProvider) campaignProvider.value = '';", content)
-        self.assertGreaterEqual(content.count("if (campaignRoute) campaignRoute.value = '';"), 3)
+        geo_change_handler = content.split(
+            "if (campaignRouteCountry) campaignRouteCountry.addEventListener('change', () => {", 1
+        )[1].split("const campaignProvider = form.querySelector('#campaign-provider');", 1)[0]
+        self.assertIn("const provider = form.querySelector('#campaign-provider');", geo_change_handler)
+        self.assertIn("const route = form.querySelector('#company-route');", geo_change_handler)
+        self.assertIn("if (provider) provider.value = '';", geo_change_handler)
+        self.assertIn("if (route) route.value = '';", geo_change_handler)
+        self.assertIn("sync();", geo_change_handler)
+
+        provider_change_handler = content.split(
+            "if (campaignProvider) campaignProvider.addEventListener('change', () => {", 1
+        )[1].split("if (campaignRoute) campaignRoute.addEventListener('change', sync);", 1)[0]
+        self.assertIn("const campaignRoute = form.querySelector('#company-route');", provider_change_handler)
+        self.assertIn("if (campaignRoute) campaignRoute.value = '';", provider_change_handler)
+        self.assertIn("sync();", provider_change_handler)
         self.assertIn("rebuildServerRouteSelect(campaignRoute, campaignCountry && campaignCountry.value, campaignProvider && campaignProvider.value", content)
 
     def test_provider_change_campaign_id_search_post_selects_external_id_company(self):
