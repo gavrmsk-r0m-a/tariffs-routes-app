@@ -1417,7 +1417,8 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .modal-save:hover, .admin-edit-save:hover {{ background: var(--accent); border-color: var(--accent); color: #fff; }}
     .modal-cancel, .admin-edit-cancel {{ background: var(--surface); color: var(--text); border-color: var(--border-strong); }}
     .provider-change-create-shell[open] > .provider-change-create-form {{ min-height: min(740px, calc(100vh - 48px)); }}
-    .provider-change-create-shell .provider-change-scroll-body {{ min-height: 0; min-width: 0; width: 100%; max-width: 100%; box-sizing: border-box; overflow-y: auto; overflow-x: hidden; scrollbar-gutter: stable; padding-right: 8px; scrollbar-width: thin; scrollbar-color: var(--border-ink, #8293a6) transparent; }}
+    body:has(.provider-change-create-shell[open]) {{ overflow: hidden; }}
+    .provider-change-create-shell .provider-change-scroll-body {{ min-height: 0; min-width: 0; width: 100%; max-width: 100%; box-sizing: border-box; overflow-y: auto; overflow-x: hidden; scrollbar-gutter: stable; padding: 0 8px 16px 0; scrollbar-width: thin; scrollbar-color: var(--border-ink, #8293a6) transparent; }}
     .provider-change-create-shell .provider-change-scroll-body::-webkit-scrollbar {{ width: 8px; }}
     .provider-change-create-shell .provider-change-scroll-body::-webkit-scrollbar-track {{ background: transparent; }}
     .provider-change-create-shell .provider-change-scroll-body::-webkit-scrollbar-thumb {{ border-radius: 999px; background: var(--border-ink, #8293a6); }}
@@ -2960,9 +2961,10 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     html[data-theme="light-v2"] .provider-change-create-shell .campaign-create-company-row,
     html[data-theme="light-v2"] .provider-change-create-shell .campaign-create-change-row {{ min-width: 0; width: 100%; max-width: 100%; box-sizing: border-box; }}
     html[data-theme="light-v2"] .provider-change-create-shell .campaign-create-row {{ display: grid; gap: 12px; align-items: end; }}
-    html[data-theme="light-v2"] .provider-change-create-shell .campaign-create-primary-row {{ grid-template-columns: repeat(4, minmax(0, 1fr)); }}
-    html[data-theme="light-v2"] .provider-change-create-shell .campaign-create-company-row {{ grid-template-columns: minmax(160px, .8fr) auto minmax(320px, 2.6fr); align-items: end; }}
-    html[data-theme="light-v2"] .provider-change-create-shell .campaign-create-change-row {{ grid-template-columns: minmax(220px, 1.25fr) minmax(180px, 1fr) minmax(220px, 1.25fr); }}
+    html[data-theme="light-v2"] .provider-change-create-shell .campaign-create-primary-row {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }}
+    html[data-theme="light-v2"] .provider-change-create-shell .campaign-create-filters-row {{ grid-template-columns: minmax(160px, .8fr) minmax(160px, .8fr) minmax(240px, 1.4fr) auto; }}
+    html[data-theme="light-v2"] .provider-change-create-shell .campaign-create-company-row {{ display: block; }}
+    html[data-theme="light-v2"] .provider-change-create-shell .campaign-create-change-row {{ grid-template-columns: repeat(3, minmax(0, 1fr)); }}
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid label,
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .campaign-id-action-field,
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .campaign-company-field {{ min-width: 0; width: auto; }}
@@ -2978,22 +2980,26 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .campaign-id-action-field input,
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .campaign-id-action-button {{ box-sizing: border-box; min-height: 31px; height: 31px; }}
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .campaign-id-action-button {{ padding: 5px 8px; font-size: 13px; line-height: 1.2; box-shadow: none; }}
-    html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .campaign-company-field {{ min-width: 0; }}
-    html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .campaign-company-field .company-select-control {{ position: relative; box-sizing: border-box; width: 100%; min-width: 0; margin: 4px 0 0; border: 0; border-radius: 0; background: transparent; }}
-    html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .campaign-company-field .company-select-control > summary {{ position: relative; display: block; box-sizing: border-box; width: 100%; min-height: 32px; padding: 6px 28px 6px 8px; overflow: hidden; border: 1px solid var(--border-strong); border-radius: var(--radius-control); background: var(--input-bg); color: var(--text); font: inherit; line-height: normal; list-style: none; text-overflow: ellipsis; white-space: nowrap; box-shadow: inset 0 1px 1px rgba(34, 48, 42, 0.03); cursor: pointer; }}
-    html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .campaign-company-field .company-select-control > summary::-webkit-details-marker {{ display: none; }}
-    html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .campaign-company-field .company-select-control > summary::after {{ content: "▾"; position: absolute; right: 9px; top: 50%; transform: translateY(-50%); color: var(--muted); font-size: 12px; pointer-events: none; }}
-    html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .campaign-company-field .company-select-control:hover > summary {{ border-color: var(--border-ink); }}
-    html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .campaign-company-field .company-select-control:focus-within > summary {{ border-color: var(--accent); box-shadow: 0 0 0 3px rgba(37, 99, 235, .16); outline: 0; }}
-    html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .campaign-company-field .company-select-control[open] > summary {{ border-bottom-color: var(--border-strong); border-radius: var(--radius-control); background: var(--input-bg); }}
-    html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .campaign-company-field .company-select-panel {{ position: absolute; z-index: 20; inset-inline: 0; top: calc(100% + 4px); width: 100%; min-width: 0; max-width: 100%; max-height: 280px; box-sizing: border-box; overflow-y: auto; overflow-x: hidden; padding: 8px; border: 1px solid var(--border-strong); border-radius: var(--radius-control); background: #fff; box-shadow: var(--shadow-soft); }}
+    html[data-theme="light-v2"] .provider-change-create-shell .campaign-company-field {{ min-width: 0; width: 100%; }}
+    html[data-theme="light-v2"] .provider-change-create-shell .campaign-picker-toolbar {{ display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin: 4px 0 7px; }}
+    html[data-theme="light-v2"] .provider-change-create-shell .campaign-picker-status {{ margin-left: auto; color: var(--muted); font-size: 12px; font-weight: 650; }}
+    html[data-theme="light-v2"] .provider-change-create-shell .campaign-picker-list {{ width: 100%; height: auto; min-height: 0; max-height: 140px; box-sizing: border-box; overflow-y: auto; overflow-x: hidden; border: 1px solid var(--border-strong); border-radius: var(--radius-control); background: #fff; }}
+    html[data-theme="light-v2"] .provider-change-create-shell .campaign-picker-row {{ display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 10px; align-items: start; margin: 0; padding: 9px 10px; border-bottom: 1px solid var(--border); cursor: pointer; white-space: normal; }}
+    html[data-theme="light-v2"] .provider-change-create-shell .campaign-picker-row:last-child {{ border-bottom: 0; }}
+    html[data-theme="light-v2"] .provider-change-create-shell .campaign-picker-row:hover {{ background: var(--accent-soft); }}
+    html[data-theme="light-v2"] .provider-change-create-shell .campaign-picker-row:has(input:checked) {{ background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); }}
+    html[data-theme="light-v2"] .provider-change-create-shell .campaign-picker-row input {{ grid-row: 1 / span 2; width: auto; margin: 2px 0 0; }}
+    html[data-theme="light-v2"] .provider-change-create-shell .campaign-picker-main {{ min-width: 0; overflow: hidden; color: var(--text-strong); font-weight: 740; text-overflow: ellipsis; white-space: nowrap; }}
+    html[data-theme="light-v2"] .provider-change-create-shell .campaign-picker-meta {{ min-width: 0; overflow: hidden; color: var(--muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }}
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .span-2 {{ grid-column: span 2; }}
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .wide {{ grid-column: 1 / -1; display: flex; flex-direction: column; min-height: 0; }}
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid textarea {{ width: 100%; min-height: 180px; height: 100%; resize: vertical; }}
     @media (max-width: 760px) {{
       html[data-theme="light-v2"] .provider-change-create-shell .campaign-create-primary-row {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }}
-      html[data-theme="light-v2"] .provider-change-create-shell .campaign-create-company-row {{ grid-template-columns: minmax(110px, .7fr) auto minmax(180px, 2fr); }}
+      html[data-theme="light-v2"] .provider-change-create-shell .campaign-create-filters-row {{ grid-template-columns: minmax(0, 1fr); }}
       html[data-theme="light-v2"] .provider-change-create-shell .campaign-create-change-row {{ grid-template-columns: minmax(0, 1fr); }}
+      html[data-theme="light-v2"] .provider-change-create-shell .campaign-picker-status {{ flex-basis: 100%; margin-left: 0; }}
+      html[data-theme="light-v2"] .provider-change-create-shell .campaign-picker-meta {{ white-space: normal; }}
     }}
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-server-priority-create {{ flex: 1 1 0; display: flex; flex-direction: column; min-height: 0; min-width: 0; overflow: hidden; }}
     html[data-theme="light-v2"] .provider-change-create-shell .server-priority-create-columns {{ flex: 0 0 auto; display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: 14px; align-items: start; min-width: 0; }}
@@ -3016,7 +3022,7 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     html[data-theme="light-v2"] .provider-change-create-shell .server-priority-create-right .server-current-route-text {{ color: var(--muted); }}
     html[data-theme="light-v2"] .provider-change-create-shell .server-priority-create-right .server-current-route-text.has-route {{ color: #C2410C; }}
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-shell-hint {{ flex: 0 0 24px; min-height: 24px; margin: 0; color: var(--muted); }}
-    html[data-theme="light-v2"] .provider-change-create-shell .provider-change-create-actions {{ width: calc(100% + 32px); box-sizing: border-box; margin: 0 -16px; padding: 14px 16px; }}
+    html[data-theme="light-v2"] .provider-change-create-shell .provider-change-create-actions {{ position: static; grid-row: 3; z-index: auto; flex: 0 0 auto; width: calc(100% + 32px); box-sizing: border-box; margin: 0 -16px !important; padding: 14px 16px !important; border-top: 1px solid var(--border-strong); background: var(--surface) !important; }}
     html[data-theme="light-v2"] .scope-cards {{ grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); width: 100%; gap: 10px; }}
     html[data-theme="light-v2"] .scope-card {{ position: relative; display: flex; align-items: stretch; min-height: 58px; padding: 10px 12px 10px 14px; border: 1px solid var(--border-strong); border-left: 3px solid var(--border-strong); background: #fff; box-shadow: none; cursor: pointer; }}
     html[data-theme="light-v2"] .scope-card input[type="radio"] {{ position: absolute; opacity: 0; pointer-events: none; }}
@@ -8113,21 +8119,31 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
     company_opts = ""
     for company in repo.conn.execute(f"""
         SELECT cc.id, cc.country_id, cc.server_id, cc.company_id_external, cc.company_name,
-               s.name AS server_name, c.name AS country_name
+               s.name AS server_name, c.name AS country_name,
+               crs.has_autorotation, r.name AS route_name
         FROM calling_companies cc
         JOIN servers s ON s.id = cc.server_id
         LEFT JOIN countries c ON c.id = cc.country_id
+        LEFT JOIN company_routing_settings crs ON crs.calling_company_id = cc.id
+             AND crs.is_active IS TRUE AND crs.valid_to IS NULL
+        LEFT JOIN routes r ON r.id = crs.route_id
         WHERE cc.is_active IS TRUE OR cc.id = {p}
         ORDER BY CASE WHEN NULLIF(TRIM(cc.company_name), '') IS NULL THEN 1 ELSE 0 END,
                  cc.company_name, cc.company_id_external, s.name
         """, (event["calling_company_id"] if event else 0,)):
-        label = f"{company['company_id_external']} · {company['company_name'] or '—'} · {company['country_name'] or 'Несколько GEO'}"
+        campaign_name = company["company_name"] or "—"
+        country_name = company["country_name"] or "Несколько GEO"
+        autorotation = "Да" if company["has_autorotation"] else "Нет"
+        route_name = company["route_name"] or "—"
+        label = f"{company['company_id_external']} · {campaign_name}"
+        metadata = f"Сервер: {company['server_name']} · GEO: {country_name} · Авторотация: {autorotation} · Ручной маршрут: {route_name}"
         checked = "checked" if str(company["id"]) in selected_company_ids else ""
         company_opts += (
-            f"<label class='multi-option' data-server-id='{company['server_id']}' data-country-id='{company['country_id'] or ''}' "
+            f"<label class='multi-option campaign-picker-row' data-server-id='{company['server_id']}' data-country-id='{company['country_id'] or ''}' "
             f"data-campaign-id='{esc(company['company_id_external'])}' data-server-name='{esc(company['server_name'])}' "
-            f"title='{esc(label)}'><input type='checkbox' name='calling_company_ids' value='{company['id']}' {checked}> "
-            f"<span>{esc(label)}</span></label>"
+            f"data-campaign-name='{esc(campaign_name)}'><input type='checkbox' name='calling_company_ids' value='{company['id']}' {checked}> "
+            f"<span class='campaign-picker-main' title='{esc(label)}'>{esc(label)}</span>"
+            f"<span class='campaign-picker-meta' title='{esc(metadata)}'>{esc(metadata)}</span></label>"
         )
     selected_server_ids = {str(event["server_id"])} if event and event["server_id"] else set()
     server_priority_server_boxes = active_server_priority_checkboxes(repo, selected_server_ids, event["country_id"] if event else None)
@@ -8202,27 +8218,26 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
       <div class='campaign-create-row campaign-create-filters-row'>
         <label>Сервер <span class='field-helper'>фильтр</span><select name='server_id' id='campaign-server-filter' disabled>{options(repo, 'servers', selected=event['server_id'] if event else None, empty='Все серверы')}</select></label>
         <label>GEO <span class='field-helper'>фильтр</span><select name='campaign_geo_filter' id='campaign-country-filter' disabled>{active_options(repo, 'countries', selected=None, empty='Все GEO')}</select></label>
-        <div class='campaign-id-action-field'><span class='field-label'>ID кампании / Поиск</span><input name='campaign_id_search' id='campaign-id-search' value='{esc(event['campaign_id_search'] if event and 'campaign_id_search' in event.keys() else '')}' disabled></div>
+        <div class='campaign-id-action-field'><span class='field-label'>ID кампании / Поиск</span><input name='campaign_id_search' id='campaign-id-search' placeholder='ID или название кампании' value='{esc(event['campaign_id_search'] if event and 'campaign_id_search' in event.keys() else '')}' disabled></div>
         <div class='campaign-search-button-wrapper'><button type='button' id='campaign-id-search-button' class='small-button campaign-id-action-button' disabled>Поиск</button></div>
       </div>
     <div class='campaign-create-row campaign-create-company-row'>
       <div class='campaign-company-field'>
         <span class='field-label'>Кампания <span class='required'>*</span></span>
-        <details class='company-select-control' id='event-company' data-placeholder='—'>
-          <summary id='event-company-summary'>—</summary>
-          <div class='company-select-panel'>
-            <div class='multi-select-actions'>
+        <div class='campaign-picker' id='event-company'>
+            <div class='campaign-picker-toolbar'>
               <button type='button' class='small-button' id='campaign-select-visible'>Выбрать все найденные</button>
               <button type='button' class='small-button' id='campaign-clear-selected'>Отменить выбранные</button>
+              <span class='campaign-picker-status'><span id='campaign-found-count'>Найдено: 0</span> · <span id='event-company-summary'>Выбрано: 0</span></span>
             </div>
+          <div class='campaign-picker-list' role='group' aria-label='Кампании'>
             {company_opts}
           </div>
-        </details>
+        </div>
         <span class='field-helper' id='campaign-company-empty' hidden>Нет кампаний для выбранного GEO</span>
       </div>
     </div>
     <span class='field-error' id='campaign-id-search-error' aria-live='polite'></span>
-    <div class='campaign-state-summary' id='campaign-state-summary' hidden aria-live='polite'></div>
     </section>
     <section class='campaign-step' id='campaign-route-step' data-campaign-route-field='1' hidden>
       <h3>3. Новый ручной маршрут</h3>
@@ -8388,13 +8403,7 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
     const summary = form.querySelector('#event-company-summary');
     if (!summary) return;
     const checked = selectedCampaignBoxes();
-    if (checked.length === 0) {{ summary.textContent = '—'; return; }}
-    if (checked.length === 1) {{
-      const label = checked[0].closest('.multi-option');
-      summary.textContent = label ? label.textContent.trim() : checked[0].value;
-      return;
-    }}
-    summary.textContent = `Выбрано: ${{checked.length}} кампании`;
+    summary.textContent = `Выбрано: ${{checked.length}}`;
   }}
   let pinnedMultiGeoCampaignId = '';
   function filterCompanyOptions() {{
@@ -8402,61 +8411,35 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
     const container = form.querySelector('#event-company');
     const server = form.querySelector('#campaign-server-filter');
     const country = form.querySelector('#campaign-country-filter');
+    const search = form.querySelector('#campaign-id-search');
     const empty = form.querySelector('#campaign-company-empty');
     if (!container || !server || !country) return;
     const selectedServerId = server.value;
     const selectedCountryId = country.value;
-    let cleared = false;
+    const query = search ? search.value.trim().toLocaleLowerCase() : '';
     let visibleCount = 0;
     container.querySelectorAll('.multi-option').forEach((option) => {{
       const matchesServer = !selectedServerId || String(option.dataset.serverId) === String(selectedServerId);
       const matchesCountry = !selectedCountryId || !option.dataset.countryId || String(option.dataset.countryId) === String(selectedCountryId);
+      const matchesSearch = !query || String(option.dataset.campaignId || '').toLocaleLowerCase().includes(query) ||
+        String(option.dataset.campaignName || '').toLocaleLowerCase().includes(query);
       const box = option.querySelector('input');
       const isPinnedMultiGeo = pinnedMultiGeoCampaignId && !option.dataset.countryId && box &&
         String(box.value) === String(pinnedMultiGeoCampaignId);
-      const show = !!(matchesServer && (matchesCountry || isPinnedMultiGeo));
+      const show = !!(matchesServer && (matchesCountry || isPinnedMultiGeo) && matchesSearch);
       if (show) visibleCount += 1;
       option.hidden = !show;
-      if (box) {{
-        box.disabled = !show || selectedScope() !== 'campaign_setting';
-        if (!show && box.checked) {{ box.checked = false; cleared = true; }}
-      }}
+      if (box) box.disabled = selectedScope() !== 'campaign_setting';
     }});
     if (empty) empty.hidden = visibleCount !== 0;
-    if (cleared && showNotice) setCampaignSearchError('Выбор кампаний обновлён по выбранному серверу');
+    const found = form.querySelector('#campaign-found-count');
+    if (found) found.textContent = `Найдено: ${{visibleCount}}`;
+    if (showNotice) setCampaignSearchError('');
     updateCompanySummary();
   }}
   function findCampaignByVisibleId() {{
-    const input = form.querySelector('#campaign-id-search');
-    const container = form.querySelector('#event-company');
-    const server = form.querySelector('#campaign-server-filter');
-    const country = form.querySelector('#campaign-country-filter');
-    if (!input || !container || !server || !country) return;
-    const campaignId = input.value.trim();
     setCampaignSearchError('');
-    if (!campaignId) return;
-    const matches = campaigns.filter((company) => String(company.external_id) === campaignId);
-    if (!matches.length) {{ setCampaignSearchError('Кампания с таким ID не найдена'); return; }}
-    const serverMatches = server.value ? matches.filter((company) => String(company.server_id) === String(server.value)) : [];
-    const resolvedMatches = matches.length === 1 ? matches : serverMatches;
-    if (resolvedMatches.length !== 1) {{
-      setCampaignSearchError('Найдено несколько кампаний с таким ID. Выберите сервер.');
-      return;
-    }}
-    const found = resolvedMatches[0];
-    server.value = String(found.server_id);
-    pinnedMultiGeoCampaignId = found.country_id ? '' : String(found.id);
-    const campaignProvider = form.querySelector('#campaign-provider');
-    const campaignRoute = form.querySelector('#company-route');
-    if (campaignProvider) {{ campaignProvider.value = ''; delete campaignProvider.dataset.selectedProviderId; }}
-    if (campaignRoute) campaignRoute.value = '';
-    form.querySelectorAll('input[name="calling_company_ids"]:checked').forEach((box) => {{ box.checked = false; }});
-    sync();
-    const box = container.querySelector(`input[name="calling_company_ids"][value="${{found.id}}"]`);
-    if (box && !box.disabled) box.checked = true;
-    updateCompanySummary();
-    sync();
-    if (!found.country_id) setCampaignSearchError('Кампания использует несколько GEO. GEO маршрута потребуется только при выборе ручного маршрута.');
+    filterCompanyOptions();
   }}
   function updateCampaignProgress() {{
     const scope = selectedScope();
@@ -8466,14 +8449,6 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
     if (selectionStep) selectionStep.hidden = !hasAction;
     const selected = selectedCampaignBoxes();
     const hasCampaign = hasAction && selected.length > 0;
-    const summary = form.querySelector('#campaign-state-summary');
-    if (summary) {{
-      summary.hidden = !hasCampaign;
-      if (selected.length === 1) {{
-        const company = campaigns.find((item) => String(item.id) === String(selected[0].value));
-        summary.textContent = company ? `Текущее состояние — Сервер: ${{company.server_name}} · GEO: ${{company.country_name}} · Авторотация: ${{company.has_autorotation ? 'Да' : 'Нет'}} · Ручной маршрут: ${{company.route_name}}` : '';
-      }} else if (selected.length > 1) summary.textContent = `Выбрано кампаний: ${{selected.length}}. Проверка совместимости выполняется для каждой кампании.`;
-    }}
     const needsRoute = hasCampaign && ctype && ctype.value === 'set_campaign_route';
     const routeStep = form.querySelector('#campaign-route-step');
     if (routeStep) routeStep.hidden = !needsRoute;
@@ -8590,11 +8565,6 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
   const campaignCountryFilter = form.querySelector('#campaign-country-filter');
   if (campaignServerFilter) campaignServerFilter.addEventListener('change', () => {{
     pinnedMultiGeoCampaignId = '';
-    const campaignProvider = form.querySelector('#campaign-provider');
-    const campaignRoute = form.querySelector('#company-route');
-    if (campaignProvider) campaignProvider.value = '';
-    if (campaignRoute) campaignRoute.value = '';
-    form.querySelectorAll('input[name="calling_company_ids"]:checked').forEach((box) => {{ box.checked = false; }});
     filterCompanyOptions(true); sync();
   }});
   if (campaignCountryFilter) campaignCountryFilter.addEventListener('change', () => {{
@@ -8629,6 +8599,7 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
   const campaignSearchButton = form.querySelector('#campaign-id-search-button');
   if (campaignSearchButton) campaignSearchButton.addEventListener('click', findCampaignByVisibleId);
   const campaignSearchInput = form.querySelector('#campaign-id-search');
+  if (campaignSearchInput) campaignSearchInput.addEventListener('input', () => filterCompanyOptions());
   if (campaignSearchInput) campaignSearchInput.addEventListener('keydown', (event) => {{
     if (event.key !== 'Enter') return;
     event.preventDefault();
@@ -8645,15 +8616,6 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
     form.querySelectorAll('input[name="calling_company_ids"]:checked').forEach((box) => {{ box.checked = false; }});
     updateCompanySummary(); sync();
   }});
-  const campaignDropdown = form.querySelector('#event-company');
-  if (campaignDropdown) {{
-    document.addEventListener('click', (event) => {{
-      if (campaignDropdown.open && !campaignDropdown.contains(event.target)) campaignDropdown.open = false;
-    }});
-    campaignDropdown.addEventListener('keydown', (event) => {{
-      if (campaignDropdown.open && event.key === 'Escape') {{ event.preventDefault(); campaignDropdown.open = false; }}
-    }});
-  }}
   sync();
 }})();
 </script>
