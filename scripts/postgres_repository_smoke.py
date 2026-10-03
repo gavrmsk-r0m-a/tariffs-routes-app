@@ -6,6 +6,7 @@ import argparse
 import json
 import os
 import sys
+from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
@@ -45,6 +46,7 @@ SMOKE_METHODS = (
     "list_calling_company_events", "count_calling_company_events",
     "spam_phone_candidates", "spam_eligible_routes", "spam_route_number_union",
     "spam_states", "spam_checked_numbers", "spam_route_pool_summary", "spam_phone_history",
+    "dashboard_summary",
 )
 
 STAGE_34_METHODS = (
@@ -121,6 +123,10 @@ STAGE_50_METHODS = (
     "spam_checked_numbers",
     "spam_route_pool_summary",
     "spam_phone_history",
+)
+
+STAGE_51_METHODS = (
+    "dashboard_summary",
 )
 
 EXISTS_CHECKS = (
@@ -1004,6 +1010,51 @@ def run_stage_50_checks(repo: Repository, check) -> None:
     ))
 
 
+def run_stage_51_checks(repo: Repository, check) -> None:
+    """Exercise the operational dashboard snapshot against a fixed fixture day."""
+    fixture_today = date(2026, 7, 12)
+    summary = check(
+        "stage_51_dashboard_summary",
+        lambda: repo.dashboard_summary(today=fixture_today),
+    )
+    check("stage_51_dashboard_summary_dict", lambda: _check(
+        isinstance(summary, dict), "dashboard summary must be a dict",
+    ))
+    integer_fields = (
+        "active_routes", "active_companies", "active_phones", "attention_phones",
+        "review_phones", "problematic_phones", "missing_working_routes", "manual_campaigns",
+    )
+    for field in integer_fields:
+        check(f"stage_51_dashboard_{field}_integer", lambda field=field: _check(
+            isinstance(summary.get(field), int) and not isinstance(summary.get(field), bool),
+            f"dashboard {field} must be an integer",
+        ))
+
+    series = summary.get("provider_change_series") if isinstance(summary, dict) else None
+    check("stage_51_dashboard_series_length", lambda: _check(
+        isinstance(series, list) and len(series) == 14,
+        "dashboard provider-change series must contain exactly 14 entries",
+    ))
+    expected_dates = [fixture_today - timedelta(days=13) + timedelta(days=offset) for offset in range(14)]
+    check("stage_51_dashboard_series_consecutive_dates", lambda: _check(
+        isinstance(series, list) and [item.get("date") for item in series] == expected_dates,
+        "dashboard provider-change dates must be consecutive and end on the fixture day",
+    ))
+    check("stage_51_dashboard_series_non_negative_integers", lambda: _check(
+        isinstance(series, list)
+        and all(isinstance(item.get("value"), int) and not isinstance(item.get("value"), bool) and item["value"] >= 0 for item in series),
+        "dashboard provider-change values must be non-negative integers",
+    ))
+    expected_events = repo.list_routing_events({
+        "date_from": "2026-06-29 00:00:00",
+        "date_to": "2026-07-12 23:59:59.999999",
+    })
+    check("stage_51_dashboard_provider_change_total", lambda: _check(
+        isinstance(series, list) and sum(item["value"] for item in series) == len(expected_events),
+        "dashboard provider-change total must equal the sum of all 14 daily values",
+    ))
+
+
 def run_repository_checks(repo: Repository, postgres_url: str) -> dict:
     summary = empty_summary(postgres_url)
     checks: list[tuple[str, object]] = []
@@ -1077,6 +1128,7 @@ def run_repository_checks(repo: Repository, postgres_url: str) -> dict:
     run_stage_48_checks(repo, check, company)
     run_stage_49_checks(repo, check, company)
     run_stage_50_checks(repo, check)
+    run_stage_51_checks(repo, check)
 
     summary.update(status="ok" if not failures else "failed", checks_count=len(checks) + len(failures), failures=failures)
     return summary

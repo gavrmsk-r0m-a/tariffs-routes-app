@@ -15,7 +15,7 @@ from app.repository import Repository
 
 _TEST_DB = shared_database()
 
-CHECKS_COUNT = 644
+CHECKS_COUNT = 658
 
 
 class RecordingRepository:
@@ -529,6 +529,10 @@ class PostgreSQLRepositorySmokeTest(unittest.TestCase):
         self.assertEqual(1, smoke.SMOKE_METHODS.count("list_company_routing_settings"))
         self.assertEqual(1, smoke.SMOKE_METHODS.count("get_company_routing_setting"))
         self.assertNotIn("_normalize_optional_bool_filter", smoke.SMOKE_METHODS)
+
+    def test_stage_51_dashboard_summary_is_declared_once(self):
+        self.assertEqual(("dashboard_summary",), smoke.STAGE_51_METHODS)
+        self.assertEqual(1, smoke.SMOKE_METHODS.count("dashboard_summary"))
 
 
 if __name__ == "__main__":
