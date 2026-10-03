@@ -7214,9 +7214,9 @@ def dashboard_page(repo: Repository) -> bytes:
     attention = snapshot["attention_phones"]
     missing = snapshot["missing_working_routes"]
     operational = "".join([
-        dashboard_operational_card("Проблемные номера", attention, f"{snapshot['review_phones']} требуют проверки · {snapshot['problematic_phones']} проблемных" if attention else "✓ Всё спокойно", "phones", "/phones?is_active=1&amp;attention=1", "attention" if attention else "success"),
-        dashboard_operational_card("Маршруты без рабочих номеров", missing, "Требуют внимания" if missing else "✓ Всё спокойно", "routes", "/routes?is_actual=1&amp;missing_working_numbers=1", "attention" if missing else "success"),
-        dashboard_operational_card("Кампании на ручном маршруте", snapshot["manual_campaigns"], "Активные кампании с текущим ручным маршрутом", "admin_company_routing_settings", "/admin/company-routing-settings?routing_mode=campaign_route&amp;company_active=1", "info"),
+        dashboard_operational_card("Проблемные номера", attention, f"{snapshot['review_phones']} требуют проверки · {snapshot['problematic_phones']} проблемных" if attention else "✓ Всё спокойно", "phones", "/phones?is_active=1&attention=1", "attention" if attention else "success"),
+        dashboard_operational_card("Маршруты без рабочих номеров", missing, "Требуют внимания" if missing else "✓ Всё спокойно", "routes", "/routes?is_actual=1&missing_working_numbers=1", "attention" if missing else "success"),
+        dashboard_operational_card("Кампании на ручном маршруте", snapshot["manual_campaigns"], "Активные кампании с текущим ручным маршрутом", "admin_company_routing_settings", "/admin/company-routing-settings?routing_mode=campaign_route&company_active=1", "info"),
     ])
     body = f"""
 <main class='dashboard-v2'>
