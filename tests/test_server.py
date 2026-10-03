@@ -6420,7 +6420,9 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
         scroll_body = create_form.split("<div class='provider-change-scroll-body'>", 1)[1].split("<div class='modal-actions provider-change-create-actions'>", 1)[0]
         self.assertNotIn("provider-change-create-actions", scroll_body)
         self.assertIn(".provider-change-create-actions { position: static; grid-row: 3; z-index: auto;", content)
-        self.assertIn("padding: 0 8px 16px 0;", content)
+        self.assertIn("padding: 0 8px 24px 0;", content)
+        self.assertIn("scrollbar-width: auto;", content)
+        self.assertIn(".provider-change-scroll-body::-webkit-scrollbar { width: 12px;", content)
         footer_css = content.split(".provider-change-create-actions {", 1)[1].split("}", 1)[0]
         self.assertNotIn("position: absolute", footer_css)
         self.assertNotIn("position: fixed", footer_css)
@@ -6430,6 +6432,7 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
             self.assertIn(f"id='{control}'", route_step)
         self.assertNotIn("campaign-state-summary", create_form)
         self.assertNotIn("Текущее состояние —", create_form)
+        self.assertIn("step.scrollIntoView({ behavior: 'smooth', block: 'nearest' })", create_form)
 
     def test_bulk_campaign_autorotation_creates_event_per_changed_campaign_and_skips_noop(self):
         self.request("/routes")

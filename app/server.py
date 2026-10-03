@@ -1418,10 +1418,10 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .modal-cancel, .admin-edit-cancel {{ background: var(--surface); color: var(--text); border-color: var(--border-strong); }}
     .provider-change-create-shell[open] > .provider-change-create-form {{ min-height: min(740px, calc(100vh - 48px)); }}
     body:has(.provider-change-create-shell[open]) {{ overflow: hidden; }}
-    .provider-change-create-shell .provider-change-scroll-body {{ min-height: 0; min-width: 0; width: 100%; max-width: 100%; box-sizing: border-box; overflow-y: auto; overflow-x: hidden; scrollbar-gutter: stable; padding: 0 8px 16px 0; scrollbar-width: thin; scrollbar-color: var(--border-ink, #8293a6) transparent; }}
-    .provider-change-create-shell .provider-change-scroll-body::-webkit-scrollbar {{ width: 8px; }}
-    .provider-change-create-shell .provider-change-scroll-body::-webkit-scrollbar-track {{ background: transparent; }}
-    .provider-change-create-shell .provider-change-scroll-body::-webkit-scrollbar-thumb {{ border-radius: 999px; background: var(--border-ink, #8293a6); }}
+    .provider-change-create-shell .provider-change-scroll-body {{ min-height: 0; min-width: 0; width: 100%; max-width: 100%; box-sizing: border-box; overflow-y: auto; overflow-x: hidden; scrollbar-gutter: stable; padding: 0 8px 24px 0; scrollbar-width: auto; scrollbar-color: var(--border-ink, #8293a6) var(--surface-soft, #eef2f6); }}
+    .provider-change-create-shell .provider-change-scroll-body::-webkit-scrollbar {{ width: 12px; }}
+    .provider-change-create-shell .provider-change-scroll-body::-webkit-scrollbar-track {{ background: var(--surface-soft, #eef2f6); }}
+    .provider-change-create-shell .provider-change-scroll-body::-webkit-scrollbar-thumb {{ border: 2px solid var(--surface-soft, #eef2f6); border-radius: 999px; background: var(--border-ink, #8293a6); }}
     .provider-change-create-shell .provider-change-scroll-body::-webkit-scrollbar-thumb:hover {{ background: var(--muted, #64748b); }}
     .modal-cancel:hover, .admin-edit-cancel:hover {{ background: var(--warning-soft); color: var(--accent-strong); border-color: var(--warning-border); }}
     .modal-card input, .modal-card select, .modal-card textarea, .modal-form-card[open] input, .modal-form-card[open] select, .modal-form-card[open] textarea, .remote-edit-card input, .remote-edit-card select, .remote-edit-card textarea {{ width: 100%; box-sizing: border-box; background: var(--input-bg, var(--surface)); color: var(--text); border-color: var(--border-strong); }}
@@ -8441,6 +8441,13 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
     setCampaignSearchError('');
     filterCompanyOptions();
   }}
+  function syncAndRevealCampaignStep(step) {{
+    const wasHidden = !step || step.hidden;
+    sync();
+    if (step && wasHidden && !step.hidden) {{
+      requestAnimationFrame(() => step.scrollIntoView({{ behavior: 'smooth', block: 'nearest' }}));
+    }}
+  }}
   function updateCampaignProgress() {{
     const scope = selectedScope();
     const ctype = form.querySelector('#company-change-type');
@@ -8559,7 +8566,7 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
     if (country) country.value = '';
     if (provider) provider.value = '';
     if (route) route.value = '';
-    sync();
+    syncAndRevealCampaignStep(form.querySelector('#campaign-route-step'));
   }}));
   const campaignServerFilter = form.querySelector('#campaign-server-filter');
   const campaignCountryFilter = form.querySelector('#campaign-country-filter');
@@ -8593,7 +8600,7 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
     sync();
   }});
   const campaignRoute = form.querySelector('#company-route');
-  if (campaignRoute) campaignRoute.addEventListener('change', sync);
+  if (campaignRoute) campaignRoute.addEventListener('change', () => syncAndRevealCampaignStep(form.querySelector('#campaign-reason-step')));
   const campaignReason = form.querySelector('#campaign-routing-reason');
   if (campaignReason) campaignReason.addEventListener('change', updateCampaignProgress);
   const campaignSearchButton = form.querySelector('#campaign-id-search-button');
@@ -8609,7 +8616,7 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
   const selectVisible = form.querySelector('#campaign-select-visible');
   if (selectVisible) selectVisible.addEventListener('click', () => {{
     form.querySelectorAll('#event-company .multi-option:not([hidden]) input[name="calling_company_ids"]').forEach((box) => {{ if (!box.disabled) box.checked = true; }});
-    updateCompanySummary(); sync();
+    updateCompanySummary(); syncAndRevealCampaignStep(form.querySelector('#campaign-route-step'));
   }});
   const clearSelected = form.querySelector('#campaign-clear-selected');
   if (clearSelected) clearSelected.addEventListener('click', () => {{
