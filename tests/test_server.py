@@ -6432,7 +6432,7 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
             self.assertIn(f"id='{control}'", route_step)
         self.assertNotIn("campaign-state-summary", create_form)
         self.assertNotIn("Текущее состояние —", create_form)
-        self.assertIn("step.scrollIntoView({ behavior: 'smooth', block: 'nearest' })", create_form)
+        self.assertIn("step.scrollIntoView({\n          behavior: 'smooth',\n          block: 'nearest'\n        })", create_form)
 
     def test_bulk_campaign_autorotation_creates_event_per_changed_campaign_and_skips_noop(self):
         self.request("/routes")

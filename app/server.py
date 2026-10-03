@@ -8444,8 +8444,14 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
   function syncAndRevealCampaignStep(step) {{
     const wasHidden = !step || step.hidden;
     sync();
+
     if (step && wasHidden && !step.hidden) {{
-      requestAnimationFrame(() => step.scrollIntoView({{ behavior: 'smooth', block: 'nearest' }}));
+      requestAnimationFrame(() =>
+        step.scrollIntoView({{
+          behavior: 'smooth',
+          block: 'nearest'
+        }})
+      );
     }}
   }}
   function updateCampaignProgress() {{
