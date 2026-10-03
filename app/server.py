@@ -1418,7 +1418,7 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .modal-cancel, .admin-edit-cancel {{ background: var(--surface); color: var(--text); border-color: var(--border-strong); }}
     .provider-change-create-shell[open] > .provider-change-create-form {{ min-height: min(740px, calc(100vh - 48px)); }}
     body:has(.provider-change-create-shell[open]) {{ overflow: hidden; }}
-    .provider-change-create-shell .provider-change-scroll-body {{ min-height: 0; min-width: 0; width: 100%; max-width: 100%; box-sizing: border-box; overflow-y: auto; overflow-x: hidden; scrollbar-gutter: stable; padding-right: 8px; scrollbar-width: thin; scrollbar-color: var(--border-ink, #8293a6) transparent; }}
+    .provider-change-create-shell .provider-change-scroll-body {{ min-height: 0; min-width: 0; width: 100%; max-width: 100%; box-sizing: border-box; overflow-y: auto; overflow-x: hidden; scrollbar-gutter: stable; padding: 0 8px 16px 0; scrollbar-width: thin; scrollbar-color: var(--border-ink, #8293a6) transparent; }}
     .provider-change-create-shell .provider-change-scroll-body::-webkit-scrollbar {{ width: 8px; }}
     .provider-change-create-shell .provider-change-scroll-body::-webkit-scrollbar-track {{ background: transparent; }}
     .provider-change-create-shell .provider-change-scroll-body::-webkit-scrollbar-thumb {{ border-radius: 999px; background: var(--border-ink, #8293a6); }}
@@ -2983,7 +2983,7 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     html[data-theme="light-v2"] .provider-change-create-shell .campaign-company-field {{ min-width: 0; width: 100%; }}
     html[data-theme="light-v2"] .provider-change-create-shell .campaign-picker-toolbar {{ display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin: 4px 0 7px; }}
     html[data-theme="light-v2"] .provider-change-create-shell .campaign-picker-status {{ margin-left: auto; color: var(--muted); font-size: 12px; font-weight: 650; }}
-    html[data-theme="light-v2"] .provider-change-create-shell .campaign-picker-list {{ width: 100%; height: clamp(180px, 25vh, 240px); box-sizing: border-box; overflow-y: auto; overflow-x: hidden; border: 1px solid var(--border-strong); border-radius: var(--radius-control); background: #fff; }}
+    html[data-theme="light-v2"] .provider-change-create-shell .campaign-picker-list {{ width: 100%; height: auto; min-height: 0; max-height: 140px; box-sizing: border-box; overflow-y: auto; overflow-x: hidden; border: 1px solid var(--border-strong); border-radius: var(--radius-control); background: #fff; }}
     html[data-theme="light-v2"] .provider-change-create-shell .campaign-picker-row {{ display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 10px; align-items: start; margin: 0; padding: 9px 10px; border-bottom: 1px solid var(--border); cursor: pointer; white-space: normal; }}
     html[data-theme="light-v2"] .provider-change-create-shell .campaign-picker-row:last-child {{ border-bottom: 0; }}
     html[data-theme="light-v2"] .provider-change-create-shell .campaign-picker-row:hover {{ background: var(--accent-soft); }}
@@ -3022,7 +3022,7 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     html[data-theme="light-v2"] .provider-change-create-shell .server-priority-create-right .server-current-route-text {{ color: var(--muted); }}
     html[data-theme="light-v2"] .provider-change-create-shell .server-priority-create-right .server-current-route-text.has-route {{ color: #C2410C; }}
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-shell-hint {{ flex: 0 0 24px; min-height: 24px; margin: 0; color: var(--muted); }}
-    html[data-theme="light-v2"] .provider-change-create-shell .provider-change-create-actions {{ position: relative; grid-row: 3; z-index: 2; flex: 0 0 auto; width: calc(100% + 32px); box-sizing: border-box; margin: 0 -16px !important; padding: 14px 16px !important; border-top: 1px solid var(--border-strong); background: var(--surface) !important; }}
+    html[data-theme="light-v2"] .provider-change-create-shell .provider-change-create-actions {{ position: static; grid-row: 3; z-index: auto; flex: 0 0 auto; width: calc(100% + 32px); box-sizing: border-box; margin: 0 -16px !important; padding: 14px 16px !important; border-top: 1px solid var(--border-strong); background: var(--surface) !important; }}
     html[data-theme="light-v2"] .scope-cards {{ grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); width: 100%; gap: 10px; }}
     html[data-theme="light-v2"] .scope-card {{ position: relative; display: flex; align-items: stretch; min-height: 58px; padding: 10px 12px 10px 14px; border: 1px solid var(--border-strong); border-left: 3px solid var(--border-strong); background: #fff; box-shadow: none; cursor: pointer; }}
     html[data-theme="light-v2"] .scope-card input[type="radio"] {{ position: absolute; opacity: 0; pointer-events: none; }}
@@ -8238,7 +8238,6 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
       </div>
     </div>
     <span class='field-error' id='campaign-id-search-error' aria-live='polite'></span>
-    <div class='campaign-state-summary' id='campaign-state-summary' hidden aria-live='polite'></div>
     </section>
     <section class='campaign-step' id='campaign-route-step' data-campaign-route-field='1' hidden>
       <h3>3. Новый ручной маршрут</h3>
@@ -8450,14 +8449,6 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
     if (selectionStep) selectionStep.hidden = !hasAction;
     const selected = selectedCampaignBoxes();
     const hasCampaign = hasAction && selected.length > 0;
-    const summary = form.querySelector('#campaign-state-summary');
-    if (summary) {{
-      summary.hidden = !hasCampaign;
-      if (selected.length === 1) {{
-        const company = campaigns.find((item) => String(item.id) === String(selected[0].value));
-        summary.textContent = company ? `Текущее состояние — Сервер: ${{company.server_name}} · GEO: ${{company.country_name}} · Авторотация: ${{company.has_autorotation ? 'Да' : 'Нет'}} · Ручной маршрут: ${{company.route_name}}` : '';
-      }} else if (selected.length > 1) summary.textContent = `Выбрано кампаний: ${{selected.length}}. Проверка совместимости выполняется для каждой кампании.`;
-    }}
     const needsRoute = hasCampaign && ctype && ctype.value === 'set_campaign_route';
     const routeStep = form.querySelector('#campaign-route-step');
     if (routeStep) routeStep.hidden = !needsRoute;

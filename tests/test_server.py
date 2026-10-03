@@ -6139,7 +6139,7 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
         _, content = self.request("/provider-changes")
         self.assertIn(".provider-change-campaign-create-grid { flex: 1 1 0; display: flex; flex-direction: column; gap: 12px; min-height: 0; min-width: 0; width: 100%; max-width: 100%; box-sizing: border-box;", content)
         self.assertIn(".campaign-create-change-row { min-width: 0; width: 100%; max-width: 100%; box-sizing: border-box;", content)
-        self.assertIn(".campaign-picker-list { width: 100%; height: clamp(180px, 25vh, 240px);", content)
+        self.assertIn(".campaign-picker-list { width: 100%; height: auto; min-height: 0; max-height: 140px;", content)
         self.assertNotIn(".company-select-panel { position: absolute", content)
 
     def test_provider_change_campaign_transitions_do_not_use_scroll_position_workaround(self):
@@ -6338,7 +6338,7 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
         self.assertIn("<option value=''>Все серверы</option>", create_form)
         self.assertIn("<option value=''>Все GEO</option>", create_form)
         self.assertIn("id='campaign-route-step' data-campaign-route-field='1' hidden", create_form)
-        self.assertIn("id='campaign-state-summary' hidden", create_form)
+        self.assertNotIn("id='campaign-state-summary'", create_form)
         self.assertIn("function updateCampaignProgress()", content)
 
     def test_campaign_setting_route_is_preserved_when_toggling_autorotation(self):
@@ -6419,7 +6419,8 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
         create_form = _form_fragment(content, "/provider-changes/create")
         scroll_body = create_form.split("<div class='provider-change-scroll-body'>", 1)[1].split("<div class='modal-actions provider-change-create-actions'>", 1)[0]
         self.assertNotIn("provider-change-create-actions", scroll_body)
-        self.assertIn(".provider-change-create-actions { position: relative; grid-row: 3; z-index: 2;", content)
+        self.assertIn(".provider-change-create-actions { position: static; grid-row: 3; z-index: auto;", content)
+        self.assertIn("padding: 0 8px 16px 0;", content)
         footer_css = content.split(".provider-change-create-actions {", 1)[1].split("}", 1)[0]
         self.assertNotIn("position: absolute", footer_css)
         self.assertNotIn("position: fixed", footer_css)
@@ -6427,6 +6428,8 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
         route_step = create_form.split("id='campaign-route-step'", 1)[1].split("</section>", 1)[0]
         for control in ("campaign-route-country", "campaign-provider", "company-route"):
             self.assertIn(f"id='{control}'", route_step)
+        self.assertNotIn("campaign-state-summary", create_form)
+        self.assertNotIn("Текущее состояние —", create_form)
 
     def test_bulk_campaign_autorotation_creates_event_per_changed_campaign_and_skips_noop(self):
         self.request("/routes")
