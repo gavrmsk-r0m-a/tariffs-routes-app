@@ -7,7 +7,7 @@ import re
 import json
 from contextlib import contextmanager
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
 from app.db_adapter import (
@@ -1403,6 +1403,7 @@ class Repository:
     def list_routes(self, filters: dict | None = None) -> list[dict]:
         route_filters = dict(filters or {})
         prefix_id = route_filters.pop("prefix_id", None)
+        missing_working_numbers = route_filters.pop("missing_working_numbers", None)
         is_actual = route_filters.get("is_actual")
         if is_actual in (True, 1, "1"):
             route_filters["is_actual"] = to_db_bool(True, self.backend)
@@ -1430,6 +1431,24 @@ class Repository:
             else:
                 where = " WHERE " + prefix_clause
             params.append(prefix_id)
+        supported, normalized_missing = self._normalize_optional_bool_filter(missing_working_numbers)
+        if not supported:
+            return []
+        if normalized_missing == to_db_bool(True, self.backend):
+            missing_clause = f"""r.is_actual = {placeholder(self.backend)}
+                AND r.cli_source_type = 'pool'
+                AND (TRIM(COALESCE(r.aon_pool, '')) = 'Пул купленных номеров'
+                     OR TRIM(COALESCE(r.aon_pool, '')) LIKE {placeholder(self.backend)})
+                AND NOT EXISTS (
+                    SELECT 1 FROM route_phone_numbers working_rpn
+                    JOIN phone_numbers working_pn ON working_pn.id = working_rpn.phone_number_id
+                    WHERE working_rpn.route_id = r.id
+                      AND working_rpn.is_active = {placeholder(self.backend)}
+                      AND working_pn.is_active = {placeholder(self.backend)}
+                      AND working_pn.status = 'used'
+                )"""
+            where += (" AND " if where else " WHERE ") + missing_clause
+            params.extend([to_db_bool(True, self.backend), "Пул купленных номеров:%", to_db_bool(True, self.backend), to_db_bool(True, self.backend)])
         return list(
             self.conn.execute(
                 f"""
@@ -1448,6 +1467,7 @@ class Repository:
 
     def list_phone_numbers(self, filters: dict | None = None) -> list[dict]:
         phone_filters = dict(filters or {})
+        attention = phone_filters.pop("attention", None)
         supported, normalized_active = self._normalize_optional_bool_filter(phone_filters.get("is_active"))
         if not supported:
             return []
@@ -1468,6 +1488,10 @@ class Repository:
         else:
             phone_filters["is_problematic"] = normalized_problematic
 
+        supported, normalized_attention = self._normalize_optional_bool_filter(attention)
+        if not supported:
+            return []
+
         where, filter_params = query_filters(
             phone_filters,
             {
@@ -1485,6 +1509,10 @@ class Repository:
             },
             backend=self.backend,
         )
+        if normalized_attention == to_db_bool(True, self.backend):
+            attention_clause = f"pn.is_active = {placeholder(self.backend)} AND (pn.review_required = {placeholder(self.backend)} OR pn.is_problematic = {placeholder(self.backend)})"
+            where += (" AND " if where else " WHERE ") + attention_clause
+            filter_params.extend([to_db_bool(True, self.backend), to_db_bool(True, self.backend), to_db_bool(True, self.backend)])
         p = placeholder(self.backend)
         route_names_expr = f"""
                     COALESCE((
@@ -2558,6 +2586,7 @@ class Repository:
         show_history_value = routing_filters.pop("show_history", None)
         is_active_value = routing_filters.pop("is_active", None)
         company_id_external = routing_filters.pop("company_id_external", None)
+        company_active_value = routing_filters.pop("company_active", None)
 
         include_supported, include_normalized = self._normalize_optional_bool_filter(include_history_value)
         show_supported, show_normalized = self._normalize_optional_bool_filter(show_history_value)
@@ -2567,6 +2596,10 @@ class Repository:
 
         if company_id_external not in (None, "", "all"):
             routing_filters["company_id_external_like"] = company_id_external
+
+        company_active_supported, company_active = self._normalize_optional_bool_filter(company_active_value)
+        if not company_active_supported:
+            return []
 
         where, params = query_filters(
             routing_filters,
@@ -2584,6 +2617,9 @@ class Repository:
             clauses.extend(where.removeprefix(" WHERE ").split(" AND "))
 
         p = placeholder(self.backend)
+        if company_active is not None:
+            clauses.append(f"cc.is_active = {p}")
+            params.append(company_active)
         if include_history:
             supported, normalized_active = self._normalize_optional_bool_filter(is_active_value)
             if not supported:
@@ -2617,6 +2653,44 @@ class Repository:
                 params,
             )
         )
+
+    def dashboard_summary(self, today: date | None = None) -> dict:
+        """Return the read-only operational snapshot used by /dashboard."""
+        today = today or datetime.now(timezone.utc).date()
+        start_day = today - timedelta(days=13)
+        start_at = datetime.combine(start_day, time.min, tzinfo=timezone.utc)
+        end_at = datetime.combine(today + timedelta(days=1), time.min, tzinfo=timezone.utc)
+        p = placeholder(self.backend)
+        true_value = to_db_bool(True, self.backend)
+
+        def count(sql: str, params: list | tuple = ()) -> int:
+            row = self.conn.execute(sql, params).fetchone()
+            return int(row["value"] if row is not None else 0)
+
+        event_rows = self.conn.execute(
+            f"SELECT event_at FROM routing_events WHERE is_active = {p} AND event_at >= {p} AND event_at < {p}",
+            (true_value, start_at, end_at),
+        ).fetchall()
+        daily = {start_day + timedelta(days=offset): 0 for offset in range(14)}
+        for row in event_rows:
+            value = row["event_at"]
+            event_day = value.date() if isinstance(value, datetime) else date.fromisoformat(str(value)[:10])
+            if event_day in daily:
+                daily[event_day] += 1
+
+        missing_filter = {"is_actual": "1", "missing_working_numbers": "1"}
+        manual_filter = {"routing_mode": "campaign_route", "company_active": "1"}
+        return {
+            "active_routes": count(f"SELECT COUNT(*) AS value FROM routes WHERE is_actual = {p}", (true_value,)),
+            "active_companies": count(f"SELECT COUNT(*) AS value FROM calling_companies WHERE is_active = {p}", (true_value,)),
+            "active_phones": count(f"SELECT COUNT(*) AS value FROM phone_numbers WHERE is_active = {p}", (true_value,)),
+            "provider_change_series": [{"date": day, "value": value} for day, value in daily.items()],
+            "attention_phones": len(self.list_phone_numbers({"is_active": "1", "attention": "1"})),
+            "review_phones": count(f"SELECT COUNT(*) AS value FROM phone_numbers WHERE is_active = {p} AND review_required = {p}", (true_value, true_value)),
+            "problematic_phones": count(f"SELECT COUNT(*) AS value FROM phone_numbers WHERE is_active = {p} AND is_problematic = {p}", (true_value, true_value)),
+            "missing_working_routes": len(self.list_routes(missing_filter)),
+            "manual_campaigns": len(self.list_company_routing_settings(manual_filter)),
+        }
 
 
     def get_company_routing_setting(self, setting_id: int) -> dict | None:

@@ -5,6 +5,7 @@ import io
 import os
 import re
 import unittest
+from datetime import date, timedelta
 from decimal import Decimal
 from unittest.mock import Mock, patch
 from urllib.parse import urlencode
@@ -472,6 +473,44 @@ class ServerSmokeTest(unittest.TestCase):
             conn.commit()
         finally:
             conn.close()
+
+    def test_dashboard_v2_rendering_and_layout_contract(self):
+        captured, content = self.request("/dashboard")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("class='dashboard-v2'", content)
+        self.assertIn("dashboard-v2-overview", content)
+        self.assertIn("grid-template-columns: minmax(260px, .9fr) minmax(0, 2.1fr)", content)
+        self.assertIn(".dashboard-v2-chart svg", content)
+        self.assertIn("width: 100%; max-width: 100%", content)
+        self.assertIn("Операционный контроль", content)
+        self.assertIn("/phones?is_active=1&amp;attention=1", content)
+        self.assertIn("/routes?is_actual=1&amp;missing_working_numbers=1", content)
+        self.assertIn("/admin/company-routing-settings?routing_mode=campaign_route&amp;company_active=1", content)
+        self.assertNotIn("sparkline", content)
+        self.assertNotIn("event-feed", content)
+        self.assertNotIn("metrics-grid", content)
+        self.assertNotIn("Лента событий", content)
+        self.assertEqual(content.count("class='dashboard-v2-bar'"), 14)
+
+    def test_dashboard_filter_controls_render_for_exact_drill_down_contracts(self):
+        _, phones = self.request("/phones?is_active=1&attention=1")
+        self.assertIn('name="attention" value="1" checked', phones)
+        self.assertIn("Требует внимания", phones)
+        _, routes = self.request("/routes?is_actual=1&missing_working_numbers=1")
+        self.assertIn('name="missing_working_numbers" value="1" checked', routes)
+        self.assertIn("Без рабочих номеров", routes)
+        _, routing = self.request("/admin/company-routing-settings?routing_mode=campaign_route&company_active=1")
+        self.assertIn('name="company_active"', routing)
+        self.assertIn("Активность кампании", routing)
+
+    def test_dashboard_chart_zero_fill_and_scale_edge_cases(self):
+        start = date(2026, 9, 20)
+        for values in ([0] * 14, [1] + [0] * 13, list(range(1, 15)), [1, 2, 3, 120] + [0] * 10, [999] * 14):
+            with self.subTest(values=values):
+                chart = server.dashboard_chart([{"date": start + timedelta(days=i), "value": value} for i, value in enumerate(values)])
+                self.assertEqual(chart.count("class='dashboard-v2-bar'"), 14)
+                self.assertNotIn("NaN", chart)
+                self.assertNotIn("inf", chart.lower())
 
     def user_cookie(self, username):
         self.request("/login")

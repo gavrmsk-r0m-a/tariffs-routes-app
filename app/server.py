@@ -135,13 +135,13 @@ def sign_user_id(user_id: int) -> str:
 def auth_cookie_header(user_id: int) -> tuple[str, str]:
     return ("Set-Cookie", f"{CURRENT_USER_COOKIE}={sign_user_id(user_id)}; {render_cookie_attributes()}")
 FILTER_SECTIONS = {
-    "/routes": ("routes", ("country_id", "provider_id", "prefix_id", "is_actual", "search")),
+    "/routes": ("routes", ("country_id", "provider_id", "prefix_id", "is_actual", "missing_working_numbers", "search")),
     "/tariffs": ("tariffs", ("country_id", "provider_id", "priority_status", "status")),
-    "/phones": ("phones", ("country_id", "provider_id", "project", "assignment_type", "status", "is_active", "number", "review_required", "is_problematic")),
+    "/phones": ("phones", ("country_id", "provider_id", "project", "assignment_type", "status", "is_active", "number", "attention", "review_required", "is_problematic")),
     "/companies": ("companies", ("server_id", "country_id", "company", "external_id", "has_autorotation", "is_active")),
     "/provider-changes": ("provider_changes", ("date_from", "date_to", "country_id", "apply_scope", "server_id", "campaign_id", "provider_id", "include_inactive")),
     "/admin/server-priorities": ("admin_server_priorities", ("country_id", "server_id")),
-    "/admin/company-routing-settings": ("admin_company_routing_settings", ("country_id", "server_id", "company_id_external", "routing_mode", "is_active", "show_history")),
+    "/admin/company-routing-settings": ("admin_company_routing_settings", ("country_id", "server_id", "company_id_external", "routing_mode", "company_active", "is_active", "show_history")),
 }
 FILTER_OPEN_KEY = "_filters_open"
 FILTER_CONTROL_KEYS = {"page", "limit", "export", "reset_filters", "_filters_restored", FILTER_OPEN_KEY}
@@ -1174,7 +1174,7 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
 
     .hero-action {{ background: var(--accent-strong); border-color: var(--accent-strong); color: #fff; white-space: nowrap; }}
     .hero-action:hover {{ background: var(--accent); border-color: var(--accent); color: #fff; }}
-    .metrics-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; margin: 0 0 18px; }}
+    .obsolete-metric-layout {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; margin: 0 0 18px; }}
     .metric-card {{ border: 1px solid var(--border-strong); border-left: 4px solid var(--cyber); border-radius: var(--radius-card); padding: 15px; background: linear-gradient(180deg, var(--surface), var(--surface-muted)); box-shadow: var(--shadow-soft); }}
     .metric-label {{ display: block; min-height: 36px; color: var(--muted); font-size: 12px; font-weight: 760; text-transform: uppercase; letter-spacing: .04em; }}
     .metric-value {{ display: block; margin: 6px 0 3px; color: var(--text-strong); font-size: 30px; line-height: 1; letter-spacing: -0.03em; }}
@@ -1543,14 +1543,14 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .sidebar-collapsed .brand-block, .sidebar-collapsed .side-link {{ justify-content: center; padding-left: 0; padding-right: 0; }}
     .sidebar-collapsed [data-tooltip] {{ position: relative; }}
     .sidebar-collapsed [data-tooltip]:hover::after {{ content: attr(data-tooltip); position: absolute; left: calc(100% + 10px); top: 50%; transform: translateY(-50%); z-index: 10000; pointer-events: none; white-space: nowrap; border-radius: 8px; padding: 7px 9px; background: #111827; color: #fff; font-size: 12px; box-shadow: var(--shadow-card); }}
-    .metrics-grid {{ grid-template-columns: repeat(4, minmax(180px,1fr)); gap: 20px; margin: 8px 0 28px; }}
+    .obsolete-metric-layout {{ grid-template-columns: repeat(4, minmax(180px,1fr)); gap: 20px; margin: 8px 0 28px; }}
     .metric-card {{ position: relative; overflow: hidden; min-height: 156px; padding: 20px; border: 1px solid var(--border); border-left: 1px solid var(--border); border-radius: 14px; background: #fff; box-shadow: var(--shadow-card); }}
     .metric-card::before {{ content: ""; position: absolute; inset: 0 auto 0 0; width: 3px; background: var(--accent); opacity: .85; }}
     .metric-card.green::before {{ background: var(--accent-border); }} .metric-card.violet::before {{ background: var(--cyber); }} .metric-card.orange::before {{ background: var(--warning); }}
     .metric-top {{ display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }}
     .metric-icon {{ width: 38px; height: 38px; border-radius: 13px; background: var(--accent-soft); color: var(--accent-strong); box-shadow: inset 3px 0 0 var(--accent-border); }}
     .metric-card.green .metric-icon {{ background: var(--accent-soft); color: var(--accent-strong); }} .metric-card.violet .metric-icon {{ background: var(--surface-strong); color: var(--cyber-strong); }} .metric-card.orange .metric-icon {{ background: var(--warning-soft); color: var(--warning-hover); }}
-    .sparkline {{ width: 96px; height: 32px; }} .sparkline polyline {{ fill: none; stroke: currentColor; stroke-width: 2; }}
+    .obsolete-mini-chart {{ width: 96px; height: 32px; }} .obsolete-mini-chart polyline {{ fill: none; stroke: currentColor; stroke-width: 2; }}
     .metric-label {{ min-height: 0; text-transform: none; letter-spacing: 0; font-size: 12px; color: var(--muted); }} .metric-value {{ font-size: 27px; margin: 4px 0 4px; }} .metric-hint {{ color: var(--muted); font-weight: 700; }} .metric-card.orange .metric-hint {{ color: var(--muted); }}
     .quick-links {{ grid-template-columns: repeat(3, minmax(240px, 1fr)); gap: 12px; }}
     .quick-link-card {{ position: relative; grid-template-columns: 44px 1fr 20px; align-items: center; gap: 14px; min-height: 78px; padding: 16px 20px; border: 1px solid var(--border); border-radius: 14px; box-shadow: var(--shadow-card); transition: transform 140ms ease, border-color 140ms ease, box-shadow 140ms ease, background 140ms ease; }}
@@ -1560,10 +1560,40 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .quick-icon {{ width: 40px; height: 40px; border-radius: 14px; background: var(--accent-soft); color: var(--accent-strong); }} .quick-copy strong {{ display:block; color: var(--text-strong); }} .quick-copy small {{ display:block; color: var(--muted); }} .quick-arrow {{ color: var(--muted); font-size: 22px; }}
     .dashboard-panel-title {{ display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 0 0 10px; }}
     .dashboard-panel-title h2 {{ margin: 0; }}
-    .event-feed {{ overflow: hidden; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; box-shadow: var(--shadow-card); }}
-    .event-feed article {{ display: grid; grid-template-columns: 18px 1fr minmax(120px, auto); align-items: center; gap: 14px; min-height: 64px; padding: 12px 18px; border-bottom: 1px solid var(--border); }} .event-feed article:last-child {{ border-bottom: 0; }}
-    .feed-icon {{ width: 10px; height: 10px; border-radius: 50%; background: var(--accent); color: transparent; box-shadow: 0 0 0 5px var(--accent-soft); }} .feed-icon.ok {{ background: var(--success); box-shadow: 0 0 0 5px var(--success-soft); }} .feed-icon.warn {{ background: var(--warning); box-shadow: 0 0 0 5px var(--warning-soft); }} .feed-icon.neutral {{ background: var(--muted); box-shadow: 0 0 0 5px var(--surface-muted); }} .event-feed small {{ display:block; color: var(--muted); }} .event-feed time {{ color: var(--muted); text-align:right; white-space: nowrap; }}
-    .event-feed-empty {{ padding: 18px; color: var(--muted); background: var(--surface-muted); }}
+    .obsolete-activity-list {{ overflow: hidden; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; box-shadow: var(--shadow-card); }}
+    .obsolete-activity-list article {{ display: grid; grid-template-columns: 18px 1fr minmax(120px, auto); align-items: center; gap: 14px; min-height: 64px; padding: 12px 18px; border-bottom: 1px solid var(--border); }} .obsolete-activity-list article:last-child {{ border-bottom: 0; }}
+    .feed-icon {{ width: 10px; height: 10px; border-radius: 50%; background: var(--accent); color: transparent; box-shadow: 0 0 0 5px var(--accent-soft); }} .feed-icon.ok {{ background: var(--success); box-shadow: 0 0 0 5px var(--success-soft); }} .feed-icon.warn {{ background: var(--warning); box-shadow: 0 0 0 5px var(--warning-soft); }} .feed-icon.neutral {{ background: var(--muted); box-shadow: 0 0 0 5px var(--surface-muted); }} .obsolete-activity-list small {{ display:block; color: var(--muted); }} .obsolete-activity-list time {{ color: var(--muted); text-align:right; white-space: nowrap; }}
+    .obsolete-activity-list-empty {{ padding: 18px; color: var(--muted); background: var(--surface-muted); }}
+    .dashboard-v2 {{ display: grid; gap: 24px; width: 100%; max-width: 100%; min-width: 0; box-sizing: border-box; }}
+    .dashboard-v2 *, .dashboard-v2 *::before, .dashboard-v2 *::after {{ box-sizing: border-box; }}
+    .dashboard-v2 > h1, .dashboard-v2 h2 {{ margin: 0; }}
+    .dashboard-v2-overview {{ display: grid; grid-template-columns: minmax(260px, .9fr) minmax(0, 2.1fr); gap: 18px; min-width: 0; max-width: 100%; }}
+    .dashboard-v2-panel, .dashboard-v2-overview > *, .dashboard-v2-quick-links > *, .dashboard-v2-operational-grid > * {{ min-width: 0; max-width: 100%; box-sizing: border-box; }}
+    .dashboard-v2-panel, .dashboard-v2-quick-section, .dashboard-v2-operational {{ border: 1px solid var(--border); border-radius: 14px; background: var(--surface); box-shadow: var(--shadow-card); }}
+    .dashboard-v2-panel {{ padding: 18px; }}
+    .dashboard-v2-kpi-list {{ display: grid; margin: 12px 0 0; padding: 0; list-style: none; }}
+    .dashboard-v2-kpi-item {{ display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; align-items: center; gap: 10px; min-width: 0; padding: 13px 0; border-bottom: 1px solid var(--border); }}
+    .dashboard-v2-kpi-item:last-child {{ border-bottom: 0; }}
+    .dashboard-v2-kpi-icon {{ display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 8px; color: var(--accent-strong); background: var(--accent-soft); }}
+    .dashboard-v2-kpi-copy {{ min-width: 0; }} .dashboard-v2-kpi-copy span, .dashboard-v2-kpi-copy small {{ display: block; }} .dashboard-v2-kpi-copy small {{ color: var(--muted); font-size: 11px; }}
+    .dashboard-v2-kpi-item > strong {{ max-width: 100%; font: 800 25px/1 ui-monospace, SFMono-Regular, Menlo, monospace; overflow-wrap: anywhere; }}
+    .dashboard-v2-chart-panel {{ display: flex; flex-direction: column; }}
+    .dashboard-v2-chart {{ flex: 1; min-width: 0; width: 100%; max-width: 100%; overflow: hidden; }}
+    .dashboard-v2-chart svg {{ width: 100%; max-width: 100%; height: auto; min-height: 250px; display: block; }}
+    .dashboard-v2-grid line {{ stroke: var(--border); stroke-width: 1; shape-rendering: crispEdges; }} .dashboard-v2-grid text, .dashboard-v2-date-label {{ fill: var(--muted); font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; }}
+    .dashboard-v2-bar rect {{ fill: var(--accent); shape-rendering: crispEdges; }} .dashboard-v2-bar:hover rect {{ fill: var(--accent-strong); }} .dashboard-v2-zero {{ fill: var(--muted); font: 13px ui-monospace, SFMono-Regular, Menlo, monospace; }}
+    .dashboard-v2-quick-section, .dashboard-v2-operational {{ padding: 18px; min-width: 0; max-width: 100%; }}
+    .dashboard-v2-quick-links {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(min(230px, 100%), 1fr)); gap: 10px; margin-top: 14px; min-width: 0; }}
+    .dashboard-v2-quick-link {{ display: grid; grid-template-columns: 36px minmax(0, 1fr) auto; align-items: center; gap: 11px; min-width: 0; padding: 12px; border: 1px solid var(--border); border-radius: 10px; color: var(--text); text-decoration: none; transition: transform 140ms ease, border-color 140ms ease, box-shadow 140ms ease; }}
+    .dashboard-v2-quick-link:hover {{ transform: translateY(-1px); border-color: var(--accent); box-shadow: var(--shadow-soft); text-decoration: none; }}
+    .dashboard-v2-link-icon {{ display: inline-flex; align-items: center; justify-content: center; color: var(--accent-strong); }} .dashboard-v2-link-copy {{ min-width: 0; }} .dashboard-v2-link-copy strong, .dashboard-v2-link-copy small {{ display: block; overflow-wrap: anywhere; }} .dashboard-v2-link-copy small {{ color: var(--muted); font-size: 11px; }} .dashboard-v2-link-arrow {{ color: var(--muted); }}
+    .dashboard-v2-operational-grid {{ display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 14px; min-width: 0; }}
+    .dashboard-v2-operational-card {{ position: relative; display: grid; gap: 5px; min-width: 0; padding: 16px; border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: 10px; background: var(--surface-muted); color: var(--text); text-decoration: none; }}
+    a.dashboard-v2-operational-card:hover {{ border-color: var(--accent); text-decoration: none; }} .dashboard-v2-operational-card.attention {{ border-left-color: var(--warning); background: var(--warning-soft); }} .dashboard-v2-operational-card.success {{ border-left-color: var(--success); }}
+    .dashboard-v2-operational-title {{ font-weight: 750; overflow-wrap: anywhere; }} .dashboard-v2-operational-value {{ font: 800 30px/1.15 ui-monospace, SFMono-Regular, Menlo, monospace; }} .dashboard-v2-operational-detail {{ color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }} .dashboard-v2-operational-arrow {{ position: absolute; right: 14px; bottom: 12px; color: var(--muted); }}
+    html[data-theme="tele-route-pro"] .dashboard-v2 {{ color: var(--text); }}
+    @media (max-width: 1100px) {{ .dashboard-v2-overview {{ grid-template-columns: minmax(240px, .9fr) minmax(0, 1.6fr); }} .dashboard-v2-operational-grid {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }} }}
+    @media (max-width: 760px) {{ .dashboard-v2-overview, .dashboard-v2-operational-grid {{ grid-template-columns: minmax(0, 1fr); }} .dashboard-v2 {{ gap: 14px; }} .dashboard-v2-panel, .dashboard-v2-quick-section, .dashboard-v2-operational {{ padding: 14px; }} .dashboard-v2-date-label {{ font-size: 9px; }} }}
     .content:has(> .table-page-container) {{ max-width: none; min-width: 0; }}
     .table-page-container {{ width: min(1580px, 100%); max-width: 100%; min-width: 0; margin-inline: auto; }}
     .table-page-container > *, .table-page-container details, .table-page-container fieldset {{ min-width: 0; }}
@@ -1969,8 +1999,8 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
 
     html[data-theme="dark"] .brand-copy span,
     html[data-theme="dark"] .quick-copy small,
-    html[data-theme="dark"] .event-feed small,
-    html[data-theme="dark"] .event-feed time {{
+    html[data-theme="dark"] .obsolete-activity-list small,
+    html[data-theme="dark"] .obsolete-activity-list time {{
       color: var(--muted);
     }}
 
@@ -2058,7 +2088,7 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     html[data-theme="dark"] .journal-card,
     html[data-theme="dark"] .dictionary-card,
     html[data-theme="dark"] .dictionary-toolbar,
-    html[data-theme="dark"] .event-feed,
+    html[data-theme="dark"] .obsolete-activity-list,
     html[data-theme="dark"] .metric-card,
     html[data-theme="dark"] .quick-link-card,
     html[data-theme="dark"] .login-card {{
@@ -2220,7 +2250,7 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     html[data-theme="dark"] .filter-panel,
     html[data-theme="dark"] .form-panel,
     html[data-theme="dark"] .dashboard-feed,
-    html[data-theme="dark"] .event-feed,
+    html[data-theme="dark"] .obsolete-activity-list,
     html[data-theme="dark"] .activity-feed,
     html[data-theme="dark"] .timeline-card,
     html[data-theme="dark"] .activity-list,
@@ -2302,7 +2332,7 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     }}
 
     html[data-theme="dark"] .activity-item,
-    html[data-theme="dark"] .event-feed article,
+    html[data-theme="dark"] .obsolete-activity-list article,
     html[data-theme="dark"] .dashboard-feed article,
     html[data-theme="dark"] .activity-feed article,
     html[data-theme="dark"] .quick-copy {{
@@ -2312,7 +2342,7 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     }}
 
     html[data-theme="dark"] .activity-item:hover,
-    html[data-theme="dark"] .event-feed article:hover,
+    html[data-theme="dark"] .obsolete-activity-list article:hover,
     html[data-theme="dark"] .dashboard-feed article:hover,
     html[data-theme="dark"] .activity-feed article:hover {{
       background: var(--accent-soft) !important;
@@ -2364,7 +2394,7 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     html[data-theme="light-v2"] .current-user-selector, html[data-theme="light-v2"] .theme-selector, html[data-theme="light-v2"] .sidebar-collapse {{ background: #F8FAFB; border-color: var(--border); color: var(--text); }}
     html[data-theme="light-v2"] .theme-menu, html[data-theme="light-v2"] .current-user-menu, html[data-theme="light-v2"] .column-settings-panel {{ background: var(--surface); border-color: var(--border-strong); box-shadow: var(--shadow-card); }}
     html[data-theme="light-v2"] .theme-menu button:hover, html[data-theme="light-v2"] .theme-menu button[aria-checked="true"], html[data-theme="light-v2"] .current-user-menu a:hover, html[data-theme="light-v2"] .column-settings-row:hover {{ background: var(--accent-soft); color: var(--accent-strong); }}
-    html[data-theme="light-v2"] .card, html[data-theme="light-v2"] details, html[data-theme="light-v2"] fieldset, html[data-theme="light-v2"] .filter-card, html[data-theme="light-v2"] .form-card, html[data-theme="light-v2"] .table-footer, html[data-theme="light-v2"] .table-card, html[data-theme="light-v2"] .journal-card, html[data-theme="light-v2"] .dictionary-card, html[data-theme="light-v2"] .dictionary-toolbar, html[data-theme="light-v2"] .event-feed, html[data-theme="light-v2"] .metric-card, html[data-theme="light-v2"] .quick-link-card, html[data-theme="light-v2"] .login-card {{ background: var(--surface); border-color: var(--border); box-shadow: var(--shadow-card); }}
+    html[data-theme="light-v2"] .card, html[data-theme="light-v2"] details, html[data-theme="light-v2"] fieldset, html[data-theme="light-v2"] .filter-card, html[data-theme="light-v2"] .form-card, html[data-theme="light-v2"] .table-footer, html[data-theme="light-v2"] .table-card, html[data-theme="light-v2"] .journal-card, html[data-theme="light-v2"] .dictionary-card, html[data-theme="light-v2"] .dictionary-toolbar, html[data-theme="light-v2"] .obsolete-activity-list, html[data-theme="light-v2"] .metric-card, html[data-theme="light-v2"] .quick-link-card, html[data-theme="light-v2"] .login-card {{ background: var(--surface); border-color: var(--border); box-shadow: var(--shadow-card); }}
     html[data-theme="light-v2"] input, html[data-theme="light-v2"] select, html[data-theme="light-v2"] textarea {{ background: var(--input-bg); color: var(--text); border-color: var(--border-strong); }}
     html[data-theme="light-v2"] input:focus, html[data-theme="light-v2"] select:focus, html[data-theme="light-v2"] textarea:focus {{ border-color: var(--accent); outline-color: var(--accent); box-shadow: 0 0 0 3px rgba(15, 118, 110, .14); }}
     html[data-theme="light-v2"] input::placeholder, html[data-theme="light-v2"] textarea::placeholder {{ color: var(--text-soft); }}
@@ -2381,7 +2411,7 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     html[data-theme="light-v2"] .metric-card.green .metric-icon, html[data-theme="light-v2"] .feed-icon.ok, html[data-theme="light-v2"] .dot-status.ok span {{ background: var(--success); color: #fff; box-shadow: 0 0 0 5px var(--success-soft); }}
     html[data-theme="light-v2"] .metric-card.orange .metric-icon, html[data-theme="light-v2"] .feed-icon.warn, html[data-theme="light-v2"] .dot-status.warning span {{ background: var(--provider-accent); color: #fff; box-shadow: 0 0 0 5px var(--provider-soft); }}
     html[data-theme="light-v2"] .metric-card.orange {{ border-color: var(--provider-border); box-shadow: inset 3px 0 0 var(--provider-accent), var(--shadow-card); }}
-    html[data-theme="light-v2"] .metric-card.orange .sparkline {{ color: var(--provider-accent); }}
+    html[data-theme="light-v2"] .metric-card.orange .obsolete-mini-chart {{ color: var(--provider-accent); }}
     html[data-theme="light-v2"] .dot-status.danger span, html[data-theme="light-v2"] .feed-icon.danger {{ background: var(--danger); box-shadow: 0 0 0 5px var(--danger-soft); }}
     html[data-theme="light-v2"] .status-badge, html[data-theme="light-v2"] .badge {{ border: 1px solid var(--border); background: var(--surface-muted); color: var(--text); border-radius: 999px; padding: 2px 8px; }}
     html[data-theme="light-v2"] .review-required-icon {{ color: var(--warning); }}
@@ -2401,7 +2431,7 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     html[data-theme="light-v2"] .quick-link-card[href="/provider-changes"]:hover {{ background: var(--provider-soft); border-color: var(--provider-accent); color: var(--provider-hover); }}
     html[data-theme="light-v2"] .quick-link-card[href="/provider-changes"] .quick-icon {{ background: var(--provider-soft); border-color: var(--provider-border); color: var(--provider-hover); box-shadow: 0 0 0 1px var(--provider-border) inset; }}
     html[data-theme="light-v2"] .quick-link-card[href="/provider-changes"]:hover .quick-arrow {{ color: var(--provider-accent); }}
-    html[data-theme="light-v2"] .sparkline polyline {{ stroke-width: 2.8; }}
+    html[data-theme="light-v2"] .obsolete-mini-chart polyline {{ stroke-width: 2.8; }}
     html[data-theme="light-v2"] .status-badge.warning, html[data-theme="light-v2"] .badge.warning, html[data-theme="light-v2"] .dot-status.warning {{ background: var(--warning-soft); border-color: var(--warning-border); color: var(--warning-hover); }}
 
     html[data-theme="light-v2"] .provider-changes-page h1 {{ border-left: 4px solid var(--provider-accent); padding-left: 12px; }}
@@ -2470,7 +2500,7 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     html[data-theme="light-v2"] body {{ color: var(--text); -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }}
     html[data-theme="light-v2"] .content > h1:first-of-type {{ margin-bottom: 14px; padding-bottom: 10px; border-bottom-color: var(--border); font-size: 24px; font-weight: 760; letter-spacing: -0.018em; }}
     html[data-theme="light-v2"] h1, html[data-theme="light-v2"] h2, html[data-theme="light-v2"] h3, html[data-theme="light-v2"] label, html[data-theme="light-v2"] .metric-value, html[data-theme="light-v2"] .quick-copy strong, html[data-theme="light-v2"] .brand-copy strong {{ color: var(--text-strong); }}
-    html[data-theme="light-v2"] .muted, html[data-theme="light-v2"] .metric-label, html[data-theme="light-v2"] .metric-hint, html[data-theme="light-v2"] .quick-copy small, html[data-theme="light-v2"] .event-feed small, html[data-theme="light-v2"] .event-feed time, html[data-theme="light-v2"] .brand-copy span {{ color: var(--muted); }}
+    html[data-theme="light-v2"] .muted, html[data-theme="light-v2"] .metric-label, html[data-theme="light-v2"] .metric-hint, html[data-theme="light-v2"] .quick-copy small, html[data-theme="light-v2"] .obsolete-activity-list small, html[data-theme="light-v2"] .obsolete-activity-list time, html[data-theme="light-v2"] .brand-copy span {{ color: var(--muted); }}
     html[data-theme="light-v2"] .brand-mark, html[data-theme="light-v2"] .user-icon {{ border-radius: 8px; background: var(--accent-strong); box-shadow: none; }}
     html[data-theme="light-v2"] .sidebar {{ background: #FFFFFF; border-right: 1px solid var(--border-strong); box-shadow: 1px 0 0 rgba(17, 24, 39, .025); }}
     html[data-theme="light-v2"] .side-link, html[data-theme="light-v2"] .admin-link, html[data-theme="light-v2"] .current-user-selector, html[data-theme="light-v2"] .theme-selector, html[data-theme="light-v2"] .sidebar-collapse {{ border-radius: 7px; }}
@@ -2482,7 +2512,7 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     html[data-theme="light-v2"] .side-link.active, html[data-theme="light-v2"] .sidebar-collapsed .side-link.active {{ background: #EFF6F5 !important; border-color: var(--border-strong) !important; border-left-color: var(--accent) !important; color: var(--accent-strong); box-shadow: none; }}
     html[data-theme="light-v2"] .current-user-selector, html[data-theme="light-v2"] .theme-selector, html[data-theme="light-v2"] .sidebar-collapse {{ background: #F7F9F9; border-color: var(--border-strong); box-shadow: none; }}
     html[data-theme="light-v2"] .theme-menu, html[data-theme="light-v2"] .current-user-menu, html[data-theme="light-v2"] .column-settings-panel {{ border-radius: 8px; border-color: var(--border-strong); box-shadow: var(--shadow-card-hover); }}
-    html[data-theme="light-v2"] .card, html[data-theme="light-v2"] details, html[data-theme="light-v2"] fieldset, html[data-theme="light-v2"] .filter-card, html[data-theme="light-v2"] .form-card, html[data-theme="light-v2"] .table-footer, html[data-theme="light-v2"] .table-card, html[data-theme="light-v2"] .journal-card, html[data-theme="light-v2"] .dictionary-card, html[data-theme="light-v2"] .dictionary-toolbar, html[data-theme="light-v2"] .event-feed, html[data-theme="light-v2"] .metric-card, html[data-theme="light-v2"] .quick-link-card, html[data-theme="light-v2"] .login-card {{ border: 1px solid var(--border-strong); border-radius: var(--radius-card); background: var(--surface); box-shadow: var(--shadow-card); }}
+    html[data-theme="light-v2"] .card, html[data-theme="light-v2"] details, html[data-theme="light-v2"] fieldset, html[data-theme="light-v2"] .filter-card, html[data-theme="light-v2"] .form-card, html[data-theme="light-v2"] .table-footer, html[data-theme="light-v2"] .table-card, html[data-theme="light-v2"] .journal-card, html[data-theme="light-v2"] .dictionary-card, html[data-theme="light-v2"] .dictionary-toolbar, html[data-theme="light-v2"] .obsolete-activity-list, html[data-theme="light-v2"] .metric-card, html[data-theme="light-v2"] .quick-link-card, html[data-theme="light-v2"] .login-card {{ border: 1px solid var(--border-strong); border-radius: var(--radius-card); background: var(--surface); box-shadow: var(--shadow-card); }}
     html[data-theme="light-v2"] .card:hover, html[data-theme="light-v2"] .metric-card:hover, html[data-theme="light-v2"] .quick-link-card:hover {{ transform: none; border-color: var(--border-ink); box-shadow: var(--shadow-card-hover); }}
     html[data-theme="light-v2"] .metric-card {{ border-left: 3px solid var(--accent-border); background: #FFFFFF; transition: border-color 140ms ease, background 140ms ease, box-shadow 140ms ease; }}
     html[data-theme="light-v2"] .metric-card:hover, html[data-theme="light-v2"] .metric-card:focus-within {{ border-left-color: var(--accent); background: #FCFEFE; }}
@@ -2545,7 +2575,7 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     html[data-theme="light-v2"] .metric-card.orange, html[data-theme="light-v2"] .metric-card.teal {{ border-left-color: var(--accent-border); box-shadow: var(--shadow-card); }}
     html[data-theme="light-v2"] .metric-card.orange:hover, html[data-theme="light-v2"] .metric-card.orange:focus-within, html[data-theme="light-v2"] .metric-card.teal:hover, html[data-theme="light-v2"] .metric-card.teal:focus-within {{ border-left-color: var(--accent); background: #FCFEFE; }}
     html[data-theme="light-v2"] .metric-card.orange .metric-icon, html[data-theme="light-v2"] .metric-card.teal .metric-icon {{ background: #EEF7F6; border-color: var(--accent-border); color: var(--accent-strong); box-shadow: none; }}
-    html[data-theme="light-v2"] .metric-card.orange .sparkline, html[data-theme="light-v2"] .metric-card.teal .sparkline {{ color: var(--accent); }}
+    html[data-theme="light-v2"] .metric-card.orange .obsolete-mini-chart, html[data-theme="light-v2"] .metric-card.teal .obsolete-mini-chart {{ color: var(--accent); }}
 
     /* Light 2.0 strict admin redesign: final system overrides. */
     html[data-theme="light-v2"] {{
@@ -5205,78 +5235,62 @@ def route_options_for_country(repo: Repository, country_id: object | None = None
 def dot_status(label: str, tone: str = "neutral") -> str:
     return f"<span class='dot-status {esc(tone)}'><span aria-hidden='true'></span>{esc(label)}</span>"
 
-def dashboard_metric(repo: Repository, sql: str, label: str, hint: str, icon: str, tone: str, points: str) -> str:
-    row = repo.conn.execute(sql).fetchone()
-    if row is None:
-        value = 0
-    else:
-        try:
-            value = row["value"]
-        except (KeyError, TypeError, IndexError):
-            value = row[0]
-    return f"<article class='metric-card {tone}'><div class='metric-top'><span class='metric-icon'>{icon}</span><svg class='sparkline' viewBox='0 0 96 32' aria-hidden='true'><polyline points='{points}' /></svg></div><span class='metric-label'>{esc(label)}</span><strong class='metric-value'>{esc(value)}</strong><span class='metric-hint'>{esc(hint)}</span></article>"
-
-
 def dashboard_link(href: str, label: str, description: str, section: str) -> str:
     if not can_read(section):
         return ""
-    return f"<a class='quick-link-card' href='{esc(href)}'><span class='quick-icon'>{NAV_ICONS.get(section, '•')}</span><span class='quick-copy'><strong>{esc(label)}</strong><small>{esc(description)}</small></span><span class='quick-arrow'>→</span></a>"
-
-DASHBOARD_ENTITY_LABELS = {
-    "route": "Маршруты",
-    "tariff": "Тарифы",
-    "phone_number": "Купленные номера",
-    "calling_company": "Кампании прозвона",
-    "routing_event": "Смена провайдеров",
-    "server_priority": "Приоритет по серверам",
-    "company_routing_setting": "Схема маршрутизации кампаний",
-    "user": "Пользователи",
-    "dictionary": "Справочные значения",
-    "change_reason": "Справочные значения",
-}
-
-DASHBOARD_ENTITY_TONES = {
-    "route": "ok",
-    "tariff": "neutral",
-    "phone_number": "warn",
-    "calling_company": "ok",
-    "routing_event": "neutral",
-    "server_priority": "warn",
-    "company_routing_setting": "neutral",
-    "user": "neutral",
-    "dictionary": "neutral",
-    "change_reason": "neutral",
-}
+    return (
+        f"<a class='dashboard-v2-quick-link' href='{esc(href)}'>"
+        f"<span class='dashboard-v2-link-icon'>{NAV_ICONS.get(section, '•')}</span>"
+        f"<span class='dashboard-v2-link-copy'><strong>{esc(label)}</strong><small>{esc(description)}</small></span>"
+        "<span class='dashboard-v2-link-arrow' aria-hidden='true'>→</span></a>"
+    )
 
 
-def dashboard_events(repo: Repository) -> str:
-    if not can_read("admin_change_log"):
-        return "<div class='event-feed-empty'>Лента событий недоступна для текущей роли.</div>"
-    rows = repo.conn.execute(
-        """
-        SELECT cl.changed_at, cl.entity_type, cl.change_type, cl.summary, u.username
-        FROM change_log cl
-        LEFT JOIN users u ON u.id = cl.changed_by
-        ORDER BY cl.changed_at DESC, cl.id DESC
-        LIMIT 8
-        """
-    ).fetchall()
-    if not rows:
-        return "<div class='event-feed-empty'>Событий пока нет.</div>"
-    items = []
-    for row in rows:
-        entity = row["entity_type"] or "—"
-        entity_label = DASHBOARD_ENTITY_LABELS.get(entity, entity)
-        tone = DASHBOARD_ENTITY_TONES.get(entity, "neutral")
-        title = row["summary"] or row["change_type"] or "Изменение"
-        actor = row["username"] or "система"
-        subtitle = f"{entity_label} · {row['change_type'] or 'изменение'} · {actor}"
-        items.append(
-            f"<article><span class='feed-icon {esc(tone)}' aria-hidden='true'></span>"
-            f"<div><strong>{esc(title)}</strong><small>{esc(subtitle)}</small></div>"
-            f"<time>{esc(row['changed_at'] or '—')}</time></article>"
+def dashboard_chart(series: list[dict]) -> str:
+    values = [int(item["value"]) for item in series]
+    maximum = max(values, default=0)
+    scale_max = max(1, maximum)
+    left, top, plot_width, plot_height = 46, 18, 770, 202
+    slot = plot_width / 14
+    bar_width = max(12, slot * .56)
+    months = ("янв", "фев", "мар", "апр", "май", "июн", "июл", "авг", "сен", "окт", "ноя", "дек")
+    grid = []
+    for ratio in (0, .5, 1):
+        y = top + plot_height * (1 - ratio)
+        label = round(scale_max * ratio)
+        grid.append(f"<line x1='{left}' y1='{y:.1f}' x2='{left + plot_width}' y2='{y:.1f}'/><text x='{left - 8}' y='{y + 4:.1f}' text-anchor='end'>{label}</text>")
+    bars = []
+    for index, item in enumerate(series):
+        value = int(item["value"])
+        height = (value / scale_max) * plot_height
+        x = left + index * slot + (slot - bar_width) / 2
+        y = top + plot_height - height
+        day = item["date"]
+        date_label = f"{day.day:02d} {months[day.month - 1]}" if index in (0, 13) else f"{day.day:02d}"
+        bars.append(
+            f"<g class='dashboard-v2-bar'><title>{day:%d.%m.%Y}: {value}</title>"
+            f"<rect x='{x:.1f}' y='{y:.1f}' width='{bar_width:.1f}' height='{height:.1f}'/>"
+            f"<text class='dashboard-v2-date-label' x='{x + bar_width / 2:.1f}' y='248' text-anchor='middle'>{date_label}</text></g>"
         )
-    return "".join(items)
+    zero = "<text class='dashboard-v2-zero' x='431' y='120' text-anchor='middle'>За период событий нет</text>" if maximum == 0 else ""
+    return (
+        "<div class='dashboard-v2-chart' role='img' aria-label='События смены провайдера за последние 14 дней'>"
+        "<svg viewBox='0 0 840 264' preserveAspectRatio='xMidYMid meet' aria-hidden='true'>"
+        f"<g class='dashboard-v2-grid'>{''.join(grid)}</g>{''.join(bars)}{zero}</svg></div>"
+    )
+
+
+def dashboard_operational_card(title: str, value: int, detail: str, section: str, href: str, tone: str) -> str:
+    content = (
+        f"<span class='dashboard-v2-operational-title'>{esc(title)}</span>"
+        f"<strong class='dashboard-v2-operational-value'>{value}</strong>"
+        f"<span class='dashboard-v2-operational-detail'>{esc(detail)}</span>"
+        "<span class='dashboard-v2-operational-arrow' aria-hidden='true'>→</span>"
+    )
+    classes = f"dashboard-v2-operational-card {tone}"
+    if can_read(section):
+        return f"<a class='{classes}' href='{esc(href)}'>{content}</a>"
+    return f"<article class='{classes}'>{content}</article>"
 
 
 HLR_MAX_NUMBERS = 500
@@ -7171,31 +7185,49 @@ document.addEventListener("DOMContentLoaded", function () {{
     return page("HLR", body)
 
 def dashboard_page(repo: Repository) -> bytes:
-    metrics = "".join([
-        dashboard_metric(repo, "SELECT COUNT(*) AS value FROM routes WHERE is_actual IS TRUE", "Активные маршруты", "Всего активных маршрутов", nav_icon("routes"), "blue", "0,22 18,22 32,16 46,22 62,17 78,17 96,10"),
-        dashboard_metric(repo, "SELECT COUNT(*) AS value FROM calling_companies WHERE is_active IS TRUE", "Активные кампании", "Всего активных кампаний", nav_icon("companies"), "green", "0,22 12,17 28,16 44,16 58,15 72,10 84,15 96,9"),
-        dashboard_metric(repo, "SELECT COUNT(*) AS value FROM phone_numbers WHERE is_active IS TRUE", "Купленные номера", "Всего активных номеров", nav_icon("phones"), "violet", "0,20 18,20 30,17 46,17 62,14 78,9 96,9"),
-        dashboard_metric(repo, "SELECT COUNT(*) AS value FROM routing_events WHERE is_active IS TRUE", "Смены провайдеров", "Активные записи смен", nav_icon("provider_changes"), "teal", "0,8 16,10 32,10 48,12 64,12 80,14 96,14"),
-    ])
-    work_links = "".join([
+    snapshot = repo.dashboard_summary()
+    series = snapshot["provider_change_series"]
+    provider_change_total = sum(item["value"] for item in series)
+    kpis = (
+        ("routes", "Активные маршруты", snapshot["active_routes"], ""),
+        ("companies", "Активные кампании", snapshot["active_companies"], ""),
+        ("phones", "Купленные номера", snapshot["active_phones"], ""),
+        ("provider_changes", "Смены провайдеров", provider_change_total, "за последние 14 дней"),
+    )
+    kpi_rows = "".join(
+        f"<li class='dashboard-v2-kpi-item'><span class='dashboard-v2-kpi-icon'>{nav_icon(icon)}</span>"
+        f"<span class='dashboard-v2-kpi-copy'><span>{esc(label)}</span>{f'<small>{esc(hint)}</small>' if hint else ''}</span>"
+        f"<strong>{value}</strong></li>"
+        for icon, label, value, hint in kpis
+    )
+    links = "".join([
         dashboard_link("/provider-changes", "Смена провайдеров", "Операционный журнал изменений", "provider_changes"),
         dashboard_link("/routes", "Маршруты", "Управление маршрутами и номерами", "routes"),
         dashboard_link("/tariffs", "Тарифы", "Актуальные цены и приоритеты", "tariffs"),
         dashboard_link("/phones", "Купленные номера", "Пул номеров и статусы", "phones"),
         dashboard_link("/companies", "Кампании прозвона", "Кампании, серверы и авторотация", "companies"),
-    ])
-    admin_links = "".join([
         dashboard_link("/admin/server-priorities", "Приоритет по серверам", "Текущий маршрут по GEO и серверу", "admin_server_priorities"),
         dashboard_link("/admin/company-routing-settings", "Схема маршрутизации кампаний", "Правила кампаний и авторотации", "admin_company_routing_settings"),
         dashboard_link("/admin/users", "Пользователи", "Роли и доступы", "admin_users"),
         dashboard_link("/admin/dictionaries", "Справочные значения", "Страны, провайдеры, валюты и префиксы", "admin_dictionaries"),
     ])
-    feed = dashboard_events(repo)
+    attention = snapshot["attention_phones"]
+    missing = snapshot["missing_working_routes"]
+    operational = "".join([
+        dashboard_operational_card("Проблемные номера", attention, f"{snapshot['review_phones']} требуют проверки · {snapshot['problematic_phones']} проблемных" if attention else "✓ Всё спокойно", "phones", "/phones?is_active=1&attention=1", "attention" if attention else "success"),
+        dashboard_operational_card("Маршруты без рабочих номеров", missing, "Требуют внимания" if missing else "✓ Всё спокойно", "routes", "/routes?is_actual=1&missing_working_numbers=1", "attention" if missing else "success"),
+        dashboard_operational_card("Кампании на ручном маршруте", snapshot["manual_campaigns"], "Активные кампании с текущим ручным маршрутом", "admin_company_routing_settings", "/admin/company-routing-settings?routing_mode=campaign_route&company_active=1", "info"),
+    ])
     body = f"""
-<h1>Главная</h1>
-<section class='metrics-grid'>{metrics}</section>
-<section class='dashboard-section'><div class='dashboard-panel-title'><h2>Быстрые переходы</h2></div><div class='quick-links'>{work_links}{admin_links}</div></section>
-<section class='dashboard-section'><div class='dashboard-panel-title'><h2>Лента событий</h2></div><div class='event-feed'>{feed}</div></section>
+<main class='dashboard-v2'>
+  <h1>Главная</h1>
+  <section class='dashboard-v2-overview'>
+    <article class='dashboard-v2-panel dashboard-v2-kpi-panel'><h2>Сейчас активно</h2><ul class='dashboard-v2-kpi-list'>{kpi_rows}</ul></article>
+    <article class='dashboard-v2-panel dashboard-v2-chart-panel'><h2>События смены провайдера — последние 14 дней</h2>{dashboard_chart(series)}</article>
+  </section>
+  <section class='dashboard-v2-quick-section'><h2>Быстрые переходы</h2><div class='dashboard-v2-quick-links'>{links}</div></section>
+  <section class='dashboard-v2-operational'><h2>Операционный контроль</h2><div class='dashboard-v2-operational-grid'>{operational}</div></section>
+</main>
 """
     return page("Главная", body)
 
@@ -7387,7 +7419,7 @@ def route_history_page(repo: Repository, route_id: int) -> bytes:
 
 def routes_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
     q = q or {}
-    filters = {"country_id": q.get("country_id"), "provider_id": q.get("provider_id"), "prefix_id": q.get("prefix_id"), "is_actual": q.get("is_actual"), "search_like": q.get("search")}
+    filters = {"country_id": q.get("country_id"), "provider_id": q.get("provider_id"), "prefix_id": q.get("prefix_id"), "is_actual": q.get("is_actual"), "missing_working_numbers": q.get("missing_working_numbers"), "search_like": q.get("search")}
     records = list(repo.list_routes(filters))
     if q.get("export") == "csv":
         return csv_response("routes_export.csv", ["GEO", "Провайдер", "Маршрут", "АОН/пул", "Сервер", "Активен", "Комментарий"], [[r["country_name"], r["provider_name"], r["name"], r["aon_pool"] or "—", "", "Да" if r["is_actual"] else "Нет", r["comment"]] for r in records])
@@ -7407,6 +7439,7 @@ def routes_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
 <label>Провайдер <select name="provider_id">{options(repo, 'providers', selected=q.get('provider_id'), empty='Все')}</select></label>
 <label>Префикс <select name="prefix_id">{prefix_options(repo, selected=q.get('prefix_id'), empty='Все')}</select></label>
 <label>Актуальный <select name="is_actual"><option value="">Все</option><option value="1" {'selected' if q.get('is_actual')=='1' else ''}>Да</option><option value="0" {'selected' if q.get('is_actual')=='0' else ''}>Нет</option></select></label>
+<label class="checkbox-inline"><input type="checkbox" name="missing_working_numbers" value="1" {'checked' if q.get('missing_working_numbers') == '1' else ''}> Без рабочих номеров</label>
 <label>Поиск <input name="search" value="{esc(q.get('search'))}"></label><button>Найти</button></form>"""
     create_html = f"""<form class="route-dialog route-dialog-form" method="post" action="/routes/create">
   <header class="route-dialog-header"><h2>Добавить маршрут</h2></header>
@@ -7434,7 +7467,7 @@ def routes_page(repo: Repository, q: dict[str, str] | None = None) -> bytes:
 </form>""" + route_aon_script()
     table_html = f"{data_table('routes', [('geo', 'ГЕО'), ('route', f"<span class='copyable-header'>Название маршрута {copy_column_button('route-name')}</span>"), ('provider', 'Провайдер'), ('prefix', 'Префикс'), ('actual', 'Актуальный'), ('aon_pool', 'АОН/пул'), ('comment', 'Комментарий'), ('numbers', 'Номера'), ('history', 'Ист.'), ('actions', 'Действия')], ''.join(rows))}"
     body = f"""
-{filter_card(filters_html, q, ('country_id', 'provider_id', 'prefix_id', 'is_actual', 'search'))}
+{filter_card(filters_html, q, ('country_id', 'provider_id', 'prefix_id', 'is_actual', 'missing_working_numbers', 'search'))}
 {form_card('+ Добавить маршрут', create_html, extra_class='route-create-shell', summary_class='route-primary-summary') if can_write("routes") else ""}
 {table_card(table_html)}
 {table_footer(pagination_html, column_settings('routes', [('geo', 'ГЕО'), ('route', 'Название маршрута'), ('provider', 'Провайдер'), ('prefix', 'Префикс'), ('actual', 'Актуальный'), ('aon_pool', 'АОН/пул'), ('comment', 'Комментарий'), ('numbers', 'Номера'), ('actions', 'Действия')], hlr_style=True) + export_link('/routes', q, text=True))}
@@ -7574,7 +7607,7 @@ def phones_page(repo: Repository, q: dict[str, str] | None = None, *, form_error
     q = q or {}
     form_data = form_data or {}
     submitted = lambda name, default="": form_data.get(name, default)
-    filters = {"country_id": q.get("country_id"), "provider_id": q.get("provider_id"), "project": q.get("project"), "assignment_type": q.get("assignment_type"), "status": q.get("status"), "is_active": q.get("is_active"), "number_like": q.get("number"), "review_required": q.get("review_required"), "is_problematic": q.get("is_problematic")}
+    filters = {"country_id": q.get("country_id"), "provider_id": q.get("provider_id"), "project": q.get("project"), "assignment_type": q.get("assignment_type"), "status": q.get("status"), "is_active": q.get("is_active"), "number_like": q.get("number"), "attention": q.get("attention"), "review_required": q.get("review_required"), "is_problematic": q.get("is_problematic")}
     records = list(repo.list_phone_numbers(filters))
     if q.get("export") == "csv":
         return csv_response("phones_export.csv", ["Номер", "GEO", "Провайдер", "Тип номера", "Кампания", "Рабочий статус", "Активен у провайдера", "Маршруты", "Требует проверки", "Проблемный", "Комментарий"], [[p["number"], p["country_name"], p["provider_name"], p["phone_type"], p["project_label"], STATUS_LABELS.get(p["status"], p["status"]), "Да" if p["is_active"] else "Нет", p["route_names"] or "—", "Да" if p["review_required"] else "Нет", "Да" if p["is_problematic"] else "Нет", p["comment"]] for p in records])
@@ -7598,6 +7631,7 @@ def phones_page(repo: Repository, q: dict[str, str] | None = None, *, form_error
 </div>
 <div class="phones-filter-secondary">
 <label>Поиск по номеру <input name="number" value="{esc(q.get('number'))}"></label>
+<div class="filter-review-control"><label class="checkbox-inline filter-review-checkbox"><input type="checkbox" name="attention" value="1" {'checked' if q.get('attention') == '1' else ''}> <span>Требует внимания</span></label></div>
 <div class="filter-review-control"><label class="checkbox-inline filter-review-checkbox"><input type="checkbox" name="is_problematic" value="1" {'checked' if q.get('is_problematic') == '1' else ''}> <span>Проблемный</span></label></div>
 <div class="filter-review-control" aria-label="Фильтр: Требует проверки"><span class="filter-review-spacer" aria-hidden="true">Требует проверки</span><label class="checkbox-inline filter-review-checkbox"><input type="checkbox" name="review_required" value="1" {'checked' if q.get('review_required') == '1' else ''}> <span>Требует проверки</span></label></div><!-- filter-reset-action --><button>Найти</button>
 </div></form>"""
@@ -7632,7 +7666,7 @@ def phones_page(repo: Repository, q: dict[str, str] | None = None, *, form_error
     create_action = form_card('+ Добавить номер', create_html, extra_class='phone-create-shell', summary_class='phone-primary-summary phone-create-action', open_by_default=bool(form_error)) if can_write("phones") else ""
     actions_html = f"<div class='phones-create-actions'>{create_action}<div class='phones-bulk-entry'>{bulk_create_link}</div></div>" if bulk_create_link else create_action
     body = f"""
-{filter_card(filters_html, q, ('country_id', 'provider_id', 'project', 'assignment_type', 'status', 'is_active', 'number', 'review_required', 'is_problematic'))}
+{filter_card(filters_html, q, ('country_id', 'provider_id', 'project', 'assignment_type', 'status', 'is_active', 'number', 'attention', 'review_required', 'is_problematic'))}
 {actions_html}
 {table_card(table_html)}
 {table_footer(pagination_html, column_settings('phones', [('number', 'Номер'), ('geo', 'ГЕО'), ('provider', 'Провайдер'), ('project', 'Проект'), ('assignment', 'Назначение'), ('status', 'Рабочий статус'), ('active', 'Активен у провайдера'), ('routes', 'Маршруты'), ('connection', 'Подключение'), ('monthly', 'Абонплата'), ('currency', 'Валюта'), ('phone_type', 'Тип номера'), ('tariff', 'Тариф'), ('created', 'Дата создания'), ('updated', 'Дата изменения'), ('deactivated', 'Дата отключения'), ('comment', 'Комментарий'), ('actions', 'Действия')], hlr_style=True) + export_link('/phones', q, text=True))}"""
@@ -9162,6 +9196,7 @@ def company_routing_settings_page(repo: Repository, q: dict[str, str] | None = N
         "server_id": q.get("server_id"),
         "routing_mode": q.get("routing_mode"),
         "company_id_external": q.get("company_id_external"),
+        "company_active": q.get("company_active"),
         "is_active": q.get("is_active"),
         "show_history": show_history,
     }
@@ -9198,13 +9233,14 @@ def company_routing_settings_page(repo: Repository, q: dict[str, str] | None = N
 <label>Сервер <select name="server_id">{options(repo, 'servers', selected=q.get('server_id'), empty='Все')}</select></label>
 <label>ID кампании <input name="company_id_external" value="{esc(q.get('company_id_external'))}"></label>
 <label>Режим маршрутизации <select name="routing_mode">{routing_mode_options(q.get('routing_mode'), empty='Все')}</select></label>
+<label>Активность кампании <select name="company_active"><option value="" {'selected' if not q.get('company_active') else ''}>Все</option><option value="1" {'selected' if q.get('company_active')=='1' else ''}>Активна</option><option value="0" {'selected' if q.get('company_active')=='0' else ''}>Неактивна</option></select></label>
 <label>Активность <select name="is_active"><option value="" {'selected' if not q.get('is_active') else ''}>Все</option><option value="1" {'selected' if q.get('is_active')=='1' else ''}>Активна</option><option value="0" {'selected' if q.get('is_active')=='0' else ''}>Неактивна</option></select></label>
 <span class="company-routing-history-control"><span class="company-routing-history-spacer" aria-hidden="true">Показывать историю</span><label class="checkbox-inline company-routing-history-checkbox"><input type="checkbox" name="show_history" value="1" {'checked' if show_history else ''}> Показывать историю</label></span>
 <button class="company-routing-filter-submit" type="submit">Найти</button></form>"""
     table_html = f"""{data_table('company_routing_settings', COMPANY_ROUTING_SETTINGS_COLUMN_LABELS, ''.join(rows))}"""
     body = f"""
 <p class='muted company-routing-settings-intro'>Схема маршрутизации кампаний показывает текущие исключения из стандартных правил прозвона. Изменения маршрутизации выполняются через раздел ‘Смена провайдеров’.</p>
-{filter_card(filters_html, q, ('country_id', 'server_id', 'company_id_external', 'routing_mode', 'is_active', 'show_history'))}
+{filter_card(filters_html, q, ('country_id', 'server_id', 'company_id_external', 'routing_mode', 'company_active', 'is_active', 'show_history'))}
 {table_card(table_html)}
 {table_footer(pagination_html, column_settings('company_routing_settings', COMPANY_ROUTING_SETTINGS_COLUMN_LABELS, hlr_style=True) + export_link('/admin/company-routing-settings', q, text=True))}
 """
