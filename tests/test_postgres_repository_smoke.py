@@ -258,7 +258,7 @@ class PostgreSQLRepositorySmokeTest(unittest.TestCase):
         repository = RecordingRepository(Repository(self.conn))
         summary = self.run_demo(repository)
 
-        self.assertEqual("ok", summary["status"])
+        self.assertEqual("ok", summary["status"], msg=f"Repository smoke failures: {summary['failures']}")
         self.assertFalse(set(smoke.SMOKE_METHODS) - set(repository.called))
         write_prefixes = ("create_", "update_", "ensure_", "delete_", "clear_", "set_", "upsert_", "add_", "remove_", "recalculate_", "log_")
         self.assertFalse([name for name in repository.called if name.startswith(write_prefixes)])
@@ -266,7 +266,7 @@ class PostgreSQLRepositorySmokeTest(unittest.TestCase):
     def test_stage_34_semantics_and_check_count(self):
         summary = self.run_demo()
 
-        self.assertEqual("ok", summary["status"])
+        self.assertEqual("ok", summary["status"], msg=f"Repository smoke failures: {summary['failures']}")
         self.assertEqual(CHECKS_COUNT, summary["checks_count"])
         self.assertGreater(summary["checks_count"], 61)
         self.assertNotIn("secret", str(summary))
@@ -459,7 +459,8 @@ class PostgreSQLRepositorySmokeTest(unittest.TestCase):
         repository.repository.get_hlr_daily_usage = usage_with_postgres_scale
         repository.repository.latest_currency_rate = rate_with_postgres_scale
 
-        self.assertEqual("ok", self.run_demo(repository)["status"])
+        summary = self.run_demo(repository)
+        self.assertEqual("ok", summary["status"], msg=f"Repository smoke failures: {summary['failures']}")
 
     def test_wrong_eur_rate_causes_failure(self):
         repository = RecordingRepository(Repository(self.conn))

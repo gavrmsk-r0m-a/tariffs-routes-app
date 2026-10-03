@@ -6,7 +6,7 @@ import argparse
 import json
 import os
 import sys
-from datetime import date, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
@@ -1031,24 +1031,26 @@ def run_stage_51_checks(repo: Repository, check) -> None:
         ))
 
     series = summary.get("provider_change_series") if isinstance(summary, dict) else None
-    check("stage_51_dashboard_series_length", lambda: _check(
-        isinstance(series, list) and len(series) == 14,
-        "dashboard provider-change series must contain exactly 14 entries",
-    ))
     expected_dates = [fixture_today - timedelta(days=13) + timedelta(days=offset) for offset in range(14)]
-    check("stage_51_dashboard_series_consecutive_dates", lambda: _check(
-        isinstance(series, list) and [item.get("date") for item in series] == expected_dates,
-        "dashboard provider-change dates must be consecutive and end on the fixture day",
+    check("stage_51_dashboard_series_dates", lambda: _check(
+        isinstance(series, list) and len(series) == 14 and [item.get("date") for item in series] == expected_dates,
+        "dashboard provider-change series must contain 14 consecutive dates ending on the fixture day",
     ))
     check("stage_51_dashboard_series_non_negative_integers", lambda: _check(
         isinstance(series, list)
         and all(isinstance(item.get("value"), int) and not isinstance(item.get("value"), bool) and item["value"] >= 0 for item in series),
         "dashboard provider-change values must be non-negative integers",
     ))
-    expected_events = repo.list_routing_events({
-        "date_from": "2026-06-29 00:00:00",
-        "date_to": "2026-07-12 23:59:59.999999",
-    })
+    start_at = datetime.combine(expected_dates[0], time.min, tzinfo=timezone.utc)
+    end_at = datetime.combine(fixture_today + timedelta(days=1), time.min, tzinfo=timezone.utc)
+    expected_events = [
+        event for event in repo.list_routing_events({"date_from": start_at})
+        if event["event_at"] < end_at
+    ]
+    check("stage_51_dashboard_final_bucket", lambda: _check(
+        series[-1]["date"] == fixture_today and series[-1]["value"] >= 1,
+        "dashboard final bucket must include the active CI smoke routing event",
+    ))
     check("stage_51_dashboard_provider_change_total", lambda: _check(
         isinstance(series, list) and sum(item["value"] for item in series) == len(expected_events),
         "dashboard provider-change total must equal the sum of all 14 daily values",

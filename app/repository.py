@@ -1438,7 +1438,7 @@ class Repository:
             missing_clause = f"""r.is_actual = {placeholder(self.backend)}
                 AND r.cli_source_type = 'pool'
                 AND (TRIM(COALESCE(r.aon_pool, '')) = 'Пул купленных номеров'
-                     OR TRIM(COALESCE(r.aon_pool, '')) LIKE 'Пул купленных номеров:%')
+                     OR TRIM(COALESCE(r.aon_pool, '')) LIKE {placeholder(self.backend)})
                 AND NOT EXISTS (
                     SELECT 1 FROM route_phone_numbers working_rpn
                     JOIN phone_numbers working_pn ON working_pn.id = working_rpn.phone_number_id
@@ -1448,7 +1448,7 @@ class Repository:
                       AND working_pn.status = 'used'
                 )"""
             where += (" AND " if where else " WHERE ") + missing_clause
-            params.extend([to_db_bool(True, self.backend), to_db_bool(True, self.backend), to_db_bool(True, self.backend)])
+            params.extend([to_db_bool(True, self.backend), "Пул купленных номеров:%", to_db_bool(True, self.backend), to_db_bool(True, self.backend)])
         return list(
             self.conn.execute(
                 f"""
@@ -2658,8 +2658,8 @@ class Repository:
         """Return the read-only operational snapshot used by /dashboard."""
         today = today or datetime.now(timezone.utc).date()
         start_day = today - timedelta(days=13)
-        start_at = datetime.combine(start_day, time.min)
-        end_at = datetime.combine(today + timedelta(days=1), time.min)
+        start_at = datetime.combine(start_day, time.min, tzinfo=timezone.utc)
+        end_at = datetime.combine(today + timedelta(days=1), time.min, tzinfo=timezone.utc)
         p = placeholder(self.backend)
         true_value = to_db_bool(True, self.backend)
 
