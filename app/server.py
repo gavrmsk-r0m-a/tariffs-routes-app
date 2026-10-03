@@ -42,6 +42,14 @@ from app.security import (
 )
 from app.telegram import notify_provider_change_created
 from app.spam_checker import PARSER_VERSION, parse_response, score_change
+from app.archivarius import (
+    API_VERSION as ARCHIVARIUS_API_VERSION,
+    ArchivariusExporter,
+    PaginationError,
+    json_bytes as archivarius_json_bytes,
+    parse_pagination as parse_archivarius_pagination,
+    token_hash as archivarius_token_hash,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -10545,12 +10553,103 @@ def user_error(exc: Exception) -> str:
     return text
 
 
+ARCHIVARIUS_PREFIX = "/api/archivarius/v1"
+ARCHIVARIUS_ENDPOINTS = {
+    "/health", "/summary", "/routes", "/phones", "/tariffs",
+    "/provider-changes", "/events",
+}
+
+
+def _archivarius_response(start_response, status: str, payload: dict):
+    body = archivarius_json_bytes(payload)
+    start_response(status, [
+        ("Content-Type", "application/json; charset=utf-8"),
+        ("Cache-Control", "no-store"),
+        ("Pragma", "no-cache"),
+        ("Content-Length", str(len(body))),
+    ])
+    return [body]
+
+
+def _archivarius_error(start_response, status: str, code: str, message: str):
+    return _archivarius_response(start_response, status, {
+        "api_version": ARCHIVARIUS_API_VERSION,
+        "error": {"code": code, "message": message},
+    })
+
+
+def _authenticate_archivarius(repo: Repository, environ: dict) -> dict | None:
+    header = environ.get("HTTP_AUTHORIZATION", "")
+    scheme, separator, token = header.partition(" ")
+    if not separator or scheme.lower() != "bearer" or not token.strip():
+        return None
+    supplied_hash = archivarius_token_hash(token.strip())
+    matched = None
+    # Compare fixed-length digests in constant time.  Selecting active tokens
+    # also makes deactivation effective immediately.
+    for row in repo.conn.execute("SELECT id, name, token_hash FROM api_tokens WHERE is_active IS TRUE"):
+        if hmac.compare_digest(str(row["token_hash"]), supplied_hash):
+            matched = {"id": row["id"], "name": row["name"]}
+    if matched is not None:
+        repo.conn.execute("UPDATE api_tokens SET last_used_at=CURRENT_TIMESTAMP WHERE id=%s", (matched["id"],))
+        repo.conn.commit()
+    return matched
+
+
+def archivarius_api(repo: Repository, environ: dict, start_response, method: str, path: str, query: dict[str, str]):
+    """WSGI adapter for the transport-neutral Archivarius exporter."""
+    suffix = path[len(ARCHIVARIUS_PREFIX):] or "/"
+    if method != "GET":
+        logger.info("Archivarius API method=%s endpoint=%s status=405", method, suffix)
+        return _archivarius_error(start_response, "405 Method Not Allowed", "method_not_allowed", "Only GET is supported")
+    if suffix not in ARCHIVARIUS_ENDPOINTS:
+        logger.info("Archivarius API method=GET endpoint=%s status=404", suffix)
+        return _archivarius_error(start_response, "404 Not Found", "not_found", "Unknown Archivarius endpoint")
+    if suffix == "/health":
+        logger.info("Archivarius API method=GET endpoint=/health status=200")
+        return _archivarius_response(start_response, "200 OK", {
+            "status": "ok", "service": "teleroute-archivarius-api", "api_version": ARCHIVARIUS_API_VERSION,
+        })
+    token = _authenticate_archivarius(repo, environ)
+    if token is None:
+        logger.warning("Archivarius API method=GET endpoint=%s status=401", suffix)
+        return _archivarius_error(start_response, "401 Unauthorized", "unauthorized", "A valid Bearer token is required")
+    exporter = ArchivariusExporter(repo)
+    try:
+        if suffix == "/summary":
+            payload = exporter.summary()
+        else:
+            after_id, limit = parse_archivarius_pagination(query, events=suffix == "/events")
+            payload = {
+                "/routes": exporter.routes,
+                "/phones": exporter.phones,
+                "/tariffs": exporter.tariffs,
+                "/provider-changes": exporter.provider_changes,
+                "/events": exporter.events,
+            }[suffix](after_id, limit)
+    except PaginationError as exc:
+        logger.info("Archivarius API token_id=%s token_name=%s method=GET endpoint=%s status=400", token["id"], token["name"], suffix)
+        return _archivarius_error(start_response, "400 Bad Request", "invalid_pagination", str(exc))
+    except Exception:
+        repo.conn.rollback()
+        logger.exception("Archivarius API token_id=%s token_name=%s method=GET endpoint=%s status=500", token["id"], token["name"], suffix)
+        return _archivarius_error(start_response, "500 Internal Server Error", "internal_error", "The request could not be completed")
+    count = len(payload.get("items", [])) if isinstance(payload, dict) else None
+    logger.info("Archivarius API token_id=%s token_name=%s method=GET endpoint=%s status=200 count=%s", token["id"], token["name"], suffix, count)
+    return _archivarius_response(start_response, "200 OK", payload)
+
+
 def app(environ, start_response):
     conn = connect_database(DB_CONFIG)
     repo = Repository(conn)
     method = environ["REQUEST_METHOD"]
     path = environ.get("PATH_INFO", "/")
     q = request_query(environ)
+    if path == "/api/archivarius/v1" or path.startswith("/api/archivarius/v1/"):
+        try:
+            return archivarius_api(repo, environ, start_response, method, path, q)
+        finally:
+            conn.close()
     cookie_id = cookie_user_id(environ)
     current_user_id = resolve_current_user_id(repo, cookie_id)
     current_user = repo.get_user(current_user_id) if current_user_id is not None else None
