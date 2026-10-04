@@ -1424,7 +1424,7 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .modal-save, .admin-edit-save {{ background: var(--accent-strong); border-color: var(--accent-strong); color: #fff; font-weight: 780; }}
     .modal-save:hover, .admin-edit-save:hover {{ background: var(--accent); border-color: var(--accent); color: #fff; }}
     .modal-cancel, .admin-edit-cancel {{ background: var(--surface); color: var(--text); border-color: var(--border-strong); }}
-    .provider-change-create-shell[open] > .provider-change-create-form {{ display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto; width: min(940px, calc(100vw - 32px)); height: min(740px, calc(100vh - 48px)); min-height: 0; max-height: calc(100vh - 48px); overflow: hidden; }}
+    .provider-change-create-shell[open] > .provider-change-create-form {{ display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); width: min(940px, calc(100vw - 32px)); height: min(740px, calc(100vh - 48px)); min-height: 0; max-height: calc(100vh - 48px); overflow: hidden; }}
     body:has(.provider-change-create-shell[open]) {{ overflow: hidden; }}
     .provider-change-create-shell .provider-change-scroll-body {{ min-height: 0; min-width: 0; width: 100%; max-width: 100%; box-sizing: border-box; overflow-y: auto; overflow-x: hidden; scrollbar-gutter: stable; padding: 0 8px 24px 0; scrollbar-width: auto; scrollbar-color: var(--border-ink, #8293a6) var(--surface-soft, #eef2f6); }}
     .provider-change-create-shell .provider-change-scroll-body::-webkit-scrollbar {{ width: 12px; }}
@@ -2956,7 +2956,7 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     html[data-theme="light-v2"] .admin-edit-cancel:hover,
     html[data-theme="light-v2"] .reset-filters:hover {{ background: var(--accent-soft) !important; border-color: var(--accent-border) !important; color: var(--accent-strong) !important; }}
     html[data-theme="light-v2"] .provider-changes-page .modal-form-card[open] > form {{ box-sizing: border-box; width: min(940px, calc(100vw - 32px)); max-width: calc(100vw - 32px); padding: 16px; }}
-    html[data-theme="light-v2"] .provider-change-create-shell .provider-change-create-form {{ display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto; gap: 0; align-items: stretch; width: min(940px, calc(100vw - 32px)); max-width: calc(100vw - 32px); min-width: 0; height: min(740px, calc(100vh - 48px)); min-height: 0; max-height: calc(100vh - 48px); padding: 16px 16px 0; overflow: hidden; }}
+    html[data-theme="light-v2"] .provider-change-create-shell .provider-change-create-form {{ display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); gap: 0; align-items: stretch; width: min(940px, calc(100vw - 32px)); max-width: calc(100vw - 32px); min-width: 0; height: min(740px, calc(100vh - 48px)); min-height: 0; max-height: calc(100vh - 48px); padding: 16px 16px 0; overflow: hidden; }}
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-shell-scope {{ margin: 0; padding: 0; border: 0; min-inline-size: 0; }}
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-shell-scope > legend {{ margin: 0 0 10px; padding: 0; font-weight: 700; color: var(--text-strong); }}
     html[data-theme="light-v2"] .provider-change-create-shell .scope-cards {{ display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; width: 100%; }}
@@ -3039,7 +3039,7 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     html[data-theme="light-v2"] .provider-change-create-shell .server-priority-create-right .server-current-route-text {{ color: var(--muted); }}
     html[data-theme="light-v2"] .provider-change-create-shell .server-priority-create-right .server-current-route-text.has-route {{ color: #C2410C; }}
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-shell-hint {{ flex: 0 0 24px; min-height: 24px; margin: 0; color: var(--muted); }}
-    html[data-theme="light-v2"] .provider-change-create-shell .provider-change-create-actions {{ position: static; grid-row: 3; z-index: auto; flex: 0 0 auto; width: calc(100% + 32px); box-sizing: border-box; margin: 0 -16px !important; padding: 14px 16px !important; border-top: 1px solid var(--border-strong); background: var(--surface) !important; }}
+    html[data-theme="light-v2"] .provider-change-create-shell .provider-change-create-actions {{ position: static; width: 100%; box-sizing: border-box; margin: 16px 0 0 !important; padding: 12px 0 0 !important; border-top: 1px solid var(--border-strong); background: var(--surface) !important; }}
     html[data-theme="light-v2"] .scope-cards {{ grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); width: 100%; gap: 10px; }}
     html[data-theme="light-v2"] .scope-card {{ position: relative; display: flex; align-items: stretch; min-height: 58px; padding: 10px 12px 10px 14px; border: 1px solid var(--border-strong); border-left: 3px solid var(--border-strong); background: #fff; box-shadow: none; cursor: pointer; }}
     html[data-theme="light-v2"] .scope-card input[type="radio"] {{ position: absolute; opacity: 0; pointer-events: none; }}
@@ -8277,8 +8277,8 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
   <p class='provider-change-shell-hint' data-scope-hint='none'>Событие без изменения настроек фиксирует внешний или ручной контекст без применения изменений в системе.</p>
   <p class='provider-change-shell-hint' data-scope-hint='server_priority' hidden>Старый маршрут подтягивается автоматически из текущего server_route_priorities при создании.</p>
   <p class='provider-change-shell-hint' data-scope-hint='campaign_setting' hidden>Событие будет сохранено в журнале и применено к Схеме маршрутизации кампаний.</p>
-  </div>
   <div class='modal-actions provider-change-create-actions'><button type='submit' id='provider-change-submit' disabled>Создать событие</button><button type='button' class='modal-cancel' data-modal-close>Отмена</button></div>
+  </div>
 </form>
 <script>
 (function() {{
