@@ -135,34 +135,45 @@ class UiServerRenderedBaselineTest(unittest.TestCase):
         self.assertRegex(document, r"<button type=\"submit\" class=\"modal-save\">Сохранить")
         self.assertRegex(document, r"<button type=\"button\" class=\"modal-cancel\" data-modal-close>Отмена")
 
-    def test_provider_changes_create_wizard_contract(self):
+    def test_provider_changes_create_workflow_structure_is_frozen(self):
         document = self.pages["Provider Changes"]
         form_start = document.index("id='provider-change-create-form'")
-        body = document.index("class='provider-change-wizard-body'", form_start)
-        footer = document.index("class='provider-change-wizard-footer'", body)
+        body = document.index("class='provider-change-scroll-body'", form_start)
+        footer = document.index("class='modal-actions provider-change-create-actions'", body)
+        body_end = document.index("</div>\n</form>", footer)
         self.assertLess(form_start, body)
         self.assertLess(body, footer)
-        for contract in ("provider-change-wizard-header", "provider-change-wizard-progress",
-                         "data-wizard-step='scope'", "data-wizard-step='campaign'",
-                         "id='campaign-provider'", "id='company-route'",
-                         "id='wizard-back'", "id='wizard-next'"):
+        self.assertLess(footer, body_end)
+        for contract in ("provider-change-shell-scope", "id='event-company'", "id='campaign-selection-step'",
+                         "id='campaign-route-step'", "data-campaign-route-field='1'",
+                         "id='campaign-provider'", "id='company-route'", "id='campaign-reason-step'",
+                         "id='campaign-routing-reason'", "id='campaign-routing-comment'"):
             self.assertIn(contract, document)
-        self.assertIn("type='submit' id='provider-change-submit' hidden disabled", document)
-        create_form = document[form_start:document.index("</form>", form_start)]
-        self.assertNotIn("campaign-picker-toggle", create_form)
-        self.assertNotIn("scrollIntoView", create_form)
+        self.assertRegex(document, r"id='campaign-route-step'[^>]*hidden")
+        for control in ("campaign-provider", "company-route", "campaign-routing-reason", "campaign-routing-comment"):
+            self.assertRegex(document, rf"id='{control}'[^>]*disabled")
+        self.assertIn("data-modal-close>Отмена", document)
+        self.assertIn("type='submit' id='provider-change-submit' disabled>Создать событие", document)
 
     def test_provider_changes_campaign_picker_contract(self):
         document = self.pages["Provider Changes"]
-        self.assertIn("id='event-company' role='group'", document)
-        self.assertIn("Выбрать все найденные", document)
-        self.assertIn("Отменить выбранные", document)
-        self.assertIn("min-height: 260px", document)
-        self.assertIn("overflow-y: auto; overflow-x: hidden", document)
-        self.assertNotIn("Скрыть список", document)
-        self.assertNotIn("Изменить выбор", document)
         with open(server.__file__, encoding="utf-8") as source_file:
-            self.assertIn("class='campaign-picker-main' title='{esc(label)}'>{esc(label)}</span>", source_file.read())
+            source = source_file.read()
+        self.assertNotIn("campaign-picker-meta", source)
+        self.assertIn("<span class='campaign-picker-main' title='{esc(label)}'>{esc(label)}</span>", source)
+        for attribute in ("data-server-id", "data-country-id", "data-campaign-id",
+                          "data-server-name", "data-campaign-name"):
+            self.assertIn(attribute, source)
+        self.assertIn("height: 250px; min-height: 0; max-height: 250px;", source)
+        self.assertIn("overflow-y: auto; overflow-x: hidden;", source)
+        self.assertIn("id='campaign-picker-toggle' aria-expanded='true' aria-controls='campaign-picker-panel'", document)
+        self.assertIn("id='campaign-selection-summary' aria-live='polite'", document)
+        self.assertIn("id='campaign-picker-panel'", document)
+        self.assertIn("setCampaignPickerExpanded", document)
+        self.assertIn("String(option.dataset.serverId) === String(selectedServerId)", document)
+        self.assertIn("String(option.dataset.countryId) === String(selectedCountryId)", document)
+        self.assertIn("String(option.dataset.campaignId || '').toLocaleLowerCase().includes(query)", document)
+        self.assertIn("String(option.dataset.campaignName || '').toLocaleLowerCase().includes(query)", document)
 
     def test_hlr_results_remain_server_rendered_and_hooked(self):
         result = {key: "—" for key, _, _ in server.HLR_TABLE_COLUMNS}
@@ -184,8 +195,8 @@ class UiServerRenderedBaselineTest(unittest.TestCase):
                      "data-column-settings", "data-col-toggle", "data-column-move", "data-column-reset"):
             self.assertIn(hook, shell)
         provider = self.pages["Provider Changes"]
-        for hook in ("provider-change-create-form", "provider-change-wizard-header", "provider-change-wizard-progress",
-                     "provider-change-wizard-body", "provider-change-wizard-footer", "data-wizard-step"):
+        for hook in ("provider-change-create-form", "data-scope-content", "data-campaign-step",
+                     "data-campaign-route-field", "data-scope-hint"):
             self.assertIn(hook, provider)
 
     def test_existing_accessibility_structure(self):
@@ -219,10 +230,10 @@ class UiCssArchitectureBaselineTest(unittest.TestCase):
             "position: sticky; top: 0; height: 100vh; overflow-y: auto;",
             ".table-scroll {{ overflow-x: auto; overscroll-behavior-x: contain; }}",
             ".table-scroll {{ max-height: calc(100vh - 270px); overflow: auto; position: relative; }}",
-            ".provider-change-wizard-body {{ min-width: 0; min-height: 0;",
+            ".provider-change-create-shell .provider-change-scroll-body {{ min-height: 0;",
             "overflow-y: auto; overflow-x: hidden;",
-            "grid-template-rows: auto auto minmax(0, 1fr) auto",
-            "max-height: calc(100vh - 40px)",
+            "grid-template-rows: auto minmax(0, 1fr);",
+            "max-height: calc(100vh - 48px); overflow: hidden;",
             ".modal-actions {{ grid-column: 1 / -1; display: flex;",
         ):
             self.assertIn(contract, self.source)
