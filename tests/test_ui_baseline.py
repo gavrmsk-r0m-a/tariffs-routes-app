@@ -230,7 +230,7 @@ class UiCssArchitectureBaselineTest(unittest.TestCase):
             "position: sticky; top: 0; height: 100vh; overflow-y: auto;",
             ".table-scroll {{ overflow-x: auto; overscroll-behavior-x: contain; }}",
             ".table-scroll {{ max-height: calc(100vh - 270px); overflow: auto; position: relative; }}",
-            ".provider-change-create-shell .provider-change-scroll-body {{ min-height: 0;",
+            ".provider-change-create-shell .provider-change-scroll-body {{ grid-row: 2; align-self: stretch; min-height: 0;",
             "overflow-y: auto; overflow-x: hidden;",
             "grid-template-rows: auto minmax(0, 1fr);",
             "max-height: calc(100vh - 48px); overflow: hidden;",
