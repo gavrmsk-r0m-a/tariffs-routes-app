@@ -6112,7 +6112,7 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
         self.assertLess(scroll_end, create_form.index("type='submit'", scroll_end))
         self.assertIn("data-modal-close>Отмена", create_form[scroll_end:])
         self.assertIn(".provider-change-scroll-body { min-height: 0; min-width: 0; width: 100%; max-width: 100%; box-sizing: border-box; overflow-y: auto; overflow-x: hidden;", content)
-        self.assertIn(".provider-change-create-form { display: grid; grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr) auto; gap: 0;", content)
+        self.assertIn(".provider-change-create-form { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto; gap: 0;", content)
         self.assertIn("height: min(740px, calc(100vh - 48px));", content)
         self.assertIn("overflow: hidden;", content)
 
@@ -6408,6 +6408,11 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
         self.assertIn("Выбрать все найденные", create_form)
         self.assertIn("Отменить выбранные", create_form)
         self.assertIn("id='campaign-clear-selected'", create_form)
+        self.assertIn("type='button' class='small-button' id='campaign-picker-toggle' aria-expanded='true' aria-controls='campaign-picker-panel'", create_form)
+        self.assertIn("id='campaign-selection-summary' aria-live='polite'", create_form)
+        self.assertIn("class='campaign-picker-panel' id='campaign-picker-panel'", create_form)
+        self.assertIn("toggle.textContent = expanded ? 'Скрыть список ▲' : 'Изменить выбор ▼'", content)
+        self.assertIn("compact.textContent = `Выбрано: ${campaignLabel(checked[0])}`", content)
 
     def test_campaign_setting_form_clear_selected_and_live_search_scripts_render(self):
         self.request("/routes")
@@ -6435,6 +6440,9 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
         footer_css = content.split(".provider-change-create-actions {", 1)[1].split("}", 1)[0]
         self.assertNotIn("position: absolute", footer_css)
         self.assertNotIn("position: fixed", footer_css)
+        self.assertIn("grid-template-rows: auto minmax(0, 1fr) auto", content)
+        self.assertIn("max-height: calc(100vh - 48px)", content)
+        self.assertIn("overflow: hidden", content)
         self.assertIn(".campaign-create-change-row { grid-template-columns: repeat(3, minmax(0, 1fr));", content)
         route_step = create_form.split("id='campaign-route-step'", 1)[1].split("</section>", 1)[0]
         for control in ("campaign-route-country", "campaign-provider", "company-route"):
@@ -6445,6 +6453,20 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
             "step.scrollIntoView({\n          behavior: 'smooth',\n          block: 'nearest'\n        })",
             content,
         )
+
+    def test_provider_change_submit_readiness_is_client_side_progressive(self):
+        self.request("/routes")
+        _, content = self.request("/provider-changes")
+        create_form = _form_fragment(content, "/provider-changes/create")
+        self.assertIn("id='provider-change-submit' disabled", create_form)
+        self.assertIn("function updateSubmitReadiness()", content)
+        self.assertIn("selectedCampaignBoxes().length", content)
+        self.assertIn("form.querySelector('#campaign-route-country')?.value", content)
+        self.assertIn("form.querySelector('#campaign-provider')?.value", content)
+        self.assertIn("form.querySelector('#company-route')?.value", content)
+        self.assertIn("reason.value === 'Другое'", content)
+        self.assertIn("form.addEventListener('input', updateSubmitReadiness)", content)
+        self.assertIn("form.addEventListener('change', updateSubmitReadiness)", content)
 
     def test_bulk_campaign_autorotation_creates_event_per_changed_campaign_and_skips_noop(self):
         self.request("/routes")
