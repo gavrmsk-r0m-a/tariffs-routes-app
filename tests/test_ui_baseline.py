@@ -152,7 +152,7 @@ class UiServerRenderedBaselineTest(unittest.TestCase):
         for control in ("campaign-provider", "company-route", "campaign-routing-reason", "campaign-routing-comment"):
             self.assertRegex(document, rf"id='{control}'[^>]*disabled")
         self.assertIn("data-modal-close>Отмена", document)
-        self.assertIn("type='submit'>Создать событие", document)
+        self.assertIn("type='submit' id='provider-change-submit' disabled>Создать событие", document)
 
     def test_provider_changes_campaign_picker_contract(self):
         document = self.pages["Provider Changes"]
@@ -165,6 +165,10 @@ class UiServerRenderedBaselineTest(unittest.TestCase):
             self.assertIn(attribute, source)
         self.assertIn("height: 250px; min-height: 0; max-height: 250px;", source)
         self.assertIn("overflow-y: auto; overflow-x: hidden;", source)
+        self.assertIn("id='campaign-picker-toggle' aria-expanded='true' aria-controls='campaign-picker-panel'", document)
+        self.assertIn("id='campaign-selection-summary' aria-live='polite'", document)
+        self.assertIn("id='campaign-picker-panel'", document)
+        self.assertIn("setCampaignPickerExpanded", document)
         self.assertIn("String(option.dataset.serverId) === String(selectedServerId)", document)
         self.assertIn("String(option.dataset.countryId) === String(selectedCountryId)", document)
         self.assertIn("String(option.dataset.campaignId || '').toLocaleLowerCase().includes(query)", document)
@@ -228,6 +232,7 @@ class UiCssArchitectureBaselineTest(unittest.TestCase):
             ".provider-change-create-shell .provider-change-scroll-body {{ min-height: 0;",
             "overflow-y: auto; overflow-x: hidden;",
             "grid-template-rows: auto minmax(0, 1fr) auto;",
+            "max-height: calc(100vh - 48px); overflow: hidden;",
             ".modal-actions {{ grid-column: 1 / -1; display: flex;",
         ):
             self.assertIn(contract, self.source)
