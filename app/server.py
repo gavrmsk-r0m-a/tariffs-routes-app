@@ -3717,7 +3717,12 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
       }}
       form.dataset.modalEnhanced = "1";
       const saveButton = form.querySelector('button[type="submit"], button:not([type]), input[type="submit"]');
-      let actions = form.querySelector(":scope > .modal-actions");
+      let actions = form.querySelector(".modal-actions");
+      const ownedCancel = form.querySelector("[data-modal-close]");
+      if (!actions && ownedCancel) {{
+        ownedCancel.addEventListener("click", closeCallback);
+        return;
+      }}
       if (!actions) {{
         actions = document.createElement("div");
         actions.className = "modal-actions";
