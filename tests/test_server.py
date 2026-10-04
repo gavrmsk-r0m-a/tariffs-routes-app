@@ -6139,7 +6139,13 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
         _, content = self.request("/provider-changes")
         self.assertIn(".provider-change-campaign-create-grid { flex: 1 1 0; display: flex; flex-direction: column; gap: 12px; min-height: 0; min-width: 0; width: 100%; max-width: 100%; box-sizing: border-box;", content)
         self.assertIn(".campaign-create-change-row { min-width: 0; width: 100%; max-width: 100%; box-sizing: border-box;", content)
-        self.assertIn(".campaign-picker-list { width: 100%; height: auto; min-height: 0; max-height: 140px;", content)
+        campaign_picker_rule = re.search(r"[^{}]*\.campaign-picker-list[^{}]*\{([^{}]*)\}", content)
+        self.assertIsNotNone(campaign_picker_rule)
+        campaign_picker_properties = campaign_picker_rule.group(1)
+        self.assertIn("height: 250px", campaign_picker_properties)
+        self.assertIn("max-height: 250px", campaign_picker_properties)
+        self.assertIn("overflow-y: auto", campaign_picker_properties)
+        self.assertIn("overflow-x: hidden", campaign_picker_properties)
         self.assertNotIn(".company-select-panel { position: absolute", content)
 
     def test_provider_change_campaign_transitions_do_not_use_scroll_position_workaround(self):
