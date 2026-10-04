@@ -142,6 +142,7 @@ class UiServerRenderedBaselineTest(unittest.TestCase):
         footer = document.index("class='modal-actions provider-change-create-actions'", body)
         self.assertLess(form_start, body)
         self.assertLess(body, footer)
+        self.assertIn("</div>", document[body:footer])
         for contract in ("provider-change-shell-scope", "id='event-company'", "id='campaign-selection-step'",
                          "id='campaign-route-step'", "data-campaign-route-field='1'",
                          "id='campaign-provider'", "id='company-route'", "id='campaign-reason-step'",
@@ -152,6 +153,22 @@ class UiServerRenderedBaselineTest(unittest.TestCase):
             self.assertRegex(document, rf"id='{control}'[^>]*disabled")
         self.assertIn("data-modal-close>Отмена", document)
         self.assertIn("type='submit'>Создать событие", document)
+
+    def test_provider_changes_campaign_picker_contract(self):
+        document = self.pages["Provider Changes"]
+        with open(server.__file__, encoding="utf-8") as source_file:
+            source = source_file.read()
+        self.assertNotIn("campaign-picker-meta", source)
+        self.assertIn("<span class='campaign-picker-main' title='{esc(label)}'>{esc(label)}</span>", source)
+        for attribute in ("data-server-id", "data-country-id", "data-campaign-id",
+                          "data-server-name", "data-campaign-name"):
+            self.assertIn(attribute, source)
+        self.assertIn("height: 250px; min-height: 0; max-height: 250px;", source)
+        self.assertIn("overflow-y: auto; overflow-x: hidden;", source)
+        self.assertIn("String(option.dataset.serverId) === String(selectedServerId)", document)
+        self.assertIn("String(option.dataset.countryId) === String(selectedCountryId)", document)
+        self.assertIn("String(option.dataset.campaignId || '').toLocaleLowerCase().includes(query)", document)
+        self.assertIn("String(option.dataset.campaignName || '').toLocaleLowerCase().includes(query)", document)
 
     def test_hlr_results_remain_server_rendered_and_hooked(self):
         result = {key: "—" for key, _, _ in server.HLR_TABLE_COLUMNS}

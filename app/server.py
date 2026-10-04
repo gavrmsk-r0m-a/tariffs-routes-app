@@ -2991,14 +2991,20 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     html[data-theme="light-v2"] .provider-change-create-shell .campaign-company-field {{ min-width: 0; width: 100%; }}
     html[data-theme="light-v2"] .provider-change-create-shell .campaign-picker-toolbar {{ display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin: 4px 0 7px; }}
     html[data-theme="light-v2"] .provider-change-create-shell .campaign-picker-status {{ margin-left: auto; color: var(--muted); font-size: 12px; font-weight: 650; }}
-    html[data-theme="light-v2"] .provider-change-create-shell .campaign-picker-list {{ width: 100%; height: auto; min-height: 0; max-height: 140px; box-sizing: border-box; overflow-y: auto; overflow-x: hidden; border: 1px solid var(--border-strong); border-radius: var(--radius-control); background: #fff; }}
-    html[data-theme="light-v2"] .provider-change-create-shell .campaign-picker-row {{ display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 10px; align-items: start; margin: 0; padding: 9px 10px; border-bottom: 1px solid var(--border); cursor: pointer; white-space: normal; }}
-    html[data-theme="light-v2"] .provider-change-create-shell .campaign-picker-row:last-child {{ border-bottom: 0; }}
-    html[data-theme="light-v2"] .provider-change-create-shell .campaign-picker-row:hover {{ background: var(--accent-soft); }}
-    html[data-theme="light-v2"] .provider-change-create-shell .campaign-picker-row:has(input:checked) {{ background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); }}
-    html[data-theme="light-v2"] .provider-change-create-shell .campaign-picker-row input {{ grid-row: 1 / span 2; width: auto; margin: 2px 0 0; }}
-    html[data-theme="light-v2"] .provider-change-create-shell .campaign-picker-main {{ min-width: 0; overflow: hidden; color: var(--text-strong); font-weight: 740; text-overflow: ellipsis; white-space: nowrap; }}
-    html[data-theme="light-v2"] .provider-change-create-shell .campaign-picker-meta {{ min-width: 0; overflow: hidden; color: var(--muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }}
+    html[data-theme="light-v2"] .provider-change-create-shell .campaign-picker-list,
+    html[data-theme="dark"] .provider-change-create-shell .campaign-picker-list {{ width: 100%; height: 250px; min-height: 0; max-height: 250px; box-sizing: border-box; overflow-y: auto; overflow-x: hidden; border: 1px solid var(--border-strong); border-radius: var(--radius-control); background: var(--surface); }}
+    html[data-theme="light-v2"] .provider-change-create-shell .campaign-picker-row,
+    html[data-theme="dark"] .provider-change-create-shell .campaign-picker-row {{ display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 10px; align-items: start; margin: 0; padding: 9px 10px; border-bottom: 1px solid var(--border); cursor: pointer; white-space: normal; }}
+    html[data-theme="light-v2"] .provider-change-create-shell .campaign-picker-row:last-child,
+    html[data-theme="dark"] .provider-change-create-shell .campaign-picker-row:last-child {{ border-bottom: 0; }}
+    html[data-theme="light-v2"] .provider-change-create-shell .campaign-picker-row:hover,
+    html[data-theme="dark"] .provider-change-create-shell .campaign-picker-row:hover {{ background: var(--accent-soft); }}
+    html[data-theme="light-v2"] .provider-change-create-shell .campaign-picker-row:has(input:checked),
+    html[data-theme="dark"] .provider-change-create-shell .campaign-picker-row:has(input:checked) {{ background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); }}
+    html[data-theme="light-v2"] .provider-change-create-shell .campaign-picker-row input,
+    html[data-theme="dark"] .provider-change-create-shell .campaign-picker-row input {{ width: auto; margin: 2px 0 0; }}
+    html[data-theme="light-v2"] .provider-change-create-shell .campaign-picker-main,
+    html[data-theme="dark"] .provider-change-create-shell .campaign-picker-main {{ min-width: 0; overflow: hidden; color: var(--text-strong); font-weight: 740; text-overflow: ellipsis; white-space: nowrap; }}
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .span-2 {{ grid-column: span 2; }}
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid .wide {{ grid-column: 1 / -1; display: flex; flex-direction: column; min-height: 0; }}
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-campaign-create-grid textarea {{ width: 100%; min-height: 180px; height: 100%; resize: vertical; }}
@@ -3007,7 +3013,6 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
       html[data-theme="light-v2"] .provider-change-create-shell .campaign-create-filters-row {{ grid-template-columns: minmax(0, 1fr); }}
       html[data-theme="light-v2"] .provider-change-create-shell .campaign-create-change-row {{ grid-template-columns: minmax(0, 1fr); }}
       html[data-theme="light-v2"] .provider-change-create-shell .campaign-picker-status {{ flex-basis: 100%; margin-left: 0; }}
-      html[data-theme="light-v2"] .provider-change-create-shell .campaign-picker-meta {{ white-space: normal; }}
     }}
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-server-priority-create {{ flex: 1 1 0; display: flex; flex-direction: column; min-height: 0; min-width: 0; overflow: hidden; }}
     html[data-theme="light-v2"] .provider-change-create-shell .server-priority-create-columns {{ flex: 0 0 auto; display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: 14px; align-items: start; min-width: 0; }}
@@ -8140,18 +8145,13 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
                  cc.company_name, cc.company_id_external, s.name
         """, (event["calling_company_id"] if event else 0,)):
         campaign_name = company["company_name"] or "—"
-        country_name = company["country_name"] or "Несколько GEO"
-        autorotation = "Да" if company["has_autorotation"] else "Нет"
-        route_name = company["route_name"] or "—"
         label = f"{company['company_id_external']} · {campaign_name}"
-        metadata = f"Сервер: {company['server_name']} · GEO: {country_name} · Авторотация: {autorotation} · Ручной маршрут: {route_name}"
         checked = "checked" if str(company["id"]) in selected_company_ids else ""
         company_opts += (
             f"<label class='multi-option campaign-picker-row' data-server-id='{company['server_id']}' data-country-id='{company['country_id'] or ''}' "
             f"data-campaign-id='{esc(company['company_id_external'])}' data-server-name='{esc(company['server_name'])}' "
             f"data-campaign-name='{esc(campaign_name)}'><input type='checkbox' name='calling_company_ids' value='{company['id']}' {checked}> "
-            f"<span class='campaign-picker-main' title='{esc(label)}'>{esc(label)}</span>"
-            f"<span class='campaign-picker-meta' title='{esc(metadata)}'>{esc(metadata)}</span></label>"
+            f"<span class='campaign-picker-main' title='{esc(label)}'>{esc(label)}</span></label>"
         )
     selected_server_ids = {str(event["server_id"])} if event and event["server_id"] else set()
     server_priority_server_boxes = active_server_priority_checkboxes(repo, selected_server_ids, event["country_id"] if event else None)
