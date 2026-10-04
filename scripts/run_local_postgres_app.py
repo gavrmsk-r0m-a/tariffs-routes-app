@@ -8,13 +8,13 @@ import os
 import secrets
 import sys
 from pathlib import Path
-from wsgiref.simple_server import make_server
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from scripts.setup_local_postgres import validate_local_database_url
+from app.http_server import make_threading_server
 
 
 def install_runtime_environment(database_url: str, auth_secret: str) -> None:
@@ -46,7 +46,7 @@ def main(argv: list[str] | None = None) -> int:
     application = load_application(args.database_url, auth_secret)
     url = f"http://127.0.0.1:{args.port}/login"
     print(f"TeleRoute local PostgreSQL runtime: {url}")
-    with make_server("127.0.0.1", args.port, application) as server:
+    with make_threading_server("127.0.0.1", args.port, application) as server:
         server.serve_forever()
     return 0
 

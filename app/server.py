@@ -10,6 +10,8 @@ import logging
 import os
 import re
 import uuid
+from collections.abc import Iterator, MutableMapping
+from contextvars import ContextVar, Token
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from datetime import date, datetime
@@ -20,11 +22,11 @@ from pathlib import Path
 from urllib.parse import parse_qs, quote, unquote, urlencode, urlsplit
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
-from wsgiref.simple_server import make_server
 
 from psycopg import IntegrityError
 
 from app.db import connect_database, load_db_config
+from app.http_server import make_threading_server
 from app.db_adapter import placeholder, to_db_bool
 from app.db_errors import UNKNOWN_DATABASE_ERROR, UNIQUE_VIOLATION, map_database_error
 from app.importer import apply_import, preview_import
@@ -157,7 +159,44 @@ FILTER_DEFAULT_VALUES = {
     "tariffs": {"status": "active"},
 }
 
-_REQUEST_CONTEXT: dict[str, object] = {}
+class RequestContext(MutableMapping[str, object]):
+    """A mapping-compatible request context isolated per worker thread/task."""
+
+    def __init__(self) -> None:
+        self._value: ContextVar[dict[str, object] | None] = ContextVar(
+            "teleroute_request_context", default=None
+        )
+
+    def _current(self) -> dict[str, object]:
+        value = self._value.get()
+        if value is None:
+            value = {}
+            self._value.set(value)
+        return value
+
+    def bind(self, value: dict[str, object]) -> Token:
+        return self._value.set(value)
+
+    def reset(self, token: Token) -> None:
+        self._value.reset(token)
+
+    def __getitem__(self, key: str) -> object:
+        return self._current()[key]
+
+    def __setitem__(self, key: str, value: object) -> None:
+        self._current()[key] = value
+
+    def __delitem__(self, key: str) -> None:
+        del self._current()[key]
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self._current())
+
+    def __len__(self) -> int:
+        return len(self._current())
+
+
+_REQUEST_CONTEXT = RequestContext()
 STATUS_LABELS = {
     "used": "Используется",
     "unused": "Не используется",
@@ -10294,8 +10333,7 @@ def app(environ, start_response):
     current_user_id = resolve_current_user_id(repo, cookie_id)
     current_user = repo.get_user(current_user_id) if current_user_id is not None else None
     filter_state = load_filter_state(environ)
-    _REQUEST_CONTEXT.clear()
-    _REQUEST_CONTEXT.update({
+    request_context_token = _REQUEST_CONTEXT.bind({
         "repo": repo,
         "current_user_id": current_user_id,
         "current_role_key": normalize_role(current_user["role_key"] if current_user else None),
@@ -10626,13 +10664,13 @@ def app(environ, start_response):
             return [provider_changes_page(repo, {}, form_error=user_error(exc), form_data=form_data)]
         return [validation_error_page(return_path, user_error(exc))]
     finally:
-        _REQUEST_CONTEXT.clear()
+        _REQUEST_CONTEXT.reset(request_context_token)
         conn.close()
 
 
 if __name__ == "__main__":
     hlr_log_startup_config()
     port = int(os.environ.get("PORT", "8000"))
-    with make_server("0.0.0.0", port, app) as httpd:
+    with make_threading_server("0.0.0.0", port, app) as httpd:
         print(f"Serving on http://127.0.0.1:{port}")
         httpd.serve_forever()

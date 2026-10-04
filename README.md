@@ -86,6 +86,12 @@ deployment definition.
      --database-url postgresql://postgres:postgres@localhost:5432/teleroute_local
    ```
 
+   The local runner serves requests concurrently. Each request opens its own
+   PostgreSQL connection and closes it in the WSGI application's `finally`
+   block; connections are not shared between users or stored in web sessions.
+   The local runtime does not use an application-level connection pool, so its
+   concurrency limit is the PostgreSQL server's connection limit.
+
 4. Optionally run the authenticated local smoke check with the login password from
    setup:
 
