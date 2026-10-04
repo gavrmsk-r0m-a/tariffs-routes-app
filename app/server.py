@@ -1424,13 +1424,17 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     .modal-save, .admin-edit-save {{ background: var(--accent-strong); border-color: var(--accent-strong); color: #fff; font-weight: 780; }}
     .modal-save:hover, .admin-edit-save:hover {{ background: var(--accent); border-color: var(--accent); color: #fff; }}
     .modal-cancel, .admin-edit-cancel {{ background: var(--surface); color: var(--text); border-color: var(--border-strong); }}
-    .provider-change-create-shell[open] > .provider-change-create-form {{ min-height: min(740px, calc(100vh - 48px)); }}
+    .provider-change-create-shell[open] > .provider-change-create-form {{ display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto; width: min(940px, calc(100vw - 32px)); height: min(740px, calc(100vh - 48px)); min-height: 0; max-height: calc(100vh - 48px); overflow: hidden; }}
     body:has(.provider-change-create-shell[open]) {{ overflow: hidden; }}
     .provider-change-create-shell .provider-change-scroll-body {{ min-height: 0; min-width: 0; width: 100%; max-width: 100%; box-sizing: border-box; overflow-y: auto; overflow-x: hidden; scrollbar-gutter: stable; padding: 0 8px 24px 0; scrollbar-width: auto; scrollbar-color: var(--border-ink, #8293a6) var(--surface-soft, #eef2f6); }}
     .provider-change-create-shell .provider-change-scroll-body::-webkit-scrollbar {{ width: 12px; }}
     .provider-change-create-shell .provider-change-scroll-body::-webkit-scrollbar-track {{ background: var(--surface-soft, #eef2f6); }}
     .provider-change-create-shell .provider-change-scroll-body::-webkit-scrollbar-thumb {{ border: 2px solid var(--surface-soft, #eef2f6); border-radius: 999px; background: var(--border-ink, #8293a6); }}
     .provider-change-create-shell .provider-change-scroll-body::-webkit-scrollbar-thumb:hover {{ background: var(--muted, #64748b); }}
+    .provider-change-create-shell .campaign-picker-toggle-row {{ display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 4px 0 7px; }}
+    .provider-change-create-shell .campaign-picker-selection-summary {{ min-width: 0; color: var(--text); font-size: 13px; line-height: 1.45; }}
+    .provider-change-create-shell .campaign-picker-selection-summary[hidden],
+    .provider-change-create-shell .campaign-picker-panel[hidden] {{ display: none; }}
     .modal-cancel:hover, .admin-edit-cancel:hover {{ background: var(--warning-soft); color: var(--accent-strong); border-color: var(--warning-border); }}
     .modal-card input, .modal-card select, .modal-card textarea, .modal-form-card[open] input, .modal-form-card[open] select, .modal-form-card[open] textarea, .remote-edit-card input, .remote-edit-card select, .remote-edit-card textarea {{ width: 100%; box-sizing: border-box; background: var(--input-bg, var(--surface)); color: var(--text); border-color: var(--border-strong); }}
     html[data-theme="dark"] .modal-card, html[data-theme="dark"] .modal-form-card[open] > form, html[data-theme="dark"] .modal-form-card[open] > .modal-body {{ background: var(--surface); border-color: var(--border-strong); color: var(--text); }}
@@ -2951,8 +2955,8 @@ def page(title: str, body: str, notice: str | None = None, notice_type: str = "s
     html[data-theme="light-v2"] .modal-cancel:hover,
     html[data-theme="light-v2"] .admin-edit-cancel:hover,
     html[data-theme="light-v2"] .reset-filters:hover {{ background: var(--accent-soft) !important; border-color: var(--accent-border) !important; color: var(--accent-strong) !important; }}
-    html[data-theme="light-v2"] .provider-changes-page .modal-form-card[open] > form {{ box-sizing: border-box; width: min(940px, calc(100vw - 32px)); max-width: calc(100vw - 32px); min-height: 560px; padding: 16px; }}
-    html[data-theme="light-v2"] .provider-change-create-shell .provider-change-create-form {{ display: grid; grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr) auto; gap: 0; align-items: stretch; width: min(940px, calc(100vw - 32px)); max-width: calc(100vw - 32px); min-width: 0; height: min(740px, calc(100vh - 48px)); min-height: min(740px, calc(100vh - 48px)); padding: 16px 16px 0; overflow: hidden; }}
+    html[data-theme="light-v2"] .provider-changes-page .modal-form-card[open] > form {{ box-sizing: border-box; width: min(940px, calc(100vw - 32px)); max-width: calc(100vw - 32px); padding: 16px; }}
+    html[data-theme="light-v2"] .provider-change-create-shell .provider-change-create-form {{ display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto; gap: 0; align-items: stretch; width: min(940px, calc(100vw - 32px)); max-width: calc(100vw - 32px); min-width: 0; height: min(740px, calc(100vh - 48px)); min-height: 0; max-height: calc(100vh - 48px); padding: 16px 16px 0; overflow: hidden; }}
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-shell-scope {{ margin: 0; padding: 0; border: 0; min-inline-size: 0; }}
     html[data-theme="light-v2"] .provider-change-create-shell .provider-change-shell-scope > legend {{ margin: 0 0 10px; padding: 0; font-weight: 700; color: var(--text-strong); }}
     html[data-theme="light-v2"] .provider-change-create-shell .scope-cards {{ display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; width: 100%; }}
@@ -8233,6 +8237,11 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
       <div class='campaign-company-field'>
         <span class='field-label'>Кампания <span class='required'>*</span></span>
         <div class='campaign-picker' id='event-company'>
+          <div class='campaign-picker-toggle-row'>
+            <div class='campaign-picker-selection-summary' id='campaign-selection-summary' aria-live='polite' hidden></div>
+            <button type='button' class='small-button' id='campaign-picker-toggle' aria-expanded='true' aria-controls='campaign-picker-panel'>Скрыть список ▲</button>
+          </div>
+          <div class='campaign-picker-panel' id='campaign-picker-panel'>
             <div class='campaign-picker-toolbar'>
               <button type='button' class='small-button' id='campaign-select-visible'>Выбрать все найденные</button>
               <button type='button' class='small-button' id='campaign-clear-selected'>Отменить выбранные</button>
@@ -8240,6 +8249,7 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
             </div>
           <div class='campaign-picker-list' role='group' aria-label='Кампании'>
             {company_opts}
+          </div>
           </div>
         </div>
         <span class='field-helper' id='campaign-company-empty' hidden>Нет кампаний для выбранного GEO</span>
@@ -8268,7 +8278,7 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
   <p class='provider-change-shell-hint' data-scope-hint='server_priority' hidden>Старый маршрут подтягивается автоматически из текущего server_route_priorities при создании.</p>
   <p class='provider-change-shell-hint' data-scope-hint='campaign_setting' hidden>Событие будет сохранено в журнале и применено к Схеме маршрутизации кампаний.</p>
   </div>
-  <div class='modal-actions provider-change-create-actions'><button type='submit'>Создать событие</button><button type='button' class='modal-cancel' data-modal-close>Отмена</button></div>
+  <div class='modal-actions provider-change-create-actions'><button type='submit' id='provider-change-submit' disabled>Создать событие</button><button type='button' class='modal-cancel' data-modal-close>Отмена</button></div>
 </form>
 <script>
 (function() {{
@@ -8278,6 +8288,7 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
   const priorities = {current_priorities_json(repo)};
   const campaigns = {campaign_metadata_json(repo)};
   const routeNeeds = new Set(['set_campaign_route']);
+  const submitButton = form.querySelector('#provider-change-submit');
   function selectedScope() {{ return (form.querySelector('input[name="apply_scope"]:checked') || {{value: 'none'}}).value; }}
   function updateSelectTitle(select) {{
     if (!select) return;
@@ -8407,11 +8418,57 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
     if (error) error.textContent = message || '';
   }}
   function selectedCampaignBoxes() {{ return Array.from(form.querySelectorAll('input[name="calling_company_ids"]:checked')); }}
+  function campaignLabel(box) {{
+    const row = box && box.closest('.campaign-picker-row');
+    const label = row && row.querySelector('.campaign-picker-main');
+    return label ? label.textContent.trim() : '';
+  }}
   function updateCompanySummary() {{
     const summary = form.querySelector('#event-company-summary');
-    if (!summary) return;
     const checked = selectedCampaignBoxes();
-    summary.textContent = `Выбрано: ${{checked.length}}`;
+    if (summary) summary.textContent = `Выбрано: ${{checked.length}}`;
+    const compact = form.querySelector('#campaign-selection-summary');
+    const toggle = form.querySelector('#campaign-picker-toggle');
+    const collapsed = toggle && toggle.getAttribute('aria-expanded') === 'false';
+    if (compact) {{
+      compact.hidden = !collapsed || checked.length === 0;
+      if (checked.length === 1) compact.textContent = `Выбрано: ${{campaignLabel(checked[0])}}`;
+      else if (checked.length > 1) {{
+        const labels = checked.slice(0, 2).map(campaignLabel).filter(Boolean);
+        const more = checked.length > 2 ? `\n+ ещё ${{checked.length - 2}}` : '';
+        compact.textContent = `Выбрано кампаний: ${{checked.length}}${{labels.length ? `\n${{labels.join('\\n')}}` : ''}}${{more}}`;
+        compact.style.whiteSpace = 'pre-line';
+      }} else compact.textContent = '';
+    }}
+  }}
+  function updateSubmitReadiness() {{
+    if (!submitButton) return;
+    const scope = selectedScope();
+    const requiredControlsReady = Array.from(form.querySelectorAll('[required]')).every((field) =>
+      field.disabled || (field.type === 'checkbox' || field.type === 'radio' ? field.checked : !!String(field.value || '').trim())
+    );
+    let ready = requiredControlsReady;
+    if (scope === 'campaign_setting') {{
+      const type = form.querySelector('#company-change-type');
+      const reason = form.querySelector('#campaign-routing-reason');
+      const comment = form.querySelector('#campaign-routing-comment');
+      const needsRoute = !!(type && routeNeeds.has(type.value));
+      ready = !!(form.querySelector('[data-scope-content="campaign_setting"] input[name="event_at"]')?.value &&
+        type && type.value && selectedCampaignBoxes().length && reason && !reason.disabled && reason.value);
+      if (needsRoute) ready = ready && !!(form.querySelector('#campaign-route-country')?.value &&
+        form.querySelector('#campaign-provider')?.value && form.querySelector('#company-route')?.value);
+      if (reason && reason.value === 'Другое') ready = ready && !!(comment && comment.value.trim());
+    }}
+    submitButton.disabled = !ready;
+  }}
+  function setCampaignPickerExpanded(expanded) {{
+    const toggle = form.querySelector('#campaign-picker-toggle');
+    const panel = form.querySelector('#campaign-picker-panel');
+    if (!toggle || !panel) return;
+    toggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+    toggle.textContent = expanded ? 'Скрыть список ▲' : 'Изменить выбор ▼';
+    panel.hidden = !expanded;
+    updateCompanySummary();
   }}
   let pinnedMultiGeoCampaignId = '';
   function filterCompanyOptions() {{
@@ -8494,6 +8551,7 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
     if (marker) marker.hidden = !required;
     const number = form.querySelector('[data-reason-step-number]');
     if (number) number.textContent = needsRoute ? '4' : '3';
+    updateSubmitReadiness();
   }}
   function sync() {{
     const scope = selectedScope();
@@ -8617,6 +8675,9 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
   if (campaignRoute) campaignRoute.addEventListener('change', () => syncAndRevealCampaignStep(form.querySelector('#campaign-reason-step')));
   const campaignReason = form.querySelector('#campaign-routing-reason');
   if (campaignReason) campaignReason.addEventListener('change', updateCampaignProgress);
+  const campaignPickerToggle = form.querySelector('#campaign-picker-toggle');
+  if (campaignPickerToggle) campaignPickerToggle.addEventListener('click', () =>
+    setCampaignPickerExpanded(campaignPickerToggle.getAttribute('aria-expanded') !== 'true'));
   const campaignSearchButton = form.querySelector('#campaign-id-search-button');
   if (campaignSearchButton) campaignSearchButton.addEventListener('click', findCampaignByVisibleId);
   const campaignSearchInput = form.querySelector('#campaign-id-search');
@@ -8637,6 +8698,8 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
     form.querySelectorAll('input[name="calling_company_ids"]:checked').forEach((box) => {{ box.checked = false; }});
     updateCompanySummary(); sync();
   }});
+  form.addEventListener('input', updateSubmitReadiness);
+  form.addEventListener('change', updateSubmitReadiness);
   sync();
 }})();
 </script>
