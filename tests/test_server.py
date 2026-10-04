@@ -2744,9 +2744,9 @@ class ServerSmokeTest(unittest.TestCase):
         captured, content = self.request("/provider-changes")
         self.assertEqual(captured["status"], "200 OK")
         self.assertIn("value='none' checked", content)
-        self.assertIn("data-scope-content='none'", content)
+        self.assertIn("data-wizard-scope='none'", content)
         self.assertIn("Маршруты/префиксы", content)
-        self.assertIn("data-scope-content='server_priority'", content)
+        self.assertIn("data-wizard-scope='server_priority'", content)
         self.assertIn("Новый маршрут", content)
         self.assertIn("Тип изменения кампании", content)
         self.assertIn("id='company-change-type'", content)
@@ -2902,8 +2902,8 @@ class ServerSmokeTest(unittest.TestCase):
         self.request("/routes")
         overflow_id = self._create_overflow_route()
         _captured, content = self.request("/provider-changes")
-        server_priority_content = content.split("data-scope-content='server_priority'", 1)[1].split("data-scope-content='campaign_setting'", 1)[0]
-        none_content = content.split("data-scope-content='none'", 1)[1].split("data-scope-content='server_priority'", 1)[0]
+        server_priority_content = content.split("data-wizard-scope='server_priority'", 1)[1].split("data-wizard-scope='campaign_setting'", 1)[0]
+        none_content = content.split("data-wizard-scope='none'", 1)[1].split("data-wizard-scope='server_priority'", 1)[0]
         self.assertIn("name='has_overflow'", server_priority_content)
         self.assertIn("Маршрут перелива", server_priority_content)
         self.assertIn("id='server-overflow-route'", server_priority_content)
@@ -3094,7 +3094,7 @@ class ServerSmokeTest(unittest.TestCase):
         captured, content = self.request("/provider-changes")
         self.assertEqual(captured["status"], "200 OK")
         create_form = _form_fragment(content, "/provider-changes/create")
-        server_priority_content = create_form.split("data-scope-content='server_priority'", 1)[1].split("data-scope-content='campaign_setting'", 1)[0]
+        server_priority_content = create_form.split("data-wizard-scope='server_priority'", 1)[1].split("data-wizard-scope='campaign_setting'", 1)[0]
         self.assertIn("Серверы", server_priority_content)
         self.assertIn("name='server_ids'", server_priority_content)
         self.assertIn("data-server-select='all'", server_priority_content)
@@ -3107,7 +3107,6 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertIn("Новый маршрут", server_priority_content)
         self.assertIn("Причина", server_priority_content)
         self.assertIn("Комментарий", server_priority_content)
-        self.assertIn("server-priority-create-right", server_priority_content)
 
     def test_provider_changes_navigation_is_top_level_only(self):
         captured, content = self.request("/provider-changes")
@@ -5737,31 +5736,19 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
             conn.close()
         _captured, content = self.request("/provider-changes")
         create_form = _form_fragment(content, "/provider-changes/create")
-        none_scope = create_form.split("data-scope-content='none'", 1)[1].split("data-scope-content='server_priority'", 1)[0]
+        none_scope = create_form.split("data-wizard-scope='none'", 1)[1].split("data-wizard-scope='server_priority'", 1)[0]
         geo_select = _select_fragment(none_scope, "event-country")
         self.assertIn(f"<option value='{country_with_routes}'", geo_select)
         self.assertNotIn(f"<option value='{country_without_routes}'", geo_select)
 
-    def test_none_scope_route_dropdown_has_scoped_close_contract_and_aligned_row(self):
+    def test_none_scope_routes_and_reason_are_separate_wizard_steps(self):
         _captured, content = self.request("/provider-changes")
         create_form = _form_fragment(content, "/provider-changes/create")
-
-        aligned_row = create_form.split("class='none-route-reason-row'", 1)[1].split("<label class='wide'>Комментарий", 1)[0]
-        self.assertIn("id='affected-routes'", aligned_row)
-        self.assertIn("id='routing-reason'", aligned_row)
-        self.assertIn(".none-route-reason-row {", content)
-        self.assertIn("grid-template-columns: minmax(0, 1fr) minmax(0, 2fr)", content)
-        self.assertIn("align-items: start", content)
-        self.assertIn(".none-route-reason-row .multi-select { margin: 0; }", content)
-        self.assertIn(".multi-select-panel { position: absolute", content)
-
-        self.assertIn("const affectedRoutes = form.querySelector('#affected-routes')", content)
-        self.assertIn("form.addEventListener('click'", content)
-        self.assertIn("affectedRoutes.open && !affectedRoutes.contains(event.target)", content)
-        self.assertIn("affectedRoutes.open = false", content)
-        self.assertIn("event.key === 'Escape'", content)
-        close_contract = content.split("const affectedRoutes =", 1)[1].split("form.querySelectorAll('.provider-change-server-priority-create", 1)[0]
-        self.assertNotIn("checked = false", close_contract)
+        context = create_form.split("data-wizard-scope='none' data-wizard-step='context'", 1)[1].split("data-wizard-scope='none' data-wizard-step='reason'", 1)[0]
+        self.assertIn("id='affected-routes'", context)
+        self.assertNotIn("id='routing-reason'", context)
+        self.assertIn("id='routing-reason'", create_form)
+        self.assertIn("['context','reason']", content)
 
     def test_none_scope_multi_route_post_persists_all_routes_and_shows_validation_in_modal(self):
         conn = _TEST_DB.connect()
@@ -6084,186 +6071,53 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
         self.assertIn("export included by date", content)
         self.assertNotIn("export excluded by date", content)
 
-    def test_provider_changes_none_and_campaign_setting_forms_still_render(self):
-        self.request("/routes")
-        captured, content = self.request("/provider-changes")
-        self.assertEqual(captured["status"], "200 OK")
-        self.assertIn("value='none' checked", content)
-        self.assertIn("data-scope-content='none'", content)
-        self.assertIn("Настройка кампании", content)
-        self.assertIn("data-scope-content='campaign_setting'", content)
-        self.assertIn("Событие будет сохранено в журнале и применено", content)
-
-    def test_provider_change_create_modal_has_scoped_internal_scroll_body(self):
-        self.request("/routes")
-        captured, content = self.request("/provider-changes")
-        self.assertEqual(captured["status"], "200 OK")
+    def test_provider_change_create_uses_fixed_wizard_shell(self):
+        _, content = self.request("/provider-changes")
         create_form = _form_fragment(content, "/provider-changes/create")
-        self.assertIn("<form method='post' action='/provider-changes/create' class='provider-change-create-form' id='provider-change-create-form'", content)
-        self.assertNotIn("<form method='post' action='/provider-changes/create' class='form-grid'", content)
-        self.assertNotIn("<form method='post' action='/provider-changes/create' class='provider-change-create-form' id='routing-event-form'", content)
-        scroll_start = create_form.index("<div class='provider-change-scroll-body'>")
-        scroll_body = create_form[scroll_start:]
-        actions_start = scroll_body.index("<div class='modal-actions provider-change-create-actions'>")
-        scope_selector = create_form.index("class='provider-change-shell-scope'")
-        self.assertLess(scope_selector, scroll_start)
+        for hook in ("provider-change-wizard-header", "provider-change-wizard-progress",
+                     "provider-change-wizard-body", "provider-change-wizard-footer"):
+            self.assertIn(hook, create_form)
+        self.assertIn("width: min(940px, calc(100vw - 32px))", content)
+        self.assertIn("height: min(740px, calc(100vh - 40px))", content)
+        self.assertIn("grid-template-rows: auto auto minmax(0, 1fr) auto", content)
+        self.assertNotIn("provider-change-scroll-body", create_form)
+        self.assertNotIn("scrollIntoView", create_form)
+
+    def test_provider_change_create_wizard_has_three_workflows(self):
+        _, content = self.request("/provider-changes")
+        create_form = _form_fragment(content, "/provider-changes/create")
         for scope in ("none", "server_priority", "campaign_setting"):
-            self.assertLess(scroll_body.index(f"data-scope-content='{scope}'"), actions_start)
-            self.assertLess(scroll_body.index(f"data-scope-hint='{scope}'"), actions_start)
-        self.assertIn("type='submit'", scroll_body[actions_start:])
-        self.assertIn("data-modal-close>Отмена", scroll_body[actions_start:])
-        self.assertTrue(scroll_body.rstrip().endswith("</div>"))
-        self.assertIn(".provider-change-scroll-body { min-height: 0; min-width: 0; width: 100%; max-width: 100%; box-sizing: border-box; overflow-y: auto; overflow-x: hidden;", content)
-        self.assertIn(".provider-change-create-form { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); gap: 0;", content)
-        self.assertIn("height: min(740px, calc(100vh - 48px));", content)
-        self.assertIn("overflow: hidden;", content)
+            self.assertIn(f"data-wizard-scope='{scope}'", create_form)
+        for step in ("scope", "context", "parameters", "action", "campaign", "route", "reason"):
+            self.assertIn(f"data-wizard-step='{step}'", create_form)
+        self.assertIn("type='button' id='wizard-back'", create_form)
+        self.assertIn("type='button' id='wizard-next' disabled", create_form)
+        self.assertIn("type='submit' id='provider-change-submit' hidden disabled", create_form)
+        self.assertIn("type==='set_campaign_route'?['action','campaign','route','reason']:['action','campaign','reason']", content)
 
-    def test_provider_change_create_form_is_detached_from_legacy_contract(self):
-        self.request("/routes")
+    def test_provider_change_campaign_picker_is_dedicated_step(self):
         _, content = self.request("/provider-changes")
         create_form = _form_fragment(content, "/provider-changes/create")
-        create_form_tag = content.split("<form method='post' action='/provider-changes/create'", 1)[1].split(">", 1)[0]
-        create_script = content.split("const form = document.getElementById('provider-change-create-form');", 1)[1].split("</script>", 1)[0]
-        self.assertEqual(1, content.count("action='/provider-changes/create'"))
-        self.assertIn("class='provider-change-create-form'", create_form_tag)
-        self.assertIn("id='provider-change-create-form'", create_form_tag)
-        self.assertNotIn("id='routing-event-form'", create_form_tag)
-        self.assertNotIn("#routing-event-form", create_form)
-        for control in ("company-change-type", "campaign-selection-step", "campaign-route-step", "event-company"):
-            self.assertIn(f"id='{control}'", create_form)
-        self.assertIn("const form = document.getElementById('provider-change-create-form');", content)
-        self.assertNotIn("document.getElementById('routing-event-form')", create_script)
-        self.assertNotIn("normalizeProviderChangeScrollX", create_script)
-        self.assertNotIn("scrollLeft", create_script)
-
-    def test_provider_change_campaign_layout_cannot_expand_scroll_body(self):
-        self.request("/routes")
-        _, content = self.request("/provider-changes")
-        self.assertIn(".provider-change-campaign-create-grid { flex: 1 1 0; display: flex; flex-direction: column; gap: 12px; min-height: 0; min-width: 0; width: 100%; max-width: 100%; box-sizing: border-box;", content)
-        self.assertIn(".campaign-create-change-row { min-width: 0; width: 100%; max-width: 100%; box-sizing: border-box;", content)
-        campaign_picker_rule = re.search(r"[^{}]*\.campaign-picker-list[^{}]*\{([^{}]*)\}", content)
-        self.assertIsNotNone(campaign_picker_rule)
-        campaign_picker_properties = campaign_picker_rule.group(1)
-        self.assertIn("height: 250px", campaign_picker_properties)
-        self.assertIn("max-height: 250px", campaign_picker_properties)
-        self.assertIn("overflow-y: auto", campaign_picker_properties)
-        self.assertIn("overflow-x: hidden", campaign_picker_properties)
-        self.assertNotIn(".company-select-panel { position: absolute", content)
-
-    def test_provider_change_campaign_transitions_do_not_use_scroll_position_workaround(self):
-        self.request("/routes")
-        _, content = self.request("/provider-changes")
-        create_form = _form_fragment(content, "/provider-changes/create")
-        self.assertNotIn("scrollLeft", create_form)
-        self.assertNotIn("scrollTop", create_form)
-        self.assertNotIn("normalizeProviderChangeScrollX", create_form)
-
-
-    def test_provider_change_company_setting_form_renders_campaign_helper_filters(self):
-        self.request("/routes")
-        captured, content = self.request("/provider-changes")
-        self.assertEqual(captured["status"], "200 OK")
-        create_form = _form_fragment(content, "/provider-changes/create")
+        self.assertIn("data-wizard-step='campaign'", create_form)
         self.assertIn("id='campaign-server-filter'", create_form)
-        self.assertIn("Сервер <span class='field-helper'>фильтр</span>", create_form)
-        self.assertIn("GEO <span class='field-helper'>фильтр</span>", create_form)
-        self.assertIn("ID кампании / Поиск", create_form)
+        self.assertIn("id='campaign-country-filter'", create_form)
         self.assertIn("id='campaign-id-search'", create_form)
-        self.assertIn("id='campaign-id-search-button'", create_form)
-        self.assertIn(">Поиск</button>", create_form)
-        self.assertIn("campaign-create-primary-row", create_form)
-        self.assertIn("campaign-create-company-row", create_form)
-        self.assertIn("campaign-create-filters-row", create_form)
-        self.assertIn("campaign-company-field", create_form)
-        self.assertIn("campaign-create-change-row", create_form)
-        self.assertIn(">Провайдер <span class='required'>*</span>", create_form)
-        self.assertIn(">Новый маршрут <span class='required'>*</span>", create_form)
-        self.assertLess(create_form.index("id='campaign-server-filter'"), create_form.index("id='event-company'"))
+        self.assertIn("Выбрать все найденные", create_form)
+        self.assertIn("Отменить выбранные", create_form)
+        self.assertNotIn("Скрыть список", create_form)
+        self.assertNotIn("Изменить выбор", create_form)
+        self.assertIn("e.preventDefault();e.stopPropagation();filterCampaigns()", content)
 
-    def test_provider_change_campaign_picker_has_filter_metadata(self):
-        self.request("/routes")
-        captured, content = self.request("/provider-changes")
-        self.assertEqual(captured["status"], "200 OK")
-        create_form = _form_fragment(content, "/provider-changes/create")
-        self.assertIn("data-server-id=", create_form)
-        self.assertIn("data-campaign-id=", create_form)
-        self.assertIn("function filterCompanyOptions()", content)
-        self.assertIn("data-country-id=", create_form)
-        self.assertIn("data-campaign-name=", create_form)
-        self.assertIn("matchesServer && (matchesCountry || isPinnedMultiGeo) && matchesSearch", content)
-        self.assertIn("Нет кампаний для выбранного GEO", create_form)
-        self.assertIn("id='campaign-found-count'", create_form)
-
-    def test_provider_change_campaign_search_filters_id_or_name_without_mutating_filters(self):
-        self.request("/routes")
+    def test_provider_change_wizard_preserves_dependency_and_validation_contracts(self):
         _, content = self.request("/provider-changes")
-        create_form = _form_fragment(content, "/provider-changes/create")
-        self.assertIn("type='button' id='campaign-id-search-button'", create_form)
-        self.assertIn("String(option.dataset.campaignId || '').toLocaleLowerCase().includes(query)", content)
-        self.assertIn("String(option.dataset.campaignName || '').toLocaleLowerCase().includes(query)", content)
-        self.assertNotIn("server.value = String(found.server_id);", content)
-        self.assertNotIn("country.value = found.country_id", content)
-
-    def test_provider_change_multi_geo_filter_does_not_require_geo_metadata(self):
-        self.request("/routes")
-        _, content = self.request("/provider-changes")
-        self.assertIn("let pinnedMultiGeoCampaignId = '';", content)
-        self.assertIn("matchesCountry || isPinnedMultiGeo", content)
-        self.assertIn("const matchesCountry = !selectedCountryId", content)
-
-    def test_provider_change_campaign_search_is_live_and_enter_does_not_submit(self):
-        self.request("/routes")
-        _, content = self.request("/provider-changes")
-        self.assertIn("campaignSearchInput.addEventListener('input', () => filterCompanyOptions());", content)
-        self.assertIn("campaignSearchInput.addEventListener('keydown'", content)
-        self.assertIn("if (event.key !== 'Enter') return;", content)
-        self.assertIn("event.preventDefault();", content)
-        self.assertIn("event.stopPropagation();", content)
-        self.assertIn("findCampaignByVisibleId();", content)
-
-    def test_campaign_setting_form_restores_conditional_new_route_controls(self):
-        self.request("/routes")
-        captured, content = self.request("/provider-changes")
-        self.assertEqual(captured["status"], "200 OK")
-        create_form = _form_fragment(content, "/provider-changes/create")
-        self.assertIn("3. Новый ручной маршрут", create_form)
-        self.assertIn("name='new_company_route_id' id='company-route'", create_form)
-        self.assertIn("data-campaign-route-field='1'", create_form)
-        self.assertIn("const routeNeeds = new Set(['set_campaign_route']);", content)
-        self.assertIn("field.required = needsRoute", content)
-
-    def test_campaign_setting_providers_are_derived_from_geo_routes(self):
-        self.request("/routes")
-        captured, content = self.request("/provider-changes")
-        self.assertEqual(captured["status"], "200 OK")
-        create_form = _form_fragment(content, "/provider-changes/create")
-        provider_select = _select_fragment(create_form, "campaign-provider")
-        self.assertNotIn("DemoTel", provider_select)
-        self.assertIn("function rebuildCampaignProviderSelect(countryId, enabled)", content)
-        self.assertIn("routes.forEach((route)", content)
-        self.assertIn("providers.set(String(route.provider_id), route.provider_name)", content)
-        self.assertIn("Нет активных маршрутов для выбранного GEO", create_form)
-        self.assertIn("select.disabled = !enabled || !countryId || providers.size === 0", content)
-
-    def test_campaign_setting_geo_and_provider_changes_reset_dependent_route_fields(self):
-        self.request("/routes")
-        _, content = self.request("/provider-changes")
-        geo_change_handler = content.split(
-            "if (campaignRouteCountry) campaignRouteCountry.addEventListener('change', () => {", 1
-        )[1].split("const campaignProvider = form.querySelector('#campaign-provider');", 1)[0]
-        self.assertIn("const provider = form.querySelector('#campaign-provider');", geo_change_handler)
-        self.assertIn("const route = form.querySelector('#company-route');", geo_change_handler)
-        self.assertIn("if (provider) provider.value = '';", geo_change_handler)
-        self.assertIn("if (route) route.value = '';", geo_change_handler)
-        self.assertIn("sync();", geo_change_handler)
-
-        provider_change_handler = content.split(
-            "if (campaignProvider) campaignProvider.addEventListener('change', () => {", 1
-        )[1].split("if (campaignRoute) campaignRoute.addEventListener('change', sync);", 1)[0]
-        self.assertIn("const campaignRoute = form.querySelector('#company-route');", provider_change_handler)
-        self.assertIn("if (campaignRoute) campaignRoute.value = '';", provider_change_handler)
-        self.assertIn("sync();", provider_change_handler)
-        self.assertIn("rebuildServerRouteSelect(campaignRoute, campaignCountry && campaignCountry.value, campaignProvider && campaignProvider.value", content)
+        self.assertIn("function workflowSteps()", content)
+        self.assertIn("function validStep()", content)
+        self.assertIn("function syncDependencies()", content)
+        self.assertIn("form.querySelector('#campaign-provider').value=''", content)
+        self.assertIn("form.querySelector('#company-route').value=''", content)
+        self.assertIn("reason.value!=='Другое'||!!comment?.value.trim()", content)
+        self.assertIn("currentStep=step;render()", content)
+        self.assertNotIn("scrollIntoView", _form_fragment(content, "/provider-changes/create"))
 
     def test_provider_change_campaign_id_search_post_selects_external_id_company(self):
         self.request("/routes")
@@ -6335,20 +6189,6 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
         captured, _ = self.request("/provider-changes/create", method="POST", body=body)
         self.assertEqual(captured["status"], "303 See Other")
 
-    def test_campaign_setting_form_is_progressive_and_helpers_are_optional(self):
-        self.request("/routes")
-        captured, content = self.request("/provider-changes")
-        self.assertEqual(captured["status"], "200 OK")
-        create_form = _form_fragment(content, "/provider-changes/create")
-        self.assertIn("1. Что изменили", create_form)
-        self.assertIn("— Выберите тип изменения —", create_form)
-        self.assertIn("id='campaign-selection-step' data-campaign-step='campaign' hidden", create_form)
-        self.assertIn("<option value=''>Все серверы</option>", create_form)
-        self.assertIn("<option value=''>Все GEO</option>", create_form)
-        self.assertIn("id='campaign-route-step' data-campaign-route-field='1' hidden", create_form)
-        self.assertNotIn("id='campaign-state-summary'", create_form)
-        self.assertIn("function updateCampaignProgress()", content)
-
     def test_campaign_setting_route_is_preserved_when_toggling_autorotation(self):
         self.request("/routes")
         conn = _TEST_DB.connect()
@@ -6388,100 +6228,6 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
         self.assertIn("Мексика/Sancom/Demo_0827@", content)
         self.assertIn("Провайдер: Sancom", content)
 
-
-    def test_campaign_setting_form_renders_checkbox_multi_select(self):
-        self.request("/routes")
-        captured, content = self.request("/provider-changes")
-        self.assertEqual(captured["status"], "200 OK")
-        create_form = _form_fragment(content, "/provider-changes/create")
-        self.assertIn("class='campaign-picker' id='event-company'", create_form)
-        self.assertNotIn("<details class='company-select-control'", create_form)
-        self.assertIn("class='campaign-picker-list'", create_form)
-        self.assertIn("class='multi-option campaign-picker-row'", create_form)
-        self.assertIn("class='campaign-picker-main'", create_form)
-        self.assertNotIn("class='campaign-picker-meta'", create_form)
-        self.assertRegex(create_form, r"class='campaign-picker-main' title='[^']+ · [^']+'>[^<]+ · [^<]+</span>")
-        self.assertIn("data-server-id=", create_form)
-        self.assertIn("data-country-id=", create_form)
-        self.assertIn("data-campaign-id=", create_form)
-        self.assertIn("data-server-name=", create_form)
-        self.assertIn("data-campaign-name=", create_form)
-        self.assertIn("name='calling_company_ids'", create_form)
-        self.assertIn("Выбрать все найденные", create_form)
-        self.assertIn("Отменить выбранные", create_form)
-        self.assertIn("id='campaign-clear-selected'", create_form)
-        self.assertIn("type='button' class='small-button' id='campaign-picker-toggle' aria-expanded='true' aria-controls='campaign-picker-panel'", create_form)
-        self.assertIn("id='campaign-selection-summary' aria-live='polite'", create_form)
-        self.assertIn("class='campaign-picker-panel' id='campaign-picker-panel'", create_form)
-        self.assertIn("toggle.textContent = expanded ? 'Скрыть список ▲' : 'Изменить выбор ▼'", content)
-        self.assertIn("compact.textContent = `Выбрано: ${campaignLabel(checked[0])}`", content)
-
-    def test_campaign_setting_form_clear_selected_and_live_search_scripts_render(self):
-        self.request("/routes")
-        captured, content = self.request("/provider-changes")
-        self.assertEqual(captured["status"], "200 OK")
-        create_form = _form_fragment(content, "/provider-changes/create")
-        self.assertIn("const clearSelected = form.querySelector('#campaign-clear-selected')", content)
-        self.assertIn("input[name=\"calling_company_ids\"]:checked", content)
-        self.assertIn("campaignSearchInput.addEventListener('input', () => filterCompanyOptions())", content)
-        self.assertIn("dataset.campaignName", content)
-        self.assertIn(".includes(query)", content)
-        self.assertNotIn("const campaignDropdown = form.querySelector('#event-company')", content)
-        self.assertIn("event.preventDefault()", content)
-
-    def test_provider_change_actions_and_route_step_layout_contracts(self):
-        self.request("/routes")
-        _, content = self.request("/provider-changes")
-        create_form = _form_fragment(content, "/provider-changes/create")
-        scroll_start = create_form.index("<div class='provider-change-scroll-body'>")
-        scroll_body = create_form[scroll_start:]
-        route_step_start = scroll_body.index("id='campaign-route-step'")
-        reason_step_start = scroll_body.index("id='campaign-reason-step'", route_step_start)
-        hint_start = scroll_body.index("data-scope-hint='campaign_setting'", reason_step_start)
-        actions_start = scroll_body.index("<div class='modal-actions provider-change-create-actions'>", hint_start)
-        self.assertLess(route_step_start, reason_step_start)
-        self.assertLess(reason_step_start, hint_start)
-        self.assertLess(hint_start, actions_start)
-        self.assertIn("type='submit'", scroll_body[actions_start:])
-        self.assertIn("data-modal-close>Отмена", scroll_body[actions_start:])
-        self.assertTrue(scroll_body.rstrip().endswith("</div>"))
-        self.assertIn(".provider-change-create-actions { position: static; width: 100%;", content)
-        self.assertIn("padding: 0 8px 24px 0;", content)
-        self.assertIn("scrollbar-width: auto;", content)
-        self.assertIn(".provider-change-scroll-body::-webkit-scrollbar { width: 12px;", content)
-        footer_css = content.split(".provider-change-create-actions {", 1)[1].split("}", 1)[0]
-        self.assertNotIn("position: absolute", footer_css)
-        self.assertNotIn("position: fixed", footer_css)
-        self.assertNotIn("grid-row: 3", footer_css)
-        self.assertIn("margin: 16px 0 0 !important", footer_css)
-        self.assertIn("padding: 12px 0 0 !important", footer_css)
-        self.assertIn("grid-template-rows: auto minmax(0, 1fr)", content)
-        self.assertIn("max-height: calc(100vh - 48px)", content)
-        self.assertIn("overflow: hidden", content)
-        self.assertIn(".campaign-create-change-row { grid-template-columns: repeat(3, minmax(0, 1fr));", content)
-        route_step = create_form.split("id='campaign-route-step'", 1)[1].split("</section>", 1)[0]
-        for control in ("campaign-route-country", "campaign-provider", "company-route"):
-            self.assertIn(f"id='{control}'", route_step)
-        self.assertNotIn("campaign-state-summary", create_form)
-        self.assertNotIn("Текущее состояние —", create_form)
-        self.assertIn(
-            "step.scrollIntoView({\n          behavior: 'smooth',\n          block: 'nearest'\n        })",
-            content,
-        )
-
-    def test_provider_change_submit_readiness_is_client_side_progressive(self):
-        self.request("/routes")
-        _, content = self.request("/provider-changes")
-        create_form = _form_fragment(content, "/provider-changes/create")
-        self.assertIn("id='provider-change-submit' disabled", create_form)
-        self.assertIn("function updateSubmitReadiness()", content)
-        self.assertIn("selectedCampaignBoxes().length", content)
-        self.assertIn("form.querySelector('#campaign-route-country')?.value", content)
-        self.assertIn("form.querySelector('#campaign-provider')?.value", content)
-        self.assertIn("form.querySelector('#company-route')?.value", content)
-        self.assertIn("reason.value === 'Другое'", content)
-        self.assertIn("form.addEventListener('input', updateSubmitReadiness)", content)
-        self.assertIn("form.addEventListener('change', updateSubmitReadiness)", content)
 
     def test_bulk_campaign_autorotation_creates_event_per_changed_campaign_and_skips_noop(self):
         self.request("/routes")
