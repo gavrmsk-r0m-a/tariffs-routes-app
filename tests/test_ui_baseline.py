@@ -141,6 +141,7 @@ class UiServerRenderedBaselineTest(unittest.TestCase):
         body = document.index("class='provider-change-scroll-body'", form_start)
         footer = document.index("class='modal-actions provider-change-create-actions'", body)
         body_end = document.index("</div>\n</form>", footer)
+        create_form = document[form_start:body_end]
         self.assertLess(form_start, body)
         self.assertLess(body, footer)
         self.assertLess(footer, body_end)
@@ -152,8 +153,28 @@ class UiServerRenderedBaselineTest(unittest.TestCase):
         self.assertRegex(document, r"id='campaign-route-step'[^>]*hidden")
         for control in ("campaign-provider", "company-route", "campaign-routing-reason", "campaign-routing-comment"):
             self.assertRegex(document, rf"id='{control}'[^>]*disabled")
-        self.assertIn("data-modal-close>Отмена", document)
-        self.assertIn("type='submit' id='provider-change-submit' disabled>Создать событие", document)
+        self.assertEqual(1, create_form.count("data-modal-close>Отмена"))
+        self.assertEqual(1, create_form.count("type='submit' id='provider-change-submit' disabled>Создать событие"))
+
+    def test_provider_change_nested_actions_are_reused_by_modal_enhancement(self):
+        document = self.pages["Provider Changes"]
+        form_start = document.index("id='provider-change-create-form'")
+        scroll_body = document.index("class='provider-change-scroll-body'", form_start)
+        actions = document.index("class='modal-actions provider-change-create-actions'", scroll_body)
+        form_end = document.index("</form>", actions)
+        self.assertLess(scroll_body, actions)
+        self.assertLess(actions, form_end)
+
+        with open(server.__file__, encoding="utf-8") as source_file:
+            source = source_file.read()
+        enhancer = source.split("function enhanceModalForm(form, closeCallback)", 1)[1].split(
+            "const modalDetails =", 1
+        )[0]
+        self.assertIn('let actions = form.querySelector(".modal-actions")', enhancer)
+        self.assertNotIn('form.querySelector(":scope > .modal-actions")', enhancer)
+        self.assertIn('const ownedCancel = form.querySelector("[data-modal-close]")', enhancer)
+        self.assertIn('ownedCancel.addEventListener("click", closeCallback)', enhancer)
+        self.assertIn('cancel.addEventListener("click", closeCallback)', enhancer)
 
     def test_provider_changes_campaign_picker_contract(self):
         document = self.pages["Provider Changes"]
