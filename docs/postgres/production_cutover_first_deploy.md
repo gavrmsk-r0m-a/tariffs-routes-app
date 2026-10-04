@@ -1,132 +1,78 @@
-# PostgreSQL production cutover: first deploy
+# TeleRoute first-production-release runbook
 
-This operator checklist applies to baseline release
-`e5ee9dd663d604b17936882e465b94f242bdf09c`.
+Use a maintenance window and record the release commit, operators, timestamps, backup
+artifacts, and results. Secrets belong in the service manager/secret store outside Git.
+Never enable shell tracing while handling them.
 
-It does not perform a deployment and contains no production credentials. All secret values
-must be supplied through the hosting platform's environment configuration or secret storage.
+## Pre-cutover
 
-## 1. Required production environment
+1. Freeze and pull the exact approved release commit; record `git rev-parse HEAD`. Run the
+   complete test suite, PostgreSQL integration suite, UI baseline tests, and repository/runtime
+   audits. A failure is a stop condition.
+2. Create a pre-clean custom-format backup and manifest with `scripts/postgres_backup.py`.
+   Independently verify its checksum and rehearse restoration into a fresh database with
+   `scripts/postgres_restore_verify.py` and the existing backup/restore smoke tooling.
+3. With `DB_BACKEND=postgres` and `DATABASE_URL` supplied by secret storage, preview cleanup:
+   `python scripts/prepare_release_database.py`. Review every printed count. Dry run rolls back
+   and changes nothing.
+4. During the maintenance window, stop application writes and run:
+   `python scripts/prepare_release_database.py --apply --confirm CLEAN_TEST_OPERATIONAL_DATA`.
+   Review before/after counts and every preserved-table verification.
+5. Immediately create and verify a second, post-clean backup. Retain both backups according to
+   the operations retention policy.
 
-Configure these values in the production hosting environment. Do not write their resolved
-values to a shell history, CI log, ticket, or repository file.
+## Server deployment
 
-```text
-DB_BACKEND=postgres
-POSTGRES_RUNTIME_ENABLED=1
-DATABASE_URL=<production PostgreSQL URL from secret storage>
-MVP_PRODUCTION_SECURITY=1
-MVP_AUTH_SECRET=<strong secret from secret storage>
-```
+1. Install Python 3.12 or newer, create a virtual environment, activate it, and run
+   `python -m pip install -r requirements.txt`.
+2. Configure variables based on `.env.production.example` in external secret storage. The auth
+   secret must be random, at least 32 characters, and stable across restarts and releases.
+3. Apply the canonical schema and all migrations explicitly **before** startup using the
+   established migration procedure. The launcher never initializes or migrates the database.
+4. Start `python scripts/run_production.py` under a process supervisor (for example systemd),
+   with restart policy and boot-time auto-start. It uses Waitress and defaults to
+   `127.0.0.1:8000`.
+5. Configure the reverse proxy to terminate HTTPS and proxy only to `127.0.0.1:8000`. Do not
+   expose Waitress directly to the Internet.
 
-For an empty production database only, bootstrap the first administrator if one is required:
+## Administrator cutover
 
-```text
-MVP_BOOTSTRAP_ADMIN_USERNAME=<admin username>
-MVP_BOOTSTRAP_ADMIN_PASSWORD=<strong temporary password>
-MVP_BOOTSTRAP_ADMIN_DISPLAY_NAME=<optional display name>
-```
+The existing `local-dev` bootstrap account is for local development, not a permanent production
+administrator. Do not place its password in deployment files.
 
-Rotate or remove the bootstrap password immediately after the initial administrator is
-created and access is verified.
+1. Enable production security and initially expose the site only to the deployment operator or
+   internal network.
+2. Sign in with the bootstrap administrator already present in the migrated database.
+3. Create a named permanent administrator with a strong unique password.
+4. In a separate session, verify that account can log in and administer users.
+5. Disable `local-dev`; do not change user passwords as part of database cleanup.
+6. Only after verification, expose the production HTTPS URL to normal users.
 
-## 2. Pre-cutover evidence
+## Post-deploy smoke checklist
 
-Do not start the cutover until every item below has an evidence link or artifact location.
+- [ ] `/health` and `/login` respond successfully.
+- [ ] A permanent administrator and a normal operator can log in.
+- [ ] Two simultaneous browser sessions remain independent.
+- [ ] Routes, Tariffs, Purchased Numbers, and Calling Companies open.
+- [ ] Provider Changes opens and its create modal works.
+- [ ] Server priorities and company routing settings open.
+- [ ] `/api/archivarius/v1/health` succeeds.
+- [ ] An authenticated Archivarius request succeeds with a preserved API token.
 
-- [ ] The production PostgreSQL database exists and is reachable from the hosting runtime.
-- [ ] PostgreSQL is the initial production database; production has never started on SQLite.
-- [ ] PostgreSQL preflight and initialization or migration completed successfully.
-- [ ] `scripts/postgres_backup.py` produced a backup and manifest.
-- [ ] The backup manifest SHA-256 was independently verified.
-- [ ] A restore rehearsal into a fresh database passed, including table counts, users, and smoke checks.
-- [ ] The deployment rollback rehearsal passed.
-- [ ] The strict production gate, runtime smoke, and final enablement check below passed.
+Record actual results; do not claim browser behavior without testing it in two browsers/sessions.
 
-Record evidence without secret values:
+## Rollback
 
-| Evidence | Artifact or result location |
-| --- | --- |
-| Preflight / initialization | |
-| Backup and verified manifest | |
-| Fresh-database restore rehearsal | |
-| Deployment rollback rehearsal | |
-| Strict production gate | |
-| Runtime enablement smoke | |
-| Final enablement check | |
+Keep the previous immutable application release and the verified pre-clean backup until release
+acceptance. Never patch the active release directory manually.
 
-## 3. Mandatory checks
-
-Run these commands in production or staging with the real environment supplied by secret
-storage. Ensure command tracing is disabled and review captured output before attaching it
-to an operational record.
-
-```bash
-python scripts/audit_postgres_production_gate.py --strict
-
-python scripts/postgres_runtime_enablement_smoke.py \
-  --database-url "$DATABASE_URL" \
-  --auth-secret "$MVP_AUTH_SECRET" \
-  --format json
-
-python scripts/postgres_final_enablement_check.py \
-  --database-url "$DATABASE_URL" \
-  --current-release-sha "e5ee9dd663d604b17936882e465b94f242bdf09c" \
-  --rollback-release-sha "$PREVIOUS_KNOWN_GOOD_RELEASE_SHA" \
-  --backup-manifest "$VERIFIED_BACKUP_MANIFEST" \
-  --approval docs/postgres/final_enablement_approval.md \
-  --strict \
-  --format json
-```
-
-Any non-zero result is a stop condition. Do not enable production traffic until the cause is
-understood and the complete check is rerun successfully.
-
-## 4. Cutover
-
-1. Confirm the previous known-good release SHA and verified backup manifest are available.
-2. Deploy release `e5ee9dd663d604b17936882e465b94f242bdf09c`.
-3. Apply the production environment from section 1 through hosting or secret storage.
-4. Start the application and verify that its runtime database backend is PostgreSQL.
-5. Verify login with a named operator account.
-6. Verify the read-only pages for routes, tariffs, phones, companies, and provider changes.
-7. Do not run bulk writes or imports during the observation period.
-8. Perform one safe write only when it was explicitly agreed in advance, then verify its result.
-
-## 5. Rollback
-
-### Application does not start
-
-- Disable `POSTGRES_RUNTIME_ENABLED` or roll back to the previous known-good release according
-  to the rehearsed deployment procedure.
-- Do not manually patch the production database.
-
-Disabling the runtime flag is an abort mechanism, not permission to operate production on
-SQLite. Keep traffic disabled unless the rehearsed rollback release is known to use the
-intended production datastore safely.
-
-### Database state is invalid
-
-1. Keep writes and production traffic disabled.
-2. Restore the verified backup into a fresh PostgreSQL database; never restore in place.
-3. Verify the backup SHA-256, table counts, users, and smoke checks in the fresh database.
-4. Change `DATABASE_URL` through secret storage only after verification succeeds.
-5. Restart and repeat the mandatory checks and read-only verification.
-
-## 6. Closeout record
-
-- [ ] Bootstrap administrator password removed or rotated.
-- [ ] Default credentials confirmed not to work.
-- [ ] `MVP_PRODUCTION_SECURITY=1` remains enabled.
-- [ ] Backup manifest and deployed/rollback release SHAs archived.
-- [ ] Actual cutover time and responsible operator recorded below.
-
-| Field | Recorded value (no secrets) |
-| --- | --- |
-| Cutover start (UTC) | |
-| Cutover complete (UTC) | |
-| Operator | |
-| Deployed release SHA | `e5ee9dd663d604b17936882e465b94f242bdf09c` |
-| Previous known-good release SHA | |
-| Backup manifest location | |
-| Observation-period outcome | |
+1. Remove normal-user traffic and stop the TeleRoute service.
+2. Switch the service symlink/configuration to the recorded previous release (do not edit either
+   release directory).
+3. If database rollback is required, verify the pre-clean backup checksum, restore it into a
+   **fresh** PostgreSQL database, and run restore verification. Never restore over the failed
+   database.
+4. Point `DATABASE_URL` at the verified restored database through secret storage, restart the
+   previous release, and repeat health, login, data-page, and Archivarius smoke checks.
+5. Reopen traffic only after the rollback owner signs off; preserve the failed database and logs
+   for investigation without recording credentials.
