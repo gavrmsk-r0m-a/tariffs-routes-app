@@ -6159,7 +6159,7 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
         self.assertIn("type='submit'", scroll_body[actions_start:])
         self.assertIn("data-modal-close>Отмена", scroll_body[actions_start:])
         self.assertTrue(scroll_body.rstrip().endswith("</div>"))
-        self.assertIn(".provider-change-scroll-body { min-height: 0; min-width: 0; width: 100%; max-width: 100%; box-sizing: border-box; overflow-y: auto; overflow-x: hidden;", content)
+        self.assertIn(".provider-change-scroll-body { grid-row: 2; align-self: stretch; min-height: 0; min-width: 0; width: 100%; height: 100%; max-width: 100%; max-height: 100%; box-sizing: border-box; overflow-y: auto; overflow-x: hidden;", content)
         self.assertIn(".provider-change-create-form { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); gap: 0;", content)
         self.assertIn("height: min(740px, calc(100vh - 48px));", content)
         self.assertIn("overflow: hidden;", content)
