@@ -140,9 +140,10 @@ class UiServerRenderedBaselineTest(unittest.TestCase):
         form_start = document.index("id='provider-change-create-form'")
         body = document.index("class='provider-change-scroll-body'", form_start)
         footer = document.index("class='modal-actions provider-change-create-actions'", body)
+        body_end = document.index("</div>\n</form>", footer)
         self.assertLess(form_start, body)
         self.assertLess(body, footer)
-        self.assertIn("</div>", document[body:footer])
+        self.assertLess(footer, body_end)
         for contract in ("provider-change-shell-scope", "id='event-company'", "id='campaign-selection-step'",
                          "id='campaign-route-step'", "data-campaign-route-field='1'",
                          "id='campaign-provider'", "id='company-route'", "id='campaign-reason-step'",
@@ -231,7 +232,7 @@ class UiCssArchitectureBaselineTest(unittest.TestCase):
             ".table-scroll {{ max-height: calc(100vh - 270px); overflow: auto; position: relative; }}",
             ".provider-change-create-shell .provider-change-scroll-body {{ min-height: 0;",
             "overflow-y: auto; overflow-x: hidden;",
-            "grid-template-rows: auto minmax(0, 1fr) auto;",
+            "grid-template-rows: auto minmax(0, 1fr);",
             "max-height: calc(100vh - 48px); overflow: hidden;",
             ".modal-actions {{ grid-column: 1 / -1; display: flex;",
         ):
