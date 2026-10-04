@@ -1,11 +1,16 @@
 import contextlib
 import io
 import os
+import threading
+import time
 import unittest
+from http.cookiejar import CookieJar
 from pathlib import Path
 from unittest.mock import Mock, patch
+from urllib.request import HTTPCookieProcessor, Request, build_opener
 
 from scripts import run_local_postgres_app, setup_local_postgres
+from app.http_server import make_threading_server
 from tests.postgres_test_support import TemporaryPostgresDatabase
 
 
@@ -13,6 +18,51 @@ LOCAL_URL = "postgresql://postgres:database-secret@localhost:5432/teleroute_loca
 
 
 class LocalPostgresRuntimeTests(unittest.TestCase):
+    def test_threaded_server_serves_two_authenticated_clients_independently(self):
+        first_started = threading.Event()
+        release_first = threading.Event()
+
+        def application(environ, start_response):
+            cookie = environ.get("HTTP_COOKIE", "")
+            if "user=admin" in cookie:
+                first_started.set()
+                release_first.wait(2)
+                body = b"admin"
+            elif "user=operator" in cookie:
+                body = b"operator"
+            else:
+                start_response("401 Unauthorized", [("Content-Length", "0")])
+                return [b""]
+            start_response("200 OK", [("Content-Length", str(len(body)))])
+            return [body]
+
+        with make_threading_server("127.0.0.1", 0, application) as httpd:
+            server_thread = threading.Thread(target=httpd.serve_forever)
+            server_thread.start()
+            url = f"http://127.0.0.1:{httpd.server_port}/"
+
+            def client(cookie):
+                opener = build_opener(HTTPCookieProcessor(CookieJar()))
+                request = Request(url, headers={"Cookie": cookie})
+                return opener.open(request, timeout=1).read()
+
+            admin_result = []
+            admin_thread = threading.Thread(
+                target=lambda: admin_result.append(client("user=admin"))
+            )
+            admin_thread.start()
+            try:
+                self.assertTrue(first_started.wait(1), "admin request did not start")
+                started = time.monotonic()
+                self.assertEqual(client("user=operator"), b"operator")
+                self.assertLess(time.monotonic() - started, 0.75)
+            finally:
+                release_first.set()
+                admin_thread.join(2)
+                httpd.shutdown()
+                server_thread.join(2)
+            self.assertEqual(admin_result, [b"admin"])
+
     @unittest.skipUnless(os.environ.get("POSTGRES_TEST_ADMIN_URL"), "requires PostgreSQL test admin URL")
     def test_setup_is_repeatable_with_idempotent_route_association_backfill(self):
         database = TemporaryPostgresDatabase().create_empty()

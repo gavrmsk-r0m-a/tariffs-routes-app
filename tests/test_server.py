@@ -4,12 +4,16 @@ import json
 import io
 import os
 import re
+import threading
+import time
 import unittest
 from datetime import date, timedelta
 from decimal import Decimal
 from unittest.mock import Mock, patch
 from urllib.parse import urlencode
+from urllib.request import Request, urlopen
 
+from app.http_server import make_threading_server
 from tests.postgres_test_support import seed_postgres, shared_database
 
 _TEST_DB = shared_database()
@@ -491,6 +495,48 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertNotIn("metrics-grid", content)
         self.assertNotIn("Лента событий", content)
         self.assertEqual(content.count("class='dashboard-v2-bar'"), 14)
+
+    def test_two_authenticated_http_clients_are_not_serialized(self):
+        admin_cookie = self.user_cookie("admin")
+        operator_cookie = self.user_cookie("duty")
+        admin_id = int(admin_cookie.split("=", 1)[1].split(".", 1)[0])
+        admin_started = threading.Event()
+        release_admin = threading.Event()
+
+        def dashboard(_repo):
+            if server.current_actor_id() == admin_id:
+                admin_started.set()
+                release_admin.wait(2)
+                return b"admin response"
+            return b"operator response"
+
+        with patch.object(server, "dashboard_page", side_effect=dashboard):
+            with make_threading_server("127.0.0.1", 0, server.app) as httpd:
+                server_thread = threading.Thread(target=httpd.serve_forever)
+                server_thread.start()
+                url = f"http://127.0.0.1:{httpd.server_port}/dashboard"
+
+                def fetch(cookie):
+                    return urlopen(
+                        Request(url, headers={"Cookie": cookie}), timeout=1
+                    ).read()
+
+                admin_result = []
+                admin_thread = threading.Thread(
+                    target=lambda: admin_result.append(fetch(admin_cookie))
+                )
+                admin_thread.start()
+                try:
+                    self.assertTrue(admin_started.wait(1), "admin request did not start")
+                    started = time.monotonic()
+                    self.assertEqual(fetch(operator_cookie), b"operator response")
+                    self.assertLess(time.monotonic() - started, 0.75)
+                finally:
+                    release_admin.set()
+                    admin_thread.join(2)
+                    httpd.shutdown()
+                    server_thread.join(2)
+                self.assertEqual(admin_result, [b"admin response"])
 
     def test_dashboard_filter_controls_render_for_exact_drill_down_contracts(self):
         _, phones = self.request("/phones?is_active=1&attention=1")
