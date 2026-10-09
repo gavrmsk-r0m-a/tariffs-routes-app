@@ -55,13 +55,42 @@ def preserved_fingerprints(conn) -> dict[str, tuple[int, str]]:
 
 def _reset_identities(conn) -> None:
     for table in CLEANUP_TABLES:
-        sequence = conn.execute("SELECT pg_get_serial_sequence(%s, 'id')", (f"public.{table}",)).fetchone()[0]
-        if sequence:
-            conn.execute("SELECT setval(%s, 1, false)", (sequence,))
-    sequence = conn.execute("SELECT pg_get_serial_sequence('public.change_log', 'id')").fetchone()[0]
+        identity_columns = conn.execute(
+            """
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name = %s
+              AND (
+                  is_identity = 'YES'
+                  OR column_default LIKE 'nextval(%%'
+              )
+            ORDER BY ordinal_position
+            """,
+            (table,),
+        ).fetchall()
+
+        for (column_name,) in identity_columns:
+            sequence = conn.execute(
+                "SELECT pg_get_serial_sequence(%s, %s)",
+                (f"public.{table}", column_name),
+            ).fetchone()[0]
+            if sequence:
+                conn.execute("SELECT setval(%s, 1, false)", (sequence,))
+
+    sequence = conn.execute(
+        "SELECT pg_get_serial_sequence('public.change_log', 'id')"
+    ).fetchone()[0]
     if sequence:
-        maximum = int(conn.execute("SELECT COALESCE(MAX(id), 0) FROM change_log").fetchone()[0])
-        conn.execute("SELECT setval(%s, %s, %s)", (sequence, max(maximum, 1), maximum > 0))
+        maximum = int(
+            conn.execute(
+                "SELECT COALESCE(MAX(id), 0) FROM change_log"
+            ).fetchone()[0]
+        )
+        conn.execute(
+            "SELECT setval(%s, %s, %s)",
+            (sequence, max(maximum, 1), maximum > 0),
+        )
 
 
 def prepare_release_database(conn, *, apply: bool = False,
