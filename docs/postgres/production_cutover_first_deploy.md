@@ -23,17 +23,20 @@ Never enable shell tracing while handling them.
 
 ## Server deployment
 
-1. Install Python 3.12 or newer, create a virtual environment, activate it, and run
-   `python -m pip install -r requirements.txt`.
-2. Configure variables based on `.env.production.example` in external secret storage. The auth
-   secret must be random, at least 32 characters, and stable across restarts and releases.
-3. Apply the canonical schema and all migrations explicitly **before** startup using the
-   established migration procedure. The launcher never initializes or migrates the database.
-4. Start `python scripts/run_production.py` under a process supervisor (for example systemd),
-   with restart policy and boot-time auto-start. It uses Waitress and defaults to
-   `127.0.0.1:8000`.
-5. Configure the reverse proxy to terminate HTTPS and proxy only to `127.0.0.1:8000`. Do not
-   expose Waitress directly to the Internet.
+1. Install Docker Engine with the Compose plugin on the Linux host.
+2. Configure values from `.env.production.example` in external secret storage. Database and
+   authentication secrets must be strong, stable across restarts, and never committed.
+3. Validate the release with
+   `docker compose --env-file /etc/teleroute/teleroute.env -f docker-compose.production.yml config`.
+4. Start the stack with
+   `docker compose --env-file /etc/teleroute/teleroute.env -f docker-compose.production.yml up -d --build`.
+   The one-shot `db_migrate` service waits for PostgreSQL 16, applies the canonical schema and
+   ordered migrations, and must succeed before the application container starts.
+5. Verify that the application is published only on host loopback
+   (`127.0.0.1:8000` by default), then configure the reverse proxy to terminate HTTPS and proxy
+   to that endpoint. Do not expose Waitress or PostgreSQL directly.
+6. Follow `docs/deployment/docker_production.md` for upgrades and rollback. The legacy direct
+   Python/systemd launcher remains available as a fallback but is not the primary container path.
 
 ## Administrator cutover
 
