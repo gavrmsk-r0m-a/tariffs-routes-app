@@ -30,7 +30,8 @@ not part of the application backend and are never a runtime mode.
 - Python 3.12 or newer.
 - PostgreSQL 16 or a compatible supported PostgreSQL service.
 - Python packages from `requirements.txt`.
-- Docker with Docker Compose, optionally, for the local-development database only.
+- Docker with Docker Compose for the supported containerized production stack and,
+  optionally, for the local-development database.
 - PostgreSQL client tools such as `pg_dump` and `pg_restore` for backup and restore
   operations.
 
@@ -160,14 +161,24 @@ rehearse restore before a production cutover. Follow the
 
 ## Production filesystem and deployment
 
+The supported containerized production path uses `Dockerfile` plus
+`docker-compose.production.yml`. It runs TeleRoute through Waitress in an
+unprivileged Python 3.12 container, PostgreSQL 16 in a persistent volume, and a
+one-shot schema/migration service before application startup. The host publishes
+the application only on loopback for an HTTPS reverse proxy.
+
+See [`docs/deployment/docker_production.md`](docs/deployment/docker_production.md)
+for the container deployment contract. The existing local workflow remains
+separate and unchanged.
+
 Application releases are immutable, while configuration, runtime files, logs, and
 backups live outside the checkout. See the
 [`PostgreSQL-only production filesystem layout`](docs/deployment/filesystem_layout.md)
-for the directory contract and ownership boundaries.
+for the broader ownership boundaries.
 
-Before deployment, make sure the hosting platform provides `DATABASE_URL` and all
-authentication secrets, the schema is current, backup/restore has been rehearsed,
-and the release can be rolled back without editing the repository in place.
+Before deployment, make sure the hosting platform provides production secrets,
+backup/restore has been rehearsed, and the release can be rolled back without
+editing the active application image or production data in place.
 
 ## Repository hygiene
 
