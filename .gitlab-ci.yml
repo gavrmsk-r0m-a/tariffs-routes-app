@@ -54,4 +54,4 @@ teleroute_tests:
 
   script:
     - python -m compileall -q app scripts
-    - python -m unittest -v tests.test_production_release tests.test_ui_baseline
+    - python -m unittest -v tests.test_production_release tests.test_ui_baseline tests.test_container_deployment
