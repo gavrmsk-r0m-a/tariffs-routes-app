@@ -19,7 +19,14 @@ on:
       - scripts/local_postgres_app_smoke.py
       - tests/test_local_postgres_runtime.py
       - docker-compose.postgres.yml
+      - docker-compose.production.yml
+      - Dockerfile
+      - .dockerignore
       - .env.postgres.local.example
+      - .env.production.example
+      - scripts/apply_postgres_schema.py
+      - tests/test_container_deployment.py
+      - docs/deployment/docker_production.md
       - tests/test_postgres_full_app_smoke.py
       - tests/test_postgres_final_enablement_gate.py
       - docs/postgres/final_enablement_runbook.md
@@ -100,6 +107,16 @@ jobs:
       - name: Validate local PostgreSQL Compose file
         run: docker compose -f docker-compose.postgres.yml config
 
+      - name: Validate production Compose and Docker image
+        env:
+          POSTGRES_PASSWORD: ci-only-postgres-password
+          DATABASE_URL: postgresql://teleroute:ci-only-postgres-password@postgres:5432/teleroute
+          MVP_AUTH_SECRET: ci-only-container-auth-secret-at-least-32-characters
+          APP_BASE_URL: https://teleroute.example.invalid
+        run: |
+          docker compose -f docker-compose.production.yml config
+          docker build -t teleroute-ci .
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -129,6 +146,7 @@ jobs:
           python -m unittest tests.test_postgres_deployment_rollback_gate
           python -m unittest tests.test_postgres_final_enablement_gate
           python -m unittest tests.test_local_postgres_runtime
+          python -m unittest tests.test_container_deployment
           python scripts/audit_postgres_production_gate.py --format json
           python scripts/audit_postgres_production_gate.py --strict
 
