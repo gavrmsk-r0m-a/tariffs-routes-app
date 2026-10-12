@@ -1,3 +1,4 @@
+import os
 import unittest
 from pathlib import Path
 
@@ -32,6 +33,30 @@ class ContainerDeploymentContractTests(unittest.TestCase):
         self.assertIn("schema.postgres.sql", text)
         self.assertIn("docs/postgres/migrations", text)
         self.assertNotIn("INSERT INTO users", text)
+
+
+@unittest.skipUnless(os.environ.get("POSTGRES_TEST_ADMIN_URL"),
+                     "POSTGRES_TEST_ADMIN_URL is required")
+class ContainerMigrationPostgresTests(unittest.TestCase):
+    def test_schema_apply_is_repeatable_on_fresh_database(self):
+        from scripts.apply_postgres_schema import apply_schema_and_migrations
+        from tests.postgres_test_support import TemporaryPostgresDatabase
+
+        database = TemporaryPostgresDatabase().create_empty()
+        try:
+            first = apply_schema_and_migrations(database.database_url)
+            second = apply_schema_and_migrations(database.database_url)
+            self.assertTrue(first)
+            self.assertEqual(first, second)
+            with database.connect() as conn:
+                self.assertIsNotNone(
+                    conn.execute("SELECT to_regclass('public.routing_event_routes')").fetchone()[0]
+                )
+                self.assertIsNotNone(
+                    conn.execute("SELECT to_regclass('public.phone_spam_state')").fetchone()[0]
+                )
+        finally:
+            database.drop()
 
 
 if __name__ == "__main__":
