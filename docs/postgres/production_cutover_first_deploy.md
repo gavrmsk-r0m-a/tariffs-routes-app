@@ -66,16 +66,16 @@ Record actual results; do not claim browser behavior without testing it in two b
 
 ## Rollback
 
-Keep the previous immutable application release and the verified pre-clean backup until release
-acceptance. Never patch the active release directory manually.
+Keep the previous approved application image/release and the verified pre-clean backup until
+release acceptance. Never patch a running container or production data files manually.
 
-1. Remove normal-user traffic and stop the TeleRoute service.
-2. Switch the service symlink/configuration to the recorded previous release (do not edit either
-   release directory).
+1. Remove normal-user traffic and stop the TeleRoute application container.
+2. Redeploy the recorded previous approved image/release with the same external configuration.
 3. If database rollback is required, verify the pre-clean backup checksum, restore it into a
    **fresh** PostgreSQL database, and run restore verification. Never restore over the failed
    database.
-4. Point `DATABASE_URL` at the verified restored database through secret storage, restart the
-   previous release, and repeat health, login, data-page, and Archivarius smoke checks.
+4. Point `DATABASE_URL` at the verified restored database through secret storage, start the
+   previous application image/release, and repeat health, login, data-page, and Archivarius smoke
+   checks.
 5. Reopen traffic only after the rollback owner signs off; preserve the failed database and logs
    for investigation without recording credentials.
