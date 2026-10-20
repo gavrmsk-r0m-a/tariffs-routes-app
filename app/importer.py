@@ -722,8 +722,8 @@ def preview_route_rollback(conn, csv_text: str, *, backend: str = "postgres") ->
                 if count:
                     blockers.append(f"{table}.{column}: {count}")
             if blockers:
-                preview.error_rows += 1
-                preview.rows.append({"line": line, "status": "blocked", "action": "keep", "message": f"{key}; блокирующие связи: {', '.join(blockers)}"})
+                preview.skipped_rows += 1
+                preview.rows.append({"line": line, "status": "blocked", "action": "keep", "message": f"{key}; сохранён: есть связи: {', '.join(blockers)}"})
             else:
                 preview.new_rows += 1
                 preview.rows.append({"line": line, "status": "ready", "action": "delete", "message": str(key)})
@@ -736,13 +736,20 @@ def preview_route_rollback(conn, csv_text: str, *, backend: str = "postgres") ->
 def apply_route_rollback(conn, csv_text: str, *, backend: str = "postgres") -> ImportPreview:
     preview = preview_route_rollback(conn, csv_text, backend=backend)
     if preview.error_rows:
-        raise BusinessRuleError("Откат заблокирован: есть маршруты с бизнес-связями или ошибки CSV. Исправьте список или снимите связи и повторите предпросмотр.")
+        raise BusinessRuleError("Откат заблокирован: CSV содержит ошибки. Исправьте файл и повторите предпросмотр.")
+    ready = {
+        tuple(row["message"].strip("()").replace("'", "").split(", ", 1))
+        for row in preview.rows
+        if row.get("action") == "delete"
+    }
     repo = Repository(conn, backend=backend)
     p = placeholder(backend)
     deleted = 0
     try:
         for row in parse_csv(csv_text):
             country, name = _business_key(conn, "routes", row)
+            if (country, name) not in ready:
+                continue
             route = repo.get_route_by_country_name_and_name(country, name)
             if route is None:
                 continue
