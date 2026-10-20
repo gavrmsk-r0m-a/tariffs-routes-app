@@ -2653,25 +2653,27 @@ class RoutingEventsRepositoryTest(unittest.TestCase):
         self.assertEqual(len(listed), 1)
         self.assertIsNone(listed[0]["country_name"])
 
-    def test_multi_geo_campaign_set_route_uses_canonical_route_geo_and_provider(self):
+    def test_multi_geo_campaign_set_route_is_rejected(self):
         company_id = self.repo.create_calling_company(
             server_id=self.server_id, country_id=None, company_name="Multi Route",
             company_id_external="multi-200", has_autorotation=False, created_by=self.admin_id,
         )
-        event_id = self.create_event(
-            apply_scope="campaign_setting", calling_company_id=company_id,
-            company_change_type="set_campaign_route", country_id=self.country_id,
-            provider_id=self.alt_provider_id, new_company_route_id=self.other_route_id,
-        )
-        event = self.conn.execute("SELECT * FROM routing_events WHERE id = %s", (event_id,)).fetchone()
+        with self.assertRaisesRegex(BusinessRuleError, "Несколько GEO"):
+            self.create_event(
+                apply_scope="campaign_setting", calling_company_id=company_id,
+                company_change_type="set_campaign_route", country_id=self.country_id,
+                provider_id=self.alt_provider_id, new_company_route_id=self.other_route_id,
+            )
+        event = self.conn.execute(
+            "SELECT * FROM routing_events WHERE calling_company_id = %s",
+            (company_id,),
+        ).fetchone()
         setting = self.conn.execute(
             "SELECT * FROM company_routing_settings WHERE calling_company_id = %s AND is_active = TRUE",
             (company_id,),
         ).fetchone()
-        self.assertEqual(event["country_id"], self.other_country_id)
-        self.assertEqual(event["provider_id"], self.provider_id)
-        self.assertEqual(setting["country_id"], self.other_country_id)
-        self.assertEqual(setting["route_id"], self.other_route_id)
+        self.assertIsNone(event)
+        self.assertIsNone(setting)
 
     def test_campaign_setting_remove_without_manual_route_is_controlled_noop(self):
         with self.assertRaisesRegex(BusinessRuleError, "ручной маршрут не задан"):

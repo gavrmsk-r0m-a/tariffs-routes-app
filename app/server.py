@@ -4978,6 +4978,30 @@ def active_options(repo: Repository, table: str, label: str = "name", selected: 
     )
 
 
+def routing_event_country_filter_options(
+    repo: Repository,
+    selected: object | None = None,
+    empty: str | None = "Все",
+) -> str:
+    """Show only GEOs that actually occur in the provider-change journal.
+
+    Dictionary activity is intentionally irrelevant here: an inactive GEO must
+    remain searchable when historical journal rows reference it, while an
+    inactive orphan dictionary value must not pollute the filter.
+    """
+    return select_options(
+        repo,
+        """
+        SELECT DISTINCT c.id, c.name AS label
+        FROM routing_events re
+        JOIN countries c ON c.id = re.country_id
+        ORDER BY c.name
+        """,
+        selected=selected,
+        empty=empty,
+    )
+
+
 def prefix_options(repo: Repository, selected: object | None = None, empty: str | None = "Без префикса") -> str:
     p = placeholder(repo.backend)
     selected_text = "" if selected is None else str(selected)
@@ -8904,7 +8928,7 @@ def provider_changes_page(repo: Repository, q: dict[str, str] | None = None, for
     filters_html = f"""<form class='filter-grid' method='get' action='/provider-changes'>
 <label>Дата от <input type='date' name='date_from' value='{esc(q.get('date_from'))}'></label>
 <label>Дата до <input type='date' name='date_to' value='{esc(q.get('date_to'))}'></label>
-<label>GEO <select name='country_id'>{options(repo, 'countries', selected=q.get('country_id'), empty='Все')}</select></label>
+<label>GEO <select name='country_id'>{routing_event_country_filter_options(repo, selected=q.get('country_id'), empty='Все')}</select></label>
 <label>Область применения <select name='apply_scope'>{routing_scope_options(q.get('apply_scope'))}</select></label>
 <label>Сервер <select name='server_id'>{options(repo, 'servers', selected=q.get('server_id'), empty='Все')}</select></label>
 <label>Кампания ID <input name='campaign_id' value='{esc(q.get('campaign_id'))}'></label>
