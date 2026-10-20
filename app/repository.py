@@ -4530,7 +4530,14 @@ class Repository:
             "dial_set_count": dial_set_count,
             "retry_interval_seconds": retry_interval_seconds,
         }
-        requested = set(optional) if _requested_fields is None else set(_requested_fields)
+        # Legacy callers do not pass _requested_fields. In that mode only
+        # explicitly supplied non-None values are patched, so newly added
+        # NOT NULL fields are never overwritten with NULL by omission.
+        requested = (
+            {key for key, value in optional.items() if value is not None}
+            if _requested_fields is None
+            else set(_requested_fields)
+        )
         for key, value in optional.items():
             if key in requested:
                 fields[key] = value
