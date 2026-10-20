@@ -826,7 +826,9 @@ class ImportPatchBehaviorTests(unittest.TestCase):
         )
         csv_text = "country,name,provider\nИталия,Италия/Miatel/Pool_A@,Miatel\n"
         preview = preview_route_rollback(self.conn, csv_text)
-        self.assertEqual(preview.error_rows, 1)
+        self.assertEqual(preview.error_rows, 0)
+        self.assertEqual(preview.skipped_rows, 1)
         self.assertEqual(preview.rows[0]["action"], "keep")
-        with self.assertRaises(BusinessRuleError):
-            apply_route_rollback(self.conn, csv_text)
+        result = apply_route_rollback(self.conn, csv_text)
+        self.assertEqual(result.updated_rows, 0)
+        self.assertIsNotNone(self.conn.execute("SELECT 1 FROM routes WHERE id=%s", (route_id,)).fetchone())
