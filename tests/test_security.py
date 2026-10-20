@@ -2,7 +2,7 @@ import sqlite3
 import unittest
 from datetime import datetime, timedelta, timezone
 
-from app.security import login_failure_count, login_lock_remaining, record_login_failure
+from app.security import auth_cookie_attributes, login_failure_count, login_lock_remaining, record_login_failure
 
 
 class LoginThrottleTest(unittest.TestCase):
