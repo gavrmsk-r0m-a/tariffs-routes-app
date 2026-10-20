@@ -421,13 +421,15 @@ class ImporterTest(unittest.TestCase):
         self.assertEqual([row["number"] for row in rows], [])
 
     def test_calling_company_import_requires_external_id(self):
+        self.repo.create_country("Мексика", "MX")
         csv_text = "server,country,company_name,company_id_external,has_autorotation\nEU1,Мексика,CC No Id,,yes\nEU1,Мексика,CC Good,1001,yes\n"
         preview = preview_import(self.conn, "calling_companies", csv_text)
         self.assertEqual(preview.error_rows, 1)
         self.assertEqual(preview.new_rows, 1)
-        apply_import(self.conn, "calling_companies", csv_text, user_id=self.admin_id)
+        with self.assertRaisesRegex(BusinessRuleError, "Импорт невозможен"):
+            apply_import(self.conn, "calling_companies", csv_text, user_id=self.admin_id)
         rows = self.conn.execute("SELECT company_id_external FROM calling_companies").fetchall()
-        self.assertEqual([row["company_id_external"] for row in rows], ["1001"])
+        self.assertEqual(rows, [])
 
     def test_phone_import_supports_extended_fields_and_reference_validation(self):
         self.conn.execute("INSERT INTO projects(name, is_active) VALUES ('Competitors', TRUE)")
