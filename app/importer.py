@@ -88,8 +88,16 @@ def preview_import(conn, entity_type: str, csv_text: str, *, backend: str = "pos
                 phone_values.update(_phone_reference_ids(conn, row, backend=backend))
             else:
                 phone_values = {}
-            if entity_type == "calling_companies" and _has_any(row, "country", "страна", "гео"):
-                _campaign_country_id(Repository(conn, backend=backend), row)
+            if entity_type == "calling_companies":
+                company_repo = Repository(conn, backend=backend)
+                if _has_any(row, "country", "страна", "гео"):
+                    _campaign_country_id(company_repo, row)
+                if _has_any(row, "line_count", "кол-во линий", "количество линий"):
+                    _parse_nonnegative_int(_first(row, "line_count", "кол-во линий", "количество линий"), "line_count")
+                if _has_any(row, "dial_set_count", "кол-во наборов", "количество наборов"):
+                    _parse_nonnegative_int(_first(row, "dial_set_count", "кол-во наборов", "количество наборов"), "dial_set_count")
+                if _has_any(row, "retry_interval_seconds", "интервал дозвона", "интервалы, с."):
+                    _parse_nonnegative_int(_first(row, "retry_interval_seconds", "интервал дозвона", "интервалы, с."), "retry_interval_seconds")
             if key in seen_keys:
                 preview.duplicate_rows += 1
                 if entity_type == "phone_numbers":
@@ -139,7 +147,7 @@ def apply_import(
     if mode == "replace_section":
         raise BusinessRuleError("Режим замены раздела временно отключён. Используйте Дополнить / обновить.")
     preview = preview_import(conn, entity_type, csv_text, backend=backend)
-    if entity_type == "phone_numbers" and preview.error_rows:
+    if entity_type in {"phone_numbers", "calling_companies"} and preview.error_rows:
         raise BusinessRuleError("Импорт невозможен: в предпросмотре есть ошибки. Исправьте файл и повторите предпросмотр.")
     if mode == "replace_section":
         _clear_section(conn, entity_type)
