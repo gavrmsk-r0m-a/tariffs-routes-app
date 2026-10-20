@@ -1,4 +1,5 @@
 import unittest
+from pathlib import Path
 from unittest.mock import Mock, patch
 
 from tests.postgres_test_support import shared_database
@@ -775,6 +776,57 @@ class ImportPatchBehaviorTests(unittest.TestCase):
         self.assertFalse(row["has_autorotation"])
         self.assertTrue(row["is_active"])
         self.assertEqual(row["comment"], "Тип кампании: Прогресив")
+
+    def test_campaign_import_maps_english_geo_to_existing_russian_country(self):
+        canonical_id = self.repo.create_country("Аргентина", "AR")
+        csv_text = (
+            "server,country,company_id_external,company_name,line_count,dial_set_count,retry_interval_seconds,is_active\n"
+            "EU1,Argentina,9101,CC Moscow / Argentina / 0-1,20,7,600,да\n"
+        )
+
+        preview = preview_import(self.conn, "calling_companies", csv_text)
+        self.assertEqual(preview.error_rows, 0)
+        result = apply_import(self.conn, "calling_companies", csv_text, user_id=self.admin_id)
+
+        self.assertEqual(result.created_rows, 1)
+        row = self.conn.execute(
+            "SELECT country_id FROM calling_companies WHERE company_id_external='9101'"
+        ).fetchone()
+        self.assertEqual(row["country_id"], canonical_id)
+        self.assertIsNone(self.conn.execute("SELECT id FROM countries WHERE name='Argentina'").fetchone())
+
+    def test_campaign_preview_rejects_unknown_geo_without_creating_country(self):
+        csv_text = (
+            "server,country,company_id_external,company_name\n"
+            "EU1,Atlantis,9102,CC Moscow / Atlantis / 0-1\n"
+        )
+
+        preview = preview_import(self.conn, "calling_companies", csv_text)
+
+        self.assertEqual(preview.error_rows, 1)
+        self.assertIn("не найдено в справочнике стран", preview.rows[0]["message"])
+        self.assertIsNone(self.conn.execute("SELECT id FROM countries WHERE name='Atlantis'").fetchone())
+
+    def test_campaign_country_alias_migration_repoints_company_and_deletes_alias(self):
+        canonical_id = self.repo.create_country("Аргентина", "AR")
+        alias_id = self.repo.create_country("Argentina")
+        server_id = self.repo.create_server("EU1")
+        company_id = self.repo.create_calling_company(
+            server_id=server_id,
+            country_id=alias_id,
+            company_name="CC Moscow / Argentina / Zorra / 0-1",
+            company_id_external="9103",
+            has_autorotation=False,
+            created_by=self.admin_id,
+        )
+
+        migration = Path("docs/postgres/migrations/20261020_02_normalize_campaign_country_aliases.sql").read_text(encoding="utf-8")
+        self.conn.execute(migration)
+        self.conn.commit()
+
+        row = self.conn.execute("SELECT country_id FROM calling_companies WHERE id=%s", (company_id,)).fetchone()
+        self.assertEqual(row["country_id"], canonical_id)
+        self.assertIsNone(self.conn.execute("SELECT id FROM countries WHERE id=%s", (alias_id,)).fetchone())
 
     def test_campaign_blank_autorotation_on_reimport_preserves_existing_value(self):
         server_id = self.repo.create_server("EU1")

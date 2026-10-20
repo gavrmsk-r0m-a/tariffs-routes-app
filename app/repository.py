@@ -2521,6 +2521,8 @@ class Repository:
         company = self.conn.execute(f"SELECT id, country_id, server_id FROM calling_companies WHERE id = {p}", (calling_company_id,)).fetchone()
         if not company:
             raise BusinessRuleError("Кампания прозвона не найдена")
+        if company["country_id"] is None and route_id is not None:
+            raise BusinessRuleError("Для кампании «Несколько GEO» нельзя назначить ручной маршрут")
         if company["country_id"] is not None and company["country_id"] != country_id:
             raise BusinessRuleError("GEO схемы маршрутизации должен совпадать с GEO выбранной кампании")
         if int(company["server_id"]) != int(server_id):
@@ -4229,6 +4231,14 @@ class Repository:
     def get_country_by_name(self, name: str) -> dict | None:
         p = placeholder(self.backend)
         row = self.conn.execute(f"SELECT id, name, code, is_active FROM countries WHERE name = {p}", (name,)).fetchone()
+        return row_to_dict(row)
+
+    def get_country_by_code(self, code: str) -> dict | None:
+        p = placeholder(self.backend)
+        row = self.conn.execute(
+            f"SELECT id, name, code, is_active FROM countries WHERE UPPER(COALESCE(code, '')) = UPPER({p}) LIMIT 1",
+            (code.strip(),),
+        ).fetchone()
         return row_to_dict(row)
 
     def get_provider_by_normalized_name(self, normalized_name: str) -> dict | None:
