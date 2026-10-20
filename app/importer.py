@@ -713,7 +713,7 @@ def preview_route_rollback(conn, csv_text: str, *, backend: str = "postgres") ->
             seen.add(key)
             route = repo.get_route_by_country_name_and_name(country, name)
             if route is None:
-                preview.rows.append({"line": line, "status": "not_found", "action": "skip", "message": str(key)})
+                preview.rows.append({"line": line, "status": "not_found", "action": "skip", "message": str(key), "key": key})
                 preview.skipped_rows += 1
                 continue
             blockers = []
@@ -723,10 +723,10 @@ def preview_route_rollback(conn, csv_text: str, *, backend: str = "postgres") ->
                     blockers.append(f"{table}.{column}: {count}")
             if blockers:
                 preview.skipped_rows += 1
-                preview.rows.append({"line": line, "status": "blocked", "action": "keep", "message": f"{key}; сохранён: есть связи: {', '.join(blockers)}"})
+                preview.rows.append({"line": line, "status": "blocked", "action": "keep", "message": f"{key}; сохранён: есть связи: {', '.join(blockers)}", "key": key})
             else:
                 preview.new_rows += 1
-                preview.rows.append({"line": line, "status": "ready", "action": "delete", "message": str(key)})
+                preview.rows.append({"line": line, "status": "ready", "action": "delete", "message": str(key), "key": key})
         except BusinessRuleError as exc:
             preview.error_rows += 1
             preview.rows.append({"line": line, "status": "error", "action": "keep", "message": str(exc)})
@@ -738,9 +738,9 @@ def apply_route_rollback(conn, csv_text: str, *, backend: str = "postgres") -> I
     if preview.error_rows:
         raise BusinessRuleError("Откат заблокирован: CSV содержит ошибки. Исправьте файл и повторите предпросмотр.")
     ready = {
-        tuple(row["message"].strip("()").replace("'", "").split(", ", 1))
+        tuple(row["key"])
         for row in preview.rows
-        if row.get("action") == "delete"
+        if row.get("action") == "delete" and row.get("key")
     }
     repo = Repository(conn, backend=backend)
     p = placeholder(backend)
