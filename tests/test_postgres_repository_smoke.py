@@ -15,7 +15,7 @@ from app.repository import Repository
 
 _TEST_DB = shared_database()
 
-CHECKS_COUNT = 658
+CHECKS_COUNT = 666
 
 
 class RecordingRepository:
