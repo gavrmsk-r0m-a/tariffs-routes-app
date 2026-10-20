@@ -4,7 +4,7 @@ from unittest.mock import Mock, patch
 from tests.postgres_test_support import shared_database
 
 _TEST_DB = shared_database()
-from app.importer import ImportPreview, _map_final_status, apply_import, preview_import
+from app.importer import ImportPreview, _map_final_status, apply_import, apply_route_rollback, preview_import, preview_route_rollback
 from app.repository import BusinessRuleError, Repository, format_decimal_label
 
 
@@ -720,3 +720,113 @@ class PhoneNumbersProductionSafeImportTest(unittest.TestCase):
         with self.assertRaises(BusinessRuleError):
             apply_import(self.conn, "phone_numbers", csv_text, user_id=self.admin_id)
         self.assertIsNone(self.conn.execute("SELECT 1 FROM phone_numbers WHERE number = '52555000106'").fetchone())
+
+
+class ImportPatchBehaviorTests(unittest.TestCase):
+    def setUp(self):
+        _TEST_DB.reset(seed=False)
+        self.conn = _TEST_DB.connect()
+        self.repo = Repository(self.conn)
+        self.repo.create_country("Италия")
+        self.repo.create_currency("EUR", "EUR")
+        usd_id = self.repo.create_currency("USD", "USD")
+        self.repo.create_provider("Miatel", default_currency_id=usd_id)
+        self.conn.commit()
+        self.admin_id = self.repo.create_user("patch-admin", "Patch Admin")
+
+    def tearDown(self):
+        self.conn.close()
+
+    def test_minimal_route_reimport_preserves_optional_metadata_and_repairs_obvious_rnd(self):
+        country_id = self.conn.execute("SELECT id FROM countries WHERE name = %s", ("Италия",)).fetchone()["id"]
+        provider_id = self.conn.execute("SELECT id FROM providers WHERE name = %s", ("Miatel",)).fetchone()["id"]
+        self.repo.create_route(
+            country_id=country_id, provider_id=provider_id, name="Италия/Miatel/RND@",
+            project_label="Legacy", cli_source_type="other", cli_source_label="OTHER",
+            comment="keep me", created_by=self.admin_id,
+        )
+        csv_text = "country,name,provider\nИталия,Италия/Miatel/RND@,Miatel\n"
+        result = apply_import(self.conn, "routes", csv_text, user_id=self.admin_id)
+        self.assertEqual(result.updated_rows, 1)
+        row = self.conn.execute("SELECT project_label, cli_source_type, cli_source_label, comment FROM routes WHERE name=%s", ("Италия/Miatel/RND@",)).fetchone()
+        self.assertEqual(row["project_label"], "Legacy")
+        self.assertEqual((row["cli_source_type"], row["cli_source_label"]), ("rnd", "RND"))
+        self.assertEqual(row["comment"], "keep me")
+
+    def test_new_route_import_can_infer_country_from_name(self):
+        csv_text = "name,provider\nИталия/Miatel/RND@,Miatel\n"
+        preview = preview_import(self.conn, "routes", csv_text)
+        self.assertEqual(preview.error_rows, 0)
+        result = apply_import(self.conn, "routes", csv_text, user_id=self.admin_id)
+        self.assertEqual(result.created_rows, 1)
+        row = self.conn.execute("SELECT r.cli_source_type, r.cli_source_label, c.name country_name FROM routes r JOIN countries c ON c.id=r.country_id WHERE r.name=%s", ("Италия/Miatel/RND@",)).fetchone()
+        self.assertEqual((row["country_name"], row["cli_source_type"], row["cli_source_label"]), ("Италия", "rnd", "RND"))
+
+    def test_campaign_import_supports_multi_geo_and_operational_fields(self):
+        csv_text = (
+            "server,country,company_id_external,company_name,line_count,dial_set_count,retry_interval_seconds,has_autorotation,is_active,comment\n"
+            "EU1,Несколько GEO,9001,Third call / CC Arko,15,5,600,,да,Тип кампании: Прогресив\n"
+        )
+        result = apply_import(self.conn, "calling_companies", csv_text, user_id=self.admin_id)
+        self.assertEqual(result.created_rows, 1)
+        row = self.conn.execute("SELECT country_id,line_count,dial_set_count,retry_interval_seconds,has_autorotation,is_active,comment FROM calling_companies WHERE company_id_external='9001'").fetchone()
+        self.assertIsNone(row["country_id"])
+        self.assertEqual((row["line_count"], row["dial_set_count"], row["retry_interval_seconds"]), (15, 5, 600))
+        self.assertFalse(row["has_autorotation"])
+        self.assertTrue(row["is_active"])
+        self.assertEqual(row["comment"], "Тип кампании: Прогресив")
+
+    def test_campaign_blank_autorotation_on_reimport_preserves_existing_value(self):
+        server_id = self.repo.create_server("EU1")
+        country_id = self.conn.execute("SELECT id FROM countries WHERE name=%s", ("Италия",)).fetchone()["id"]
+        self.repo.create_calling_company(
+            server_id=server_id, country_id=country_id, company_name="Campaign",
+            company_id_external="9002", has_autorotation=True, created_by=self.admin_id,
+            line_count=1, dial_set_count=1, retry_interval_seconds=30,
+        )
+        csv_text = (
+            "server,country,company_id_external,company_name,line_count,dial_set_count,retry_interval_seconds,has_autorotation,is_active\n"
+            "EU1,Италия,9002,Campaign,20,7,600,,да\n"
+        )
+        result = apply_import(self.conn, "calling_companies", csv_text, user_id=self.admin_id)
+        self.assertEqual(result.updated_rows, 1)
+        row = self.conn.execute("SELECT line_count,dial_set_count,retry_interval_seconds,has_autorotation FROM calling_companies WHERE company_id_external='9002'").fetchone()
+        self.assertEqual((row["line_count"], row["dial_set_count"], row["retry_interval_seconds"]), (20, 7, 600))
+        self.assertTrue(row["has_autorotation"])
+
+    def test_route_rollback_deletes_only_unblocked_routes_from_supplied_csv(self):
+        country_id = self.conn.execute("SELECT id FROM countries WHERE name=%s", ("Италия",)).fetchone()["id"]
+        provider_id = self.conn.execute("SELECT id FROM providers WHERE name=%s", ("Miatel",)).fetchone()["id"]
+        route_id = self.repo.create_route(
+            country_id=country_id, provider_id=provider_id, name="Италия/Miatel/RND@",
+            cli_source_type="rnd", cli_source_label="RND", created_by=self.admin_id,
+        )
+        csv_text = "country,name,provider\nИталия,Италия/Miatel/RND@,Miatel\n"
+        preview = preview_route_rollback(self.conn, csv_text)
+        self.assertEqual(preview.error_rows, 0)
+        self.assertEqual(preview.rows[0]["action"], "delete")
+        result = apply_route_rollback(self.conn, csv_text)
+        self.assertEqual(result.updated_rows, 1)
+        self.assertIsNone(self.conn.execute("SELECT 1 FROM routes WHERE id=%s", (route_id,)).fetchone())
+
+    def test_route_rollback_blocks_route_with_phone_links(self):
+        country_id = self.conn.execute("SELECT id FROM countries WHERE name=%s", ("Италия",)).fetchone()["id"]
+        provider_id = self.conn.execute("SELECT id FROM providers WHERE name=%s", ("Miatel",)).fetchone()["id"]
+        route_id = self.repo.create_route(
+            country_id=country_id, provider_id=provider_id, name="Италия/Miatel/Pool_A@",
+            cli_source_type="pool", cli_source_label="Pool_A", created_by=self.admin_id,
+        )
+        phone_id = self.repo.create_phone_number(
+            country_id=country_id, provider_id=provider_id, number="393331239099",
+            assignment_type="other", status="used", created_by=self.admin_id,
+        )
+        self.repo.add_phone_to_route(
+            route_id=route_id, phone_number_id=phone_id, usage_type="pool_member",
+            added_by=self.admin_id,
+        )
+        csv_text = "country,name,provider\nИталия,Италия/Miatel/Pool_A@,Miatel\n"
+        preview = preview_route_rollback(self.conn, csv_text)
+        self.assertEqual(preview.error_rows, 1)
+        self.assertEqual(preview.rows[0]["action"], "keep")
+        with self.assertRaises(BusinessRuleError):
+            apply_route_rollback(self.conn, csv_text)
