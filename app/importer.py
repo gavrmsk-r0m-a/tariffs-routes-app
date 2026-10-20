@@ -88,6 +88,8 @@ def preview_import(conn, entity_type: str, csv_text: str, *, backend: str = "pos
                 phone_values.update(_phone_reference_ids(conn, row, backend=backend))
             else:
                 phone_values = {}
+            if entity_type == "calling_companies" and _has_any(row, "country", "страна", "гео"):
+                _campaign_country_id(Repository(conn, backend=backend), row)
             if key in seen_keys:
                 preview.duplicate_rows += 1
                 if entity_type == "phone_numbers":
@@ -576,11 +578,98 @@ def _parse_nonnegative_int(value: str, label: str, *, default: int = 0) -> int:
     return number
 
 
+CAMPAIGN_MULTI_GEO_ALIASES = {
+    "несколько geo", "несколько гео", "multi", "multi-geo", "multigeo",
+    "latam", "eu", "benelux", "czech slovakia", "third call",
+}
+
+# Campaign source names are often written in English, while TeleRoute's GEO
+# dictionary is canonical Russian.  Import must resolve to the existing
+# dictionary row instead of creating a second country entity.
+CAMPAIGN_COUNTRY_ALIASES: dict[str, tuple[str, str]] = {
+    "albania": ("AL", "Албания"),
+    "argentina": ("AR", "Аргентина"),
+    "austria": ("AT", "Австрия"),
+    "belarus": ("BY", "Беларусь"),
+    "belgium": ("BE", "Бельгия"),
+    "bolivia": ("BO", "Боливия"),
+    "bosnia": ("BA", "Босния"),
+    "bosnia and herzegovina": ("BA", "Босния"),
+    "brazil": ("BR", "Бразилия"),
+    "bulgaria": ("BG", "Болгария"),
+    "chile": ("CL", "Чили"),
+    "colombia": ("CO", "Колумбия"),
+    "costa rica": ("CR", "Коста-Рика"),
+    "croatia": ("HR", "Хорватия"),
+    "cyprus": ("CY", "Кипр"),
+    "czech": ("CZ", "Чехия"),
+    "czechia": ("CZ", "Чехия"),
+    "czech republic": ("CZ", "Чехия"),
+    "denmark": ("DK", "Дания"),
+    "dominican republic": ("DO", "Доминиканская Республика"),
+    "ecuador": ("EC", "Эквадор"),
+    "el salvador": ("SV", "Сальвадор"),
+    "estonia": ("EE", "Эстония"),
+    "finland": ("FI", "Финляндия"),
+    "france": ("FR", "Франция"),
+    "germany": ("DE", "Германия"),
+    "greece": ("GR", "Греция"),
+    "guatemala": ("GT", "Гватемала"),
+    "honduras": ("HN", "Гондурас"),
+    "hungary": ("HU", "Венгрия"),
+    "italy": ("IT", "Италия"),
+    "latvia": ("LV", "Латвия"),
+    "lithuania": ("LT", "Литва"),
+    "mexico": ("MX", "Мексика"),
+    "moldova": ("MD", "Молдова"),
+    "netherlands": ("NL", "Нидерланды"),
+    "nicaragua": ("NI", "Никарагуа"),
+    "norway": ("NO", "Норвегия"),
+    "panama": ("PA", "Панама"),
+    "paraguay": ("PY", "Парагвай"),
+    "peru": ("PE", "Перу"),
+    "poland": ("PL", "Польша"),
+    "portugal": ("PT", "Португалия"),
+    "romania": ("RO", "Румыния"),
+    "serbia": ("RS", "Сербия"),
+    "singapore": ("SG", "Сингапур"),
+    "slovakia": ("SK", "Словакия"),
+    "slovenia": ("SI", "Словения"),
+    "spain": ("ES", "Испания"),
+    "sweden": ("SE", "Швеция"),
+    "switzerland": ("CH", "Швейцария"),
+    "turkey": ("TR", "Турция"),
+    "uae": ("AE", "ОАЭ"),
+    "united arab emirates": ("AE", "ОАЭ"),
+    "uk": ("GB", "Великобритания"),
+    "united kingdom": ("GB", "Великобритания"),
+    "uruguay": ("UY", "Уругвай"),
+    "venezuela": ("VE", "Венесуэла"),
+}
+
+
 def _campaign_country_id(repo: Repository, row: dict[str, str]) -> int | None:
     raw = _first(row, "country", "страна", "гео").strip()
-    if not raw or raw.casefold() in {"несколько geo", "несколько гео", "multi", "multi-geo", "multigeo"}:
+    folded = raw.casefold()
+    if not raw or folded in CAMPAIGN_MULTI_GEO_ALIASES:
         return None
-    return repo.get_or_create_country(raw)
+
+    alias = CAMPAIGN_COUNTRY_ALIASES.get(folded)
+    if alias is not None:
+        iso_code, canonical_name = alias
+        canonical = repo.get_country_by_code(iso_code) or repo.get_country_by_name(canonical_name)
+        if canonical is None:
+            raise BusinessRuleError(
+                f"ГЕО ‘{raw}’ соответствует ‘{canonical_name}’, но такого значения нет в справочнике стран"
+            )
+        return int(canonical["id"])
+
+    exact = repo.get_country_by_name(raw)
+    if exact is None:
+        raise BusinessRuleError(
+            f"ГЕО ‘{raw}’ не найдено в справочнике стран. Импорт кампаний не создаёт новые GEO автоматически."
+        )
+    return int(exact["id"])
 
 
 def _apply_company(repo: Repository, row: dict[str, str], user_id: int, *, exists: bool) -> None:
