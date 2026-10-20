@@ -46,9 +46,21 @@ def get_auth_cookie_secret(environ: Mapping[str, str] | None = None) -> str:
 
 
 def auth_cookie_attributes(environ: Mapping[str, str] | None = None) -> dict[str, str | bool]:
-    attributes: dict[str, str | bool] = {"Path": "/", "HttpOnly": True, "SameSite": "Lax"}
-    if production_security_enabled(environ):
+    env = _env(environ)
+
+    attributes: dict[str, str | bool] = {
+        "Path": "/",
+        "HttpOnly": True,
+        "SameSite": "Lax",
+    }
+
+    allow_insecure_http = (
+        env.get("MVP_ALLOW_INSECURE_HTTP") or ""
+    ).strip() == "1"
+
+    if production_security_enabled(env) and not allow_insecure_http:
         attributes["Secure"] = True
+
     return attributes
 
 
