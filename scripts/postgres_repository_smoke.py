@@ -24,7 +24,7 @@ SMOKE_METHODS = (
     "list_phone_number_types", "list_phone_assignment_types", "list_provider_prefixes",
     "list_provider_prefixes_with_provider", "list_active_change_reasons",
     "list_change_reasons", "get_change_reason", "get_change_reason_scopes", "dictionary_counts", "get_country_by_name",
-    "get_provider_by_normalized_name", "get_currency_by_code", "get_project_by_name",
+    "get_country_by_code", "get_provider_by_normalized_name", "get_currency_by_code", "get_project_by_name",
     "get_phone_number_type_by_name", "get_phone_assignment_type_by_code_or_name",
     "get_server_by_name", "route_exists_by_country_name_and_name",
     "get_route_by_country_name_and_name", "get_route_by_country_and_name",
@@ -1102,6 +1102,11 @@ def run_repository_checks(repo: Repository, postgres_url: str) -> dict:
     counts = check("dictionary_counts", repo.dictionary_counts)
     expected_keys = {"countries", "providers", "currencies", "prefixes", "servers", "phone-types", "projects", "phone-assignments"}
     check("dictionary_counts_keys", lambda: _check(isinstance(counts, dict) and expected_keys <= counts.keys(), "dictionary_counts keys are incomplete"))
+
+    check(
+        "get_country_by_code_missing",
+        lambda: _check(repo.get_country_by_code("__missing__") is None, "missing country code must return None"),
+    )
 
     lookups = (
         ("get_country_by_name", ("Demo Country",)),
