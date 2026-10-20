@@ -30,3 +30,20 @@ class LoginThrottleTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ProductionCookiePolicyTest(unittest.TestCase):
+    def test_secure_cookie_is_default_in_production(self):
+        attrs = auth_cookie_attributes({
+            "MVP_PRODUCTION_SECURITY": "1",
+            "MVP_AUTH_SECRET": "x" * 32,
+        })
+        self.assertTrue(attrs["Secure"])
+
+    def test_internal_http_override_removes_secure_cookie_only_when_explicit(self):
+        attrs = auth_cookie_attributes({
+            "MVP_PRODUCTION_SECURITY": "1",
+            "MVP_AUTH_SECRET": "x" * 32,
+            "MVP_ALLOW_INSECURE_HTTP": "1",
+        })
+        self.assertNotIn("Secure", attrs)
