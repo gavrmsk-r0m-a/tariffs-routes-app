@@ -2751,6 +2751,58 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertIn("name='apply_scope' value='campaign_setting'", content)
         self.assertIn("name='server_ids' value='1'", content)
 
+    def test_provider_changes_geo_filter_only_lists_countries_present_in_journal(self):
+        self.request("/routes")
+        conn = _TEST_DB.connect()
+        try:
+            repo = Repository(conn)
+            russian_id = repo.create_country("Аргентина", "AR")
+            latin_id = repo.create_country("Argentina")
+            conn.execute("UPDATE countries SET is_active = FALSE WHERE id = %s", (latin_id,))
+            conn.execute(
+                """
+                INSERT INTO routing_events(event_at, apply_scope, reason, country_id, comment, created_by)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                """,
+                ("2026-10-20 19:39:00", "none", "Другое", russian_id, "test", server.ADMIN_ID),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        captured, content = self.request("/provider-changes")
+        self.assertEqual(captured["status"], "200 OK")
+        filter_html = content.split(
+            "<form class='filter-grid' method='get' action='/provider-changes'>", 1
+        )[1].split("</form>", 1)[0]
+        self.assertIn(">Аргентина</option>", filter_html)
+        self.assertNotIn(">Argentina</option>", filter_html)
+
+    def test_provider_changes_geo_filter_keeps_inactive_country_when_history_uses_it(self):
+        self.request("/routes")
+        conn = _TEST_DB.connect()
+        try:
+            repo = Repository(conn)
+            legacy_id = repo.create_country("Legacy GEO")
+            conn.execute("UPDATE countries SET is_active = FALSE WHERE id = %s", (legacy_id,))
+            conn.execute(
+                """
+                INSERT INTO routing_events(event_at, apply_scope, reason, country_id, comment, created_by)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                """,
+                ("2026-10-20 18:00:00", "none", "Другое", legacy_id, "historical", server.ADMIN_ID),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        captured, content = self.request("/provider-changes")
+        self.assertEqual(captured["status"], "200 OK")
+        filter_html = content.split(
+            "<form class='filter-grid' method='get' action='/provider-changes'>", 1
+        )[1].split("</form>", 1)[0]
+        self.assertIn(">Legacy GEO</option>", filter_html)
+
     def test_sidebar_admin_tree_regression_for_phase_two_layout(self):
         captured, content = self.request("/admin/server-priorities")
         self.assertEqual(captured["status"], "200 OK")
