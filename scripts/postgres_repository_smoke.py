@@ -27,8 +27,10 @@ SMOKE_METHODS = (
     "get_provider_by_normalized_name", "get_currency_by_code", "get_project_by_name",
     "get_phone_number_type_by_name", "get_phone_assignment_type_by_code_or_name",
     "get_server_by_name", "route_exists_by_country_name_and_name",
+    "get_route_by_country_name_and_name", "get_route_by_country_and_name",
     "phone_number_exists_by_normalized_number",
     "calling_company_exists_by_server_country_external_id",
+    "calling_company_exists_by_external_id", "get_calling_company_by_external_id",
     "current_tariff_exists_by_country_provider_prefix",
     "get_phone_number_import_identity_by_normalized_number",
     "get_app_setting_value", "get_hlr_daily_usage", "get_hlr_limit_override",
@@ -137,6 +139,7 @@ EXISTS_CHECKS = (
         ("demo-server-1", "Demo Country", "demo-company-1"),
         True,
     ),
+    ("calling_company_exists_by_external_id", ("demo-company-1",), True),
     (
         "current_tariff_exists_by_country_provider_prefix",
         ("Demo Country", "Demo Provider", "123"),
@@ -149,6 +152,7 @@ EXISTS_CHECKS = (
         ("demo-server-1", "Demo Country", "missing-company"),
         False,
     ),
+    ("calling_company_exists_by_external_id", ("missing-company",), False),
     (
         "current_tariff_exists_by_country_provider_prefix",
         ("Demo Country", "Demo Provider", "999999"),
@@ -1115,6 +1119,33 @@ def run_repository_checks(repo: Repository, postgres_url: str) -> dict:
         check(f"{method_name}_value", lambda name=method_name: _check(isinstance(lookup_results[name], dict), f"{name} must return dict for demo data"))
 
     run_exists_checks(repo, check)
+
+    route_by_names = check(
+        "get_route_by_country_name_and_name",
+        lambda: repo.get_route_by_country_name_and_name("Demo Country", "Demo Route"),
+    )
+    check(
+        "get_route_by_country_name_and_name_value",
+        lambda: _check(isinstance(route_by_names, dict) and route_by_names["name"] == "Demo Route", "route lookup by country/name failed"),
+    )
+    demo_country = lookup_results["get_country_by_name"]
+    route_by_id = check(
+        "get_route_by_country_and_name",
+        lambda: repo.get_route_by_country_and_name(demo_country["id"], "Demo Route"),
+    )
+    check(
+        "get_route_by_country_and_name_value",
+        lambda: _check(isinstance(route_by_id, dict) and route_by_id["name"] == "Demo Route", "route lookup by country id/name failed"),
+    )
+    company_by_external = check(
+        "get_calling_company_by_external_id",
+        lambda: repo.get_calling_company_by_external_id("demo-company-1"),
+    )
+    check(
+        "get_calling_company_by_external_id_value",
+        lambda: _check(isinstance(company_by_external, dict) and company_by_external["company_id_external"] == "demo-company-1", "campaign lookup by external id failed"),
+    )
+
     company, company_detail = run_stage_34_checks(repo, check, collections["list_currencies"] or [])
     run_stage_35_checks(repo, check, collections, lookup_results, company, company_detail)
     run_stage_36_checks(repo, check)
