@@ -54,3 +54,42 @@ verify-prod:
         echo '=== LOCAL HTTP ==='
         curl -sv --max-time 10 http://127.0.0.1:8000/health || true
       "
+
+provision-archivarius-token:
+  stage: deploy
+  image: alpine:3.20
+  needs:
+    - job: deploy-ssh
+  allow_failure: true
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+      when: manual
+    - when: never
+
+  before_script:
+    - apk add --no-cache openssh-client
+    - eval $(ssh-agent -s)
+    - mkdir -p ~/.ssh
+    - chmod 700 ~/.ssh
+    - export SSH_PORT=$(echo "${SSH_PORT}" | tr -d '\n\r' | xargs)
+    - echo "$SSH_PRIVATE_KEY" | sed 's/\\n/\n/g' > ~/.ssh/id_ed25519
+    - chmod 600 ~/.ssh/id_ed25519
+    - ssh-add ~/.ssh/id_ed25519
+    - ssh-keyscan -H -p "${SSH_PORT}" "${SSH_HOST}" >> ~/.ssh/known_hosts
+
+  script:
+    - |
+      test -n "${ARCHIVARIUS_API_TOKEN:-}" || { echo "ARCHIVARIUS_API_TOKEN is not configured in GitLab CI/CD Variables"; exit 1; }
+      test -n "${ARCHIVARIUS_CREATED_BY_USER:-}" || { echo "ARCHIVARIUS_CREATED_BY_USER is not configured in GitLab CI/CD Variables"; exit 1; }
+
+      printf '%s' "$ARCHIVARIUS_API_TOKEN" | ssh -p "${SSH_PORT}" "${SSH_USER}@${SSH_HOST}" "
+        cd '${DEPLOY_PATH}'
+        sudo docker exec -i lml-telerout \
+          python scripts/create_archivarius_token.py \
+          --name archivarius-prod \
+          --created-by-user '${ARCHIVARIUS_CREATED_BY_USER}' \
+          --comment 'Provisioned from GitLab CI/CD Variables' \
+          --rotate \
+          --token-stdin
+      "
+
