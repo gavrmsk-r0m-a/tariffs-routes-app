@@ -587,7 +587,8 @@ def _apply_company(repo: Repository, row: dict[str, str], user_id: int, *, exist
     server_name = _first(row, "server", "сервер")
     server = repo.get_server_by_name(server_name)
     server_id = repo.create_server(server_name) if server is None else int(server["id"])
-    country_id = _campaign_country_id(repo, row)
+    has_country = _has_any(row, "country", "страна", "гео")
+    country_id = _campaign_country_id(repo, row) if has_country else None
     external_id = _first(row, "company_id_external", "company_id", "id компании", "ID компании")
     company_name = _first(row, "company_name", "название компании", "кампания")
 
@@ -597,7 +598,7 @@ def _apply_company(repo: Repository, row: dict[str, str], user_id: int, *, exist
             raise BusinessRuleError("Calling company not found during import update")
         fields: dict[str, object] = {
             "server_id": server_id,
-            "country_id": country_id,
+            "country_id": country_id if has_country else existing["country_id"],
             "company_name": company_name,
         }
         if _has_any(row, "has_autorotation", "авторотация") and _first(row, "has_autorotation", "авторотация"):
