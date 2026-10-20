@@ -1766,38 +1766,43 @@ class RepositoryBusinessRulesTest(unittest.TestCase):
         self.assertIsNone(row["route_id"])
         self.assertEqual((row["routing_mode"], row["has_autorotation"], row["is_active"], row["valid_to"]), ("autorotation", 1, 1, None))
 
-    def test_multi_geo_mixed_and_autorotation_off_preserve_route_state(self):
+    def test_multi_geo_campaign_rejects_manual_route_but_allows_non_route_modes(self):
         server_id = self.repo.create_server("EU-multi-mixed")
         company_id = self.repo.create_calling_company(
             server_id=server_id, country_id=None, company_name="Multi mixed",
             company_id_external="multi-mixed-1", has_autorotation=False, created_by=self.admin_id,
         )
-        setting_id = self.repo.create_company_routing_setting(
-            calling_company_id=company_id, country_id=None, server_id=server_id,
-            route_id=self.route_id, routing_mode="mixed", has_autorotation=True,
-            comment="mixed", created_by=self.admin_id,
-        )
-        mixed = self.conn.execute('SELECT * FROM company_routing_settings WHERE id = %s', (setting_id,)).fetchone()
-        self.assertEqual((mixed["country_id"], mixed["route_id"], mixed["routing_mode"], mixed["has_autorotation"]), (None, self.route_id, "mixed", 1))
-        campaign_route_id = self.repo.update_company_routing_setting(
-            setting_id=setting_id, country_id=None, server_id=server_id, route_id=self.route_id,
-            routing_mode="campaign_route", has_autorotation=False, comment="off",
-            updated_by=self.admin_id,
-        )
-        campaign_route = self.conn.execute('SELECT route_id, routing_mode, has_autorotation FROM company_routing_settings WHERE id = %s', (campaign_route_id,)).fetchone()
-        self.assertEqual(tuple(campaign_route), (self.route_id, "campaign_route", 0))
+
+        with self.assertRaisesRegex(BusinessRuleError, "Несколько GEO"):
+            self.repo.create_company_routing_setting(
+                calling_company_id=company_id, country_id=None, server_id=server_id,
+                route_id=self.route_id, routing_mode="mixed", has_autorotation=True,
+                comment="mixed", created_by=self.admin_id,
+            )
+        with self.assertRaisesRegex(BusinessRuleError, "Несколько GEO"):
+            self.repo.create_company_routing_setting(
+                calling_company_id=company_id, country_id=None, server_id=server_id,
+                route_id=self.route_id, routing_mode="campaign_route", has_autorotation=False,
+                comment="manual", created_by=self.admin_id,
+            )
 
         second_company = self.repo.create_calling_company(
             server_id=server_id, country_id=None, company_name="Multi auto only",
             company_id_external="multi-auto-only-1", has_autorotation=True, created_by=self.admin_id,
         )
-        autorotation = self.conn.execute('SELECT id FROM company_routing_settings WHERE calling_company_id = %s', (second_company,)).fetchone()
+        autorotation = self.conn.execute(
+            'SELECT id FROM company_routing_settings WHERE calling_company_id = %s',
+            (second_company,),
+        ).fetchone()
         server_priority_id = self.repo.update_company_routing_setting(
             setting_id=autorotation["id"], country_id=None, server_id=server_id, route_id=None,
             routing_mode="server_priority", has_autorotation=False, comment="off",
             updated_by=self.admin_id,
         )
-        server_priority = self.conn.execute('SELECT route_id, routing_mode, has_autorotation FROM company_routing_settings WHERE id = %s', (server_priority_id,)).fetchone()
+        server_priority = self.conn.execute(
+            'SELECT route_id, routing_mode, has_autorotation FROM company_routing_settings WHERE id = %s',
+            (server_priority_id,),
+        ).fetchone()
         self.assertEqual(tuple(server_priority), (None, "server_priority", 0))
 
     def test_calling_company_external_id_is_globally_unique_across_servers_and_inactive(self):
