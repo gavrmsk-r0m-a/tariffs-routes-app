@@ -4494,11 +4494,12 @@ class Repository:
     def update_calling_company_import_fields(
         self,
         *,
-        company_id: int,
         server_id: int,
         country_id: int | None,
         company_name: str,
         updated_by: int,
+        company_id: int | None = None,
+        company_id_external: str | None = None,
         has_autorotation: bool | None = None,
         comment: str | None = None,
         is_active: bool | None = None,
@@ -4508,6 +4509,14 @@ class Repository:
         commit: bool = True,
         _requested_fields: set[str] | None = None,
     ) -> int:
+        """Patch import-managed campaign fields.
+
+        New importer callers pass company_id. company_id_external is retained
+        for compatibility with the production write harness and older callers.
+        """
+        if company_id is None and not (company_id_external or "").strip():
+            raise BusinessRuleError("company_id or company_id_external is required")
+
         fields: dict[str, object] = {
             "server_id": server_id,
             "country_id": country_id,
@@ -4525,15 +4534,18 @@ class Repository:
         for key, value in optional.items():
             if key in requested:
                 fields[key] = value
+
         p = placeholder(self.backend)
         assignments = ", ".join(f"{column} = {p}" for column in fields)
-        params = list(fields.values()) + [updated_by, company_id]
+        where_column = "id" if company_id is not None else "company_id_external"
+        identity = company_id if company_id is not None else str(company_id_external).strip()
+        params = list(fields.values()) + [updated_by, identity]
         try:
             cursor = self.conn.execute(
                 f"""
                 UPDATE calling_companies
                 SET {assignments}, updated_by = {p}, updated_at = CURRENT_TIMESTAMP
-                WHERE id = {p}
+                WHERE {where_column} = {p}
                 """,
                 tuple(params),
             )
