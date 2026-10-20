@@ -56,6 +56,9 @@ on:
       - tests/test_repository_postgres_coverage_audit.py
       - tests/test_postgres_runtime_audit.py
       - scripts/create_migration_demo_sqlite.py
+      - scripts/create_archivarius_token.py
+      - tests/test_create_archivarius_token.py
+      - .gitlab-ci.yml
       - docs/postgres/schema.postgres.sql
       - docs/postgres/migrations/**
       - docs/postgres/schema_decisions.md
@@ -147,6 +150,7 @@ jobs:
           python -m unittest tests.test_postgres_final_enablement_gate
           python -m unittest tests.test_local_postgres_runtime
           python -m unittest tests.test_container_deployment
+          python -m unittest tests.test_create_archivarius_token
           python scripts/audit_postgres_production_gate.py --format json
           python scripts/audit_postgres_production_gate.py --strict
 
