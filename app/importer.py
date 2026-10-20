@@ -192,8 +192,10 @@ def apply_import(
 
 def _business_key(conn, entity_type: str, row: dict[str, str]) -> tuple:
     if entity_type == "routes":
-        country = _first(row, "country", "страна", "гео")
         name = _first(row, "name", "route", "название маршрута", "маршрут")
+        country = _first(row, "country", "страна", "гео")
+        if not country and "/" in name:
+            country = name.split("/", 1)[0].strip()
         if not country or not name:
             raise BusinessRuleError("country and route name are required")
         return (country, name)
@@ -206,11 +208,13 @@ def _business_key(conn, entity_type: str, row: dict[str, str]) -> tuple:
         return (normalized,)
     if entity_type == "calling_companies":
         server = _first(row, "server", "сервер")
-        country = _first(row, "country", "страна", "гео")
         external_id = _first(row, "company_id_external", "company_id", "id компании", "ID компании")
-        if not server or not country or not external_id:
-            raise BusinessRuleError("server, country, and company_id_external are required")
-        return (server, country, external_id)
+        company_name = _first(row, "company_name", "название компании", "кампания")
+        if not server or not external_id or not company_name:
+            raise BusinessRuleError("server, company_id_external, and company_name are required")
+        # Infinity campaign IDs are globally unique in TeleRoute. GEO may be
+        # NULL for multi-GEO campaigns, so it must not be part of identity.
+        return (external_id,)
     if entity_type == "tariffs":
         country = _first(row, "country", "страна", "гео")
         provider = _first(row, "provider", "провайдер")
@@ -394,42 +398,88 @@ def _exists(conn, entity_type: str, key: tuple, *, backend: str = "postgres") ->
         (normalized_number,) = key
         return repo.phone_number_exists_by_normalized_number(normalized_number)
     if entity_type == "calling_companies":
-        server, country, external_id = key
-        return repo.calling_company_exists_by_server_country_external_id(server, country, external_id)
+        (external_id,) = key
+        return repo.calling_company_exists_by_external_id(external_id)
     if entity_type == "tariffs":
         country, provider, prefix = key
         return repo.current_tariff_exists_by_country_provider_prefix(country, provider, prefix or None)
     return False
 
 
-def _apply_route(repo: Repository, row: dict[str, str], user_id: int, *, exists: bool) -> None:
-    country_id = repo.get_or_create_country(_first(row, "country", "страна", "гео"))
-    provider_id = repo.get_or_create_provider(_first(row, "provider", "провайдер") or "Unknown")
-    prefix_id = repo.get_or_create_prefix(provider_id, _first(row, "prefix", "префикс") or None)
-    name = _first(row, "name", "route", "название маршрута", "маршрут")
-    values = {
-        "provider_id": provider_id,
-        "provider_prefix_id": prefix_id,
-        "project_label": _first(row, "project_label", "проект") or None,
-        "cli_source_type": _first(row, "cli_source_type", "тип аон") or "other",
-        "cli_source_label": _first(row, "cli_source_label", "аон", "источник аон") or "OTHER",
-        "comment": _first(row, "comment", "комментарий") or None,
-    }
-    if exists:
-        repo.update_route_import_fields(
-            country_id=country_id,
-            name=name,
-            provider_id=values["provider_id"],
-            provider_prefix_id=values["provider_prefix_id"],
-            project_label=values["project_label"],
-            cli_source_type=values["cli_source_type"],
-            cli_source_label=values["cli_source_label"],
-            comment=values["comment"],
-            updated_by=user_id,
-        )
-    else:
-        repo.create_route(country_id=country_id, provider_id=provider_id, provider_prefix_id=prefix_id, name=name, created_by=user_id, **{k: v for k, v in values.items() if k not in {"provider_id", "provider_prefix_id"}})
+def _route_import_aon_defaults(name: str) -> tuple[str, str]:
+    """Best-effort AON metadata for a newly imported legacy route.
 
+    The route name itself remains authoritative. This helper only avoids the
+    old destructive OTHER default for obvious RND/SIM/Pool names.
+    """
+    parts = [part.strip().rstrip("@") for part in name.split("/") if part.strip()]
+    upper = {part.upper(): part for part in parts}
+    if "RND" in upper:
+        return "rnd", "RND"
+    if "SIM" in upper:
+        return "sim", "SIM"
+    for part in reversed(parts):
+        if part.lower().startswith("pool") or "пул" in part.lower():
+            return "pool", part
+    return "other", "OTHER"
+
+
+def _apply_route(repo: Repository, row: dict[str, str], user_id: int, *, exists: bool) -> None:
+    country_name = _first(row, "country", "страна", "гео")
+    name = _first(row, "name", "route", "название маршрута", "маршрут")
+    if not country_name and "/" in name:
+        country_name = name.split("/", 1)[0].strip()
+    if not country_name:
+        raise BusinessRuleError("country is required (or must be the first route-name segment)")
+    provider_name = _first(row, "provider", "провайдер")
+    if not provider_name:
+        raise BusinessRuleError("provider is required for route import")
+
+    provider = repo.get_provider_by_normalized_name(normalize_provider_name(provider_name))
+    if provider is None:
+        raise BusinessRuleError(f"Значение ‘{provider_name}’ не найдено в справочнике Провайдер.")
+    country_id = repo.get_or_create_country(country_name)
+    provider_id = int(provider["id"])
+
+    if exists:
+        existing = repo.get_route_by_country_and_name(country_id, name)
+        if existing is None:
+            raise BusinessRuleError("Route not found during import update")
+        fields: dict[str, object] = {"provider_id": provider_id}
+        if _has_any(row, "prefix", "префикс"):
+            fields["provider_prefix_id"] = repo.get_or_create_prefix(provider_id, _first(row, "prefix", "префикс") or None)
+        if _has_any(row, "project_label", "проект"):
+            fields["project_label"] = _first(row, "project_label", "проект") or None
+        if _has_any(row, "cli_source_type", "тип аон"):
+            fields["cli_source_type"] = _first(row, "cli_source_type", "тип аон") or existing["cli_source_type"]
+        if _has_any(row, "cli_source_label", "аон", "источник аон"):
+            fields["cli_source_label"] = _first(row, "cli_source_label", "аон", "источник аон") or existing["cli_source_label"]
+        elif not _has_any(row, "cli_source_type", "тип аон") and str(existing["cli_source_type"] or "") == "other" and str(existing["cli_source_label"] or "").upper() == "OTHER":
+            inferred_type, inferred_label = _route_import_aon_defaults(name)
+            if inferred_type != "other":
+                fields["cli_source_type"] = inferred_type
+                fields["cli_source_label"] = inferred_label
+        if _has_any(row, "comment", "комментарий"):
+            fields["comment"] = _first(row, "comment", "комментарий") or None
+        repo.update_route_import_fields(
+            country_id=country_id, name=name, updated_by=user_id,
+            _requested_fields=set(fields), **fields,
+        )
+        return
+
+    prefix_id = repo.get_or_create_prefix(provider_id, _first(row, "prefix", "префикс") or None)
+    default_type, default_label = _route_import_aon_defaults(name)
+    repo.create_route(
+        country_id=country_id,
+        provider_id=provider_id,
+        provider_prefix_id=prefix_id,
+        name=name,
+        created_by=user_id,
+        project_label=_first(row, "project_label", "проект") or None,
+        cli_source_type=_first(row, "cli_source_type", "тип аон") or default_type,
+        cli_source_label=_first(row, "cli_source_label", "аон", "источник аон") or default_label,
+        comment=_first(row, "comment", "комментарий") or None,
+    )
 
 def _apply_phone(repo: Repository, row: dict[str, str], user_id: int, *, exists: bool) -> None:
     number = _first(row, "number", "номер")
@@ -513,28 +563,78 @@ def _apply_phone(repo: Repository, row: dict[str, str], user_id: int, *, exists:
         repo.create_phone_number(number=number, created_by=user_id, deactivated_at=(data["created_at"] if not is_active else None), **create_data)
 
 
+def _parse_nonnegative_int(value: str, label: str, *, default: int = 0) -> int:
+    text = (value or "").strip()
+    if not text:
+        return default
+    try:
+        number = int(text)
+    except ValueError as exc:
+        raise BusinessRuleError(f"{label} must be an integer") from exc
+    if number < 0:
+        raise BusinessRuleError(f"{label} must be non-negative")
+    return number
+
+
+def _campaign_country_id(repo: Repository, row: dict[str, str]) -> int | None:
+    raw = _first(row, "country", "страна", "гео").strip()
+    if not raw or raw.casefold() in {"несколько geo", "несколько гео", "multi", "multi-geo", "multigeo"}:
+        return None
+    return repo.get_or_create_country(raw)
+
+
 def _apply_company(repo: Repository, row: dict[str, str], user_id: int, *, exists: bool) -> None:
     server_name = _first(row, "server", "сервер")
     server = repo.get_server_by_name(server_name)
     server_id = repo.create_server(server_name) if server is None else int(server["id"])
-    country_id = repo.get_or_create_country(_first(row, "country", "страна", "гео"))
+    has_country = _has_any(row, "country", "страна", "гео")
+    country_id = _campaign_country_id(repo, row) if has_country else None
     external_id = _first(row, "company_id_external", "company_id", "id компании", "ID компании")
-    has_auto = (_first(row, "has_autorotation", "авторотация") or "").lower() in {"1", "yes", "true", "да"}
-    is_active = (_first(row, "is_active", "активна") or "да").lower() not in {"0", "no", "false", "нет"}
-    if exists:
-        repo.update_calling_company_import_fields(
-            server_id=server_id,
-            country_id=country_id,
-            company_id_external=external_id,
-            company_name=_first(row, "company_name", "название компании"),
-            has_autorotation=has_auto,
-            comment=_first(row, "comment", "комментарий") or None,
-            is_active=is_active,
-            updated_by=user_id,
-        )
-    else:
-        repo.create_calling_company(server_id=server_id, country_id=country_id, company_name=_first(row, "company_name", "название компании"), company_id_external=external_id, has_autorotation=has_auto, created_by=user_id, comment=_first(row, "comment", "комментарий") or None, is_active=is_active)
+    company_name = _first(row, "company_name", "название компании", "кампания")
 
+    if exists:
+        existing = repo.get_calling_company_by_external_id(external_id)
+        if existing is None:
+            raise BusinessRuleError("Calling company not found during import update")
+        fields: dict[str, object] = {
+            "server_id": server_id,
+            "country_id": country_id if has_country else existing["country_id"],
+            "company_name": company_name,
+        }
+        if _has_any(row, "has_autorotation", "авторотация") and _first(row, "has_autorotation", "авторотация"):
+            fields["has_autorotation"] = _parse_bool(_first(row, "has_autorotation", "авторотация"), default=False)
+        if _has_any(row, "is_active", "активна") and _first(row, "is_active", "активна"):
+            fields["is_active"] = _parse_bool(_first(row, "is_active", "активна"), default=True)
+        if _has_any(row, "line_count", "кол-во линий", "количество линий"):
+            fields["line_count"] = _parse_nonnegative_int(_first(row, "line_count", "кол-во линий", "количество линий"), "line_count", default=int(existing["line_count"]))
+        if _has_any(row, "dial_set_count", "кол-во наборов", "количество наборов"):
+            fields["dial_set_count"] = _parse_nonnegative_int(_first(row, "dial_set_count", "кол-во наборов", "количество наборов"), "dial_set_count", default=int(existing["dial_set_count"]))
+        if _has_any(row, "retry_interval_seconds", "интервал дозвона", "интервалы, с."):
+            fields["retry_interval_seconds"] = _parse_nonnegative_int(_first(row, "retry_interval_seconds", "интервал дозвона", "интервалы, с."), "retry_interval_seconds", default=int(existing["retry_interval_seconds"]))
+        if _has_any(row, "comment", "комментарий"):
+            fields["comment"] = _first(row, "comment", "комментарий") or None
+        optional_requested = set(fields) - {"server_id", "country_id", "company_name"}
+        repo.update_calling_company_import_fields(
+            company_id=int(existing["id"]), updated_by=user_id,
+            _requested_fields=optional_requested, **fields,
+        )
+        return
+
+    has_auto = _parse_bool(_first(row, "has_autorotation", "авторотация"), default=False)
+    is_active = _parse_bool(_first(row, "is_active", "активна"), default=True)
+    repo.create_calling_company(
+        server_id=server_id,
+        country_id=country_id,
+        company_name=company_name,
+        company_id_external=external_id,
+        has_autorotation=has_auto,
+        created_by=user_id,
+        comment=_first(row, "comment", "комментарий") or None,
+        is_active=is_active,
+        line_count=_parse_nonnegative_int(_first(row, "line_count", "кол-во линий", "количество линий"), "line_count"),
+        dial_set_count=_parse_nonnegative_int(_first(row, "dial_set_count", "кол-во наборов", "количество наборов"), "dial_set_count"),
+        retry_interval_seconds=_parse_nonnegative_int(_first(row, "retry_interval_seconds", "интервал дозвона", "интервалы, с."), "retry_interval_seconds"),
+    )
 
 def _apply_tariff(repo: Repository, row: dict[str, str], user_id: int, *, exists: bool) -> None:
     country_id = repo.get_or_create_country(_first(row, "country", "страна", "гео"))
@@ -573,6 +673,96 @@ def _apply_dictionary(repo: Repository, row: dict[str, str]) -> None:
         repo.ensure_phone_assignment_type_exists(code, name)
     else:
         raise BusinessRuleError(f"Unsupported dictionary type: {kind}")
+
+
+ROUTE_ROLLBACK_BLOCKERS = (
+    ("route_phone_numbers", "route_id"),
+    ("route_phone_number_history", "route_id"),
+    ("company_routing_settings", "route_id"),
+    ("provider_change_logs", "route_before_id"),
+    ("provider_change_logs", "route_after_id"),
+    ("server_route_priorities", "current_route_id"),
+    ("server_route_priorities", "previous_route_id"),
+    ("server_route_priorities", "overflow_route_id"),
+    ("routing_events", "affected_route_id"),
+    ("routing_events", "old_route_id"),
+    ("routing_events", "new_route_id"),
+    ("routing_events", "old_company_route_id"),
+    ("routing_events", "new_company_route_id"),
+    ("routing_events", "overflow_route_id"),
+    ("routing_event_servers", "old_route_id"),
+    ("routing_event_servers", "new_route_id"),
+    ("routing_event_routes", "route_id"),
+)
+
+
+def preview_route_rollback(conn, csv_text: str, *, backend: str = "postgres") -> ImportPreview:
+    rows = parse_csv(csv_text)
+    preview = ImportPreview(entity_type="routes", total_rows=len(rows))
+    repo = Repository(conn, backend=backend)
+    p = placeholder(backend)
+    seen: set[tuple[str, str]] = set()
+    for line, row in enumerate(rows, start=2):
+        try:
+            country, name = _business_key(conn, "routes", row)
+            key = (country, name)
+            if key in seen:
+                preview.duplicate_rows += 1
+                preview.rows.append({"line": line, "status": "duplicate_in_file", "action": "skip", "message": str(key)})
+                continue
+            seen.add(key)
+            route = repo.get_route_by_country_name_and_name(country, name)
+            if route is None:
+                preview.rows.append({"line": line, "status": "not_found", "action": "skip", "message": str(key), "key": key})
+                preview.skipped_rows += 1
+                continue
+            blockers = []
+            for table, column in ROUTE_ROLLBACK_BLOCKERS:
+                count = conn.execute(f"SELECT COUNT(*) AS n FROM {table} WHERE {column} = {p}", (route["id"],)).fetchone()["n"]
+                if count:
+                    blockers.append(f"{table}.{column}: {count}")
+            if blockers:
+                preview.skipped_rows += 1
+                preview.rows.append({"line": line, "status": "blocked", "action": "keep", "message": f"{key}; сохранён: есть связи: {', '.join(blockers)}", "key": key})
+            else:
+                preview.new_rows += 1
+                preview.rows.append({"line": line, "status": "ready", "action": "delete", "message": str(key), "key": key})
+        except BusinessRuleError as exc:
+            preview.error_rows += 1
+            preview.rows.append({"line": line, "status": "error", "action": "keep", "message": str(exc)})
+    return preview
+
+
+def apply_route_rollback(conn, csv_text: str, *, backend: str = "postgres") -> ImportPreview:
+    preview = preview_route_rollback(conn, csv_text, backend=backend)
+    if preview.error_rows:
+        raise BusinessRuleError("Откат заблокирован: CSV содержит ошибки. Исправьте файл и повторите предпросмотр.")
+    ready = {
+        tuple(row["key"])
+        for row in preview.rows
+        if row.get("action") == "delete" and row.get("key")
+    }
+    repo = Repository(conn, backend=backend)
+    p = placeholder(backend)
+    deleted = 0
+    try:
+        for row in parse_csv(csv_text):
+            country, name = _business_key(conn, "routes", row)
+            if (country, name) not in ready:
+                continue
+            route = repo.get_route_by_country_name_and_name(country, name)
+            if route is None:
+                continue
+            route_id = int(route["id"])
+            conn.execute(f"DELETE FROM route_history WHERE route_id = {p}", (route_id,))
+            conn.execute(f"DELETE FROM routes WHERE id = {p}", (route_id,))
+            deleted += 1
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    preview.updated_rows = deleted
+    return preview
 
 
 def _clear_section(conn, entity_type: str) -> None:

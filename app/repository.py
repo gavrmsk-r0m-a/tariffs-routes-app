@@ -4312,41 +4312,64 @@ class Repository:
         ).fetchone()
         return row is not None
 
+    def get_route_by_country_name_and_name(self, country_name: str, route_name: str) -> dict | None:
+        p = placeholder(self.backend)
+        row = self.conn.execute(
+            f"""
+            SELECT r.* FROM routes r JOIN countries c ON c.id = r.country_id
+            WHERE c.name = {p} AND r.name = {p}
+            LIMIT 1
+            """,
+            (country_name, route_name),
+        ).fetchone()
+        return row_to_dict(row)
+
+    def get_route_by_country_and_name(self, country_id: int, route_name: str) -> dict | None:
+        p = placeholder(self.backend)
+        row = self.conn.execute(
+            f"SELECT * FROM routes WHERE country_id = {p} AND name = {p} LIMIT 1",
+            (country_id, route_name),
+        ).fetchone()
+        return row_to_dict(row)
+
     def update_route_import_fields(
         self,
         *,
         country_id: int,
         name: str,
-        provider_id: int,
-        provider_prefix_id: int | None,
-        project_label: str | None,
-        cli_source_type: str,
-        cli_source_label: str,
-        comment: str | None,
+        provider_id: int | None,
+        provider_prefix_id: int | None = None,
+        project_label: str | None = None,
+        cli_source_type: str | None = None,
+        cli_source_label: str | None = None,
+        comment: str | None = None,
         updated_by: int,
         commit: bool = True,
+        _requested_fields: set[str] | None = None,
     ) -> int:
+        values: dict[str, object] = {
+            "provider_id": provider_id,
+            "provider_prefix_id": provider_prefix_id,
+            "project_label": project_label,
+            "cli_source_type": cli_source_type,
+            "cli_source_label": cli_source_label,
+            "comment": comment,
+        }
+        requested = set(values) if _requested_fields is None else set(_requested_fields)
+        fields = {key: values[key] for key in requested if key in values}
+        if not fields:
+            return 0
         p = placeholder(self.backend)
+        assignments = ", ".join(f"{column} = {p}" for column in fields)
+        params = list(fields.values()) + [updated_by, country_id, name]
         try:
             cursor = self.conn.execute(
                 f"""
                 UPDATE routes
-                SET provider_id = {p}, provider_prefix_id = {p}, project_label = {p},
-                    cli_source_type = {p}, cli_source_label = {p}, comment = {p},
-                    updated_by = {p}, updated_at = CURRENT_TIMESTAMP
+                SET {assignments}, updated_by = {p}, updated_at = CURRENT_TIMESTAMP
                 WHERE country_id = {p} AND name = {p}
                 """,
-                (
-                    provider_id,
-                    provider_prefix_id,
-                    project_label,
-                    cli_source_type,
-                    cli_source_label,
-                    comment,
-                    updated_by,
-                    country_id,
-                    name,
-                ),
+                tuple(params),
             )
             if commit:
                 self.conn.commit()
@@ -4448,50 +4471,90 @@ class Repository:
             raise
 
     def calling_company_exists_by_server_country_external_id(self, server_name: str, country_name: str, external_id: str) -> bool:
+        # Backward-compatible wrapper. New imports identify campaigns by the
+        # globally unique Infinity external ID so multi-GEO (NULL country) works.
+        return self.calling_company_exists_by_external_id(external_id)
+
+    def calling_company_exists_by_external_id(self, external_id: str) -> bool:
         p = placeholder(self.backend)
         row = self.conn.execute(
-            f"""
-            SELECT 1 FROM calling_companies cc
-            JOIN servers s ON s.id = cc.server_id
-            JOIN countries c ON c.id = cc.country_id
-            WHERE s.name = {p} AND c.name = {p} AND cc.company_id_external = {p}
-            """,
-            (server_name, country_name, external_id),
+            f"SELECT 1 FROM calling_companies WHERE company_id_external = {p}",
+            (external_id,),
         ).fetchone()
         return row is not None
+
+    def get_calling_company_by_external_id(self, external_id: str) -> dict | None:
+        p = placeholder(self.backend)
+        row = self.conn.execute(
+            f"SELECT * FROM calling_companies WHERE company_id_external = {p} LIMIT 1",
+            (external_id,),
+        ).fetchone()
+        return row_to_dict(row)
 
     def update_calling_company_import_fields(
         self,
         *,
         server_id: int,
-        country_id: int,
-        company_id_external: str,
+        country_id: int | None,
         company_name: str,
-        has_autorotation: bool,
-        comment: str | None,
-        is_active: bool,
         updated_by: int,
+        company_id: int | None = None,
+        company_id_external: str | None = None,
+        has_autorotation: bool | None = None,
+        comment: str | None = None,
+        is_active: bool | None = None,
+        line_count: int | None = None,
+        dial_set_count: int | None = None,
+        retry_interval_seconds: int | None = None,
         commit: bool = True,
+        _requested_fields: set[str] | None = None,
     ) -> int:
+        """Patch import-managed campaign fields.
+
+        New importer callers pass company_id. company_id_external is retained
+        for compatibility with the production write harness and older callers.
+        """
+        if company_id is None and not (company_id_external or "").strip():
+            raise BusinessRuleError("company_id or company_id_external is required")
+
+        fields: dict[str, object] = {
+            "server_id": server_id,
+            "country_id": country_id,
+            "company_name": company_name,
+        }
+        optional = {
+            "has_autorotation": to_db_bool(has_autorotation, self.backend) if has_autorotation is not None else None,
+            "comment": comment,
+            "is_active": to_db_bool(is_active, self.backend) if is_active is not None else None,
+            "line_count": line_count,
+            "dial_set_count": dial_set_count,
+            "retry_interval_seconds": retry_interval_seconds,
+        }
+        # Legacy callers do not pass _requested_fields. In that mode only
+        # explicitly supplied non-None values are patched, so newly added
+        # NOT NULL fields are never overwritten with NULL by omission.
+        requested = (
+            {key for key, value in optional.items() if value is not None}
+            if _requested_fields is None
+            else set(_requested_fields)
+        )
+        for key, value in optional.items():
+            if key in requested:
+                fields[key] = value
+
         p = placeholder(self.backend)
+        assignments = ", ".join(f"{column} = {p}" for column in fields)
+        where_column = "id" if company_id is not None else "company_id_external"
+        identity = company_id if company_id is not None else str(company_id_external).strip()
+        params = list(fields.values()) + [updated_by, identity]
         try:
             cursor = self.conn.execute(
                 f"""
-            UPDATE calling_companies
-            SET company_name = {p}, has_autorotation = {p}, comment = {p}, is_active = {p},
-                updated_by = {p}, updated_at = CURRENT_TIMESTAMP
-            WHERE server_id = {p} AND country_id = {p} AND company_id_external = {p}
+                UPDATE calling_companies
+                SET {assignments}, updated_by = {p}, updated_at = CURRENT_TIMESTAMP
+                WHERE {where_column} = {p}
                 """,
-                (
-                company_name,
-                to_db_bool(has_autorotation, self.backend),
-                comment,
-                to_db_bool(is_active, self.backend),
-                updated_by,
-                server_id,
-                country_id,
-                company_id_external,
-                ),
+                tuple(params),
             )
             if commit:
                 self.conn.commit()

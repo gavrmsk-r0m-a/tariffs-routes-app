@@ -4,6 +4,7 @@
 !.env.example
 !.env.postgres.local.example
 !.env.production.example
+!.env.production
 
 # Python and test caches
 __pycache__/

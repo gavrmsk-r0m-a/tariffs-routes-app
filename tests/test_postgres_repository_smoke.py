@@ -15,7 +15,7 @@ from app.repository import Repository
 
 _TEST_DB = shared_database()
 
-CHECKS_COUNT = 658
+CHECKS_COUNT = 666
 
 
 class RecordingRepository:
@@ -489,6 +489,7 @@ class PostgreSQLRepositorySmokeTest(unittest.TestCase):
         repo.route_exists_by_country_name_and_name.return_value = False
         repo.phone_number_exists_by_normalized_number.return_value = False
         repo.calling_company_exists_by_server_country_external_id.return_value = False
+        repo.calling_company_exists_by_external_id.return_value = False
         repo.current_tariff_exists_by_country_provider_prefix.return_value = False
         failures = []
 
@@ -505,6 +506,7 @@ class PostgreSQLRepositorySmokeTest(unittest.TestCase):
                 "route_exists_by_country_name_and_name_existing",
                 "phone_number_exists_by_normalized_number_existing",
                 "calling_company_exists_by_server_country_external_id_existing",
+                "calling_company_exists_by_external_id_existing",
                 "current_tariff_exists_by_country_provider_prefix_existing",
             },
             set(failures),

@@ -1,57 +1,56 @@
-stages:
-  - test
+include:
+  - project: "devops/ci-templates/oper"
+    ref: main
+    file:
+      - "/workflow.yml"
+      - "/variables.yml"
+      - "/build-docker.yml"
+      - "/release.yml"
+      - "/deploy-ssh.yml"
 
 variables:
-  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+  IMAGE_REPOSITORY: "${CI_REGISTRY_REPOSITORY}/telerouter"
+  IMAGE_PATH: "${IMAGE_REPOSITORY}"
+  DOCKER_CONTEXT: "${CI_PROJECT_DIR}"
+  DOCKERFILE_PATH: "${CI_PROJECT_DIR}/Dockerfile"
+  COMPOSE_FILE: "${CI_PROJECT_DIR}/docker-compose.yml"
+  DEPLOY_PATH: "/opt/production/telerouter_prod"
 
-  POSTGRES_DB: "teleroute_ci"
-  POSTGRES_USER: "postgres"
-  POSTGRES_PASSWORD: "postgres"
-
-  DB_BACKEND: "postgres"
-  DATABASE_URL: "postgresql://postgres:postgres@postgres:5432/teleroute_ci"
-  POSTGRES_TEST_ADMIN_URL: "postgresql://postgres:postgres@postgres:5432/postgres"
-
-  MVP_PRODUCTION_SECURITY: "1"
-  MVP_AUTH_SECRET: "ci-only-teleroute-auth-secret-2026-at-least-32-characters"
-
-cache:
-  paths:
-    - .cache/pip
-
-teleroute_tests:
-  stage: test
-
-  image: python:3.12-slim
-
-  services:
-    - name: postgres:16
-      alias: postgres
+verify-prod:
+  stage: deploy
+  image: alpine:3.20
+  needs:
+    - job: deploy-ssh
 
   before_script:
-    - python --version
-    - python -m pip install --upgrade pip
-    - python -m pip install -r requirements.txt
-
-    - |
-      python - <<'PY'
-      import time
-      import psycopg
-
-      dsn = "postgresql://postgres:postgres@postgres:5432/teleroute_ci"
-
-      for attempt in range(30):
-          try:
-              with psycopg.connect(dsn):
-                  print("PostgreSQL is ready")
-                  break
-          except Exception:
-              print(f"Waiting for PostgreSQL: {attempt + 1}/30")
-              time.sleep(1)
-      else:
-          raise RuntimeError("PostgreSQL did not become ready")
-      PY
+    - apk add --no-cache openssh-client
+    - eval $(ssh-agent -s)
+    - mkdir -p ~/.ssh
+    - chmod 700 ~/.ssh
+    - export SSH_PORT=$(echo "${SSH_PORT}" | tr -d '\n\r' | xargs)
+    - echo "$SSH_PRIVATE_KEY" | sed 's/\\n/\n/g' > ~/.ssh/id_ed25519
+    - chmod 600 ~/.ssh/id_ed25519
+    - ssh-add ~/.ssh/id_ed25519
+    - ssh-keyscan -H -p "${SSH_PORT}" "${SSH_HOST}" >> ~/.ssh/known_hosts
 
   script:
-    - python -m compileall -q app scripts
-    - python -m unittest -v tests.test_production_release tests.test_ui_baseline tests.test_container_deployment
+    - |
+      ssh -p "${SSH_PORT}" "${SSH_USER}@${SSH_HOST}" "
+        cd '${DEPLOY_PATH}'
+
+        echo '=== COMPOSE PS ==='
+        sudo docker compose ps -a
+
+        echo
+        echo '=== APP STATE ==='
+        sudo docker inspect lml-telerout \
+          --format='status={{.State.Status}} restarts={{.RestartCount}} exit={{.State.ExitCode}} started={{.State.StartedAt}} finished={{.State.FinishedAt}}'
+
+        echo
+        echo '=== APP LOGS ==='
+        sudo docker logs --tail=120 lml-telerout
+
+        echo
+        echo '=== LOCAL HTTP ==='
+        curl -sv --max-time 10 http://127.0.0.1:8000/health || true
+      "

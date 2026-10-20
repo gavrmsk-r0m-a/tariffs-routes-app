@@ -29,7 +29,7 @@ from app.db import connect_database, load_db_config
 from app.http_server import make_threading_server
 from app.db_adapter import placeholder, to_db_bool
 from app.db_errors import UNKNOWN_DATABASE_ERROR, UNIQUE_VIOLATION, map_database_error
-from app.importer import apply_import, preview_import
+from app.importer import apply_import, apply_route_rollback, preview_import, preview_route_rollback
 from app.repository import BusinessRuleError, COMPANY_CHANGE_LABELS, ROUTING_SCOPE_LABELS, Repository, format_decimal_label, normalize_phone_status, normalize_provider_name, normalize_real_prefix, validate_phone_number
 from app.security import (
     GENERIC_LOGIN_ERROR,
@@ -5147,7 +5147,8 @@ function routeSelectedText(select) { return select && select.selectedOptions && 
 function routeTemplateName(form) {
   const country = routeSelectedText(form.querySelector('[name=country_id]')) || (form.dataset.countryName || '');
   const provider = routeSelectedText(form.querySelector('[name=provider_id]'));
-  const project = routeSelectedText(form.querySelector('[name=project_label]'));
+  const projectControl = form.querySelector('[name=project_label]');
+  const project = routeSelectedText(projectControl) || (projectControl?.value || '').trim();
   const label = (form.querySelector('[name=cli_source_label]')?.value || '').trim();
   const prefixValue = form.querySelector('[name=provider_prefix_id]')?.value || '';
   const prefixSelect = form.querySelector('[name=provider_prefix_id]');
@@ -5186,18 +5187,30 @@ function updateAonFields(root) {
     if (value === 'pool' && !['Пул купленных номеров','Локальный пул','Нелокальный пул'].includes(pool.value)) pool.value = 'Пул купленных номеров';
   }
   if (rndType && pool) rndType.value = pool.value === 'Нелокальный пул' ? 'nonlocal' : (pool.value === 'Локальный пул' ? 'local' : '');
-  updateRouteName(root, false);
 }
+const routeNamingFields = new Set(['provider_id','provider_prefix_id','project_label','cli_source_type','cli_source_label','aon_pool','rnd_pool_owner']);
 document.querySelectorAll('form').forEach(form => {
-  if (form.querySelector('[name=cli_source_type]')) {
-    const name = form.querySelector('[name=name]');
-    if (name) name.addEventListener('input', () => { form.dataset.customRouteName = name.value !== (form.dataset.generatedRouteName || '') ? '1' : ''; });
-    form.addEventListener('change', () => updateAonFields(form));
-    form.addEventListener('submit', ev => {
-      updateAonFields(form);
-      if (name && !name.value.trim()) { ev.preventDefault(); alert('Название маршрута обязательно'); return; }
-      if (name && form.dataset.generatedRouteName && name.value !== form.dataset.generatedRouteName && !confirm('Вы отредактировали название маршрута, оно не соответствует шаблону. Сохранить изменённое название?')) ev.preventDefault();
-    });
+  if (!form.querySelector('[name=cli_source_type]')) return;
+  const name = form.querySelector('[name=name]');
+  const isEdit = form.dataset.routeEdit === '1';
+  if (name) {
+    form.dataset.generatedRouteName = routeTemplateName(form);
+    name.addEventListener('input', () => { form.dataset.customRouteName = '1'; });
+  }
+  form.addEventListener('change', ev => {
+    const field = ev.target && ev.target.name ? ev.target.name : '';
+    if (!routeNamingFields.has(field)) return;
+    updateAonFields(form);
+    updateRouteName(form, false);
+  });
+  form.addEventListener('submit', ev => {
+    // Existing records are not normalized merely because the user opened the
+    // form or changed an unrelated field such as comment/status.
+    if (!isEdit) updateAonFields(form);
+    if (name && !name.value.trim()) { ev.preventDefault(); alert('Название маршрута обязательно'); return; }
+    if (name && form.dataset.generatedRouteName && name.value !== form.dataset.generatedRouteName && !isEdit && !confirm('Вы отредактировали название маршрута, оно не соответствует шаблону. Сохранить изменённое название?')) ev.preventDefault();
+  });
+  if (!isEdit) {
     updateAonFields(form);
     if (name && !name.value) updateRouteName(form, true);
   }
@@ -9382,15 +9395,20 @@ def import_page(repo: Repository, preview_html: str = "", *, selected_entity: st
 <li>Колонка «АП» игнорируется; «АП в EUR» импортируется в «Абонплата». Поддерживается запятая: 46,63 → 46.63. Значения ?, Неизвестно, пусто, - → NULL; NULL показывается как «???».</li>
 </ul>
 </section>"""
-    body = f"""<h1>Администрирование → Импорт / экспорт</h1><form method="post" action="/admin/import/preview"><label>Раздел <span class="required">*</span><select name="entity_type" id="entity_type"><option value="routes" {sel('routes')}>Маршруты</option><option value="tariffs" {sel('tariffs')}>Тарифы</option><option value="phone_numbers" {sel('phone_numbers')}>Купленные номера</option><option value="calling_companies" {sel('calling_companies')}>Кампании прозвона</option><option value="dictionaries" {sel('dictionaries')}>Справочники</option></select></label><label>Режим <select name="mode" id="import_mode"><option value="append_update" {mode_sel('append_update')}>Дополнить / обновить</option></select></label><p class='muted'>Режим «Заменить выбранный раздел» временно отключён. Используйте «Дополнить / обновить».</p>{phone_requirements}<br><textarea name="csv_data" rows="12" cols="110" placeholder="Вставьте CSV с заголовками">{esc(csv_data)}</textarea><br><button>Предпросмотр</button><button formaction="/admin/import/apply">{nav_icon("import")}<span>Импортировать</span></button></form>{preview_html}<script>
+    body = f"""<h1>Администрирование → Импорт / экспорт</h1><form method="post" action="/admin/import/preview"><label>Раздел <span class="required">*</span><select name="entity_type" id="entity_type"><option value="routes" {sel('routes')}>Маршруты</option><option value="tariffs" {sel('tariffs')}>Тарифы</option><option value="phone_numbers" {sel('phone_numbers')}>Купленные номера</option><option value="calling_companies" {sel('calling_companies')}>Кампании прозвона</option><option value="dictionaries" {sel('dictionaries')}>Справочники</option></select></label><label>Режим <select name="mode" id="import_mode"><option value="append_update" {mode_sel('append_update')}>Дополнить / обновить</option><option value="rollback_routes" {mode_sel('rollback_routes')} {'hidden' if selected_entity != 'routes' else ''}>Откатить маршруты из этого CSV</option></select></label><p class='muted' id='import-mode-help'>Режим «Заменить выбранный раздел» временно отключён. Для маршрутов доступен безопасный откат по тому же CSV: маршруты с бизнес-связями удаляться не будут.</p>{phone_requirements}<br><textarea name="csv_data" rows="12" cols="110" placeholder="Вставьте CSV с заголовками">{esc(csv_data)}</textarea><br><label id="route-rollback-confirm" {'hidden' if selected_mode != 'rollback_routes' else ''}><input type="checkbox" name="confirm_route_rollback" value="1"> Подтверждаю удаление маршрутов из CSV, прошедших безопасный предпросмотр</label><br><button>Предпросмотр</button><button formaction="/admin/import/apply">{nav_icon("import")}<span>{'Откатить' if selected_mode == 'rollback_routes' else 'Импортировать'}</span></button></form>{preview_html}<script>
 const entity = document.getElementById('entity_type');
 const mode = document.getElementById('import_mode');
 const phoneRequirements = document.getElementById('phone-import-requirements');
 function syncImportMode() {{
-  mode.value = 'append_update';
+  const rollback = mode.querySelector('option[value="rollback_routes"]');
+  const routes = entity.value === 'routes';
+  if (rollback) rollback.hidden = !routes;
+  if (!routes && mode.value === 'rollback_routes') mode.value = 'append_update';
   if (phoneRequirements) {{ phoneRequirements.hidden = entity.value !== 'phone_numbers'; }}
+  const rollbackConfirm = document.getElementById('route-rollback-confirm');
+  if (rollbackConfirm) rollbackConfirm.hidden = mode.value !== 'rollback_routes';
 }}
-entity.addEventListener('change', syncImportMode); syncImportMode();
+entity.addEventListener('change', syncImportMode); mode.addEventListener('change', syncImportMode); syncImportMode();
 </script>"""
     return page("Импорт", body)
 
@@ -9740,7 +9758,7 @@ def tariff_edit_page(repo: Repository, tariff_id: int, *, form_error: str | None
 
 def route_edit_form(repo: Repository, route_id: int, route: dict, *, modal: bool = False) -> str:
     cancel = "<button type='button' class='modal-cancel' data-modal-close>Отмена</button>" if modal else "<a class='button modal-cancel' href='/routes'>Отмена</a>"
-    return f"""<form class='route-dialog route-dialog-form{' route-dialog-page-form' if not modal else ''}' method='post' action='/routes/{route_id}/update' data-country-name='{esc(route['country_name']) if 'country_name' in route.keys() else ''}'>
+    return f"""<form class='route-dialog route-dialog-form{' route-dialog-page-form' if not modal else ''}' method='post' action='/routes/{route_id}/update' data-route-edit='1' data-country-name='{esc(route['country_name']) if 'country_name' in route.keys() else ''}'>
 <input type='hidden' name='expected_updated_at' value='{esc(route['updated_at'])}'>
 <header class='route-dialog-header'><h2>Редактировать маршрут</h2></header>
 <div class='route-dialog-body'>
@@ -10906,7 +10924,12 @@ def app(environ, start_response):
             if path == "/admin/import/preview":
                 if parsed.get("mode") == "replace_section":
                     raise BusinessRuleError("Режим замены раздела временно отключён. Используйте Дополнить / обновить.")
-                preview = preview_import(conn, parsed["entity_type"], parsed.get("csv_data", ""), backend=repo.backend)
+                if parsed.get("mode") == "rollback_routes":
+                    if parsed.get("entity_type") != "routes":
+                        raise BusinessRuleError("Откат по CSV доступен только для маршрутов.")
+                    preview = preview_route_rollback(conn, parsed.get("csv_data", ""), backend=repo.backend)
+                else:
+                    preview = preview_import(conn, parsed["entity_type"], parsed.get("csv_data", ""), backend=repo.backend)
                 if parsed["entity_type"] == "phone_numbers":
                     rows = "".join(f"<tr><td>{r['line']}</td><td>{esc(r.get('number', ''))}</td><td>{esc(r['action'])}</td><td>{esc(r.get('working_status', ''))}</td><td>{esc(r.get('active_provider', ''))}</td><td>{esc(r.get('review_required', ''))}</td><td>{esc(r.get('review_reasons', ''))}</td><td>{esc(r.get('errors', ''))}</td><td>{esc(r.get('info', ''))}</td><td>{esc(r['message'])}</td></tr>" for r in preview.rows)
                     info_blocks = ""
@@ -10926,12 +10949,22 @@ def app(environ, start_response):
                 start_response("200 OK", html_headers())
                 return [import_page(repo, html_preview, selected_entity=parsed["entity_type"], selected_mode=parsed.get("mode", "append_update"), csv_data=parsed.get("csv_data", ""))]
             if path == "/admin/import/apply":
-                result = apply_import(conn, parsed["entity_type"], parsed.get("csv_data", ""), user_id=current_actor_id(), mode=parsed.get("mode", "append_update"), backend=repo.backend)
+                if parsed.get("mode") == "rollback_routes":
+                    if parsed.get("entity_type") != "routes":
+                        raise BusinessRuleError("Откат по CSV доступен только для маршрутов.")
+                    if parsed.get("confirm_route_rollback") != "1":
+                        raise BusinessRuleError("Для отката маршрутов сначала выполните предпросмотр и подтвердите удаление.")
+                    result = apply_route_rollback(conn, parsed.get("csv_data", ""), backend=repo.backend)
+                else:
+                    result = apply_import(conn, parsed["entity_type"], parsed.get("csv_data", ""), user_id=current_actor_id(), mode=parsed.get("mode", "append_update"), backend=repo.backend)
                 extra = ""
                 if parsed["entity_type"] == "phone_numbers":
                     extra = f"<li>требуют проверки {result.review_required_rows}</li><li>исторических справочных значений {result.legacy_info_rows}</li>"
                 warning = "<p class='flash warning'>Во время применения возникли ошибки. Проверьте данные.</p>" if result.error_rows else ""
-                notice = f"<h2>Импорт завершён</h2>{warning}<ul><li>создано {result.created_rows}</li><li>обновлено {result.updated_rows}</li><li>пропущено {result.skipped_rows}</li><li>ошибок {result.error_rows}</li>{extra}</ul>"
+                if parsed.get("mode") == "rollback_routes":
+                    notice = f"<h2>Откат маршрутов завершён</h2>{warning}<ul><li>удалено {result.updated_rows}</li><li>пропущено {result.skipped_rows}</li><li>ошибок {result.error_rows}</li></ul>"
+                else:
+                    notice = f"<h2>Импорт завершён</h2>{warning}<ul><li>создано {result.created_rows}</li><li>обновлено {result.updated_rows}</li><li>пропущено {result.skipped_rows}</li><li>ошибок {result.error_rows}</li>{extra}</ul>"
                 start_response("200 OK", html_headers())
                 return [import_page(repo, notice, selected_entity=parsed["entity_type"], selected_mode=parsed.get("mode", "append_update"), csv_data=parsed.get("csv_data", ""))]
             location = handle_post(repo, path, parsed)
