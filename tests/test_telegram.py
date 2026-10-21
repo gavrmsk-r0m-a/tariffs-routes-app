@@ -95,6 +95,15 @@ class TelegramMessageTest(unittest.TestCase):
             self.assertNotIn("💬", without_comment)
             self.assertNotIn("Комментарий:", without_comment)
 
+    def test_footer_renders_event_time_in_gmt_plus_3(self):
+        message = self.build({
+            "apply_scope": "none",
+            "event_at": "2026-10-20T22:10:00+00:00",
+            "author_name": "Admin",
+        })
+        self.assertIn("🕒 2026-10-21 01:10 (GMT+3)", message)
+        self.assertNotIn("+00:00", message)
+
     def test_message_builder_uses_127_fallback_when_app_base_url_missing(self):
         self.assertIn("http://127.0.0.1:8000/provider-changes", self.build({}))
 
