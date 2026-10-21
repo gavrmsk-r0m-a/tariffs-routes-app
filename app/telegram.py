@@ -9,6 +9,8 @@ from decimal import Decimal, InvalidOperation
 from html import escape
 from urllib.parse import urljoin
 
+from app.time_utils import format_app_datetime
+
 logger = logging.getLogger(__name__)
 
 TELEGRAM_API_TIMEOUT_SECONDS = 5
@@ -83,7 +85,7 @@ def _footer_block(event: dict) -> list[str]:
     return [
         "",
         f"👤 {_html(event.get('author_name'))}",
-        f"🕒 {_html(event.get('event_at'))}",
+        f"🕒 {_html(format_app_datetime(event.get('event_at'), with_timezone=True))}",
         "",
         "🔗 Открыть:",
         _html(provider_change_url()),
