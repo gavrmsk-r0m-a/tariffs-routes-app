@@ -2832,7 +2832,9 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertIn("2026-10-21 01:10", content)
         self.assertNotIn("2026-10-20 22:10:00+00:00", content)
 
-        rows = self.provider_changes_csv_rows()
+        captured, csv_content = self.request("/provider-changes?export=csv")
+        self.assertEqual(captured["status"], "200 OK")
+        rows = list(csv.DictReader(io.StringIO(csv_content.lstrip("\ufeff")), delimiter=";"))
         matching = next(row for row in rows if row["Комментарий"] == "gmt3 boundary test")
         self.assertEqual(matching["Дата события"], "2026-10-21 01:10")
 
@@ -6243,8 +6245,8 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
         self.assertIn("data-col='comment'><span class='cell-clamp'>—</span>", journal)
 
     def test_provider_changes_journal_supports_date_from_filter(self):
-        self._insert_routing_event("2026-06-21 23:59:59", "before date from")
-        self._insert_routing_event("2026-06-22 00:00:00", "on date from")
+        self._insert_routing_event("2026-06-21 20:59:59+00:00", "before date from")
+        self._insert_routing_event("2026-06-21 21:00:00+00:00", "on date from")
         captured, content = self.request("/provider-changes?date_from=2026-06-22")
         self.assertEqual(captured["status"], "200 OK")
         self.assertIn("Дата от", content)
@@ -6253,18 +6255,18 @@ class RoutingEventsServerSmokeTest(unittest.TestCase):
         self.assertNotIn("before date from", content)
 
     def test_provider_changes_journal_supports_date_to_filter(self):
-        self._insert_routing_event("2026-06-22 23:59:59", "on date to")
-        self._insert_routing_event("2026-06-23 00:00:00", "after date to")
+        self._insert_routing_event("2026-06-22 20:59:59+00:00", "on date to")
+        self._insert_routing_event("2026-06-22 21:00:00+00:00", "after date to")
         captured, content = self.request("/provider-changes?date_to=2026-06-22")
         self.assertEqual(captured["status"], "200 OK")
         self.assertIn("on date to", content)
         self.assertNotIn("after date to", content)
 
     def test_provider_changes_journal_supports_exact_inclusive_date_range(self):
-        self._insert_routing_event("2026-06-21 23:59:59", "previous day exact")
-        self._insert_routing_event("2026-06-22 00:00:00", "start of exact day")
-        self._insert_routing_event("2026-06-22 23:59:59", "end of exact day")
-        self._insert_routing_event("2026-06-23 00:00:00", "next day exact")
+        self._insert_routing_event("2026-06-21 20:59:59+00:00", "previous day exact")
+        self._insert_routing_event("2026-06-21 21:00:00+00:00", "start of exact day")
+        self._insert_routing_event("2026-06-22 20:59:59+00:00", "end of exact day")
+        self._insert_routing_event("2026-06-22 21:00:00+00:00", "next day exact")
         captured, content = self.request("/provider-changes?date_from=2026-06-22&date_to=2026-06-22")
         self.assertEqual(captured["status"], "200 OK")
         self.assertIn("start of exact day", content)
