@@ -43,6 +43,7 @@ from app.security import (
     render_cookie_attributes,
 )
 from app.telegram import notify_provider_change_created
+from app.time_utils import APP_TIMEZONE_LABEL, app_date_bound_to_utc, app_input_to_utc, app_now_input_value, format_app_datetime
 from app.spam_checker import PARSER_VERSION, parse_response, score_change
 from app.archivarius import (
     API_VERSION as ARCHIVARIUS_API_VERSION,
@@ -8195,7 +8196,7 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
         if not isinstance(affected_route_names, list) or not affected_route_names:
             affected_route_names = [one(f"SELECT name AS value FROM routes WHERE id = {p}", event["affected_route_id"])] if event["affected_route_id"] else []
         readonly_rows = [
-            ("Дата события", event["event_at"]),
+            ("Дата события", format_app_datetime(event["event_at"], with_timezone=True)),
             ("Область применения", scope_labels.get(event["apply_scope"], event["apply_scope"] or "—")),
             ("GEO", one(f"SELECT name AS value FROM countries WHERE id = {p}", event["country_id"])),
             ("Серверы", ", ".join(server_names) if server_names else "—"),
@@ -8225,7 +8226,8 @@ def routing_event_form(repo: Repository, event=None, error_message: str | None =
 </form>
 </details>
 """
-    event_at = (event["event_at"] if event else datetime.now().strftime("%Y-%m-%d %H:%M")).replace(" ", "T")[:16]
+    submitted_event_at = event.get("event_at") if isinstance(event, dict) else None
+    event_at = (submitted_event_at or app_now_input_value()).replace(" ", "T")[:16]
     scope = event["apply_scope"] if event else "none"
     selected_affected_route_ids = set()
     if isinstance(event, dict):
@@ -8955,9 +8957,9 @@ def provider_changes_date_filter_values(q: dict[str, str]) -> tuple[dict[str, st
         return {}, "Дата от не может быть позже даты до"
     filters: dict[str, str] = {}
     if date_from:
-        filters["date_from"] = f"{date_from} 00:00:00"
+        filters["date_from"] = app_date_bound_to_utc(date_from)
     if date_to:
-        filters["date_to"] = f"{date_to} 23:59:59"
+        filters["date_to"] = app_date_bound_to_utc(date_to, end_of_day=True)
     return filters, None
 
 
@@ -8971,7 +8973,7 @@ def provider_changes_page(repo: Repository, q: dict[str, str] | None = None, for
         for ev in records:
             server_text, _, details_text = provider_event_details(ev)
             details_plain = html_to_csv_text(details_text)
-            export_rows.append([ev["event_at"], ROUTING_SCOPE_LABELS.get(ev["apply_scope"], ev["apply_scope"]), ev["country_name"], server_text, ev["company_id_external"] or ev["company_name"] or "—", details_plain, ev["reason"], ev["comment"], ev["author_name"] or "—"])
+            export_rows.append([format_app_datetime(ev["event_at"]), ROUTING_SCOPE_LABELS.get(ev["apply_scope"], ev["apply_scope"]), ev["country_name"], server_text, ev["company_id_external"] or ev["company_name"] or "—", details_plain, ev["reason"], ev["comment"], ev["author_name"] or "—"])
         return csv_response("provider_changes_export.csv", ["Дата события", "Область применения", "GEO", "Сервер", "Кампания", "Детали", "Причина", "Комментарий", "Пользователь / Автор"], export_rows)
     records, pagination_html = paginate_rows(records, q, "/provider-changes")
     rows = []
@@ -8979,7 +8981,7 @@ def provider_changes_page(repo: Repository, q: dict[str, str] | None = None, for
         server_text, campaign_text, details_text = provider_event_details(ev)
         actions = f"<a class='button edit-action' href='/provider-changes/{ev['id']}/edit' title='Редактировать' aria-label='Редактировать' data-tooltip='Редактировать'>Редактировать</a>" if can_write("provider_changes") else ""
         comment_text = (ev["comment"] or "").strip() or "—"
-        rows.append(f"<tr class='{'' if ev['is_active'] else 'inactive-row'}'><td data-col='event_at'>{esc(ev['event_at'])}</td><td data-col='scope'>{esc(ROUTING_SCOPE_LABELS.get(ev['apply_scope'], ev['apply_scope']))}</td><td data-col='geo'>{esc(ev['country_name'])}</td><td data-col='server'>{esc(server_text)}</td><td data-col='campaign' class='selectable-cell'>{selectable_text(esc(campaign_text), campaign_text)}</td>{clamp_cell('details', details_text, html_to_csv_text(details_text), selectable=True)}{clamp_cell('comment', esc(comment_text), comment_text)}{clamp_cell('reason', esc(ev['reason']), ev['reason'])}<td data-col='actions' class='actions'>{actions}</td></tr>")
+        rows.append(f"<tr class='{'' if ev['is_active'] else 'inactive-row'}'><td data-col='event_at'>{esc(format_app_datetime(ev['event_at']))}</td><td data-col='scope'>{esc(ROUTING_SCOPE_LABELS.get(ev['apply_scope'], ev['apply_scope']))}</td><td data-col='geo'>{esc(ev['country_name'])}</td><td data-col='server'>{esc(server_text)}</td><td data-col='campaign' class='selectable-cell'>{selectable_text(esc(campaign_text), campaign_text)}</td>{clamp_cell('details', details_text, html_to_csv_text(details_text), selectable=True)}{clamp_cell('comment', esc(comment_text), comment_text)}{clamp_cell('reason', esc(ev['reason']), ev['reason'])}<td data-col='actions' class='actions'>{actions}</td></tr>")
     if not rows:
         rows.append("<tr><td colspan='9'><div class='empty-state'>Событий пока нет</div></td></tr>")
     filters_html = f"""<form class='filter-grid' method='get' action='/provider-changes'>
@@ -8992,14 +8994,14 @@ def provider_changes_page(repo: Repository, q: dict[str, str] | None = None, for
 <label>Провайдер <select name='provider_id'>{options(repo, 'providers', selected=q.get('provider_id'), empty='Все')}</select></label>
 <label class='checkbox-inline'><input type='checkbox' name='include_inactive' value='1' {'checked' if q.get('include_inactive') == '1' else ''}> <span>Показывать архив</span></label>
 <button type='submit'>Найти</button></form>"""
-    journal_html = f"{data_table('provider_changes', [('event_at', 'Дата события'), ('scope', 'Область применения'), ('geo', 'GEO'), ('server', 'Сервер'), ('campaign', 'Кампания'), ('details', 'Детали'), ('comment', 'Комментарий'), ('reason', 'Причина'), ('actions', 'Действия')], ''.join(rows))}"
+    journal_html = f"{data_table('provider_changes', [('event_at', f'Дата события ({APP_TIMEZONE_LABEL})'), ('scope', 'Область применения'), ('geo', 'GEO'), ('server', 'Сервер'), ('campaign', 'Кампания'), ('details', 'Детали'), ('comment', 'Комментарий'), ('reason', 'Причина'), ('actions', 'Действия')], ''.join(rows))}"
     body = f"""
 {routing_event_form(repo, form_data, form_error) if can_write("provider_changes") else ""}
 {filter_card(filters_html, q, ('date_from', 'date_to', 'country_id', 'apply_scope', 'server_id', 'campaign_id', 'provider_id', 'include_inactive'))}
 {f"<div class='notice ok'>{esc(q.get('notice'))}</div>" if q.get('notice') else ""}
 {f"<div class='notice error'>{esc(filter_error)}</div>" if filter_error else ""}
 {table_card(journal_html, title='Журнал событий', extra_class='journal-card')}
-{table_footer(pagination_html, column_settings('provider_changes', [('event_at', 'Дата события'), ('scope', 'Область применения'), ('geo', 'GEO'), ('server', 'Сервер'), ('campaign', 'Кампания'), ('details', 'Детали'), ('comment', 'Комментарий'), ('reason', 'Причина'), ('actions', 'Действия')], hlr_style=True) + export_link('/provider-changes', q, text=True))}
+{table_footer(pagination_html, column_settings('provider_changes', [('event_at', f'Дата события ({APP_TIMEZONE_LABEL})'), ('scope', 'Область применения'), ('geo', 'GEO'), ('server', 'Сервер'), ('campaign', 'Кампания'), ('details', 'Детали'), ('comment', 'Комментарий'), ('reason', 'Причина'), ('actions', 'Действия')], hlr_style=True) + export_link('/provider-changes', q, text=True))}
 """
     return page("Смена провайдеров", table_page_container(body, extra_class="provider-changes-page"))
 
@@ -9957,7 +9959,7 @@ def provider_change_edit_page(repo: Repository, change_id: int) -> bytes:
         return page("Событие не найдено", "<h1>Событие не найдено</h1>")
     body = f"""<h1>Редактировать событие смены провайдеров</h1><p><a href='/provider-changes'>← Назад</a></p>
 {routing_event_form(repo, event)}
-<p class='muted'>Создано: {esc(event['created_at'])}; обновлено: {esc(event['updated_at'])}</p>"""
+<p class='muted'>Создано: {esc(format_app_datetime(event['created_at'], with_timezone=True))}; обновлено: {esc(format_app_datetime(event['updated_at'], with_timezone=True))}</p>"""
     return page("Редактировать событие", body)
 
 
@@ -9967,7 +9969,7 @@ def provider_change_edit_page_with_error(repo: Repository, change_id: int, error
         return page("Событие не найдено", f"<h1>Событие не найдено</h1><div class='error'>{esc(error_message)}</div>")
     body = f"""<h1>Редактировать событие смены провайдеров</h1><p><a href='/provider-changes'>← Назад</a></p>
 {routing_event_form(repo, event, error_message)}
-<p class='muted'>Создано: {esc(event['created_at'])}; обновлено: {esc(event['updated_at'])}</p>"""
+<p class='muted'>Создано: {esc(format_app_datetime(event['created_at'], with_timezone=True))}; обновлено: {esc(format_app_datetime(event['updated_at'], with_timezone=True))}</p>"""
     return page("Редактировать событие", body)
 
 
@@ -10240,6 +10242,10 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
         return "/companies"
     if path == "/provider-changes/create":
         apply_scope = data.get("apply_scope")
+        try:
+            event_at_utc = app_input_to_utc(data.get("event_at"))
+        except ValueError as exc:
+            raise BusinessRuleError(str(exc)) from exc
         raw_values = parse_qs(data.get("_raw", ""), keep_blank_values=True)
         provider_id = parse_int(data.get("campaign_provider_id")) if apply_scope == "campaign_setting" else parse_int(data.get("provider_id"))
         selected_server_ids = parse_qs(data.get("_raw", ""), keep_blank_values=True).get("server_ids") if apply_scope == "server_priority" else None
@@ -10278,7 +10284,7 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
                 raise BusinessRuleError("Выберите хотя бы одну кампанию")
             if not raw_values.get("calling_company_ids") and legacy_calling_company_id and not (data.get("campaign_id_search") or "").strip():
                 event_id = repo.create_routing_event(
-                    event_at=data.get("event_at"), apply_scope=apply_scope, reason=data.get("reason"), comment=data.get("comment"),
+                    event_at=event_at_utc, apply_scope=apply_scope, reason=data.get("reason"), comment=data.get("comment"),
                     country_id=parse_int(data.get("country_id")), server_id=parse_int(data.get("server_id")), server_ids=selected_server_ids, provider_id=provider_id,
                     affected_route_id=parse_int(data.get("affected_route_id")), old_route_id=parse_int(data.get("old_route_id")), new_route_id=parse_int(data.get("new_route_id")),
                     calling_company_id=legacy_calling_company_id, company_change_type=data.get("company_change_type") or None,
@@ -10297,7 +10303,7 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
                 for calling_company_id in seen_company_ids:
                     try:
                         event_id = repo.create_routing_event(
-                            event_at=data.get("event_at"), apply_scope=apply_scope, reason=data.get("reason"), comment=data.get("comment"),
+                            event_at=event_at_utc, apply_scope=apply_scope, reason=data.get("reason"), comment=data.get("comment"),
                             country_id=parse_int(data.get("country_id")), server_id=parse_int(data.get("server_id")), server_ids=selected_server_ids, provider_id=provider_id,
                             affected_route_id=parse_int(data.get("affected_route_id")), old_route_id=parse_int(data.get("old_route_id")), new_route_id=parse_int(data.get("new_route_id")),
                             calling_company_id=calling_company_id, company_change_type=data.get("company_change_type") or None,
@@ -10320,7 +10326,7 @@ def handle_post(repo: Repository, path: str, data: dict[str, str]):
                 return f"/provider-changes?notice={quote(f'Создано событий: {created_count}. Пропущено без изменений: {skipped_count}.')}"
             return "/provider-changes"
         event_id = repo.create_routing_event(
-            event_at=data.get("event_at"), apply_scope=apply_scope, reason=data.get("reason"), comment=data.get("comment"),
+            event_at=event_at_utc, apply_scope=apply_scope, reason=data.get("reason"), comment=data.get("comment"),
             country_id=parse_int(data.get("country_id")), server_id=parse_int(data.get("server_id")), server_ids=selected_server_ids, provider_id=provider_id,
             affected_route_id=parse_int(data.get("affected_route_id")), affected_route_ids=affected_route_ids, old_route_id=parse_int(data.get("old_route_id")), new_route_id=parse_int(data.get("new_route_id")),
             calling_company_id=legacy_calling_company_id, company_change_type=data.get("company_change_type") or None,
