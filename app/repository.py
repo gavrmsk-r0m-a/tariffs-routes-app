@@ -2391,6 +2391,9 @@ class Repository:
 
     def list_calling_companies(self, filters: dict | None = None) -> list[dict]:
         company_filters = dict(filters or {})
+        multi_geo_only = company_filters.get("country_id") == "__multi_geo__"
+        if multi_geo_only:
+            company_filters.pop("country_id", None)
         for key in ("has_autorotation", "is_active"):
             supported, normalized = self._normalize_optional_bool_filter(company_filters.get(key))
             if not supported:
@@ -2413,6 +2416,9 @@ class Repository:
             },
             backend=self.backend,
         )
+        if multi_geo_only:
+            where = f"{where} AND cc.country_id IS NULL" if where else " WHERE cc.country_id IS NULL"
+
         inactive = to_db_bool(False, self.backend)
         active = to_db_bool(True, self.backend)
         p = placeholder(self.backend)

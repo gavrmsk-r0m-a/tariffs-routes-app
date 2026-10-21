@@ -4899,6 +4899,42 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertIn("Fixed Line", content)
         self.assertNotIn("name='phone_type' value", content)
 
+    def test_company_geo_filter_can_select_multi_geo_campaigns(self):
+        conn = _TEST_DB.connect()
+        try:
+            repo = Repository(conn)
+            repo.create_calling_company(
+                server_id=1,
+                country_id=None,
+                company_name="Multi GEO Filter Campaign",
+                company_id_external="multi-geo-filter-test",
+                has_autorotation=False,
+                created_by=server.ADMIN_ID,
+            )
+            repo.create_calling_company(
+                server_id=1,
+                country_id=1,
+                company_name="Single GEO Filter Campaign",
+                company_id_external="single-geo-filter-test",
+                has_autorotation=False,
+                created_by=server.ADMIN_ID,
+            )
+        finally:
+            conn.close()
+
+        captured, content = self.request("/companies")
+        self.assertEqual(captured["status"], "200 OK")
+        filter_html = content.split(
+            '<form class="filter-grid" method="get" action="/companies">', 1
+        )[1].split("</form>", 1)[0]
+        self.assertIn("<option value='__multi_geo__' >Несколько GEO</option>", filter_html)
+
+        captured, filtered = self.request("/companies?country_id=__multi_geo__")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("<option value='__multi_geo__' selected>Несколько GEO</option>", filtered)
+        self.assertIn("Multi GEO Filter Campaign", filtered)
+        self.assertNotIn("Single GEO Filter Campaign", filtered)
+
     def test_calling_company_history_pages_links_and_export(self):
         captured, content = self.request("/companies")
         self.assertEqual(captured["status"].split()[0], "200")
