@@ -4978,6 +4978,27 @@ def active_options(repo: Repository, table: str, label: str = "name", selected: 
     )
 
 
+def company_country_filter_options(
+    repo: Repository,
+    selected: object | None = None,
+    empty: str = "Все",
+) -> str:
+    """Company GEO filter includes the synthetic multi-GEO bucket."""
+    selected_text = "" if selected is None else str(selected)
+    opts = f"<option value='' {'selected' if selected_text == '' else ''}>{esc(empty)}</option>"
+    opts += (
+        f"<option value='__multi_geo__' {'selected' if selected_text == '__multi_geo__' else ''}>"
+        "Несколько GEO</option>"
+    )
+    for row in repo.conn.execute("SELECT id, name FROM countries ORDER BY name"):
+        value = str(row["id"])
+        opts += (
+            f"<option value='{value}' {'selected' if selected_text == value else ''}>"
+            f"{esc(row['name'])}</option>"
+        )
+    return opts
+
+
 def routing_event_country_filter_options(
     repo: Repository,
     selected: object | None = None,
@@ -7977,7 +7998,7 @@ def companies_page(repo: Repository, q: dict[str, str] | None = None, *, form_er
         history = history_icon_link(f"/calling-companies/{cc['id']}/history")
         rows.append(f"<tr><td data-col='server'>{esc(cc['server_name'])}</td><td data-col='geo'>{esc(cc['country_name'] or 'Несколько GEO')}</td>{clamp_cell('company_name', esc(cc['company_name']), cc['company_name'], selectable=True)}<td data-col='company_id' class='selectable-cell'>{selectable_text(esc(cc['company_id_external']), cc['company_id_external'])}</td><td data-col='lines'>{esc(cc['line_count'])}</td><td data-col='dial_sets'>{esc(cc['dial_set_count'])}</td><td data-col='autorotation'>{'Да' if cc['current_has_autorotation'] else 'Нет'}</td><td data-col='retry_interval'>{esc(cc['retry_interval_seconds'])}</td><td data-col='active'>{'Активна' if cc['is_active'] else 'Неактивна'}</td>{clamp_cell('comment', esc(cc['comment']), cc['comment'], classes='comment-cell')}<td data-col='history' class='history-cell'>{history}</td><td data-col='actions'>{actions}</td></tr>")
     filters_html = f"""<form class="filter-grid" method="get" action="/companies">
-<label>Сервер <select name="server_id">{options(repo, 'servers', selected=q.get('server_id'), empty='Все')}</select></label><label>ГЕО <select name="country_id">{options(repo, 'countries', selected=q.get('country_id'), empty='Все')}</select></label><label>Название кампании <input name="company" value="{esc(q.get('company'))}"></label><label>ID кампании <input name="external_id" value="{esc(q.get('external_id'))}"></label><label>Авторотация <select name="has_autorotation"><option value="">Все</option><option value="1" {'selected' if q.get('has_autorotation')=='1' else ''}>Да</option><option value="0" {'selected' if q.get('has_autorotation')=='0' else ''}>Нет</option></select></label><label>Активность <select name="is_active"><option value="">Все</option><option value="1" {'selected' if q.get('is_active')=='1' else ''}>Активна</option><option value="0" {'selected' if q.get('is_active')=='0' else ''}>Неактивна</option></select></label><button>Найти</button></form>"""
+<label>Сервер <select name="server_id">{options(repo, 'servers', selected=q.get('server_id'), empty='Все')}</select></label><label>ГЕО <select name="country_id">{company_country_filter_options(repo, selected=q.get('country_id'))}</select></label><label>Название кампании <input name="company" value="{esc(q.get('company'))}"></label><label>ID кампании <input name="external_id" value="{esc(q.get('external_id'))}"></label><label>Авторотация <select name="has_autorotation"><option value="">Все</option><option value="1" {'selected' if q.get('has_autorotation')=='1' else ''}>Да</option><option value="0" {'selected' if q.get('has_autorotation')=='0' else ''}>Нет</option></select></label><label>Активность <select name="is_active"><option value="">Все</option><option value="1" {'selected' if q.get('is_active')=='1' else ''}>Активна</option><option value="0" {'selected' if q.get('is_active')=='0' else ''}>Неактивна</option></select></label><button>Найти</button></form>"""
     create_html = f"""<form class="company-dialog company-dialog-form" method="post" action="/companies/create">
   <header class="company-dialog-header"><h2>Добавить кампанию</h2></header>
   {modal_blocking_error(form_error)}
