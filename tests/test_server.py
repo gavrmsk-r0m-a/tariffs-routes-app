@@ -2621,6 +2621,53 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertNotIn("Мексика/Sancom/Demo_0827@", content)
         self.assertNotIn("Мексика/Miatel/Demo_A@", content)
 
+    def test_phone_filters_keep_inactive_values_that_are_used_by_existing_numbers(self):
+        conn = _TEST_DB.connect()
+        try:
+            repo = Repository(conn)
+            repo.ensure_project_exists("Legacy Project")
+            repo.ensure_phone_assignment_type_exists("legacy_assignment", "Legacy Assignment")
+            phone = conn.execute("SELECT id, number FROM phone_numbers ORDER BY id LIMIT 1").fetchone()
+            self.assertIsNotNone(phone)
+            conn.execute("UPDATE projects SET is_active = FALSE WHERE name = %s", ("Legacy Project",))
+            conn.execute(
+                "UPDATE phone_assignment_types SET is_active = FALSE WHERE code = %s",
+                ("legacy_assignment",),
+            )
+            conn.execute(
+                """
+                UPDATE phone_numbers
+                SET project_label = %s, assignment_type = %s, assignment_label = %s
+                WHERE id = %s
+                """,
+                ("Legacy Project", "legacy_assignment", "Legacy Assignment", phone["id"]),
+            )
+            conn.commit()
+            phone_number = phone["number"]
+        finally:
+            conn.close()
+
+        captured, content = self.request("/phones")
+        self.assertEqual(captured["status"], "200 OK")
+        filter_html = content.split(
+            '<form class="filter-grid" method="get" action="/phones">', 1
+        )[1].split("</form>", 1)[0]
+        create_html = content.split(
+            '<form class="phone-dialog phone-dialog-form" method="post" action="/phones/create">', 1
+        )[1].split("</form>", 1)[0]
+
+        self.assertIn("value='Legacy Project'", filter_html)
+        self.assertIn(">Legacy Project</option>", filter_html)
+        self.assertIn("value='legacy_assignment'", filter_html)
+        self.assertIn(">Legacy Assignment</option>", filter_html)
+        self.assertNotIn("value='Legacy Project'", create_html)
+        self.assertNotIn("value='legacy_assignment'", create_html)
+
+        captured, filtered = self.request("/phones?project=Legacy+Project")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn(str(phone_number), filtered)
+        self.assertIn("value='Legacy Project' selected", filtered)
+
     def test_filter_state_persists_per_section_and_empty_search_stays_open_current_response(self):
         captured, content = self.request("/phones?number=525550000001&page=2")
         self.assertEqual(captured["status"], "200 OK")

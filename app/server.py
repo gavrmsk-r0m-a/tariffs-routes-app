@@ -5049,6 +5049,42 @@ def assignment_options(repo: Repository, selected: str | None = None, empty: str
     return opts
 
 
+def phone_filter_project_options(repo: Repository, selected: str | None = None, empty: str | None = "Все") -> str:
+    """Project filter values come from existing phone rows, not dictionary activity."""
+    opts = f"<option value=''>{esc(empty)}</option>" if empty is not None else ""
+    rows = repo.conn.execute(
+        """
+        SELECT DISTINCT project_label
+        FROM phone_numbers
+        WHERE project_label IS NOT NULL AND TRIM(project_label) != ''
+        ORDER BY project_label
+        """
+    )
+    for row in rows:
+        value = row["project_label"]
+        opts += f"<option value='{esc(value)}' {'selected' if value == selected else ''}>{esc(value)}</option>"
+    return opts
+
+
+def phone_filter_assignment_options(repo: Repository, selected: str | None = None, empty: str | None = "Все") -> str:
+    """Assignment filter values come from existing phone rows, including inactive legacy dictionary entries."""
+    opts = f"<option value=''>{esc(empty)}</option>" if empty is not None else ""
+    rows = repo.conn.execute(
+        """
+        SELECT DISTINCT pn.assignment_type AS code,
+               COALESCE(pat.name, pn.assignment_label, pn.assignment_type) AS label
+        FROM phone_numbers pn
+        LEFT JOIN phone_assignment_types pat ON pat.code = pn.assignment_type
+        WHERE pn.assignment_type IS NOT NULL AND TRIM(pn.assignment_type) != ''
+        ORDER BY COALESCE(pat.name, pn.assignment_label, pn.assignment_type), pn.assignment_type
+        """
+    )
+    for row in rows:
+        value = row["code"]
+        opts += f"<option value='{esc(value)}' {'selected' if value == selected else ''}>{esc(row['label'])}</option>"
+    return opts
+
+
 def server_checkboxes(repo: Repository, selected: set[str] | None = None) -> str:
     selected = selected or set()
     boxes = []
@@ -7728,8 +7764,8 @@ def phones_page(repo: Repository, q: dict[str, str] | None = None, *, form_error
 <div class="phones-filter-primary">
 <label>ГЕО <select name="country_id">{options(repo, 'countries', selected=q.get('country_id'), empty='Все')}</select></label>
 <label>Провайдер <select name="provider_id">{options(repo, 'providers', selected=q.get('provider_id'), empty='Все')}</select></label>
-    <label>Проект <select name="project">{project_options(repo, selected=q.get('project'), empty='Все')}</select></label>
-    <label>Назначение <select name="assignment_type">{assignment_options(repo, selected=q.get('assignment_type'), empty='Все')}</select></label>
+    <label>Проект <select name="project">{phone_filter_project_options(repo, selected=q.get('project'))}</select></label>
+    <label>Назначение <select name="assignment_type">{phone_filter_assignment_options(repo, selected=q.get('assignment_type'))}</select></label>
 <label>Рабочий статус <select name="status">{phone_status_options(q.get('status'), empty='Все')}</select></label>
 <label>Активен у провайдера <select name="is_active"><option value="" {'selected' if q.get('is_active') in (None, '') else ''}>Все</option><option value="1" {'selected' if q.get('is_active') == '1' else ''}>Да</option><option value="0" {'selected' if q.get('is_active') == '0' else ''}>Нет</option></select></label>
 </div>
