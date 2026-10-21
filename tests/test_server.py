@@ -2798,6 +2798,53 @@ class ServerSmokeTest(unittest.TestCase):
         self.assertIn("name='apply_scope' value='campaign_setting'", content)
         self.assertIn("name='server_ids' value='1'", content)
 
+    def test_provider_change_time_uses_gmt_plus_3_at_ui_boundary(self):
+        self.request("/routes")
+        body = urlencode({
+            "apply_scope": "none",
+            "event_at": "2026-10-21T01:10",
+            "country_id": "1",
+            "provider_id": "1",
+            "affected_route_ids": "1",
+            "reason": "Другое",
+            "comment": "gmt3 boundary test",
+        })
+        captured, _ = self.request("/provider-changes/create", method="POST", body=body)
+        self.assertEqual(captured["status"], "303 See Other")
+
+        conn = _TEST_DB.connect()
+        try:
+            stored_utc = conn.execute(
+                """
+                SELECT to_char(event_at AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI') AS value
+                FROM routing_events
+                WHERE comment = %s
+                """,
+                ("gmt3 boundary test",),
+            ).fetchone()["value"]
+        finally:
+            conn.close()
+        self.assertEqual(stored_utc, "2026-10-20 22:10")
+
+        captured, content = self.request("/provider-changes")
+        self.assertEqual(captured["status"], "200 OK")
+        self.assertIn("Дата события (GMT+3)", content)
+        self.assertIn("2026-10-21 01:10", content)
+        self.assertNotIn("2026-10-20 22:10:00+00:00", content)
+
+        rows = self.provider_changes_csv_rows()
+        matching = next(row for row in rows if row["Комментарий"] == "gmt3 boundary test")
+        self.assertEqual(matching["Дата события"], "2026-10-21 01:10")
+
+    def test_provider_change_date_filters_use_gmt_plus_3_day_boundaries(self):
+        filters, error = server.provider_changes_date_filter_values({
+            "date_from": "2026-10-21",
+            "date_to": "2026-10-21",
+        })
+        self.assertIsNone(error)
+        self.assertEqual(filters["date_from"], "2026-10-20T21:00:00+00:00")
+        self.assertEqual(filters["date_to"], "2026-10-21T20:59:59.999999+00:00")
+
     def test_provider_changes_geo_filter_only_lists_countries_present_in_journal(self):
         self.request("/routes")
         conn = _TEST_DB.connect()
