@@ -39,6 +39,59 @@ class TelegramMessageTest(unittest.TestCase):
         self.assertNotIn("Перелив", message)
         self.assertNotIn("Разница", message)
 
+    def test_server_priority_uses_snapshot_for_different_old_routes(self):
+        snapshot = {
+            "affected_servers": [
+                {
+                    "server_name": "EU1",
+                    "old_route": "Miatel / Литва/Miatel/RND@",
+                    "new_route": "Miatel / Литва/Miatel/Pool_B@",
+                    "status": "applied",
+                },
+                {
+                    "server_name": "EU2",
+                    "old_route": "Miatel / Литва/Miatel/Pool_A@",
+                    "new_route": "Miatel / Литва/Miatel/Pool_B@",
+                    "status": "applied",
+                },
+                {
+                    "server_name": "EU4",
+                    "old_route": "Miatel / Литва/Miatel/Pool_B@",
+                    "new_route": "Miatel / Литва/Miatel/Pool_B@",
+                    "status": "skipped_noop",
+                },
+            ]
+        }
+        message = self.build({
+            "apply_scope": "server_priority",
+            "country_name": "Литва",
+            "affected_server_names": "EU1, EU2, EU4",
+            "new_route_name": "Литва/Miatel/Pool_B@",
+            "snapshot_json": json.dumps(snapshot, ensure_ascii=False),
+            "reason": "Другое",
+            "comment": "Смена приоритетов",
+        })
+        self.assertIn("🛣 <b>Изменения по серверам</b>", message)
+        self.assertIn("• <b>EU1:</b> Miatel / Литва/Miatel/RND@ → <b>Miatel / Литва/Miatel/Pool_B@</b>", message)
+        self.assertIn("• <b>EU2:</b> Miatel / Литва/Miatel/Pool_A@ → <b>Miatel / Литва/Miatel/Pool_B@</b>", message)
+        self.assertIn("• <b>EU4:</b> Miatel / Литва/Miatel/Pool_B@ → <b>Miatel / Литва/Miatel/Pool_B@</b> · уже был выбран", message)
+        self.assertNotIn("Было: —", message)
+
+    def test_server_priority_keeps_compact_route_block_when_all_transitions_match(self):
+        snapshot = {
+            "affected_servers": [
+                {"server_name": "EU1", "old_route": "Old@", "new_route": "New@", "status": "applied"},
+                {"server_name": "EU2", "old_route": "Old@", "new_route": "New@", "status": "applied"},
+            ]
+        }
+        message = self.build({
+            "apply_scope": "server_priority",
+            "affected_server_names": "EU1, EU2",
+            "snapshot_json": snapshot,
+        })
+        self.assertIn("🛣 <b>Основной маршрут</b>\nБыло: Old@\nСтало: <b>New@</b>", message)
+        self.assertNotIn("Изменения по серверам", message)
+
     def test_server_priority_preserves_overflow_and_numeric_difference(self):
         message = self.build({"apply_scope": "server_priority", "overflow_route_name": "CZ/Overflow@", "price_delta_eur": "-0.08"})
         self.assertIn("🌊 <b>Перелив:</b> CZ/Overflow@", message)
@@ -104,8 +157,10 @@ class TelegramMessageTest(unittest.TestCase):
         self.assertIn("🕒 2026-10-21 01:10 (GMT+3)", message)
         self.assertNotIn("+00:00", message)
 
-    def test_message_builder_uses_127_fallback_when_app_base_url_missing(self):
-        self.assertIn("http://127.0.0.1:8000/provider-changes", self.build({}))
+    def test_message_builder_omits_link_when_app_base_url_missing(self):
+        message = self.build({})
+        self.assertNotIn("127.0.0.1", message)
+        self.assertNotIn("🔗 Открыть:", message)
 
     def test_provider_change_url_uses_configured_app_base_url_without_duplicate_slashes(self):
         with patch.dict(os.environ, {"APP_BASE_URL": "https://routes.company.com/"}, clear=True):
