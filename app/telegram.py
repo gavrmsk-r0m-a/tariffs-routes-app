@@ -14,7 +14,7 @@ from app.time_utils import format_app_datetime
 logger = logging.getLogger(__name__)
 
 TELEGRAM_API_TIMEOUT_SECONDS = 5
-DEFAULT_APP_BASE_URL = "http://127.0.0.1:8000"
+DEFAULT_APP_BASE_URL = ""
 
 
 def _text(value: object) -> str:
@@ -71,6 +71,8 @@ def app_base_url() -> str:
 
 def provider_change_url(base_url: str | None = None) -> str:
     base = base_url.strip() if base_url and base_url.strip() else app_base_url()
+    if not base:
+        return ""
     return urljoin(base.rstrip("/") + "/", "provider-changes")
 
 
@@ -82,17 +84,66 @@ def _reason_comment_block(event: dict) -> list[str]:
 
 
 def _footer_block(event: dict) -> list[str]:
-    return [
+    lines = [
         "",
         f"👤 {_html(event.get('author_name'))}",
         f"🕒 {_html(format_app_datetime(event.get('event_at'), with_timezone=True))}",
-        "",
-        "🔗 Открыть:",
-        _html(provider_change_url()),
     ]
+    url = provider_change_url()
+    if url:
+        lines.extend(["", "🔗 Открыть:", _html(url)])
+    return lines
+
+
+def _event_snapshot(event: dict) -> dict:
+    raw = event.get("snapshot_json")
+    if not raw:
+        return {}
+    if isinstance(raw, dict):
+        return raw
+    try:
+        if isinstance(raw, (bytes, bytearray)):
+            raw = raw.decode("utf-8")
+        parsed = json.loads(raw)
+    except (json.JSONDecodeError, UnicodeDecodeError, TypeError, ValueError):
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
 
 
 def _server_priority_route_block(event: dict) -> list[str]:
+    snapshot = _event_snapshot(event)
+    affected = snapshot.get("affected_servers")
+    if isinstance(affected, list):
+        changes = [row for row in affected if isinstance(row, dict)]
+    else:
+        changes = []
+
+    if changes:
+        transitions = {
+            (
+                _text(row.get("old_route")),
+                _text(row.get("new_route") or event.get("new_route_name")),
+            )
+            for row in changes
+        }
+        if len(changes) > 1 and len(transitions) > 1:
+            lines = ["🛣 <b>Изменения по серверам</b>"]
+            for row in changes:
+                server_name = _html(row.get("server_name"))
+                old_route = _html(row.get("old_route"))
+                new_route = _bold(row.get("new_route") or event.get("new_route_name"))
+                status = " · уже был выбран" if row.get("status") == "skipped_noop" else ""
+                lines.append(f"• <b>{server_name}:</b> {old_route} → {new_route}{status}")
+            return lines
+
+        old_route = changes[0].get("old_route")
+        new_route = changes[0].get("new_route") or event.get("new_route_name")
+        return [
+            "🛣 <b>Основной маршрут</b>",
+            f"Было: {_html(old_route)}",
+            f"Стало: {_bold(new_route)}",
+        ]
+
     old_route = event.get("old_route_name") or event.get("affected_route_name")
     return [
         "🛣 <b>Основной маршрут</b>",
